@@ -24,7 +24,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 
@@ -35,7 +34,6 @@ import (
 	tally_metrics "github.com/uber/peloton/pkg/placement/metrics"
 	"github.com/uber/peloton/pkg/placement/models"
 	"github.com/uber/peloton/pkg/placement/tasks"
-	"github.com/uber/peloton/pkg/placement/util"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -407,31 +405,27 @@ func (r *reserver) processCompletedReservations(ctx context.Context) error {
 		return errors.New("no valid reservations")
 	}
 
-	placements := make([]*resmgr.Placement, 0, len(reservations))
-	for _, res := range reservations {
-		selectedPorts := util.AssignPorts(
-			&models.HostOffers{Offer: res.HostOffer},
-			[]*models.Task{{Task: res.Task}})
-		placement := &resmgr.Placement{
-			Hostname: res.HostOffer.Hostname,
-			Tasks:    []*peloton.TaskID{res.GetTask().GetId()},
-			TaskIDs: []*resmgr.Placement_Task{
-				{
-					PelotonTaskID: res.GetTask().GetId(),
-					MesosTaskID:   res.GetTask().GetTaskId(),
-				},
-			},
-			Type:        r.config.TaskType,
-			AgentId:     res.HostOffer.AgentId,
-			Ports:       selectedPorts,
-			HostOfferID: res.HostOffer.Id,
-		}
-		placements = append(placements, placement)
+	now := time.Now()
+	maxRounds := r.config.MaxRounds.Value(reservations[0].GetTask().Type)
+	duration := r.config.MaxDurations.Value(reservations[0].GetTask().Type)
+	deadline := now.Add(duration)
+	desiredHostPlacementDeadline := now.Add(r.config.MaxDesiredHostPlacementDuration)
+
+	assignments := make([]*models.Assignment, len(reservations))
+	for i, res := range reservations {
+		task := models.NewTask(nil,
+			res.GetTask(),
+			deadline,
+			desiredHostPlacementDeadline,
+			maxRounds,
+		)
+		assignments[i] = models.NewAssignment(task)
+		assignments[i].SetHost(&models.HostOffers{Offer: res.HostOffer})
 	}
 
-	log.WithField("placements", placements).
+	log.WithField("placements", assignments).
 		Debug("Process completed reservations")
-	r.taskService.SetPlacements(ctx, placements, nil)
+	r.taskService.SetPlacements(ctx, assignments, nil)
 	return nil
 }
 

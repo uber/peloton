@@ -24,7 +24,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 )
 
-func setupHostVariables() (time.Time, *hostsvc.HostOffer, *resmgrsvc.Gang, *resmgr.Task, *HostOffers, *Task, *Assignment) {
+func setupHostVariables() (time.Time, *hostsvc.HostOffer, *resmgrsvc.Gang, *resmgr.Task, *HostOffers, *TaskV0, *Assignment) {
 	resmgrTask := &resmgr.Task{
 		Name: "task",
 	}

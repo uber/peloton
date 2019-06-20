@@ -42,13 +42,13 @@ func AssignmentsToTasks(assignments []*Assignment) []plugins.Task {
 // Assignment represents the assignment of a task to a host.
 // One host can be used in multiple assignments.
 type Assignment struct {
-	HostOffers *HostOffers `json:"host"`
-	Task       *Task       `json:"task"`
-	Reason     string
+	HostOffers       *HostOffers `json:"host"`
+	Task             *TaskV0     `json:"task"`
+	PlacementFailure string
 }
 
 // NewAssignment will create a new empty assignment from a task.
-func NewAssignment(task *Task) *Assignment {
+func NewAssignment(task *TaskV0) *Assignment {
 	return &Assignment{
 		Task: task,
 	}
@@ -65,23 +65,23 @@ func (a *Assignment) SetHost(host *HostOffers) {
 }
 
 // GetTask returns the task of the assignment.
-func (a *Assignment) GetTask() *Task {
+func (a *Assignment) GetTask() *TaskV0 {
 	return a.Task
 }
 
 // SetTask sets the task in the assignment to the given task.
-func (a *Assignment) SetTask(task *Task) {
+func (a *Assignment) SetTask(task *TaskV0) {
 	a.Task = task
 }
 
-// GetReason returns the reason why the assignment was unsuccessful
-func (a *Assignment) GetReason() string {
-	return a.Reason
+// GetPlacementFailure returns the reason why the assignment was unsuccessful
+func (a *Assignment) GetPlacementFailure() string {
+	return a.PlacementFailure
 }
 
-// SetReason sets the reason for the failed assignment
-func (a *Assignment) SetReason(reason string) {
-	a.Reason = reason
+// SetPlacementFailure sets the reason for the failed assignment
+func (a *Assignment) SetPlacementFailure(failureReason string) {
+	a.PlacementFailure = failureReason
 }
 
 // GetUsage returns the resource and port usage of this assignment.
@@ -155,4 +155,14 @@ func (a *Assignment) GetPlacementNeeds() plugins.PlacementNeeds {
 		needs.RankHint = hostsvc.FilterHint_FILTER_HINT_RANKING_RANDOM
 	}
 	return needs
+}
+
+// IsReadyForHostReservation returns true if this task is ready for host reservation.
+func (a *Assignment) IsReadyForHostReservation() bool {
+	return a.GetTask().GetTask().ReadyForHostReservation
+}
+
+// IsRevocable returns true if the task should run on revocable resources.
+func (a *Assignment) IsRevocable() bool {
+	return a.GetTask().GetTask().Revocable
 }

@@ -92,7 +92,7 @@ func (mimir *mimir) getPlacements(
 		taskIdx := entitiesToAssignments[assignment.Entity]
 		task := tasks[taskIdx]
 		if assignment.Failed {
-			task.SetReason(assignment.Transcript.String())
+			task.SetPlacementFailure(assignment.Transcript.String())
 			placements[i] = -1
 			continue
 		}

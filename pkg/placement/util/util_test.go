@@ -38,7 +38,7 @@ func TestAssignPortsAllFromASingleRange(t *testing.T) {
 	deadline := now.Add(30 * time.Second)
 	assignment1 := testutil.SetupAssignment(deadline, 1)
 	assignment2 := testutil.SetupAssignment(deadline, 1)
-	tasks := []*models.Task{
+	tasks := []*models.TaskV0{
 		assignment1.GetTask(),
 		assignment2.GetTask(),
 	}
@@ -60,7 +60,7 @@ func TestAssignPortsFromMultipleRanges(t *testing.T) {
 	deadline := now.Add(30 * time.Second)
 	assignment1 := testutil.SetupAssignment(deadline, 1)
 	assignment2 := testutil.SetupAssignment(deadline, 1)
-	tasks := []*models.Task{
+	tasks := []*models.TaskV0{
 		assignment1.GetTask(),
 		assignment2.GetTask(),
 	}

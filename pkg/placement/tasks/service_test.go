@@ -23,16 +23,21 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
+
 	"github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 	resource_mocks "github.com/uber/peloton/.gen/peloton/private/resmgrsvc/mocks"
+
 	"github.com/uber/peloton/pkg/placement/config"
 	"github.com/uber/peloton/pkg/placement/metrics"
+	"github.com/uber/peloton/pkg/placement/models"
+	"github.com/uber/peloton/pkg/placement/testutil"
 )
 
-func setupService(t *testing.T) (Service, *resource_mocks.MockResourceManagerServiceYARPCClient, *gomock.Controller) {
+func setupService(t *testing.T) (*service, *resource_mocks.MockResourceManagerServiceYARPCClient, *gomock.Controller) {
 	ctrl := gomock.NewController(t)
 	mockResourceManager := resource_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	metrics := metrics.NewMetrics(tally.NoopScope)
@@ -52,7 +57,11 @@ func setupService(t *testing.T) (Service, *resource_mocks.MockResourceManagerSer
 			Stateful:  25 * time.Second,
 		},
 	}
-	return NewService(mockResourceManager, config, metrics), mockResourceManager, ctrl
+	return &service{
+		config:          config,
+		resourceManager: mockResourceManager,
+		metrics:         metrics,
+	}, mockResourceManager, ctrl
 }
 
 func TestTaskService_Dequeue(t *testing.T) {
@@ -145,19 +154,25 @@ func TestTaskService_SetPlacements(t *testing.T) {
 	defer ctrl.Finish()
 
 	ctx := context.Background()
-	placements := []*resmgr.Placement{
+	assignments := []*models.Assignment{
 		{
-			Hostname: "hostname",
-			TaskIDs: []*resmgr.Placement_Task{
-				{
-					PelotonTaskID: &peloton.TaskID{Value: "taskid"},
-					MesosTaskID:   &mesos_v1.TaskID{Value: &[]string{"mesostaskid"}[0]},
+			HostOffers: &models.HostOffers{
+				Offer: &hostsvc.HostOffer{
+					Hostname: "hostname",
+				},
+			},
+			Task: &models.TaskV0{
+				Task: &resmgr.Task{
+					Id:     &peloton.TaskID{Value: "taskid"},
+					TaskId: &mesos_v1.TaskID{Value: &[]string{"mesostaskid"}[0]},
 				},
 			},
 		},
 	}
+	placements := service.createPlacements(assignments)
 	request := &resmgrsvc.SetPlacementsRequest{
-		Placements: placements,
+		Placements:       placements,
+		FailedPlacements: make([]*resmgrsvc.SetPlacementsRequest_FailedPlacement, 0),
 	}
 
 	// Placement engine with empty placements
@@ -175,7 +190,7 @@ func TestTaskService_SetPlacements(t *testing.T) {
 			},
 			nil,
 		)
-	service.SetPlacements(ctx, placements, nil)
+	service.SetPlacements(ctx, assignments, nil)
 
 	mockResourceManager.EXPECT().
 		SetPlacements(
@@ -190,7 +205,7 @@ func TestTaskService_SetPlacements(t *testing.T) {
 			},
 			nil,
 		)
-	service.SetPlacements(ctx, placements, nil)
+	service.SetPlacements(ctx, assignments, nil)
 
 	mockResourceManager.EXPECT().
 		SetPlacements(
@@ -201,14 +216,15 @@ func TestTaskService_SetPlacements(t *testing.T) {
 			nil,
 			errors.New("resource manager set placements request failed"),
 		)
-	service.SetPlacements(ctx, placements, nil)
+	service.SetPlacements(ctx, assignments, nil)
 
 	gomock.InOrder(
 		mockResourceManager.EXPECT().
 			SetPlacements(
 				gomock.Any(),
 				&resmgrsvc.SetPlacementsRequest{
-					Placements: placements,
+					Placements:       placements,
+					FailedPlacements: make([]*resmgrsvc.SetPlacementsRequest_FailedPlacement, 0),
 				},
 			).
 			Return(
@@ -216,5 +232,37 @@ func TestTaskService_SetPlacements(t *testing.T) {
 				nil,
 			),
 	)
-	service.SetPlacements(ctx, placements, nil)
+	service.SetPlacements(ctx, assignments, nil)
+}
+
+// TestCreatePlacement tests that we can turn assignments into resmgr placement objects
+// properly.
+func TestCreatePlacement(t *testing.T) {
+	service, _, ctrl := setupService(t)
+	defer ctrl.Finish()
+
+	now := time.Now()
+	deadline := now.Add(30 * time.Second)
+	host := testutil.SetupHostOffers()
+	assignment1 := testutil.SetupAssignment(deadline, 1)
+	assignment1.SetHost(host)
+	assignment2 := testutil.SetupAssignment(deadline, 1)
+	assignments := []*models.Assignment{
+		assignment1,
+		assignment2,
+	}
+
+	placements := service.createPlacements(assignments)
+	assert.Equal(t, 1, len(placements))
+	assert.Equal(t, host.GetOffer().GetHostname(), placements[0].GetHostname())
+	assert.Equal(t, host.GetOffer().GetId(), placements[0].GetHostOfferID())
+	assert.Equal(t, host.GetOffer().AgentId, placements[0].GetAgentId())
+	assert.Equal(t,
+		[]*resmgr.Placement_Task{
+			{
+				PelotonTaskID: assignment1.GetTask().GetTask().GetId(),
+				MesosTaskID:   assignment1.GetTask().GetTask().GetTaskId(),
+			},
+		}, placements[0].GetTaskIDs())
+	assert.Equal(t, 3, len(placements[0].GetPorts()))
 }

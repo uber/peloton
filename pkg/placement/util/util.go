@@ -16,7 +16,10 @@ package util
 
 import "github.com/uber/peloton/pkg/placement/models"
 
-func AssignPorts(offer *models.HostOffers, tasks []*models.Task) []uint32 {
+func AssignPorts(
+	offer *models.HostOffers,
+	tasks []*models.TaskV0,
+) []uint32 {
 	availablePortRanges := map[*models.PortRange]struct{}{}
 	for _, resource := range offer.GetOffer().GetResources() {
 		if resource.GetName() != "ports" {

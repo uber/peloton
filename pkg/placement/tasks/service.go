@@ -20,11 +20,15 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
+
 	"github.com/uber/peloton/pkg/placement/config"
 	"github.com/uber/peloton/pkg/placement/metrics"
 	"github.com/uber/peloton/pkg/placement/models"
+	"github.com/uber/peloton/pkg/placement/util"
 )
 
 const (
@@ -42,7 +46,7 @@ type Service interface {
 	// SetPlacements sets successful and unsuccessful placements back to the service.
 	SetPlacements(
 		ctx context.Context,
-		successFullPlacements []*resmgr.Placement,
+		successFullPlacements []*models.Assignment,
 		failedAssignments []*models.Assignment,
 	)
 }
@@ -145,10 +149,10 @@ func (s *service) Dequeue(
 // SetPlacements sets placements in the resource manager.
 func (s *service) SetPlacements(
 	ctx context.Context,
-	placements []*resmgr.Placement,
-	failedAssignments []*models.Assignment,
+	successes []*models.Assignment,
+	failures []*models.Assignment,
 ) {
-	if len(placements) == 0 && len(failedAssignments) == 0 {
+	if len(successes) == 0 && len(failures) == 0 {
 		log.Debug("No task to place")
 		return
 	}
@@ -158,31 +162,29 @@ func (s *service) SetPlacements(
 	defer cancelFunc()
 
 	// create the failed placements and populate the reason.
-	var failedPlacements []*resmgrsvc.SetPlacementsRequest_FailedPlacement
-	for _, a := range failedAssignments {
-		failedPlacements = append(
-			failedPlacements,
-			&resmgrsvc.SetPlacementsRequest_FailedPlacement{
-				Reason: a.GetReason(),
-				Gang: &resmgrsvc.Gang{
-					Tasks: []*resmgr.Task{a.GetTask().GetTask()},
-				},
-			})
-		log.WithField("task_id", a.GetTask().GetTask().GetId()).
-			WithField("reason", a.GetReason()).
+	failedPlacements := make([]*resmgrsvc.SetPlacementsRequest_FailedPlacement, len(failures))
+	for i, a := range failures {
+		failedPlacements[i] = &resmgrsvc.SetPlacementsRequest_FailedPlacement{
+			Reason: a.GetPlacementFailure(),
+			Gang: &resmgrsvc.Gang{
+				Tasks: []*resmgr.Task{a.GetTask().GetTask()},
+			},
+		}
+		log.WithField("task_id", a.ID()).
+			WithField("reason", a.GetPlacementFailure()).
 			Info("failed placement")
 	}
 
 	var request = &resmgrsvc.SetPlacementsRequest{
-		Placements:       placements,
+		Placements:       s.createPlacements(successes),
 		FailedPlacements: failedPlacements,
 	}
 	response, err := s.resourceManager.SetPlacements(ctx, request)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"num_placements":          len(placements),
+			"num_placements":          len(successes),
 			"num_failed_placements":   len(failedPlacements),
-			"placements":              placements,
+			"placements":              successes,
 			"failed_placements":       failedPlacements,
 			"set_placements_request":  request,
 			"set_placements_response": response,
@@ -198,9 +200,9 @@ func (s *service) SetPlacements(
 
 	if response.GetError() != nil {
 		log.WithFields(log.Fields{
-			"num_placements":          len(placements),
+			"num_placements":          len(successes),
 			"num_failed_placements":   len(failedPlacements),
-			"placements":              placements,
+			"placements":              successes,
 			"failed_placements":       failedPlacements,
 			"set_placements_request":  request,
 			"set_placements_response": response,
@@ -209,18 +211,55 @@ func (s *service) SetPlacements(
 		return
 	}
 
-	log.WithField("num_placements", len(placements)).
+	log.WithField("num_placements", len(successes)).
 		WithField("num_failed_placements", len(failedPlacements)).
 		Debug("Set placements succeeded")
 
 	setPlacementDuration := time.Since(setPlacementStart)
 	s.metrics.SetPlacementDuration.Record(setPlacementDuration)
-	s.metrics.SetPlacementSuccess.Inc(int64(len(placements)))
+	s.metrics.SetPlacementSuccess.Inc(int64(len(successes)))
 }
 
-func (s *service) createTasks(gang *resmgrsvc.Gang, now time.Time) []*models.Task {
-	var tasks []*models.Task
+func (s *service) createPlacements(assigned []*models.Assignment) []*resmgr.Placement {
+	createPlacementStart := time.Now()
+	// For each offer find all tasks assigned to it.
+	offersToTasks := map[*models.HostOffers][]*models.TaskV0{}
+	for _, placement := range assigned {
+		task := placement.GetTask()
+		offer := placement.GetHost()
+		if offer == nil {
+			continue
+		}
+		if _, exists := offersToTasks[offer]; !exists {
+			offersToTasks[offer] = []*models.TaskV0{}
+		}
+		offersToTasks[offer] = append(offersToTasks[offer], task)
+	}
+
+	// For each offer create a placement with all the tasks assigned to it.
+	var resPlacements []*resmgr.Placement
+	for offer, tasks := range offersToTasks {
+		selectedPorts := util.AssignPorts(offer, tasks)
+		placement := &resmgr.Placement{
+			Hostname: offer.GetOffer().Hostname,
+			AgentId:  offer.GetOffer().AgentId,
+			Type:     s.config.TaskType,
+			// TODO: Tasks is actually a list of TaskIDs. Should fix the proto.
+			Tasks:       getTaskIDs(tasks),
+			TaskIDs:     getPlacementTasks(tasks),
+			Ports:       selectedPorts,
+			HostOfferID: offer.GetOffer().GetId(),
+		}
+		resPlacements = append(resPlacements, placement)
+	}
+	createPlacementDuration := time.Since(createPlacementStart)
+	s.metrics.CreatePlacementDuration.Record(createPlacementDuration)
+	return resPlacements
+}
+
+func (s *service) createTasks(gang *resmgrsvc.Gang, now time.Time) []*models.TaskV0 {
 	resTasks := gang.GetTasks()
+	tasks := make([]*models.TaskV0, len(resTasks))
 	if len(resTasks) == 0 {
 		return tasks
 	}
@@ -229,11 +268,28 @@ func (s *service) createTasks(gang *resmgrsvc.Gang, now time.Time) []*models.Tas
 	duration := s.config.MaxDurations.Value(resTasks[0].Type)
 	deadline := now.Add(duration)
 	desiredHostPlacementDeadline := now.Add(s.config.MaxDesiredHostPlacementDuration)
-	for _, task := range resTasks {
-		tasks = append(
-			tasks,
-			models.NewTask(gang, task, deadline, desiredHostPlacementDeadline, maxRounds),
-		)
+	for i, task := range resTasks {
+		tasks[i] = models.NewTask(gang, task, deadline,
+			desiredHostPlacementDeadline, maxRounds)
 	}
 	return tasks
+}
+
+func getTaskIDs(tasks []*models.TaskV0) []*peloton.TaskID {
+	taskIDs := make([]*peloton.TaskID, len(tasks))
+	for i, task := range tasks {
+		taskIDs[i] = task.GetTask().GetId()
+	}
+	return taskIDs
+}
+
+func getPlacementTasks(tasks []*models.TaskV0) []*resmgr.Placement_Task {
+	placementTasks := make([]*resmgr.Placement_Task, len(tasks))
+	for i, task := range tasks {
+		placementTasks[i] = &resmgr.Placement_Task{
+			PelotonTaskID: task.GetTask().GetId(),
+			MesosTaskID:   task.GetTask().GetTaskId(),
+		}
+	}
+	return placementTasks
 }

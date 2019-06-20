@@ -36,8 +36,7 @@ func setupAssignmentVariables() (
 	*resmgrsvc.Gang,
 	*resmgr.Task,
 	*HostOffers,
-	*Task,
-	*Assignment) {
+	*TaskV0, *Assignment) {
 	resmgrTask := &resmgr.Task{
 		Name: "task",
 		Resource: &peloton_api_v0_task.ResourceConfig{

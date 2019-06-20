@@ -86,8 +86,7 @@ type Task interface {
 	Fits(resLeft scalar.Resources, portsLeft uint64) (scalar.Resources, uint64, bool)
 
 	// Sets the placement failure reason for this task.
-	// TODO: Remove this, it should definitely not be here.
-	SetReason(string)
+	SetPlacementFailure(string)
 
 	// Returns the mimir entity representing this task.
 	// TODO: Remove this, it should definitely not be here.

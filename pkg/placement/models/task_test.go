@@ -23,7 +23,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 )
 
-func setupTaskVariables() (time.Time, *resmgrsvc.Gang, *resmgr.Task, *Task) {
+func setupTaskVariables() (time.Time, *resmgrsvc.Gang, *resmgr.Task, *TaskV0) {
 	resmgrTask := &resmgr.Task{
 		Name: "task",
 	}
