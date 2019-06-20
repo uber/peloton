@@ -12,6 +12,7 @@ from peloton_client.pbgen.peloton.api.v1alpha.job.stateless.stateless_pb2 import
     JobSpec,
 )
 from peloton_client.pbgen.peloton.api.v1alpha.pod import pod_pb2
+from peloton_client.pbgen.peloton.api.v0.host import host_pb2
 
 from google.protobuf import json_format
 
@@ -25,6 +26,7 @@ from tests.integration.util import load_test_config
 from tests.integration.stateless_job import StatelessJob
 from tests.integration.common import IntegrationTestConfig
 from tests.integration.stateless_job import INVALID_ENTITY_VERSION_ERR_MESSAGE
+from tests.integration.host import get_host_in_state, wait_for_host_state
 
 pytestmark = [
     pytest.mark.default,
@@ -1071,14 +1073,12 @@ def test__in_place_update_success_rate(stateless_job):
 def test__in_place_kill_job_release_host():
     job1 = StatelessJob(
         job_file="test_stateless_job_spec.yaml",
-        config=IntegrationTestConfig(max_retry_attempts=30000),
     )
     job1.create()
     job1.wait_for_state(goal_state="RUNNING")
 
     job2 = StatelessJob(
         job_file="test_stateless_job_spec.yaml",
-        config=IntegrationTestConfig(max_retry_attempts=30000),
     )
     job2.create()
     job2.wait_for_state(goal_state="RUNNING")
@@ -1194,3 +1194,31 @@ def test__in_place_update_success_rate_with_component_restart(stateless_job, job
             count = count + 1
     log.info("total mismatch: %d", count)
     assert count == 0
+
+
+def test__in_place_update_host_maintenance(stateless_job, maintenance):
+    # add enough instances so each host should have some tasks running
+    stateless_job.job_spec.instance_count = 9
+    # need extra retry attempts, since in-place update would need more time
+    # to process given agent is put in maintenance mode
+    stateless_job.config = IntegrationTestConfig(max_retry_attempts=300)
+    stateless_job.create()
+    stateless_job.wait_for_all_pods_running()
+
+    job_spec_dump = load_test_config(UPDATE_STATELESS_JOB_SPEC)
+    updated_job_spec = JobSpec()
+    json_format.ParseDict(job_spec_dump, updated_job_spec)
+
+    updated_job_spec.instance_count = 9
+    update = StatelessUpdate(stateless_job,
+                             updated_job_spec=updated_job_spec,
+                             batch_size=0)
+    update.create(in_place=True)
+
+    # Pick a host that is UP and start maintenance on it
+    test_host = get_host_in_state(host_pb2.HOST_STATE_UP)
+    resp = maintenance["start"]([test_host])
+    assert resp
+
+    wait_for_host_state(test_host, host_pb2.HOST_STATE_DOWN)
+    update.wait_for_state(goal_state="SUCCEEDED")

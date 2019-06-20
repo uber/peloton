@@ -1,3 +1,9 @@
+import time
+import random
+
+from tests.integration.common import IntegrationTestConfig
+
+
 class TestMesosAgentFailure(object):
     def test_agent_restart(self, failure_tester):
         """
@@ -28,3 +34,51 @@ class TestMesosAgentFailure(object):
         assert 0 != failure_tester.fw.restart(failure_tester.mesos_agent)
 
         job.wait_for_state(goal_state="FAILED")
+
+    def test_in_place_update_with_agent_restart(self, failure_tester):
+        """
+        Restart Mesos agents after updating a stateless job and verify that
+        the update finishes successfully
+        """
+        job = failure_tester.stateless_job()
+        # increase max retry since it would take more time for in-place update
+        # to get placed when agent restarts
+        job.config = IntegrationTestConfig(max_retry_attempts=300)
+        job.create()
+        job.wait_for_all_pods_running()
+
+        update = failure_tester.update(
+            job=job,
+            updated_job_file="test_update_stateless_job_spec.yaml",
+        )
+        update.create(in_place=True)
+
+        time.sleep(random.randint(1, 10))
+
+        assert 0 != failure_tester.fw.restart(failure_tester.mesos_agent)
+
+        update.wait_for_state(goal_state="SUCCEEDED")
+
+    def test_in_place_update_with_agent_stop(self, failure_tester):
+        """
+        Stop Mesos agents after updating a stateless job and verify that
+        the update finishes successfully
+        """
+        job = failure_tester.stateless_job()
+        # increase max retry since it would take more time for in-place update
+        # to get placed when agent restarts
+        job.config = IntegrationTestConfig(max_retry_attempts=300)
+        job.create()
+        job.wait_for_all_pods_running()
+
+        update = failure_tester.update(
+            job=job,
+            updated_job_file="test_update_stateless_job_spec.yaml",
+        )
+        update.create(in_place=True)
+
+        time.sleep(random.randint(1, 10))
+
+        assert 0 != failure_tester.fw.stop(failure_tester.mesos_agent)
+
+        update.wait_for_state(goal_state="SUCCEEDED")

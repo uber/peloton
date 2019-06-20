@@ -105,3 +105,15 @@ def is_host_in_state(hostname, state):
         if host_info.hostname == hostname:
             return True
     return False
+
+
+def get_host_in_state(state):
+    """
+    returns a host in the specified state. Note that the caller should make sure
+    there is at least one host in the the requested state.
+    :param state: host_pb2.HostState
+    :return: Hostname of a host in the specified state
+    """
+    resp = query_hosts([state])
+    assert len(resp.host_infos) > 0
+    return resp.host_infos[0].hostname

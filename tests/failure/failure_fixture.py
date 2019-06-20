@@ -3,6 +3,8 @@ import logging
 from tests.failure.framework import components, framework
 from tests.integration.common import wait_for_condition
 from tests.integration import job as tjob
+from tests.integration import stateless_job as sjob
+from tests.integration import stateless_update
 
 
 class FailureFixture(object):
@@ -73,6 +75,24 @@ class FailureFixture(object):
         kwargs.setdefault("config", self.integ_config)
         kwargs.setdefault("client", self.client)
         return tjob.Job(**kwargs)
+
+    def stateless_job(self, **kwargs):
+        """
+        Create the spec for a stateless job with some defaults.
+        :param kwargs: Keyword arguments for stateless job spec
+        """
+        kwargs.setdefault("config", self.integ_config)
+        kwargs.setdefault("client", self.client)
+        return sjob.StatelessJob(**kwargs)
+
+    def update(self, **kwargs):
+        """
+        Create the spec for a stateless update with some defaults.
+        :param kwargs: Keyword arguments for stateless update spec
+        """
+        kwargs.setdefault("config", self.integ_config)
+        kwargs.setdefault("client", self.client)
+        return stateless_update.StatelessUpdate(**kwargs)
 
     def wait_for_condition(self, condition):
         """

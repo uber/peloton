@@ -3,14 +3,11 @@ import pytest
 import time
 
 from tests.integration.host import (
-    query_hosts,
-    start_maintenance,
-    complete_maintenance,
+    get_host_in_state,
     wait_for_host_state,
     is_host_in_state,
     draining_period_sec,
 )
-from tests.integration.conftest import Container
 
 from peloton_client.pbgen.peloton.api.v0.host import host_pb2 as hpb
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
@@ -22,60 +19,6 @@ pytestmark = [
 ]
 
 log = logging.getLogger(__name__)
-
-
-@pytest.fixture
-def maintenance(request):
-    draining_hosts = []
-
-    def start(hosts):
-        resp = start_maintenance(hosts)
-        if not resp:
-            log.error("Start maintenance failed:" + resp)
-            return resp
-
-        draining_hosts.extend(hosts)
-        return resp
-
-    def stop(hosts):
-        resp = complete_maintenance(hosts)
-        if not resp:
-            log.error("Complete maintenance failed:" + resp)
-            return resp
-
-        for h in hosts:
-            draining_hosts.remove(h)
-            # The mesos-agent containers needs to be started explicitly as they would
-            # have been stopped when the agents transition to DOWN
-            Container([h]).start()
-
-        return resp
-
-    def clean_up():
-        if not draining_hosts:
-            return
-        for h in draining_hosts:
-            wait_for_host_state(h, hpb.HOST_STATE_DOWN)
-        stop(draining_hosts)
-
-    request.addfinalizer(clean_up)
-
-    response = dict()
-    response["start"] = start
-    response["stop"] = stop
-    return response
-
-
-def get_host_in_state(state):
-    """
-    returns a host in the specified state. Note that the caller should make sure
-    there is at least one host in the the requested state.
-    :param state: host_pb2.HostState
-    :return: Hostname of a host in the specified state
-    """
-    resp = query_hosts([state])
-    assert len(resp.host_infos) > 0
-    return resp.host_infos[0].hostname
 
 
 # Tests task kill due to host maintenance with the following scenario
