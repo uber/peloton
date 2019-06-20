@@ -22,18 +22,19 @@ import (
 	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
-	resmocks "github.com/uber/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
+	resmocks "github.com/uber/peloton/.gen/peloton/private/resmgrsvc/mocks"
 	goalstatemocks "github.com/uber/peloton/pkg/common/goalstate/mocks"
-	"github.com/uber/peloton/pkg/jobmgr/cached"
 	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
 	storemocks "github.com/uber/peloton/pkg/storage/mocks"
 	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	taskutil "github.com/uber/peloton/pkg/common/util/task"
+	"github.com/uber/peloton/pkg/jobmgr/cached"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 
 	"github.com/golang/mock/gomock"
@@ -128,10 +129,16 @@ func (suite *JobCreateTestSuite) TestJobCreateTasks() {
 		Return(nil)
 
 	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Update(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			nil,
+			cached.UpdateCacheAndDB).
 		Do(func(_ context.Context,
 			jobInfo *pbjob.JobInfo,
 			_ *models.ConfigAddOn,
+			_ *stateless.JobSpec,
 			_ cached.UpdateRequest) {
 			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_PENDING)
 		}).
@@ -260,7 +267,12 @@ func (suite *JobCreateTestSuite) TestJobCreateUpdateFailure() {
 		Return(nil)
 
 	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Update(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			nil,
+			cached.UpdateCacheAndDB).
 		Return(fmt.Errorf("fake db error"))
 
 	suite.resmgrClient.EXPECT().
@@ -316,10 +328,16 @@ func (suite *JobCreateTestSuite) TestJobRecover() {
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Update(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			nil,
+			cached.UpdateCacheAndDB).
 		Do(func(_ context.Context,
 			jobInfo *pbjob.JobInfo,
 			_ *models.ConfigAddOn,
+			_ *stateless.JobSpec,
 			_ cached.UpdateRequest) {
 			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_PENDING)
 		}).
@@ -399,10 +417,16 @@ func (suite *JobCreateTestSuite) TestJobMaxRunningInstances() {
 		Return(nil)
 
 	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Update(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			nil,
+			cached.UpdateCacheAndDB).
 		Do(func(_ context.Context,
 			jobInfo *pbjob.JobInfo,
 			_ *models.ConfigAddOn,
+			_ *stateless.JobSpec,
 			_ cached.UpdateRequest) {
 			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_PENDING)
 		}).
@@ -463,10 +487,16 @@ func (suite *JobCreateTestSuite) TestJobRecoverMaxRunningInstances() {
 		Return(nil)
 
 	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Update(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			nil,
+			cached.UpdateCacheAndDB).
 		Do(func(_ context.Context,
 			jobInfo *pbjob.JobInfo,
 			_ *models.ConfigAddOn,
+			_ *stateless.JobSpec,
 			_ cached.UpdateRequest) {
 			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_PENDING)
 		}).

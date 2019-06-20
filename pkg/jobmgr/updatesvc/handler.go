@@ -188,7 +188,7 @@ func (h *serviceHandler) CreateUpdate(
 			jobRuntime.GetConfigurationVersion(),
 			jobRuntime.GetDesiredStateVersion(),
 			jobRuntime.GetWorkflowVersion()),
-		cached.WithConfig(jobConfig, prevJobConfig, configAddOn),
+		cached.WithConfig(jobConfig, prevJobConfig, configAddOn, nil),
 		cached.WithOpaqueData(req.GetOpaqueData()),
 	)
 	if err != nil {

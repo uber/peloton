@@ -644,7 +644,7 @@ func (suite *statelessHandlerTestSuite) TestRefreshJobSuccess() {
 		Update(gomock.Any(), &pbjob.JobInfo{
 			Config:  jobConfig,
 			Runtime: jobRuntime,
-		}, configAddOn, cached.UpdateCacheOnly).
+		}, configAddOn, nil, cached.UpdateCacheOnly).
 		Return(nil)
 
 	suite.goalStateDriver.EXPECT().
@@ -2006,7 +2006,10 @@ func (suite *statelessHandlerTestSuite) TestCreateJobSuccess() {
 
 		suite.cachedJob.EXPECT().
 			RollingCreate(
-				gomock.Any(), jobConfig, gomock.Any(),
+				gomock.Any(),
+				jobConfig,
+				gomock.Any(),
+				jobSpec,
 				&pbupdate.UpdateConfig{
 					BatchSize:   testBatchSize,
 					StartPaused: startPaused,
@@ -2341,8 +2344,13 @@ func (suite *statelessHandlerTestSuite) TestCreateJobWithSecretsSuccess() {
 			Return(suite.cachedJob),
 
 		suite.cachedJob.EXPECT().
-			RollingCreate(gomock.Any(), jobConfig, gomock.Any(),
-				gomock.Any(), gomock.Any()).
+			RollingCreate(
+				gomock.Any(),
+				jobConfig,
+				gomock.Any(),
+				jobSpec,
+				gomock.Any(),
+				gomock.Any()).
 			Return(nil),
 
 		suite.goalStateDriver.EXPECT().
@@ -2753,8 +2761,13 @@ func (suite *statelessHandlerTestSuite) TestCreateJobFailureJobCacheCreateError(
 			Return(suite.cachedJob),
 
 		suite.cachedJob.EXPECT().
-			RollingCreate(gomock.Any(), jobConfig, gomock.Any(),
-				gomock.Any(), gomock.Any()).
+			RollingCreate(
+				gomock.Any(),
+				jobConfig,
+				gomock.Any(),
+				jobSpec,
+				gomock.Any(),
+				gomock.Any()).
 			Return(yarpcerrors.InternalErrorf("test error")),
 
 		suite.goalStateDriver.EXPECT().
@@ -2808,8 +2821,13 @@ func (suite *statelessHandlerTestSuite) TestCreateJobFailureGetJobRuntimeError()
 			Return(suite.cachedJob),
 
 		suite.cachedJob.EXPECT().
-			RollingCreate(gomock.Any(), jobConfig, gomock.Any(),
-				gomock.Any(), gomock.Any()).
+			RollingCreate(
+				gomock.Any(),
+				jobConfig,
+				gomock.Any(),
+				jobSpec,
+				gomock.Any(),
+				gomock.Any()).
 			Return(nil),
 
 		suite.goalStateDriver.EXPECT().
@@ -3161,14 +3179,16 @@ func (suite *statelessHandlerTestSuite) TestRestartJobSuccess() {
 		}, nil)
 
 	suite.jobConfigOps.EXPECT().
-		Get(
+		GetResult(
 			gomock.Any(),
 			testPelotonJobID,
 			configVersion,
 		).
-		Return(&pbjob.JobConfig{
-			ChangeLog: &peloton.ChangeLog{Version: configVersion},
-		}, nil, nil)
+		Return(&ormobjects.JobConfigOpsResult{
+			JobConfig: &pbjob.JobConfig{
+				ChangeLog: &peloton.ChangeLog{Version: configVersion},
+			},
+		}, nil)
 
 	suite.cachedJob.EXPECT().
 		CreateWorkflow(
@@ -3327,14 +3347,16 @@ func (suite *statelessHandlerTestSuite) TestRestartJobNoRangeSuccess() {
 		}, nil)
 
 	suite.jobConfigOps.EXPECT().
-		Get(
+		GetResult(
 			gomock.Any(),
 			testPelotonJobID,
 			configVersion,
 		).
-		Return(&pbjob.JobConfig{
-			InstanceCount: instanceCount,
-		}, nil, nil)
+		Return(&ormobjects.JobConfigOpsResult{
+			JobConfig: &pbjob.JobConfig{
+				InstanceCount: instanceCount,
+			},
+		}, nil)
 
 	suite.cachedJob.EXPECT().
 		CreateWorkflow(

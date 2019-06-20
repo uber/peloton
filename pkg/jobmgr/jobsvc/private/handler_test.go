@@ -212,7 +212,9 @@ func (suite *privateHandlerTestSuite) TestRefreshJobSuccess() {
 		Update(gomock.Any(), &pbjob.JobInfo{
 			Config:  jobConfig,
 			Runtime: jobRuntime,
-		}, configAddOn, cached.UpdateCacheOnly).
+		}, configAddOn,
+			nil,
+			cached.UpdateCacheOnly).
 		Return(nil)
 
 	suite.goalStateDriver.EXPECT().

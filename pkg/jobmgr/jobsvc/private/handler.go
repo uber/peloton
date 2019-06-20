@@ -191,6 +191,7 @@ func (h *serviceHandler) RefreshJob(
 		Config:  jobConfig,
 		Runtime: jobRuntime,
 	}, configAddOn,
+		nil,
 		cached.UpdateCacheOnly)
 	h.goalStateDriver.EnqueueJob(pelotonJobID, time.Now())
 	return &jobmgrsvc.RefreshJobResponse{}, nil

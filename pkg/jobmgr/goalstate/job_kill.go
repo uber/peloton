@@ -197,6 +197,7 @@ func killJob(
 	err = cachedJob.Update(ctx, &job.JobInfo{
 		Runtime: runtimeUpdate,
 	}, nil,
+		nil,
 		cached.UpdateCacheAndDB)
 	if err != nil {
 		err = errors.Wrap(err, "failed to update job runtime during job kill")

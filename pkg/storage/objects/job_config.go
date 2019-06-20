@@ -23,8 +23,10 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
+	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/storage/objects/base"
 
 	"github.com/gogo/protobuf/proto"
@@ -49,8 +51,26 @@ type JobConfigObject struct {
 	Config []byte `column:"name=config"`
 	// Config AddOn field for the job
 	ConfigAddOn []byte `column:"name=config_addon"`
+	// Spec of the job
+	Spec []byte `column:"name=spec"`
+	// API version of the job. This would be used for debugging.
+	ApiVersion string `column:"name=api_version"`
 	// Creation time of the job
 	CreationTime time.Time `column:"name=creation_time"`
+}
+
+// JobConfigOpsResult contains the unmarshalled result of a job_config Get()
+// From this object, the caller can retrieve v0 job config, v1alpha job spec
+// as well as config addon.
+type JobConfigOpsResult struct {
+	// JobConfig is the unmarshalled v0 job config
+	JobConfig *job.JobConfig
+	// ConfigAddOn is the unmarshalled config addon
+	ConfigAddOn *models.ConfigAddOn
+	// JobSpec is the unmarshalled v1alpha job spec
+	JobSpec *stateless.JobSpec
+	// ApiVersion contains the API version string
+	ApiVersion string
 }
 
 // JobConfigOps provides methods for manipulating job_config table.
@@ -61,6 +81,7 @@ type JobConfigOps interface {
 		id *peloton.JobID,
 		config *job.JobConfig,
 		configAddOn *models.ConfigAddOn,
+		spec *stateless.JobSpec,
 		version uint64,
 	) error
 
@@ -76,6 +97,14 @@ type JobConfigOps interface {
 		id *peloton.JobID,
 		version uint64,
 	) (*job.JobConfig, *models.ConfigAddOn, error)
+
+	// Get retrieves a row from the job config table and returns the
+	// unmarshalled blobs in form of a JobConfigOpsResult object.
+	GetResult(
+		ctx context.Context,
+		id *peloton.JobID,
+		version uint64,
+	) (*JobConfigOpsResult, error)
 
 	// Delete removes an object from the table.
 	Delete(ctx context.Context, id *peloton.JobID, version uint64) error
@@ -129,6 +158,19 @@ func (j *JobConfigObject) toConfig() (*job.JobConfig, error) {
 	return config, err
 }
 
+func (j *JobConfigObject) toSpec() (*stateless.JobSpec, error) {
+	if j.ApiVersion != common.V1AlphaApi {
+		return &stateless.JobSpec{}, nil
+	}
+	specBuffer, err := uncompress(j.Spec)
+	if err != nil {
+		return nil, err
+	}
+	spec := &stateless.JobSpec{}
+	err = proto.Unmarshal(specBuffer, spec)
+	return spec, err
+}
+
 func (j *JobConfigObject) toConfigAddOn() (*models.ConfigAddOn, error) {
 	addOn := &models.ConfigAddOn{}
 	err := proto.Unmarshal(j.ConfigAddOn, addOn)
@@ -141,11 +183,17 @@ func newJobConfigObject(
 	version uint64,
 	config *job.JobConfig,
 	configAddOn *models.ConfigAddOn,
+	spec *stateless.JobSpec,
 ) (*JobConfigObject, error) {
+	var specBuffer, configBuffer []byte
+	var err error
 
-	obj := &JobConfigObject{JobID: id.GetValue()}
+	obj := &JobConfigObject{
+		JobID:      id.GetValue(),
+		ApiVersion: common.V0Api,
+	}
 
-	configBuffer, err := proto.Marshal(config)
+	configBuffer, err = proto.Marshal(config)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to marshal jobConfig")
 	}
@@ -153,6 +201,19 @@ func newJobConfigObject(
 	configBuffer, err = compress(configBuffer)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to compress jobConfig")
+	}
+
+	if spec != nil {
+		specBuffer, err = proto.Marshal(spec)
+		if err != nil {
+			return nil, errors.Wrap(err, "Failed to marshal jobSpec")
+		}
+		specBuffer, err = compress(specBuffer)
+		if err != nil {
+			return nil, errors.Wrap(err, "Failed to compress jobSpec")
+		}
+		obj.Spec = specBuffer
+		obj.ApiVersion = common.V1AlphaApi
 	}
 
 	addOnBuffer, err := proto.Marshal(configAddOn)
@@ -186,10 +247,11 @@ func (d *jobConfigOps) Create(
 	id *peloton.JobID,
 	config *job.JobConfig,
 	configAddOn *models.ConfigAddOn,
+	spec *stateless.JobSpec,
 	version uint64,
 ) error {
 
-	obj, err := newJobConfigObject(id, version, config, configAddOn)
+	obj, err := newJobConfigObject(id, version, config, configAddOn, spec)
 	if err != nil {
 		d.store.metrics.OrmJobMetrics.JobConfigCreateFail.Inc(1)
 		return errors.Wrap(err, "Failed to construct JobConfigObject")
@@ -247,6 +309,48 @@ func (d *jobConfigOps) Get(
 
 	d.store.metrics.OrmJobMetrics.JobConfigGet.Inc(1)
 	return config, configAddOn, nil
+}
+
+// GetResult gets a row from DB and returns it as JobConfigOpsResult
+func (d *jobConfigOps) GetResult(
+	ctx context.Context,
+	id *peloton.JobID,
+	version uint64,
+) (*JobConfigOpsResult, error) {
+	obj := &JobConfigObject{
+		JobID:   id.GetValue(),
+		Version: version,
+	}
+	if err := d.store.oClient.Get(ctx, obj); err != nil {
+		d.store.metrics.OrmJobMetrics.JobConfigGetFail.Inc(1)
+		return nil, err
+	}
+
+	config, err := obj.toConfig()
+	if err != nil {
+		d.store.metrics.OrmJobMetrics.JobConfigGetFail.Inc(1)
+		return nil, errors.Wrap(err, "Failed to unmarshal config")
+	}
+
+	configAddOn, err := obj.toConfigAddOn()
+	if err != nil {
+		d.store.metrics.OrmJobMetrics.JobConfigGetFail.Inc(1)
+		return nil, errors.Wrap(err, "Failed to unmarshal configAddOn")
+	}
+
+	spec, err := obj.toSpec()
+	if err != nil {
+		d.store.metrics.OrmJobMetrics.JobConfigGetFail.Inc(1)
+		return nil, errors.Wrap(err, "Failed to unmarshal spec")
+	}
+
+	d.store.metrics.OrmJobMetrics.JobConfigGet.Inc(1)
+	return &JobConfigOpsResult{
+		JobConfig:   config,
+		ConfigAddOn: configAddOn,
+		JobSpec:     spec,
+		ApiVersion:  obj.ApiVersion,
+	}, nil
 }
 
 // Delete deletes a JobConfigObject from db

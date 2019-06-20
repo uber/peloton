@@ -101,6 +101,11 @@ const (
 	MesosGPU = "gpus"
 	// MesosPorts resource kind
 	MesosPorts = "ports"
+
+	// V0Api identifier string to determine if a job config API version
+	V0Api = "v0"
+	// V1AlphaApi identifier string to determine if a job config API version
+	V1AlphaApi = "v1alpha"
 )
 
 const (

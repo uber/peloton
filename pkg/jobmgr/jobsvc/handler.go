@@ -223,7 +223,7 @@ func (h *serviceHandler) Create(
 	configAddOn := &models.ConfigAddOn{
 		SystemLabels: systemLabels,
 	}
-	err = cachedJob.Create(ctx, jobConfig, configAddOn)
+	err = cachedJob.Create(ctx, jobConfig, configAddOn, nil)
 	// if err is not nil, still enqueue to goal state engine,
 	// because job may be partially created. Goal state engine
 	// knows if the job can be recovered
@@ -380,7 +380,8 @@ func (h *serviceHandler) Update(
 	newUpdatedConfig, err := cachedJob.CompareAndSetConfig(
 		ctx,
 		mergeInstanceConfig(oldConfig, newConfig),
-		newConfigAddOn)
+		newConfigAddOn,
+		nil)
 	if err != nil {
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, err
@@ -393,6 +394,7 @@ func (h *serviceHandler) Update(
 			State:                job.JobState_INITIALIZED,
 		},
 	}, nil,
+		nil,
 		cached.UpdateCacheAndDB)
 	if err != nil {
 		h.metrics.JobUpdateFail.Inc(1)
@@ -553,6 +555,7 @@ func (h *serviceHandler) Refresh(ctx context.Context, req *job.RefreshRequest) (
 		Config:  jobConfig,
 		Runtime: jobRuntime,
 	}, configAddOn,
+		nil,
 		cached.UpdateCacheOnly)
 	h.goalStateDriver.EnqueueJob(req.GetId(), time.Now())
 	h.metrics.JobRefresh.Inc(1)
@@ -897,6 +900,7 @@ func (h *serviceHandler) createNonUpdateWorkflow(
 			&newConfig,
 			jobConfig,
 			configAddOn,
+			nil,
 		),
 	)
 

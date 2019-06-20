@@ -24,6 +24,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v0/update"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
 	"github.com/uber/peloton/pkg/jobmgr/cached"
@@ -200,6 +201,7 @@ func (suite *jobActionsTestSuite) TestJobRecoverBachJobSuccess() {
 			gomock.Any(),
 			&job.JobInfo{Runtime: &job.RuntimeInfo{State: job.JobState_INITIALIZED}},
 			nil,
+			nil,
 			cached.UpdateCacheAndDB).
 		Return(nil)
 
@@ -227,6 +229,7 @@ func (suite *jobActionsTestSuite) TestJobRecoverServiceJobSuccess() {
 		Update(
 			gomock.Any(),
 			&job.JobInfo{Runtime: &job.RuntimeInfo{State: job.JobState_PENDING}},
+			nil,
 			nil,
 			cached.UpdateCacheAndDB).
 		Return(nil)
@@ -594,6 +597,7 @@ func (suite *jobActionsTestSuite) TestJobReloadRuntimeSuccess() {
 					Runtime: jobRuntime,
 				},
 				nil,
+				nil,
 				cached.UpdateCacheOnly,
 			).Return(nil),
 
@@ -620,6 +624,7 @@ func (suite *jobActionsTestSuite) TestJobReloadGetJobRuntimeFailure() {
 			Update(
 				gomock.Any(),
 				&job.JobInfo{},
+				nil,
 				nil,
 				cached.UpdateCacheOnly,
 			).Return(nil),
@@ -654,6 +659,7 @@ func (suite *jobActionsTestSuite) TestJobReloadRuntimeUpdateFailure() {
 				&job.JobInfo{
 					Runtime: jobRuntime,
 				}, nil,
+				nil,
 				cached.UpdateCacheOnly,
 			).Return(yarpcerrors.InternalErrorf("test error")),
 	)
@@ -690,6 +696,7 @@ func (suite *jobActionsTestSuite) TestJobReloadRuntimeJobNotFound() {
 			Update(
 				gomock.Any(),
 				&job.JobInfo{Runtime: &job.RuntimeInfo{State: job.JobState_PENDING}},
+				nil,
 				nil,
 				cached.UpdateCacheAndDB).
 			Return(nil),
@@ -926,10 +933,16 @@ func (suite *jobActionsTestSuite) TestJobKillAndDeleteTerminatedJobWithRunningTa
 		Return(jobRuntime, nil)
 
 	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Update(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			cached.UpdateCacheAndDB).
 		Do(func(_ context.Context,
 			jobInfo *job.JobInfo,
 			_ *models.ConfigAddOn,
+			_ *stateless.JobSpec,
 			_ cached.UpdateRequest) {
 			suite.Equal(jobInfo.Runtime.State, job.JobState_KILLED)
 		}).

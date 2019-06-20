@@ -97,8 +97,11 @@ func JobCreateTasks(ctx context.Context, entity goalstate.Entity) error {
 	}
 
 	err = cachedJob.Update(ctx, &job.JobInfo{
-		Runtime: &job.RuntimeInfo{State: job.JobState_PENDING},
+		Runtime: &job.RuntimeInfo{
+			State: job.JobState_PENDING,
+		},
 	}, configAddOn,
+		nil,
 		cached.UpdateCacheAndDB)
 	if err != nil {
 		goalStateDriver.mtx.jobMetrics.JobCreateFailed.Inc(1)

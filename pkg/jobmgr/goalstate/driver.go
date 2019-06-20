@@ -323,6 +323,7 @@ func (d *driver) recoverTasks(
 			Runtime: jobRuntime,
 			Config:  jobConfig,
 		}, configAddOn,
+			nil,
 			cached.UpdateCacheOnly)
 	}
 

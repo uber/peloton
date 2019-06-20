@@ -663,6 +663,7 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 	err = cachedJob.Update(ctx, &job.JobInfo{
 		Runtime: jobRuntimeUpdate,
 	}, nil,
+		nil,
 		cached.UpdateCacheAndDB)
 	if err != nil {
 		log.WithError(err).

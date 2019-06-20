@@ -178,6 +178,7 @@ func (suite *CassandraStoreTestSuite) createJob(
 		id,
 		jobConfig,
 		configAddOn,
+		nil,
 		jobConfig.GetChangeLog().GetVersion(),
 	); err != nil {
 		return err

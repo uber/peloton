@@ -173,6 +173,7 @@ func JobRecover(ctx context.Context, entity goalstate.Entity) error {
 		ctx,
 		&job.JobInfo{Runtime: &job.RuntimeInfo{State: jobState}},
 		nil,
+		nil,
 		cached.UpdateCacheAndDB); err != nil {
 		return err
 	}
@@ -324,6 +325,7 @@ func JobReloadRuntime(
 		&job.JobInfo{
 			Runtime: jobRuntime,
 		}, nil,
+		nil,
 		cached.UpdateCacheOnly,
 	)
 	if err != nil {

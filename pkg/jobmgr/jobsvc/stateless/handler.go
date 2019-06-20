@@ -219,6 +219,7 @@ func (h *serviceHandler) CreateJob(
 		ctx,
 		jobConfig,
 		configAddOn,
+		jobSpec,
 		handlerutil.ConvertCreateSpecToUpdateConfig(req.GetCreateSpec()),
 		opaqueData,
 	)
@@ -351,7 +352,11 @@ func (h *serviceHandler) ReplaceJob(
 		models.WorkflowType_UPDATE,
 		handlerutil.ConvertUpdateSpecToUpdateConfig(req.GetUpdateSpec()),
 		req.GetVersion(),
-		cached.WithConfig(jobConfig, prevJobConfig, configAddOn),
+		cached.WithConfig(
+			jobConfig,
+			prevJobConfig,
+			configAddOn,
+			req.GetSpec()),
 		opaque,
 	)
 
@@ -410,7 +415,7 @@ func (h *serviceHandler) RestartJob(
 		return nil, errors.Wrap(err, "fail to get job runtime")
 	}
 
-	jobConfig, configAddOn, err := h.jobConfigOps.Get(
+	obj, err := h.jobConfigOps.GetResult(
 		ctx,
 		jobID,
 		runtime.GetConfigurationVersion(),
@@ -418,6 +423,9 @@ func (h *serviceHandler) RestartJob(
 	if err != nil {
 		return nil, errors.Wrap(err, "fail to get job config")
 	}
+	jobConfig := obj.JobConfig
+	configAddOn := obj.ConfigAddOn
+	jobSpec := obj.JobSpec
 
 	// copy the config with provided resource version number
 	newConfig := *jobConfig
@@ -426,6 +434,16 @@ func (h *serviceHandler) RestartJob(
 		Version:   jobConfig.GetChangeLog().GetVersion(),
 		CreatedAt: uint64(now.UnixNano()),
 		UpdatedAt: uint64(now.UnixNano()),
+	}
+
+	var newSpec stateless.JobSpec
+	if jobSpec != nil {
+		newSpec = *jobSpec
+		newSpec.Revision = &v1alphapeloton.Revision{
+			Version:   newConfig.GetChangeLog().GetVersion(),
+			CreatedAt: newConfig.GetChangeLog().GetCreatedAt(),
+			UpdatedAt: newConfig.GetChangeLog().GetUpdatedAt(),
+		}
 	}
 
 	opaque := cached.WithOpaqueData(nil)
@@ -458,6 +476,7 @@ func (h *serviceHandler) RestartJob(
 			&newConfig,
 			jobConfig,
 			configAddOn,
+			&newSpec,
 		),
 		opaque,
 	)
@@ -1605,6 +1624,7 @@ func (h *serviceHandler) RefreshJob(
 		Config:  jobConfig,
 		Runtime: jobRuntime,
 	}, configAddOn,
+		nil,
 		cached.UpdateCacheOnly)
 	h.goalStateDriver.EnqueueJob(pelotonJobID, time.Now())
 	return &svc.RefreshJobResponse{}, nil

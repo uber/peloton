@@ -25,6 +25,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	pbupdate "github.com/uber/peloton/.gen/peloton/api/v0/update"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
@@ -105,6 +106,7 @@ type Job interface {
 		ctx context.Context,
 		config *pbjob.JobConfig,
 		configAddOn *models.ConfigAddOn,
+		spec *stateless.JobSpec,
 	) error
 
 	// RollingCreate is used to create the job configuration and runtime in DB.
@@ -114,6 +116,7 @@ type Job interface {
 		ctx context.Context,
 		config *pbjob.JobConfig,
 		configAddOn *models.ConfigAddOn,
+		spec *stateless.JobSpec,
 		updateConfig *pbupdate.UpdateConfig,
 		opaqueData *peloton.OpaqueData,
 	) error
@@ -124,7 +127,13 @@ type Job interface {
 	// If successful, the cache is updated as well.
 	// TODO: no config update should go through this API, divide this API into
 	// config and runtime part
-	Update(ctx context.Context, jobInfo *pbjob.JobInfo, configAddOn *models.ConfigAddOn, req UpdateRequest) error
+	Update(
+		ctx context.Context,
+		jobInfo *pbjob.JobInfo,
+		configAddOn *models.ConfigAddOn,
+		spec *stateless.JobSpec,
+		req UpdateRequest,
+	) error
 
 	// CompareAndSetRuntime replaces the existing job runtime in cache and DB with
 	// the job runtime supplied. CompareAndSetRuntime would use
@@ -143,7 +152,13 @@ type Job interface {
 	// automatically upon success. Caller should not manually modify
 	// the value of JobConfig.ChangeLog.Version.
 	// It returns the resultant jobConfig with version updated.
-	CompareAndSetConfig(ctx context.Context, config *pbjob.JobConfig, configAddOn *models.ConfigAddOn) (jobmgrcommon.JobConfig, error)
+	// JobSpec is also passed along so that it can be written as is to the DB
+	CompareAndSetConfig(
+		ctx context.Context,
+		config *pbjob.JobConfig,
+		configAddOn *models.ConfigAddOn,
+		spec *stateless.JobSpec,
+	) (jobmgrcommon.JobConfig, error)
 
 	// IsPartiallyCreated returns if job has not been fully created yet
 	IsPartiallyCreated(config jobmgrcommon.JobConfig) bool
@@ -588,6 +603,7 @@ func (j *job) Create(
 	ctx context.Context,
 	config *pbjob.JobConfig,
 	configAddOn *models.ConfigAddOn,
+	spec *stateless.JobSpec,
 ) error {
 	var runtimeCopy *pbjob.RuntimeInfo
 	var jobType pbjob.JobType
@@ -634,7 +650,7 @@ func (j *job) Create(
 	}
 
 	// create job config
-	if err := j.createJobConfig(ctx, config, configAddOn); err != nil {
+	if err := j.createJobConfig(ctx, config, configAddOn, spec); err != nil {
 		j.invalidateCache()
 		return err
 	}
@@ -668,6 +684,7 @@ func (j *job) RollingCreate(
 	ctx context.Context,
 	config *pbjob.JobConfig,
 	configAddOn *models.ConfigAddOn,
+	spec *stateless.JobSpec,
 	updateConfig *pbupdate.UpdateConfig,
 	opaqueData *peloton.OpaqueData,
 ) error {
@@ -758,7 +775,7 @@ func (j *job) RollingCreate(
 
 	// create the dummy config in db, it is possible that the dummy config already
 	// exists in db when doing error retry. So ignore already exist error here
-	if err := j.createJobConfig(ctx, dummyConfig, configAddOn); err != nil &&
+	if err := j.createJobConfig(ctx, dummyConfig, configAddOn, nil); err != nil &&
 		!yarpcerrors.IsAlreadyExists(errors.Cause(err)) {
 		j.invalidateCache()
 		return err
@@ -769,7 +786,7 @@ func (j *job) RollingCreate(
 	// as created successfully, and should be able to recover from
 	// rest of the error. Calling RollingCreate after this call succeeds again,
 	// would result in AlreadyExist error
-	if err := j.createJobConfig(ctx, config, configAddOn); err != nil {
+	if err := j.createJobConfig(ctx, config, configAddOn, spec); err != nil {
 		j.invalidateCache()
 		return err
 	}
@@ -817,12 +834,14 @@ func (j *job) createJobConfig(
 	ctx context.Context,
 	config *pbjob.JobConfig,
 	configAddOn *models.ConfigAddOn,
+	spec *stateless.JobSpec,
 ) error {
 	if err := j.jobFactory.jobConfigOps.Create(
 		ctx,
 		j.ID(),
 		config,
 		configAddOn,
+		spec,
 		config.ChangeLog.Version,
 	); err != nil {
 		return err
@@ -932,11 +951,16 @@ func (j *job) CompareAndSetRuntime(ctx context.Context, jobRuntime *pbjob.Runtim
 	return runtimeCopy, nil
 }
 
-func (j *job) CompareAndSetConfig(ctx context.Context, config *pbjob.JobConfig, configAddOn *models.ConfigAddOn) (jobmgrcommon.JobConfig, error) {
+func (j *job) CompareAndSetConfig(
+	ctx context.Context,
+	config *pbjob.JobConfig,
+	configAddOn *models.ConfigAddOn,
+	spec *stateless.JobSpec,
+) (jobmgrcommon.JobConfig, error) {
 	j.Lock()
 	defer j.Unlock()
 
-	return j.compareAndSetConfig(ctx, config, configAddOn)
+	return j.compareAndSetConfig(ctx, config, configAddOn, spec)
 }
 
 // CurrentState of the job.
@@ -961,7 +985,12 @@ func (j *job) GoalState() JobStateVector {
 	}
 }
 
-func (j *job) compareAndSetConfig(ctx context.Context, config *pbjob.JobConfig, configAddOn *models.ConfigAddOn) (jobmgrcommon.JobConfig, error) {
+func (j *job) compareAndSetConfig(
+	ctx context.Context,
+	config *pbjob.JobConfig,
+	configAddOn *models.ConfigAddOn,
+	spec *stateless.JobSpec,
+) (jobmgrcommon.JobConfig, error) {
 	// first make sure current config is in cache
 	if err := j.populateCurrentJobConfig(ctx); err != nil {
 		return nil, err
@@ -973,12 +1002,24 @@ func (j *job) compareAndSetConfig(ctx context.Context, config *pbjob.JobConfig, 
 		return nil, err
 	}
 
+	// updatedConfig now contains updated version number and timestamp.
+	// If the job spec is provided, the spec should reflect the same version
+	// and time.
+	if spec != nil {
+		spec.Revision = &v1alphapeloton.Revision{
+			Version:   updatedConfig.GetChangeLog().GetVersion(),
+			CreatedAt: updatedConfig.GetChangeLog().GetCreatedAt(),
+			UpdatedAt: updatedConfig.GetChangeLog().GetUpdatedAt(),
+		}
+	}
+
 	// write the config into DB
 	if err := j.jobFactory.jobConfigOps.Create(
 		ctx,
 		j.ID(),
 		updatedConfig,
 		configAddOn,
+		spec,
 		updatedConfig.GetChangeLog().GetVersion(),
 	); err != nil {
 		j.invalidateCache()
@@ -1003,7 +1044,12 @@ func (j *job) compareAndSetConfig(ctx context.Context, config *pbjob.JobConfig, 
 // The runtime being passed should only set the fields which the caller intends to change,
 // the remaining fields should be left unfilled.
 // The config would be updated to the config passed in (except changeLog)
-func (j *job) Update(ctx context.Context, jobInfo *pbjob.JobInfo, configAddOn *models.ConfigAddOn, req UpdateRequest) error {
+func (j *job) Update(
+	ctx context.Context,
+	jobInfo *pbjob.JobInfo,
+	configAddOn *models.ConfigAddOn,
+	spec *stateless.JobSpec,
+	req UpdateRequest) error {
 	var runtimeCopy *pbjob.RuntimeInfo
 	var jobType pbjob.JobType
 	// notify listeners after dropping the lock
@@ -1074,6 +1120,7 @@ func (j *job) Update(ctx context.Context, jobInfo *pbjob.JobInfo, configAddOn *m
 				j.ID(),
 				updatedConfig,
 				configAddOn,
+				spec,
 				updatedConfig.GetChangeLog().GetVersion(),
 			); err != nil {
 				j.invalidateCache()
@@ -1502,25 +1549,28 @@ type workflowOpts struct {
 	jobConfig       *pbjob.JobConfig
 	prevJobConfig   *pbjob.JobConfig
 	configAddOn     *models.ConfigAddOn
+	jobSpec         *stateless.JobSpec
 	instanceAdded   []uint32
 	instanceUpdated []uint32
 	instanceRemoved []uint32
 	opaqueData      *peloton.OpaqueData
 }
 
-// WithConfig defines the original
-// config and target config for the workflow.
-// Workflow could use the configs to calculate
-// the instances it would need to work on.
+// WithConfig defines the original config and target config for the workflow.
+// Workflow could use the configs to calculate the instances it would need to
+// work on as well as verify if the update is a noop. It also includes the
+// target job spec which would be stored to the DB as part of workflow creation.
 func WithConfig(
 	jobConfig *pbjob.JobConfig,
 	prevJobConfig *pbjob.JobConfig,
 	configAddOn *models.ConfigAddOn,
+	jobSpec *stateless.JobSpec,
 ) Option {
 	return &configOpt{
 		jobConfig:     jobConfig,
 		prevJobConfig: prevJobConfig,
 		configAddOn:   configAddOn,
+		jobSpec:       jobSpec,
 	}
 }
 
@@ -1552,12 +1602,14 @@ type configOpt struct {
 	jobConfig     *pbjob.JobConfig
 	prevJobConfig *pbjob.JobConfig
 	configAddOn   *models.ConfigAddOn
+	jobSpec       *stateless.JobSpec
 }
 
 func (o *configOpt) apply(opts *workflowOpts) {
 	opts.jobConfig = o.jobConfig
 	opts.prevJobConfig = o.prevJobConfig
 	opts.configAddOn = o.configAddOn
+	opts.jobSpec = o.jobSpec
 }
 
 type instanceToProcessOpt struct {
@@ -1656,7 +1708,12 @@ func (j *job) CreateWorkflow(
 			nil
 	}
 
-	newConfig, err := j.compareAndSetConfig(ctx, opts.jobConfig, opts.configAddOn)
+	newConfig, err := j.compareAndSetConfig(
+		ctx,
+		opts.jobConfig,
+		opts.configAddOn,
+		opts.jobSpec,
+	)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1968,7 +2025,7 @@ func (j *job) RollbackWorkflow(ctx context.Context) error {
 	}
 
 	// get the old job config before the workflow is run
-	prevJobConfig, configAddOn, err := j.jobFactory.jobConfigOps.Get(
+	prevObj, err := j.jobFactory.jobConfigOps.GetResult(
 		ctx,
 		j.ID(),
 		currentWorkflow.GetState().JobVersion,
@@ -1980,7 +2037,12 @@ func (j *job) RollbackWorkflow(ctx context.Context) error {
 
 	// copy the old job config and get the config which
 	// the workflow can "rollback" to
-	configCopy, err := j.copyJobAndTaskConfig(ctx, prevJobConfig, configAddOn)
+	configCopy, err := j.copyJobAndTaskConfig(
+		ctx,
+		prevObj.JobConfig,
+		prevObj.ConfigAddOn,
+		prevObj.JobSpec,
+	)
 	if err != nil {
 		return errors.Wrap(err,
 			"failed to copy job and task config for workflow rolling back")
@@ -2100,6 +2162,7 @@ func (j *job) copyJobAndTaskConfig(
 	ctx context.Context,
 	jobConfig *pbjob.JobConfig,
 	configAddOn *models.ConfigAddOn,
+	spec *stateless.JobSpec,
 ) (*pbjob.JobConfig, error) {
 	// set config changeLog version to that of current config for
 	// concurrency control
@@ -2111,7 +2174,12 @@ func (j *job) copyJobAndTaskConfig(
 	}
 
 	// copy job config
-	configCopy, err := j.compareAndSetConfig(ctx, jobConfig, configAddOn)
+	configCopy, err := j.compareAndSetConfig(
+		ctx,
+		jobConfig,
+		configAddOn,
+		spec,
+	)
 	if err != nil {
 		return nil, errors.Wrap(err,
 			"failed to set job config for workflow rolling back")

@@ -261,7 +261,12 @@ func (suite *DriverTestSuite) prepareTestSyncDB(jobType job.JobType) {
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).
+		Update(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			nil,
+			cached.UpdateCacheOnly).
 		Return(nil)
 
 	suite.jobGoalStateEngine.EXPECT().
@@ -380,7 +385,12 @@ func (suite *DriverTestSuite) TestSyncFromDBWithMaxRunningInstancesSLA() {
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).
+		Update(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			nil,
+			cached.UpdateCacheOnly).
 		Return(nil)
 
 	suite.jobGoalStateEngine.EXPECT().
@@ -457,7 +467,12 @@ func (suite *DriverTestSuite) TestInitializedJobSyncFromDB() {
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).
+		Update(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			nil,
+			cached.UpdateCacheOnly).
 		Return(nil)
 
 	suite.jobGoalStateEngine.EXPECT().
@@ -528,7 +543,12 @@ func (suite *DriverTestSuite) TestSyncFromDBRecoverUpdate() {
 		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).
+		Update(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			nil,
+			cached.UpdateCacheOnly).
 		Return(nil)
 
 	suite.jobGoalStateEngine.EXPECT().

@@ -129,7 +129,7 @@ func createJobConfig(
 	}
 	configAddOn := &models.ConfigAddOn{}
 
-	return jobConfigOps.Create(ctx, jobID, &jobConfig, configAddOn, 1)
+	return jobConfigOps.Create(ctx, jobID, &jobConfig, configAddOn, nil, 1)
 }
 
 func createJob(
