@@ -108,15 +108,13 @@ func (h *ServiceHandler) GetJobSummary(
 	defer func() {
 		h.metrics.
 			Procedures[ProcedureGetJobSummary].
-			ResponseCode.
 			ResponseCodes[resp.GetResponseCode()].
-			Inc(1)
+			Calls.Inc(1)
 
 		h.metrics.
 			Procedures[ProcedureGetJobSummary].
-			ResponseCodeLatency.
 			ResponseCodes[resp.GetResponseCode()].
-			Record(time.Since(startTime))
+			CallLatency.Record(time.Since(startTime))
 
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -233,15 +231,13 @@ func (h *ServiceHandler) GetTasksWithoutConfigs(
 	defer func() {
 		h.metrics.
 			Procedures[ProcedureGetTasksWithoutConfigs].
-			ResponseCode.
 			ResponseCodes[resp.GetResponseCode()].
-			Inc(1)
+			Calls.Inc(1)
 
 		h.metrics.
 			Procedures[ProcedureGetTasksWithoutConfigs].
-			ResponseCodeLatency.
 			ResponseCodes[resp.GetResponseCode()].
-			Record(time.Since(startTime))
+			CallLatency.Record(time.Since(startTime))
 
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -538,15 +534,13 @@ func (h *ServiceHandler) GetConfigSummary(
 	defer func() {
 		h.metrics.
 			Procedures[ProcedureGetConfigSummary].
-			ResponseCode.
 			ResponseCodes[resp.GetResponseCode()].
-			Inc(1)
+			Calls.Inc(1)
 
 		h.metrics.
 			Procedures[ProcedureGetConfigSummary].
-			ResponseCodeLatency.
 			ResponseCodes[resp.GetResponseCode()].
-			Record(time.Since(startTime))
+			CallLatency.Record(time.Since(startTime))
 
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -621,15 +615,13 @@ func (h *ServiceHandler) GetJobs(
 	defer func() {
 		h.metrics.
 			Procedures[ProcedureGetJobs].
-			ResponseCode.
 			ResponseCodes[resp.GetResponseCode()].
-			Inc(1)
+			Calls.Inc(1)
 
 		h.metrics.
 			Procedures[ProcedureGetJobs].
-			ResponseCodeLatency.
 			ResponseCodes[resp.GetResponseCode()].
-			Record(time.Since(startTime))
+			CallLatency.Record(time.Since(startTime))
 
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -746,15 +738,13 @@ func (h *ServiceHandler) GetJobUpdateSummaries(
 	defer func() {
 		h.metrics.
 			Procedures[ProcedureGetJobUpdateSummaries].
-			ResponseCode.
 			ResponseCodes[resp.GetResponseCode()].
-			Inc(1)
+			Calls.Inc(1)
 
 		h.metrics.
 			Procedures[ProcedureGetJobUpdateSummaries].
-			ResponseCodeLatency.
 			ResponseCodes[resp.GetResponseCode()].
-			Record(time.Since(startTime))
+			CallLatency.Record(time.Since(startTime))
 
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -814,15 +804,13 @@ func (h *ServiceHandler) GetJobUpdateDetails(
 	defer func() {
 		h.metrics.
 			Procedures[ProcedureGetJobUpdateDetails].
-			ResponseCode.
 			ResponseCodes[resp.GetResponseCode()].
-			Inc(1)
+			Calls.Inc(1)
 
 		h.metrics.
 			Procedures[ProcedureGetJobUpdateDetails].
-			ResponseCodeLatency.
 			ResponseCodes[resp.GetResponseCode()].
-			Record(time.Since(startTime))
+			CallLatency.Record(time.Since(startTime))
 
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -885,15 +873,13 @@ func (h *ServiceHandler) GetJobUpdateDiff(
 	defer func() {
 		h.metrics.
 			Procedures[ProcedureGetJobUpdateDiff].
-			ResponseCode.
 			ResponseCodes[resp.GetResponseCode()].
-			Inc(1)
+			Calls.Inc(1)
 
 		h.metrics.
 			Procedures[ProcedureGetJobUpdateDiff].
-			ResponseCodeLatency.
 			ResponseCodes[resp.GetResponseCode()].
-			Record(time.Since(startTime))
+			CallLatency.Record(time.Since(startTime))
 
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -1028,15 +1014,13 @@ func (h *ServiceHandler) GetTierConfigs(
 	defer func() {
 		h.metrics.
 			Procedures[ProcedureGetTierConfigs].
-			ResponseCode.
 			ResponseCodes[resp.GetResponseCode()].
-			Inc(1)
+			Calls.Inc(1)
 
 		h.metrics.
 			Procedures[ProcedureGetTierConfigs].
-			ResponseCodeLatency.
 			ResponseCodes[resp.GetResponseCode()].
-			Record(time.Since(startTime))
+			CallLatency.Record(time.Since(startTime))
 
 		log.WithFields(log.Fields{
 			"result": result,
@@ -1061,15 +1045,13 @@ func (h *ServiceHandler) KillTasks(
 	defer func() {
 		h.metrics.
 			Procedures[ProcedureKillTasks].
-			ResponseCode.
 			ResponseCodes[resp.GetResponseCode()].
-			Inc(1)
+			Calls.Inc(1)
 
 		h.metrics.
 			Procedures[ProcedureKillTasks].
-			ResponseCodeLatency.
 			ResponseCodes[resp.GetResponseCode()].
-			Record(time.Since(startTime))
+			CallLatency.Record(time.Since(startTime))
 
 		var instancesArr []string
 		for instanceID := range instances {
@@ -1214,17 +1196,41 @@ func (h *ServiceHandler) StartJobUpdate(
 	resp := newResponse(result, err)
 
 	defer func() {
-		h.metrics.
-			Procedures[ProcedureStartJobUpdate].
-			ResponseCode.
-			ResponseCodes[resp.GetResponseCode()].
-			Inc(1)
+		updateService := request.GetTaskConfig().GetJob().GetRole()
+		responseCode := resp.GetResponseCode()
+		responseTime := time.Since(startTime)
 
-		h.metrics.
-			Procedures[ProcedureStartJobUpdate].
-			ResponseCodeLatency.
-			ResponseCodes[resp.GetResponseCode()].
-			Record(time.Since(startTime))
+		if len(updateService) > 0 {
+			h.metrics.
+				Procedures[ProcedureStartJobUpdate].
+				ResponseCodes[responseCode].
+				Scope.
+				Tagged(map[string]string{
+					TagService: updateService,
+				}).
+				Counter(MetricNameCalls).
+				Inc(1)
+			h.metrics.
+				Procedures[ProcedureStartJobUpdate].
+				ResponseCodes[responseCode].
+				Scope.
+				Tagged(map[string]string{
+					TagService: updateService,
+				}).
+				Timer(MetricNameCallLatency).
+				Record(responseTime)
+		} else {
+			h.metrics.
+				Procedures[ProcedureStartJobUpdate].
+				ResponseCodes[responseCode].
+				Calls.
+				Inc(1)
+			h.metrics.
+				Procedures[ProcedureStartJobUpdate].
+				ResponseCodes[responseCode].
+				CallLatency.
+				Record(responseTime)
+		}
 
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -1265,15 +1271,13 @@ func (h *ServiceHandler) PauseJobUpdate(
 	defer func() {
 		h.metrics.
 			Procedures[ProcedurePauseJobUpdate].
-			ResponseCode.
 			ResponseCodes[resp.GetResponseCode()].
-			Inc(1)
+			Calls.Inc(1)
 
 		h.metrics.
 			Procedures[ProcedurePauseJobUpdate].
-			ResponseCodeLatency.
 			ResponseCodes[resp.GetResponseCode()].
-			Record(time.Since(startTime))
+			CallLatency.Record(time.Since(startTime))
 
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -1337,15 +1341,13 @@ func (h *ServiceHandler) ResumeJobUpdate(
 	defer func() {
 		h.metrics.
 			Procedures[ProcedureResumeJobUpdate].
-			ResponseCode.
 			ResponseCodes[resp.GetResponseCode()].
-			Inc(1)
+			Calls.Inc(1)
 
 		h.metrics.
 			Procedures[ProcedureResumeJobUpdate].
-			ResponseCodeLatency.
 			ResponseCodes[resp.GetResponseCode()].
-			Record(time.Since(startTime))
+			CallLatency.Record(time.Since(startTime))
 
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -1409,15 +1411,13 @@ func (h *ServiceHandler) AbortJobUpdate(
 	defer func() {
 		h.metrics.
 			Procedures[ProcedureAbortJobUpdate].
-			ResponseCode.
 			ResponseCodes[resp.GetResponseCode()].
-			Inc(1)
+			Calls.Inc(1)
 
 		h.metrics.
 			Procedures[ProcedureAbortJobUpdate].
-			ResponseCodeLatency.
 			ResponseCodes[resp.GetResponseCode()].
-			Record(time.Since(startTime))
+			CallLatency.Record(time.Since(startTime))
 
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -1481,15 +1481,13 @@ func (h *ServiceHandler) RollbackJobUpdate(
 	defer func() {
 		h.metrics.
 			Procedures[ProcedureRollbackJobUpdate].
-			ResponseCode.
 			ResponseCodes[resp.GetResponseCode()].
-			Inc(1)
+			Calls.Inc(1)
 
 		h.metrics.
 			Procedures[ProcedureRollbackJobUpdate].
-			ResponseCodeLatency.
 			ResponseCodes[resp.GetResponseCode()].
-			Record(time.Since(startTime))
+			CallLatency.Record(time.Since(startTime))
 
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -1607,15 +1605,13 @@ func (h *ServiceHandler) PulseJobUpdate(
 	defer func() {
 		h.metrics.
 			Procedures[ProcedurePulseJobUpdate].
-			ResponseCode.
 			ResponseCodes[resp.GetResponseCode()].
-			Inc(1)
+			Calls.Inc(1)
 
 		h.metrics.
 			Procedures[ProcedurePulseJobUpdate].
-			ResponseCodeLatency.
 			ResponseCodes[resp.GetResponseCode()].
-			Record(time.Since(startTime))
+			CallLatency.Record(time.Since(startTime))
 
 		if err != nil {
 			log.WithFields(log.Fields{

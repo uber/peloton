@@ -35,6 +35,15 @@ const (
 	ProcedureResumeJobUpdate        = "auroraschedulermanager__resumejobupdate"
 	ProcedureRollbackJobUpdate      = "auroraschedulermanager__rollbackjobupdate"
 	ProcedureStartJobUpdate         = "auroraschedulermanager__startjobupdate"
+
+	// Metric tag names
+	TagProcedure    = "procedure"     // handler procedure name
+	TagResponseCode = "responsecode"  // handler response code
+	TagService      = "updateservice" // input service name
+
+	// Metric names
+	MetricNameCalls       = "calls"
+	MetricNameCallLatency = "call_latency"
 )
 
 var _procedures = []string{
@@ -65,17 +74,14 @@ var _responseCodeToText = map[api.ResponseCode]string{
 	api.ResponseCodeErrorTransient:   "error-transient",
 }
 
-type ResponseCodeMetrics struct {
-	ResponseCodes map[api.ResponseCode]tally.Counter
-}
-
-type ResponseCodeLatencyMetrics struct {
-	ResponseCodes map[api.ResponseCode]tally.Timer
+type PerResponseCodeMetrics struct {
+	Scope       tally.Scope
+	Calls       tally.Counter
+	CallLatency tally.Timer
 }
 
 type PerProcedureMetrics struct {
-	ResponseCode        *ResponseCodeMetrics
-	ResponseCodeLatency *ResponseCodeLatencyMetrics
+	ResponseCodes map[api.ResponseCode]*PerResponseCodeMetrics
 }
 
 // Metrics is the struct containing all metrics relevant for aurora api parrity
@@ -90,27 +96,28 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		Procedures: map[string]*PerProcedureMetrics{},
 	}
 	for _, procedure := range _procedures {
-		responseCodeMetrics := &ResponseCodeMetrics{
-			ResponseCodes: make(map[api.ResponseCode]tally.Counter),
-		}
-		responseCodeLatencyMetrics := &ResponseCodeLatencyMetrics{
-			ResponseCodes: make(map[api.ResponseCode]tally.Timer),
-		}
+		responseCodes := make(map[api.ResponseCode]*PerResponseCodeMetrics)
 		for _, responseCode := range api.ResponseCode_Values() {
 			responseCodeText, exists := _responseCodeToText[responseCode]
 			if !exists {
 				responseCodeText = "unknown-error"
 			}
 			tag := map[string]string{
-				"procedure":    procedure,
-				"responsecode": responseCodeText,
+				TagProcedure:    procedure,
+				TagResponseCode: responseCodeText,
+				// Fill empty string here so that prometheus won't panic
+				// when the number of tags is changed inside subscope
+				TagService: "",
 			}
-			responseCodeMetrics.ResponseCodes[responseCode] = scope.Tagged(tag).Counter("calls")
-			responseCodeLatencyMetrics.ResponseCodes[responseCode] = scope.Tagged(tag).Timer("call_latency")
+			subscope := scope.Tagged(tag)
+			responseCodes[responseCode] = &PerResponseCodeMetrics{
+				Scope:       subscope,
+				Calls:       subscope.Counter(MetricNameCalls),
+				CallLatency: subscope.Timer(MetricNameCallLatency),
+			}
 		}
 		m.Procedures[procedure] = &PerProcedureMetrics{
-			ResponseCode:        responseCodeMetrics,
-			ResponseCodeLatency: responseCodeLatencyMetrics,
+			ResponseCodes: responseCodes,
 		}
 	}
 	return m
