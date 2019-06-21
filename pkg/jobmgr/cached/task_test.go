@@ -766,7 +766,7 @@ func (suite *taskTestSuite) TestReplaceTask() {
 	err := tt.ReplaceTask(newRuntime, nil, false)
 	suite.Nil(err)
 	suite.Equal(tt.runtime.GetState(), pbtask.TaskState_RUNNING)
-	suite.checkListenersNotCalled()
+	suite.checkListeners(tt, tt.jobType)
 }
 
 // TestReplaceTask_NoExistingCache tests replacing cache when
@@ -779,10 +779,8 @@ func (suite *taskTestSuite) TestReplaceTask_NoExistingCache() {
 		Labels: labels,
 	}
 
-	tt := &task{
-		id:    suite.instanceID,
-		jobID: suite.jobID,
-	}
+	tt := suite.initializeTask(suite.taskStore, suite.jobID, suite.instanceID,
+		nil)
 
 	suite.Equal(suite.instanceID, tt.ID())
 	suite.Equal(suite.jobID.Value, tt.jobID.Value)
@@ -803,7 +801,7 @@ func (suite *taskTestSuite) TestReplaceTask_NoExistingCache() {
 	suite.Equal(runtime.GoalState, curGoalState.State)
 	suite.Equal(labels[0].GetKey(), tt.config.labels[0].GetKey())
 	suite.Equal(labels[0].GetValue(), tt.config.labels[0].GetValue())
-	suite.checkListenersNotCalled()
+	suite.checkListeners(tt, tt.jobType)
 }
 
 // TestReplaceTask_StaleRuntime tests replacing with stale runtime
@@ -818,6 +816,19 @@ func (suite *taskTestSuite) TestReplaceTask_StaleRuntime() {
 	err := tt.ReplaceTask(newRuntime, nil, false)
 	suite.Nil(err)
 	suite.Equal(tt.runtime.GetState(), pbtask.TaskState_LAUNCHED)
+	suite.checkListenersNotCalled()
+}
+
+// TestReplaceTaskNilRuntime tests error while replacing runtime in the cache only
+func (suite *taskTestSuite) TestReplaceTaskNilRuntime() {
+	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
+	runtime.GoalState = pbtask.TaskState_SUCCEEDED
+	tt := suite.initializeTask(suite.taskStore, suite.jobID, suite.instanceID,
+		runtime)
+
+	err := tt.ReplaceTask(nil, nil, false)
+	suite.Error(err)
+	suite.Equal(pbtask.TaskState_LAUNCHED, tt.runtime.GetState())
 	suite.checkListenersNotCalled()
 }
 

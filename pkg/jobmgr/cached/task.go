@@ -564,6 +564,20 @@ func (t *task) ReplaceTask(
 			"ReplaceTask expects a non-nil runtime with non-nil Revision")
 	}
 
+	var runtimeCopy *pbtask.RuntimeInfo
+	var labelsCopy []*peloton.Label
+
+	// notify listeners after dropping the lock
+	defer func() {
+		t.jobFactory.notifyTaskRuntimeChanged(
+			t.JobID(),
+			t.ID(),
+			t.jobType,
+			runtimeCopy,
+			labelsCopy,
+		)
+	}()
+
 	t.Lock()
 	defer t.Unlock()
 
@@ -580,7 +594,8 @@ func (t *task) ReplaceTask(
 			labels:        taskConfig.GetLabels(),
 		}
 		t.runtime = runtime
-		return nil
+		runtimeCopy = proto.Clone(t.runtime).(*pbtask.RuntimeInfo)
+		labelsCopy = t.copyLabelsInCache()
 	}
 
 	return nil
