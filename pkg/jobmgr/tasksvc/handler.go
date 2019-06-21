@@ -1374,7 +1374,7 @@ func (m *serviceHandler) BrowseSandbox(
 		MesosMasterHostname: mesosMasterHostPortRespose.Hostname,
 		MesosMasterPort:     mesosMasterHostPortRespose.Port,
 	}
-	log.WithField("response", resp).Info("TaskSVC.BrowseSandbox returned")
+	log.WithField("response", resp).Debug("TaskSVC.BrowseSandbox returned")
 	return resp, nil
 }
 

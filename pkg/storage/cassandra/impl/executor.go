@@ -125,7 +125,7 @@ func (w WriteExecutor) Execute(ctx context.Context, stmt api.Statement) (api.Res
 	w.store().sendLatency(ctx, "execute_latency", time.Duration(qu.Latency()))
 	qu.Release()
 	if err != nil {
-		log.WithError(err).Error("Exec failed")
+		log.WithError(err).Debug("Exec failed")
 	}
 	return nil, err
 }
