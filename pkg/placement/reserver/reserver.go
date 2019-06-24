@@ -60,7 +60,7 @@ var (
 // Reserver represents a placement engine's reservation module
 // It gets all the hosts based on filter passed to host manager
 // it chooses the random host from the list and call reserve the
-// choosen host based on the task.
+// chosen host based on the task.
 type Reserver interface {
 	// Adding daemon interface for Reserver
 	async.Daemon
@@ -72,7 +72,7 @@ type Reserver interface {
 	Reserve(ctx context.Context) (time.Duration, error)
 
 	// Places the assignments which are ready for host reservation into reservationQueue
-	ProcessHostReservation(ctx context.Context, assignments []*models.Assignment) error
+	ProcessHostReservation(ctx context.Context, assignments []models.Task) error
 
 	// EnqueueReservation enqueues the hostsvc.reservation to
 	// the reservation queue
@@ -300,14 +300,14 @@ func (r *reserver) getHostFilter(task *resmgr.Task) *hostsvc.HostFilter {
 // into reservationQueue
 func (r *reserver) ProcessHostReservation(
 	ctx context.Context,
-	assignments []*models.Assignment) error {
+	assignments []models.Task) error {
 
 	for _, assignment := range assignments {
-		if assignment.Task.GetTask().GetReadyForHostReservation() {
+		if assignment.IsReadyForHostReservation() {
 			log.WithField("assignment", assignment).
 				Debug("process host reservation")
 			err := r.EnqueueReservation(&hostsvc.Reservation{
-				Task: assignment.Task.GetTask(),
+				Task: assignment.GetResmgrTaskV0(),
 			})
 			if err != nil {
 				return err
@@ -411,7 +411,7 @@ func (r *reserver) processCompletedReservations(ctx context.Context) error {
 	deadline := now.Add(duration)
 	desiredHostPlacementDeadline := now.Add(r.config.MaxDesiredHostPlacementDuration)
 
-	assignments := make([]*models.Assignment, len(reservations))
+	assignments := make([]models.Task, len(reservations))
 	for i, res := range reservations {
 		task := models.NewTask(nil,
 			res.GetTask(),
@@ -420,7 +420,7 @@ func (r *reserver) processCompletedReservations(ctx context.Context) error {
 			maxRounds,
 		)
 		assignments[i] = models.NewAssignment(task)
-		assignments[i].SetHost(&models.HostOffers{Offer: res.HostOffer})
+		assignments[i].SetPlacement(&models.HostOffers{Offer: res.HostOffer})
 	}
 
 	log.WithField("placements", assignments).

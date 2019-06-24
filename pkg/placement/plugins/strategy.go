@@ -75,8 +75,8 @@ type PlacementNeeds struct {
 // Task is the interface that the Strategy takes in and tries to place on
 // Hosts.
 type Task interface {
-	// Returns the ID of the task.
-	ID() string
+	// Returns the Peloton ID of the task.
+	PelotonID() string
 
 	// Tries to fit the task on the host resources passed in as arguments.
 	// Returns as last argument whether or not that operation succeeded.

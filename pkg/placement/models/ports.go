@@ -14,39 +14,68 @@
 
 package models
 
-import "github.com/uber/peloton/.gen/mesos/v1"
-
-// PortRange represents a modifiable closed-open port range [begin:end[ used when assigning ports to tasks.
+// PortRange represents a modifiable closed-open port range [Begin:End[
+// used when assigning ports to tasks.
 type PortRange struct {
-	begin uint32
-	end   uint32
+	Begin uint64
+	End   uint64
 }
 
 // NewPortRange creates a new modifiable port range from a Mesos value range.
-func NewPortRange(portRange *mesos_v1.Value_Range) *PortRange {
+func NewPortRange(begin, end uint64) *PortRange {
 	return &PortRange{
-		begin: uint32(*portRange.Begin),
-		end:   uint32(*portRange.End + 1),
+		Begin: begin,
+		End:   end + 1,
 	}
 }
 
 // NumPorts returns the number of available ports in the range.
-func (portRange *PortRange) NumPorts() uint32 {
-	return portRange.end - portRange.begin
+func (portRange *PortRange) NumPorts() uint64 {
+	return portRange.End - portRange.Begin
 }
 
 // TakePorts will take the number of ports from the range or as many as
 // available if more ports are requested than are in the range.
-func (portRange *PortRange) TakePorts(numPorts uint32) []uint32 {
+func (portRange *PortRange) TakePorts(numPorts uint64) []uint64 {
 	// Try to select ports in a random fashion to avoid ports conflict.
-	ports := make([]uint32, 0, numPorts)
-	stop := portRange.begin + numPorts
+	ports := make([]uint64, 0, numPorts)
+	stop := portRange.Begin + numPorts
 	if numPorts >= portRange.NumPorts() {
-		stop = portRange.end
+		stop = portRange.End
 	}
-	for i := portRange.begin; i < stop; i++ {
+	for i := portRange.Begin; i < stop; i++ {
 		ports = append(ports, i)
 	}
-	portRange.begin = stop
+	portRange.Begin = stop
 	return ports
+}
+
+// AssignPorts selects available ports from the offer and returns them.
+func AssignPorts(
+	offer Offer,
+	tasks []Task,
+) []uint64 {
+	availablePortRanges := offer.AvailablePortRanges()
+
+	var selectedPorts []uint64
+	for _, taskEntity := range tasks {
+		assignedPorts := uint64(0)
+		neededPorts := taskEntity.GetPlacementNeeds().Ports
+		depletedRanges := []*PortRange{}
+		for portRange := range availablePortRanges {
+			ports := portRange.TakePorts(neededPorts - assignedPorts)
+			assignedPorts += uint64(len(ports))
+			selectedPorts = append(selectedPorts, ports...)
+			if portRange.NumPorts() == 0 {
+				depletedRanges = append(depletedRanges, portRange)
+			}
+			if assignedPorts >= neededPorts {
+				break
+			}
+		}
+		for _, portRange := range depletedRanges {
+			delete(availablePortRanges, portRange)
+		}
+	}
+	return selectedPorts
 }

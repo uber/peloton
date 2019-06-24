@@ -174,22 +174,18 @@ func (suite *ReserverTestSuite) TestReservationErrorInReservation() {
 // but won't get placed
 func (suite *ReserverTestSuite) TestProcessHostReservation() {
 	createTasks := 25
-	createHosts := 10
 
 	deadline := time.Now().Add(time.Second)
 
-	var assignments []*models.Assignment
+	var assignments []models.Task
 	for i := 0; i < createTasks; i++ {
 		assignment := testutil.SetupAssignment(deadline, 1)
 		assignment.GetTask().GetTask().Resource.CpuLimit = 5
+		if i == 10 {
+			assignment.Task.Task.JobId = &peloton.JobID{Value: "hostreservation_10"}
+			assignment.Task.Task.ReadyForHostReservation = true
+		}
 		assignments = append(assignments, assignment)
-	}
-	assignments[10].Task.Task.JobId = &peloton.JobID{Value: "hostreservation_10"}
-	assignments[10].Task.Task.ReadyForHostReservation = true
-
-	var hosts []*models.HostOffers
-	for i := 0; i < createHosts; i++ {
-		hosts = append(hosts, testutil.SetupHostOffers())
 	}
 
 	// Test host can be reserved
@@ -198,10 +194,12 @@ func (suite *ReserverTestSuite) TestProcessHostReservation() {
 
 	suite.Equal(1, suite.reserver.GetReservationQueue().Length())
 	item, _ := suite.reserver.GetReservationQueue().Dequeue(1 * time.Second)
+	suite.NotNil(item)
 	reservation, _ := item.(*hostsvc.Reservation)
+	suite.NotNil(reservation)
 	task := reservation.Task
 	suite.Equal(true, task.ReadyForHostReservation)
-	suite.Equal("hostreservation_10", task.JobId.Value)
+	suite.Equal("hostreservation_10", task.GetJobId().GetValue())
 
 	// test Enqueue error during host reservation
 	reserver, reserverQueue, _ := suite.getReserver()

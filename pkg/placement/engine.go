@@ -124,7 +124,7 @@ func (e *engine) Run(ctx context.Context) error {
 		WithField("no_task_delay", _noTasksTimeoutPenalty).
 		Info("Engine started")
 
-	var unfulfilledAssignment []*models.Assignment
+	var unfulfilledAssignment []models.Task
 	var delay time.Duration
 	timer := time.NewTimer(e.config.TaskDequeuePeriod)
 	for {
@@ -156,8 +156,8 @@ func (e *engine) Stop() {
 // the delay to start next round of placing.
 func (e *engine) Place(
 	ctx context.Context,
-	lastRoundAssignment []*models.Assignment,
-) ([]*models.Assignment, time.Duration) {
+	lastRoundAssignment []models.Task,
+) ([]models.Task, time.Duration) {
 	log.Debug("Beginning placement cycle")
 
 	// Try and get some tasks/assignments
@@ -189,7 +189,7 @@ func (e *engine) Place(
 	unfulfilledAssignment := e.processAssignments(
 		ctx,
 		assignments,
-		func(assignment *models.Assignment) bool {
+		func(assignment models.Task) bool {
 			return assignment.IsRevocable() &&
 				!assignment.IsReadyForHostReservation()
 		})
@@ -200,7 +200,7 @@ func (e *engine) Place(
 		e.processAssignments(
 			ctx,
 			assignments,
-			func(assignment *models.Assignment) bool {
+			func(assignment models.Task) bool {
 				return !assignment.IsRevocable() &&
 					!assignment.IsReadyForHostReservation()
 			})...)
@@ -214,10 +214,10 @@ func (e *engine) Place(
 // It returns assignments that cannot be fulfilled.
 func (e *engine) processAssignments(
 	ctx context.Context,
-	unassigned []*models.Assignment,
-	f func(*models.Assignment) bool) []*models.Assignment {
+	unassigned []models.Task,
+	f func(models.Task) bool) []models.Task {
 
-	assignments := []*models.Assignment{}
+	assignments := []models.Task{}
 	for _, assignment := range unassigned {
 		if f(assignment) {
 			assignments = append(assignments, assignment)
@@ -228,10 +228,10 @@ func (e *engine) processAssignments(
 	}
 
 	unfulfilledAssignment := &concurrencySafeAssignmentSlice{}
-	tasks := models.AssignmentsToTasks(assignments)
+	tasks := models.ToPluginTasks(assignments)
 	tasksByNeeds := e.strategy.GroupTasksByPlacementNeeds(tasks)
 	for _, group := range tasksByNeeds {
-		batch := []*models.Assignment{}
+		batch := []models.Task{}
 		for _, idx := range group.Tasks {
 			batch = append(batch, assignments[idx])
 		}
@@ -256,7 +256,7 @@ func (e *engine) processAssignments(
 func (e *engine) placeAssignmentGroup(
 	ctx context.Context,
 	filter *hostsvc.HostFilter,
-	assignments []*models.Assignment) []*models.Assignment {
+	assignments []models.Task) []models.Task {
 	for len(assignments) > 0 {
 		log.WithFields(log.Fields{
 			"filter":          filter,
@@ -313,7 +313,7 @@ func (e *engine) placeAssignmentGroup(
 		placements := e.strategy.GetTaskPlacements(tasks, hosts)
 		for assignmentIdx, hostIdx := range placements {
 			if hostIdx != -1 {
-				assignments[assignmentIdx].SetHost(offers[hostIdx])
+				assignments[assignmentIdx].SetPlacement(offers[hostIdx])
 			}
 		}
 
@@ -347,7 +347,7 @@ func (e *engine) placeAssignmentGroup(
 
 // returns if the retryable assignments should be retried in the run.
 // Otherwise they would continue to be processed in the processAssignments loop.
-func (e *engine) shouldPlaceRetryableInNextRun(retryable []*models.Assignment) bool {
+func (e *engine) shouldPlaceRetryableInNextRun(retryable []models.Task) bool {
 	// if a strategy is concurrency safe there is no need to process retryable assignments
 	// in the next run, because placement engine would not be blocked by any of the retryable
 	// assignments.
@@ -363,14 +363,14 @@ func (e *engine) shouldPlaceRetryableInNextRun(retryable []*models.Assignment) b
 	// to be available, and should not block other assignments to be placed.
 	count := 0
 	for _, assignment := range retryable {
-		if assignment.GetHost() == nil {
+		if assignment.GetPlacement() == nil {
 			count++
 			continue
 		}
 
-		if len(assignment.GetTask().GetTask().GetDesiredHost()) != 0 &&
-			assignment.GetTask().GetTask().GetDesiredHost() !=
-				assignment.GetHost().GetOffer().GetHostname() {
+		if len(assignment.PreferredHost()) != 0 &&
+			assignment.PreferredHost() !=
+				assignment.GetPlacement().Hostname() {
 			count++
 			continue
 		}
@@ -386,7 +386,7 @@ func (e *engine) shouldPlaceRetryableInNextRun(retryable []*models.Assignment) b
 // returns the starved assignments back to the task service
 func (e *engine) returnStarvedAssignments(
 	ctx context.Context,
-	failedAssignments []*models.Assignment,
+	failedAssignments []models.Task,
 	reason string) {
 	e.metrics.OfferStarved.Inc(1)
 	// set the same reason for the failed assignments
@@ -403,25 +403,24 @@ func (e *engine) returnStarvedAssignments(
 // 3. unassigned: tried enough times, we couldn't find a host.
 func (e *engine) filterAssignments(
 	now time.Time,
-	assignments []*models.Assignment) (
-	assigned, retryable, unassigned []*models.Assignment) {
-	var pending []*models.Assignment
+	assignments []models.Task) (
+	assigned, retryable, unassigned []models.Task) {
+	var pending []models.Task
 	hostAssigned := make(map[string]struct{})
 	for _, assignment := range assignments {
-		task := assignment.GetTask()
-		if assignment.GetHost() == nil {
+		if assignment.GetPlacement() == nil {
 			// we haven't found an assignment yet
-			if task.PastDeadline(now) {
+			if assignment.IsPastDeadline(now) {
 				// tried enough
 				unassigned = append(unassigned, assignment)
 				continue
 			}
 		} else {
-			hostname := assignment.GetHost().GetOffer().GetHostname()
+			hostname := assignment.GetPlacement().Hostname()
 			// found a host
-			task.IncRounds()
+			assignment.IncRounds()
 			// lets check if we can find a better one
-			if e.isAssignmentGoodEnough(task, assignment.GetHost().GetOffer(), now) {
+			if e.isAssignmentGoodEnough(assignment, now) {
 				// tried enough, this match is good enough
 				assigned = append(assigned, assignment)
 				hostAssigned[hostname] = struct{}{}
@@ -435,10 +434,10 @@ func (e *engine) filterAssignments(
 	}
 
 	for _, assignment := range pending {
-		if assignment.GetHost() == nil {
+		if assignment.GetPlacement() == nil {
 			retryable = append(retryable, assignment)
-		} else if _, ok := hostAssigned[assignment.GetHost().GetOffer().GetHostname()]; ok {
-			if len(assignment.GetTask().GetTask().GetDesiredHost()) == 0 {
+		} else if _, ok := hostAssigned[assignment.GetPlacement().Hostname()]; ok {
+			if len(assignment.PreferredHost()) == 0 {
 				// if the host is already used by one of the
 				// assigned task, launch the task on that host.
 				// Treating the assignment as retryable can be
@@ -450,7 +449,7 @@ func (e *engine) filterAssignments(
 				// for host not placed on the desired host, reset
 				// host offers and add to retryable. Try to find
 				// the desired host in the next rounds.
-				assignment.HostOffers = nil
+				assignment.SetPlacement(nil)
 				retryable = append(retryable, assignment)
 			}
 		} else {
@@ -464,28 +463,25 @@ func (e *engine) filterAssignments(
 // returns true if we have tried past max rounds or reached the deadline or
 // the host is already placed on the desired host.
 func (e *engine) isAssignmentGoodEnough(
-	task *models.TaskV0,
-	offer *hostsvc.HostOffer,
+	task models.Task,
 	now time.Time,
 ) bool {
-	if len(task.GetTask().GetDesiredHost()) == 0 {
-		return task.PastMaxRounds() || task.PastDeadline(now)
+	if len(task.PreferredHost()) == 0 {
+		return task.IsPastMaxRounds() || task.IsPastDeadline(now)
 	}
 
 	// if a task has desired host, it would try to get placed on
 	// the desired host until it passes desired host placement deadline
-	return task.GetTask().GetDesiredHost() == offer.GetHostname() ||
-		task.PastDesiredHostPlacementDeadline(now) ||
-		task.PastDeadline(now)
-
+	return task.PreferredHost() == task.GetPlacement().Hostname() ||
+		task.IsPastDeadline(now)
 }
 
 // findUsedHosts will find the hosts that are used by the retryable assignments.
 func (e *engine) findUsedHosts(
-	retryable []*models.Assignment) []*models.HostOffers {
-	var used []*models.HostOffers
+	retryable []models.Task) []models.Offer {
+	var used []models.Offer
 	for _, assignment := range retryable {
-		if offer := assignment.GetHost(); offer != nil {
+		if offer := assignment.GetPlacement(); offer != nil {
 			used = append(used, offer)
 		}
 	}
@@ -494,23 +490,23 @@ func (e *engine) findUsedHosts(
 
 // findUnusedHosts will find the hosts that are unused by the assigned and retryable assignments.
 func (e *engine) findUnusedHosts(
-	assigned, retryable []*models.Assignment,
-	hosts []*models.HostOffers) []*models.HostOffers {
-	assignments := make([]*models.Assignment, 0, len(assigned)+len(retryable))
+	assigned, retryable []models.Task,
+	hosts []models.Offer) []models.Offer {
+	assignments := make([]models.Task, 0, len(assigned)+len(retryable))
 	assignments = append(assignments, assigned...)
 	assignments = append(assignments, retryable...)
 
 	// For each offer determine if any tasks where assigned to it.
-	usedOffers := map[*models.HostOffers]struct{}{}
+	usedOffers := map[models.Offer]struct{}{}
 	for _, placement := range assignments {
-		offer := placement.GetHost()
+		offer := placement.GetPlacement()
 		if offer == nil {
 			continue
 		}
 		usedOffers[offer] = struct{}{}
 	}
 	// Find the unused hosts
-	unusedOffers := []*models.HostOffers{}
+	unusedOffers := []models.Offer{}
 	for _, offer := range hosts {
 		if _, used := usedOffers[offer]; !used {
 			unusedOffers = append(unusedOffers, offer)
@@ -522,8 +518,8 @@ func (e *engine) findUnusedHosts(
 func (e *engine) cleanup(
 	ctx context.Context,
 	assigned, retryable,
-	unassigned []*models.Assignment,
-	offers []*models.HostOffers) {
+	unassigned []models.Task,
+	offers []models.Offer) {
 
 	// Create the resource manager placements.
 	e.taskService.SetPlacements(
@@ -541,9 +537,9 @@ func (e *engine) cleanup(
 	}
 }
 
-func (e *engine) pastDeadline(now time.Time, assignments []*models.Assignment) bool {
+func (e *engine) pastDeadline(now time.Time, assignments []models.Task) bool {
 	for _, assignment := range assignments {
-		if !assignment.GetTask().PastDeadline(now) {
+		if !assignment.IsPastDeadline(now) {
 			return false
 		}
 	}
@@ -552,16 +548,16 @@ func (e *engine) pastDeadline(now time.Time, assignments []*models.Assignment) b
 
 type concurrencySafeAssignmentSlice struct {
 	sync.RWMutex
-	slice []*models.Assignment
+	slice []models.Task
 }
 
-func (s *concurrencySafeAssignmentSlice) append(a ...*models.Assignment) {
+func (s *concurrencySafeAssignmentSlice) append(a ...models.Task) {
 	s.Lock()
 	s.slice = append(s.slice, a...)
 	s.Unlock()
 }
 
-func (s *concurrencySafeAssignmentSlice) get() []*models.Assignment {
+func (s *concurrencySafeAssignmentSlice) get() []models.Task {
 	s.RLock()
 	defer s.RUnlock()
 	return s.slice

@@ -21,6 +21,8 @@ import (
 	"testing"
 	"time"
 
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	host_mocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
@@ -145,8 +147,7 @@ func TestOfferService_Dequeue(t *testing.T) {
 	hosts, reason = service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, filter)
 	assert.Equal(t, string(filterResultStr), reason)
 	assert.Equal(t, 1, len(hosts))
-	assert.Equal(t, "hostname", hosts[0].GetOffer().Hostname)
-	assert.Equal(t, 1, len(hosts[0].GetTasks()))
+	assert.Equal(t, "hostname", hosts[0].Hostname())
 }
 
 func TestOfferService_Return(t *testing.T) {
@@ -158,12 +159,14 @@ func TestOfferService_Return(t *testing.T) {
 	service := NewService(mockHostManager, mockResourceManager, metrics)
 	ctx := context.Background()
 	hostOffer := &hostsvc.HostOffer{
+		Id:       &peloton.HostOfferID{Value: "pelotonid"},
 		Hostname: "hostname",
+		AgentId:  &mesos.AgentID{Value: &[]string{"agentid"}[0]},
 	}
 	hostOffers := []*hostsvc.HostOffer{
 		hostOffer,
 	}
-	offers := []*models.HostOffers{
+	offers := []models.Offer{
 		models.NewHostOffers(hostOffer, nil, time.Now()),
 	}
 

@@ -40,7 +40,7 @@ func TestBatchPlacePackLoadedHost(t *testing.T) {
 		testutil.SetupHostOffers(),
 	}
 	strategy := New()
-	tasks := models.AssignmentsToTasks(assignments)
+	tasks := models.AssignmentsToPluginsTasks(assignments)
 	placements := strategy.GetTaskPlacements(tasks, offers)
 
 	assert.Equal(t, 0, placements[0])
@@ -61,7 +61,7 @@ func TestBatchGetTaskPlacementsPackFreeHost(t *testing.T) {
 	}
 
 	strategy := New()
-	tasks := models.AssignmentsToTasks(assignments)
+	tasks := models.AssignmentsToPluginsTasks(assignments)
 	placements := strategy.GetTaskPlacements(tasks, offers)
 	assert.Equal(t, 0, placements[0])
 	assert.Equal(t, 0, placements[1])
@@ -82,7 +82,7 @@ func TestBatchGetTaskPlacementsSpread(t *testing.T) {
 	}
 
 	strategy := New()
-	tasks := models.AssignmentsToTasks(assignments)
+	tasks := models.AssignmentsToPluginsTasks(assignments)
 	placements := strategy.GetTaskPlacements(tasks, offers)
 
 	assert.Equal(t, 0, placements[0])
@@ -101,7 +101,7 @@ func TestBatchFiltersWithResources(t *testing.T) {
 	assignments[2].GetTask().GetTask().Resource.CpuLimit += 1.0
 
 	strategy := New()
-	tasks := models.AssignmentsToTasks(assignments)
+	tasks := models.AssignmentsToPluginsTasks(assignments)
 	tasksByNeeds := strategy.GroupTasksByPlacementNeeds(tasks)
 	assert.Equal(t, 2, len(tasksByNeeds))
 	for _, group := range tasksByNeeds {
@@ -128,7 +128,7 @@ func TestBatchFiltersWithPorts(t *testing.T) {
 	assignments[2].GetTask().GetTask().NumPorts = 2
 
 	strategy := New()
-	tasks := models.AssignmentsToTasks(assignments)
+	tasks := models.AssignmentsToPluginsTasks(assignments)
 	tasksByNeeds := strategy.GroupTasksByPlacementNeeds(tasks)
 
 	assert.Equal(t, 2, len(tasksByNeeds))

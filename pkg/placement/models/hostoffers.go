@@ -56,6 +56,11 @@ func (host *HostOffers) ID() string {
 	return host.Offer.GetId().GetValue()
 }
 
+// AgentID returns the AgentID of this offer.
+func (host *HostOffers) AgentID() string {
+	return host.Offer.GetAgentId().GetValue()
+}
+
 // Hostname returns the hostname that this offer belongs to.
 func (host *HostOffers) Hostname() string {
 	return host.Offer.Hostname
@@ -83,6 +88,21 @@ func (host *HostOffers) Data() interface{} {
 	host.lock.Lock()
 	defer host.lock.Unlock()
 	return host.data
+}
+
+// AvailablePortRanges returns the available port ranges.
+func (host *HostOffers) AvailablePortRanges() map[*PortRange]struct{} {
+	availablePortRanges := map[*PortRange]struct{}{}
+	for _, resource := range host.GetOffer().GetResources() {
+		if resource.GetName() != "ports" {
+			continue
+		}
+		for _, portRange := range resource.GetRanges().GetRange() {
+			r := NewPortRange(*portRange.Begin, *portRange.End)
+			availablePortRanges[r] = struct{}{}
+		}
+	}
+	return availablePortRanges
 }
 
 // Age will return the age of the host, which is the time since it was dequeued from the host manager.

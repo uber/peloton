@@ -55,7 +55,7 @@ func TestMimirPlace(t *testing.T) {
 		testutil.SetupHostOffers(),
 	}
 	strategy := setupStrategy()
-	tasks := models.AssignmentsToTasks(assignments)
+	tasks := models.AssignmentsToPluginsTasks(assignments)
 	placements := strategy.GetTaskPlacements(tasks, offers)
 
 	assert.Equal(t, 0, placements[0])
@@ -90,7 +90,7 @@ func TestMimirPlacePreferHostWithMoreResource(t *testing.T) {
 
 	// the host will choose host with more free resources
 	strategy := setupStrategy()
-	tasks := models.AssignmentsToTasks(assignments)
+	tasks := models.AssignmentsToPluginsTasks(assignments)
 	placements := strategy.GetTaskPlacements(tasks, offers)
 	assert.Equal(t, 1, placements[0])
 }
@@ -126,7 +126,7 @@ func TestMimirPlacePreferHostWithDesiredHost(t *testing.T) {
 	// even if it has less resource
 	assignments[0].Task.Task.DesiredHost = hostWithScarceResources.GetOffer().GetHostname()
 	strategy := setupStrategy()
-	tasks := models.AssignmentsToTasks(assignments)
+	tasks := models.AssignmentsToPluginsTasks(assignments)
 	placements := strategy.GetTaskPlacements(tasks, offers)
 	assert.Equal(t, 0, placements[0])
 }
@@ -161,7 +161,7 @@ func TestMimirPlaceIgnoreDesiredHostWhenNoEnoughResource(t *testing.T) {
 	// But it could not as it does not have enough resources for the task.
 	strategy := setupStrategy()
 	assignments[0].Task.Task.DesiredHost = hostWithScarceResources.GetOffer().GetHostname()
-	tasks := models.AssignmentsToTasks(assignments)
+	tasks := models.AssignmentsToPluginsTasks(assignments)
 	placements := strategy.GetTaskPlacements(tasks, offers)
 	assert.Equal(t, 1, placements[0])
 }
@@ -226,7 +226,7 @@ func TestMimirFilters(t *testing.T) {
 	for _, taskType := range taskTypes {
 		strategy.config.TaskType = taskType
 
-		tasks := models.AssignmentsToTasks(assignments)
+		tasks := models.AssignmentsToPluginsTasks(assignments)
 		tasksByNeeds := strategy.GroupTasksByPlacementNeeds(tasks)
 		assert.Equal(t, 4, len(tasksByNeeds))
 

@@ -72,13 +72,13 @@ func TestAssignment(t *testing.T) {
 
 	t.Run("offer", func(t *testing.T) {
 		_, _, _, _, _, assignment := setupAssignmentVariables()
-		assert.Nil(t, assignment.GetHost())
+		assert.Nil(t, assignment.GetPlacement())
 	})
 
 	t.Run("set offer", func(t *testing.T) {
 		_, _, _, host, _, assignment := setupAssignmentVariables()
-		assignment.SetHost(host)
-		assert.Equal(t, host, assignment.GetHost())
+		assignment.SetPlacement(host)
+		assert.Equal(t, host, assignment.GetPlacement())
 	})
 
 	t.Run("log fields", func(t *testing.T) {
@@ -87,7 +87,7 @@ func TestAssignment(t *testing.T) {
 		log.SetLevel(initialLevel)
 
 		_, _, _, host, _, assignment := setupAssignmentVariables()
-		assignment.SetHost(host)
+		assignment.SetPlacement(host)
 		entry, err := log.WithField("foo", assignment).String()
 		assert.NoError(t, err)
 		assert.Contains(t, entry, "foo")

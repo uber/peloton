@@ -165,7 +165,7 @@ func (mimir *mimir) GroupTasksByPlacementNeeds(
 		for _, taskIdx := range group.Tasks {
 			task := tasks[taskIdx]
 			if hostname := task.PreferredHost(); hostname != "" {
-				group.PlacementNeeds.HostHints[task.ID()] = hostname
+				group.PlacementNeeds.HostHints[task.PelotonID()] = hostname
 			}
 		}
 	}

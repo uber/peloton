@@ -20,13 +20,16 @@ import (
 	"errors"
 	"time"
 
+	log "github.com/sirupsen/logrus"
+
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
+
 	"github.com/uber/peloton/pkg/placement/metrics"
 	"github.com/uber/peloton/pkg/placement/models"
-
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -39,10 +42,14 @@ const (
 // Service will manage offers used by any placement strategy.
 type Service interface {
 	// Acquire fetches a batch of offers from the host manager.
-	Acquire(ctx context.Context, fetchTasks bool, taskType resmgr.TaskType, filter *hostsvc.HostFilter) (offers []*models.HostOffers, reason string)
+	Acquire(ctx context.Context,
+		fetchTasks bool,
+		taskType resmgr.TaskType,
+		filter *hostsvc.HostFilter,
+	) (offers []models.Offer, reason string)
 
 	// Release returns the acquired offers back to host manager.
-	Release(ctx context.Context, offers []*models.HostOffers)
+	Release(ctx context.Context, offers []models.Offer)
 }
 
 // NewService will create a new offer service.
@@ -68,7 +75,7 @@ func (s *service) Acquire(
 	ctx context.Context,
 	fetchTasks bool,
 	taskType resmgr.TaskType,
-	filter *hostsvc.HostFilter) (offers []*models.HostOffers, reason string) {
+	filter *hostsvc.HostFilter) (offers []models.Offer, reason string) {
 	// Get list of host -> resources (aggregate of outstanding offers)
 	hostOffers, filterResults, err := s.fetchOffers(ctx, filter)
 	if err != nil {
@@ -145,14 +152,19 @@ func (s *service) Acquire(
 // Release returns the acquired offers back to host manager.
 func (s *service) Release(
 	ctx context.Context,
-	hosts []*models.HostOffers) {
+	hosts []models.Offer) {
 	if len(hosts) == 0 {
 		return
 	}
 
 	hostOffers := make([]*hostsvc.HostOffer, 0, len(hosts))
 	for _, offer := range hosts {
-		hostOffers = append(hostOffers, offer.GetOffer())
+		agentID := offer.AgentID()
+		hostOffers = append(hostOffers, &hostsvc.HostOffer{
+			Id:       &peloton.HostOfferID{Value: offer.ID()},
+			Hostname: offer.Hostname(),
+			AgentId:  &mesos.AgentID{Value: &agentID},
+		})
 	}
 
 	ctx, cancelFunc := context.WithTimeout(ctx, _timeout)
@@ -244,8 +256,8 @@ func (s *service) fetchTasks(
 func (s *service) convertOffers(
 	hostOffers []*hostsvc.HostOffer,
 	tasks map[string]*resmgrsvc.TaskList,
-	now time.Time) []*models.HostOffers {
-	offers := make([]*models.HostOffers, 0, len(hostOffers))
+	now time.Time) []models.Offer {
+	offers := make([]models.Offer, 0, len(hostOffers))
 	for _, hostOffer := range hostOffers {
 		var taskList []*resmgr.Task
 		if tasks != nil && tasks[hostOffer.Hostname] != nil {

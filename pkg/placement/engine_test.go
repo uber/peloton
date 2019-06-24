@@ -141,14 +141,14 @@ func TestEnginePlaceMultipleTasks(t *testing.T) {
 	engine.config.MaxPlacementDuration = time.Second
 	deadline := time.Now().Add(time.Second)
 
-	var assignments []*models.Assignment
+	var assignments []models.Task
 	for i := 0; i < createTasks; i++ {
 		assignment := testutil.SetupAssignment(deadline, 1)
 		assignment.GetTask().GetTask().Resource.CpuLimit = 5
 		assignments = append(assignments, assignment)
 	}
 
-	var hosts []*models.HostOffers
+	var hosts []models.Offer
 	for i := 0; i < createHosts; i++ {
 		hosts = append(hosts, testutil.SetupHostOffers())
 	}
@@ -184,7 +184,7 @@ func TestEnginePlaceMultipleTasks(t *testing.T) {
 
 	var success, failed int
 	for _, assignment := range assignments {
-		if assignment.GetHost() != nil {
+		if assignment.GetPlacement() != nil {
 			success++
 		} else {
 			failed++
@@ -212,7 +212,7 @@ func TestEnginePlaceInPlaceUpdateTasks(t *testing.T) {
 	// placed on the desired host
 	deadline := time.Now().Add(10 * time.Minute)
 
-	var assignments []*models.Assignment
+	var assignments []models.Task
 	for i := 0; i < createTasks; i++ {
 		assignment := testutil.SetupAssignment(deadline, 2)
 		assignment.GetTask().GetTask().Resource.CpuLimit = 1
@@ -226,7 +226,7 @@ func TestEnginePlaceInPlaceUpdateTasks(t *testing.T) {
 		assignments = append(assignments, assignment)
 	}
 
-	var hosts []*models.HostOffers
+	var hosts []models.Offer
 	for i := 0; i < createHosts; i++ {
 		host := testutil.SetupHostOffers()
 		host.Offer.Hostname = fmt.Sprintf("hostname-%d", i)
@@ -271,12 +271,12 @@ func TestEnginePlaceSubsetOfTasksDueToInsufficientResources(t *testing.T) {
 
 	engine.config.MaxPlacementDuration = time.Second
 	deadline := time.Now().Add(time.Second)
-	var assignments []*models.Assignment
+	var assignments []models.Task
 	for i := 0; i < createTasks; i++ {
 		assignment := testutil.SetupAssignment(deadline, 1)
 		assignments = append(assignments, assignment)
 	}
-	var hosts []*models.HostOffers
+	var hosts []models.Offer
 	for i := 0; i < createHosts; i++ {
 		hosts = append(hosts, testutil.SetupHostOffers())
 	}
@@ -316,7 +316,7 @@ func TestEnginePlaceSubsetOfTasksDueToInsufficientResources(t *testing.T) {
 
 	var success, failed int
 	for _, assignment := range assignments {
-		if assignment.GetHost() != nil {
+		if assignment.GetPlacement() != nil {
 			success++
 		} else {
 			failed++
@@ -332,7 +332,7 @@ func TestEnginePlaceNoHostsMakesTaskExceedDeadline(t *testing.T) {
 	defer ctrl.Finish()
 	engine.config.MaxPlacementDuration = time.Millisecond
 	assignment := testutil.SetupAssignment(time.Now().Add(time.Millisecond), 1)
-	assignments := []*models.Assignment{assignment}
+	assignments := []models.Task{assignment}
 
 	mockOfferService.EXPECT().
 		Acquire(
@@ -362,10 +362,10 @@ func TestEnginePlaceTaskExceedMaxRoundsAndGetsPlaced(t *testing.T) {
 	engine.config.MaxPlacementDuration = 1 * time.Second
 
 	host := testutil.SetupHostOffers()
-	offers := []*models.HostOffers{host}
+	offers := []models.Offer{host}
 	assignment := testutil.SetupAssignment(time.Now().Add(1*time.Second), maxRounds)
-	assignment.SetHost(host)
-	assignments := []*models.Assignment{assignment}
+	assignment.SetPlacement(host)
+	assignments := []models.Task{assignment}
 
 	mockStrategy.EXPECT().
 		GetTaskPlacements(
@@ -407,12 +407,12 @@ func TestEnginePlaceTaskExceedMaxPlacementDeadlineGetsPlaced(t *testing.T) {
 	engine.config.MaxPlacementDuration = 1 * time.Second
 
 	host := testutil.SetupHostOffers()
-	offers := []*models.HostOffers{host}
+	offers := []models.Offer{host}
 	assignment := testutil.SetupAssignment(time.Now().Add(1*time.Second), 10)
 	assignment.Task.Task.DesiredHost = "desired-host"
 	assignment.Task.PlacementDeadline = time.Now().Add(-1 * time.Second)
-	assignment.SetHost(host)
-	assignments := []*models.Assignment{assignment}
+	assignment.SetPlacement(host)
+	assignments := []models.Task{assignment}
 
 	mockStrategy.EXPECT().
 		GetTaskPlacements(
@@ -448,13 +448,13 @@ func TestEnginePlaceCallToStrategy(t *testing.T) {
 	engine.config.MaxPlacementDuration = 100 * time.Millisecond
 
 	host := testutil.SetupHostOffers()
-	hosts := []*models.HostOffers{host}
+	hosts := []models.Offer{host}
 	assignment := testutil.SetupAssignment(time.Now(), 1)
-	assignment.SetHost(host)
+	assignment.SetPlacement(host)
 	assignment2 := testutil.SetupAssignment(time.Now(), 1)
-	assignment2.SetHost(host)
+	assignment2.SetPlacement(host)
 	assignment2.Task.Task.Revocable = true
-	assignments := []*models.Assignment{assignment, assignment2}
+	assignments := []models.Task{assignment, assignment2}
 
 	mockTaskService.EXPECT().
 		Dequeue(
@@ -541,16 +541,17 @@ func TestEnginePlaceReservedTasks(t *testing.T) {
 	engine.config.MaxPlacementDuration = time.Second
 	deadline := time.Now().Add(time.Second)
 
-	var assignments []*models.Assignment
+	var assignments []models.Task
 	for i := 0; i < createTasks; i++ {
 		assignment := testutil.SetupAssignment(deadline, 1)
 		assignment.GetTask().GetTask().Resource.CpuLimit = 5
+		if i == 0 || i == 10 {
+			assignment.GetTask().Task.ReadyForHostReservation = true
+		}
 		assignments = append(assignments, assignment)
 	}
-	assignments[0].GetTask().Task.ReadyForHostReservation = true
-	assignments[10].GetTask().Task.ReadyForHostReservation = true
 
-	var hosts []*models.HostOffers
+	var hosts []models.Offer
 	for i := 0; i < createHosts; i++ {
 		hosts = append(hosts, testutil.SetupHostOffers())
 	}
@@ -587,8 +588,8 @@ func TestEnginePlaceReservedTasks(t *testing.T) {
 
 	var success, failed int
 	for _, assignment := range assignments {
-		if !assignment.GetTask().Task.ReadyForHostReservation {
-			if assignment.GetHost() != nil {
+		if !assignment.IsReadyForHostReservation() {
+			if assignment.GetPlacement() != nil {
 				success++
 			} else {
 				failed++
@@ -608,14 +609,14 @@ func TestEngineFindUsedOffers(t *testing.T) {
 	now := time.Now()
 	deadline := now.Add(30 * time.Second)
 	assignment := testutil.SetupAssignment(deadline, 1)
-	assignments := []*models.Assignment{
+	assignments := []models.Task{
 		assignment,
 	}
 	used := engine.findUsedHosts(assignments)
 	assert.Equal(t, 0, len(used))
 
 	host := testutil.SetupHostOffers()
-	assignment.SetHost(host)
+	assignment.SetPlacement(host)
 	used = engine.findUsedHosts(assignments)
 	assert.Equal(t, 1, len(used))
 	assert.Equal(t, host, used[0])
@@ -631,10 +632,10 @@ func TestEngineFilterAssignments(t *testing.T) {
 	host := testutil.SetupHostOffers()
 
 	assignment1 := testutil.SetupAssignment(deadline1, 1) // assigned
-	assignment1.SetHost(host)
+	assignment1.SetPlacement(host)
 
 	assignment2 := testutil.SetupAssignment(deadline2, 2) // assigned
-	assignment2.SetHost(host)
+	assignment2.SetPlacement(host)
 
 	assignment3 := testutil.SetupAssignment(deadline2, 1) // retryable
 
@@ -642,13 +643,13 @@ func TestEngineFilterAssignments(t *testing.T) {
 
 	assignment5 := testutil.SetupAssignment(deadline2, 2) // assigned
 	assignment5.Task.Task.DesiredHost = host.GetOffer().GetHostname()
-	assignment5.SetHost(host)
+	assignment5.SetPlacement(host)
 
 	assignment6 := testutil.SetupAssignment(deadline2, 2) // retryable
 	assignment6.Task.Task.DesiredHost = "another-host"
-	assignment6.SetHost(host)
+	assignment6.SetPlacement(host)
 
-	assignments := []*models.Assignment{
+	assignments := []models.Task{
 		assignment1,
 		assignment2,
 		assignment3,
@@ -659,11 +660,11 @@ func TestEngineFilterAssignments(t *testing.T) {
 
 	assigned, retryable, unassigned := engine.filterAssignments(now, assignments)
 	assert.Equal(t, 3, len(assigned))
-	assert.Equal(t, []*models.Assignment{assignment1, assignment5, assignment2}, assigned)
+	assert.Equal(t, []models.Task{assignment1, assignment5, assignment2}, assigned)
 	assert.Equal(t, 2, len(retryable))
-	assert.Equal(t, []*models.Assignment{assignment3, assignment6}, retryable)
+	assert.Equal(t, []models.Task{assignment3, assignment6}, retryable)
 	assert.Equal(t, 1, len(unassigned))
-	assert.Equal(t, []*models.Assignment{assignment4}, unassigned)
+	assert.Equal(t, []models.Task{assignment4}, unassigned)
 }
 
 func TestEngineCleanup(t *testing.T) {
@@ -671,10 +672,10 @@ func TestEngineCleanup(t *testing.T) {
 	defer ctrl.Finish()
 
 	host := testutil.SetupHostOffers()
-	hosts := []*models.HostOffers{host}
+	hosts := []models.Offer{host}
 	assignment := testutil.SetupAssignment(time.Now(), 1)
-	assignment.SetHost(host)
-	assignments := []*models.Assignment{assignment}
+	assignment.SetPlacement(host)
+	assignments := []models.Task{assignment}
 
 	mockTaskService.EXPECT().
 		SetPlacements(
@@ -696,25 +697,29 @@ func TestEngineFindUnusedOffers(t *testing.T) {
 	assignment2 := testutil.SetupAssignment(deadline, 1)
 	assignment3 := testutil.SetupAssignment(deadline, 1)
 	assignment4 := testutil.SetupAssignment(deadline, 1)
-	assignments := []*models.Assignment{
+	assignments := []models.Task{
 		assignment1,
 		assignment2,
 	}
-	retryable := []*models.Assignment{
+	retryable := []models.Task{
 		assignment3,
 		assignment4,
 	}
 	host1 := testutil.SetupHostOffers()
 	host2 := testutil.SetupHostOffers()
-	assignment1.SetHost(host1)
-	assignment2.SetHost(host1)
-	assignment3.SetHost(host1)
-	offers := []*models.HostOffers{
+	assignment1.SetPlacement(host1)
+	assignment2.SetPlacement(host1)
+	assignment3.SetPlacement(host1)
+	offers := []models.Offer{
 		host1,
 		host2,
 	}
 
-	unused := engine.findUnusedHosts(assignments, retryable, offers)
+	unused := engine.findUnusedHosts(
+		assignments,
+		retryable,
+		offers,
+	)
 	assert.Equal(t, 1, len(unused))
 	assert.Equal(t, host2, unused[0])
 }

@@ -21,6 +21,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
@@ -28,7 +29,6 @@ import (
 	"github.com/uber/peloton/pkg/placement/config"
 	"github.com/uber/peloton/pkg/placement/metrics"
 	"github.com/uber/peloton/pkg/placement/models"
-	"github.com/uber/peloton/pkg/placement/util"
 )
 
 const (
@@ -41,13 +41,13 @@ const (
 // Service will manage gangs/tasks and placements used by any placement strategy.
 type Service interface {
 	// Dequeue fetches some tasks from the service.
-	Dequeue(ctx context.Context, taskType resmgr.TaskType, batchSize int, timeout int) (assignments []*models.Assignment)
+	Dequeue(ctx context.Context, taskType resmgr.TaskType, batchSize int, timeout int) (assignments []models.Task)
 
 	// SetPlacements sets successful and unsuccessful placements back to the service.
 	SetPlacements(
 		ctx context.Context,
-		successFullPlacements []*models.Assignment,
-		failedAssignments []*models.Assignment,
+		successFullPlacements []models.Task,
+		failedAssignments []models.Task,
 	)
 }
 
@@ -74,7 +74,7 @@ func (s *service) Dequeue(
 	ctx context.Context,
 	taskType resmgr.TaskType,
 	batchSize int,
-	timeout int) []*models.Assignment {
+	timeout int) []models.Task {
 	ctx, cancelFunc := context.WithTimeout(ctx, _timeout)
 	defer cancelFunc()
 
@@ -120,7 +120,7 @@ func (s *service) Dequeue(
 	}
 
 	// Create assignments from the tasks but without any offers
-	assignments := make([]*models.Assignment, 0, numberOfTasks)
+	assignments := make([]models.Task, 0, numberOfTasks)
 	now := time.Now()
 	for _, gang := range response.Gangs {
 		for _, task := range s.createTasks(gang, now) {
@@ -149,8 +149,8 @@ func (s *service) Dequeue(
 // SetPlacements sets placements in the resource manager.
 func (s *service) SetPlacements(
 	ctx context.Context,
-	successes []*models.Assignment,
-	failures []*models.Assignment,
+	successes []models.Task,
+	failures []models.Task,
 ) {
 	if len(successes) == 0 && len(failures) == 0 {
 		log.Debug("No task to place")
@@ -167,10 +167,16 @@ func (s *service) SetPlacements(
 		failedPlacements[i] = &resmgrsvc.SetPlacementsRequest_FailedPlacement{
 			Reason: a.GetPlacementFailure(),
 			Gang: &resmgrsvc.Gang{
-				Tasks: []*resmgr.Task{a.GetTask().GetTask()},
+				Tasks: []*resmgr.Task{
+					{
+						Id: &peloton.TaskID{
+							Value: a.PelotonID(),
+						},
+					},
+				},
 			},
 		}
-		log.WithField("task_id", a.ID()).
+		log.WithField("task_id", a.PelotonID()).
 			WithField("reason", a.GetPlacementFailure()).
 			Info("failed placement")
 	}
@@ -220,35 +226,35 @@ func (s *service) SetPlacements(
 	s.metrics.SetPlacementSuccess.Inc(int64(len(successes)))
 }
 
-func (s *service) createPlacements(assigned []*models.Assignment) []*resmgr.Placement {
+func (s *service) createPlacements(assigned []models.Task) []*resmgr.Placement {
 	createPlacementStart := time.Now()
 	// For each offer find all tasks assigned to it.
-	offersToTasks := map[*models.HostOffers][]*models.TaskV0{}
+	offersToTasks := map[models.Offer][]models.Task{}
 	for _, placement := range assigned {
-		task := placement.GetTask()
-		offer := placement.GetHost()
+		offer := placement.GetPlacement()
 		if offer == nil {
 			continue
 		}
 		if _, exists := offersToTasks[offer]; !exists {
-			offersToTasks[offer] = []*models.TaskV0{}
+			offersToTasks[offer] = []models.Task{}
 		}
-		offersToTasks[offer] = append(offersToTasks[offer], task)
+		offersToTasks[offer] = append(offersToTasks[offer], placement)
 	}
 
 	// For each offer create a placement with all the tasks assigned to it.
 	var resPlacements []*resmgr.Placement
 	for offer, tasks := range offersToTasks {
-		selectedPorts := util.AssignPorts(offer, tasks)
+		selectedPorts := models.AssignPorts(offer, tasks)
+		agentID := offer.AgentID()
 		placement := &resmgr.Placement{
-			Hostname: offer.GetOffer().Hostname,
-			AgentId:  offer.GetOffer().AgentId,
+			Hostname: offer.Hostname(),
+			AgentId:  &mesos.AgentID{Value: &agentID},
 			Type:     s.config.TaskType,
 			// TODO: Tasks is actually a list of TaskIDs. Should fix the proto.
 			Tasks:       getTaskIDs(tasks),
 			TaskIDs:     getPlacementTasks(tasks),
-			Ports:       selectedPorts,
-			HostOfferID: offer.GetOffer().GetId(),
+			Ports:       formatPorts(selectedPorts),
+			HostOfferID: &peloton.HostOfferID{Value: offer.ID()},
 		}
 		resPlacements = append(resPlacements, placement)
 	}
@@ -275,21 +281,30 @@ func (s *service) createTasks(gang *resmgrsvc.Gang, now time.Time) []*models.Tas
 	return tasks
 }
 
-func getTaskIDs(tasks []*models.TaskV0) []*peloton.TaskID {
+func getTaskIDs(tasks []models.Task) []*peloton.TaskID {
 	taskIDs := make([]*peloton.TaskID, len(tasks))
 	for i, task := range tasks {
-		taskIDs[i] = task.GetTask().GetId()
+		taskIDs[i] = &peloton.TaskID{Value: task.PelotonID()}
 	}
 	return taskIDs
 }
 
-func getPlacementTasks(tasks []*models.TaskV0) []*resmgr.Placement_Task {
+func getPlacementTasks(tasks []models.Task) []*resmgr.Placement_Task {
 	placementTasks := make([]*resmgr.Placement_Task, len(tasks))
 	for i, task := range tasks {
+		mesosID := task.OrchestrationID()
 		placementTasks[i] = &resmgr.Placement_Task{
-			PelotonTaskID: task.GetTask().GetId(),
-			MesosTaskID:   task.GetTask().GetTaskId(),
+			PelotonTaskID: &peloton.TaskID{Value: task.PelotonID()},
+			MesosTaskID:   &mesos.TaskID{Value: &mesosID},
 		}
 	}
 	return placementTasks
+}
+
+func formatPorts(ports []uint64) []uint32 {
+	result := make([]uint32, len(ports))
+	for i, port := range ports {
+		result[i] = uint32(port)
+	}
+	return result
 }

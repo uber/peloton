@@ -154,11 +154,13 @@ func TestTaskService_SetPlacements(t *testing.T) {
 	defer ctrl.Finish()
 
 	ctx := context.Background()
-	assignments := []*models.Assignment{
-		{
-			HostOffers: &models.HostOffers{
+	assignments := []models.Task{
+		&models.Assignment{
+			Offer: &models.HostOffers{
 				Offer: &hostsvc.HostOffer{
+					Id:       &peloton.HostOfferID{Value: "pelotonid"},
 					Hostname: "hostname",
+					AgentId:  &mesos_v1.AgentID{Value: &[]string{"agentid"}[0]},
 				},
 			},
 			Task: &models.TaskV0{
@@ -245,18 +247,19 @@ func TestCreatePlacement(t *testing.T) {
 	deadline := now.Add(30 * time.Second)
 	host := testutil.SetupHostOffers()
 	assignment1 := testutil.SetupAssignment(deadline, 1)
-	assignment1.SetHost(host)
+	assignment1.SetPlacement(host)
+
 	assignment2 := testutil.SetupAssignment(deadline, 1)
-	assignments := []*models.Assignment{
+	assignments := []models.Task{
 		assignment1,
 		assignment2,
 	}
 
 	placements := service.createPlacements(assignments)
 	assert.Equal(t, 1, len(placements))
-	assert.Equal(t, host.GetOffer().GetHostname(), placements[0].GetHostname())
-	assert.Equal(t, host.GetOffer().GetId(), placements[0].GetHostOfferID())
-	assert.Equal(t, host.GetOffer().AgentId, placements[0].GetAgentId())
+	assert.Equal(t, host.Hostname(), placements[0].GetHostname())
+	assert.Equal(t, host.ID(), placements[0].GetHostOfferID().GetValue())
+	assert.Equal(t, host.AgentID(), placements[0].GetAgentId().GetValue())
 	assert.Equal(t,
 		[]*resmgr.Placement_Task{
 			{

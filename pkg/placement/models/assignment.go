@@ -15,10 +15,13 @@
 package models
 
 import (
+	"time"
+
 	log "github.com/sirupsen/logrus"
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 	"github.com/uber/peloton/pkg/placement/plugins"
 )
@@ -27,23 +30,15 @@ const (
 	_defaultMaxHosts = 1
 )
 
-var _ plugins.Task = &Assignment{}
-
-// AssignmentsToTasks converts a slice of assignments into a slice
-// of tasks for plugin use.
-func AssignmentsToTasks(assignments []*Assignment) []plugins.Task {
-	tasks := []plugins.Task{}
-	for _, a := range assignments {
-		tasks = append(tasks, a)
-	}
-	return tasks
-}
+// Ensure that Assignment implements the Task interface.
+var _ Task = &Assignment{}
 
 // Assignment represents the assignment of a task to a host.
 // One host can be used in multiple assignments.
 type Assignment struct {
-	HostOffers       *HostOffers `json:"host"`
-	Task             *TaskV0     `json:"task"`
+	Task  *TaskV0 `json:"task"`
+	Offer Offer   `json:"host"`
+
 	PlacementFailure string
 }
 
@@ -54,24 +49,42 @@ func NewAssignment(task *TaskV0) *Assignment {
 	}
 }
 
-// GetHost returns the host that the task was assigned to.
-func (a *Assignment) GetHost() *HostOffers {
-	return a.HostOffers
+// IncRounds increments the internal count of placement rounds.
+func (a *Assignment) IncRounds() {
+	a.Task.IncRounds()
 }
 
-// SetHost sets the host in the assignment to the given host.
-func (a *Assignment) SetHost(host *HostOffers) {
-	a.HostOffers = host
+// IsPastMaxRounds returns true if the task has been through too many
+// placement rounds.
+func (a *Assignment) IsPastMaxRounds() bool {
+	return a.Task.PastMaxRounds()
 }
 
-// GetTask returns the task of the assignment.
-func (a *Assignment) GetTask() *TaskV0 {
-	return a.Task
+// IsPastDeadline returns true if the task is past its placement deadline.
+// Additionally, if the task has a preferred host and is past its host placement
+// deadline, it will also return true.
+func (a *Assignment) IsPastDeadline(now time.Time) bool {
+	if a.Task.PastDeadline(now) {
+		return true
+	} else if a.PreferredHost() == "" {
+		return false
+	}
+	return a.Task.PastDesiredHostPlacementDeadline(now)
 }
 
-// SetTask sets the task in the assignment to the given task.
-func (a *Assignment) SetTask(task *TaskV0) {
-	a.Task = task
+// SetPlacement sets the matching offer of this task.
+func (a *Assignment) SetPlacement(offer Offer) {
+	a.Offer = offer
+}
+
+// GetPlacement returns the matching offer of this task.
+func (a *Assignment) GetPlacement() Offer {
+	return a.Offer
+}
+
+// OrchestrationID returns the mesos task ID or pod name.
+func (a *Assignment) OrchestrationID() string {
+	return a.Task.GetTask().GetTaskId().GetValue()
 }
 
 // GetPlacementFailure returns the reason why the assignment was unsuccessful
@@ -84,19 +97,12 @@ func (a *Assignment) SetPlacementFailure(failureReason string) {
 	a.PlacementFailure = failureReason
 }
 
-// GetUsage returns the resource and port usage of this assignment.
-func (a *Assignment) GetUsage() (res scalar.Resources, ports uint64) {
-	res = scalar.FromResourceConfig(a.GetTask().GetTask().GetResource())
-	ports = uint64(a.GetTask().GetTask().GetNumPorts())
-	return
-}
-
 // Fits returns true if the given resources fit in the assignment.
 func (a *Assignment) Fits(
 	resLeft scalar.Resources,
 	portsLeft uint64,
 ) (scalar.Resources, uint64, bool) {
-	resNeeded, portsUsed := a.GetUsage()
+	resNeeded, portsUsed := a.getUsage()
 	if portsLeft < portsUsed {
 		log.WithFields(log.Fields{
 			"resmgr_task":         a.GetTask().GetTask(),
@@ -116,9 +122,9 @@ func (a *Assignment) Fits(
 	return remains, portsLeft - portsUsed, true
 }
 
-// ID returns the id of the task that the assignment represents.
-func (a *Assignment) ID() string {
-	return a.GetTask().GetTask().GetId().GetValue()
+// PelotonID returns the peloton id of the task that the assignment represents.
+func (a *Assignment) PelotonID() string {
+	return a.Task.GetTask().GetId().GetValue()
 }
 
 // NeedsSpread returns whether this task was asked to be spread
@@ -146,7 +152,7 @@ func (a *Assignment) GetPlacementNeeds() plugins.PlacementNeeds {
 		Constraint: rmTask.Constraint,
 	}
 	if a.PreferredHost() != "" {
-		needs.HostHints[a.ID()] = a.PreferredHost()
+		needs.HostHints[a.PelotonID()] = a.PreferredHost()
 	}
 	// To spread out tasks over hosts, request host-manager
 	// to rank hosts randomly instead of a predictable order such
@@ -165,4 +171,26 @@ func (a *Assignment) IsReadyForHostReservation() bool {
 // IsRevocable returns true if the task should run on revocable resources.
 func (a *Assignment) IsRevocable() bool {
 	return a.GetTask().GetTask().Revocable
+}
+
+// getUsage returns the resource and port usage of this assignment.
+func (a *Assignment) getUsage() (res scalar.Resources, ports uint64) {
+	res = scalar.FromResourceConfig(a.Task.GetTask().GetResource())
+	ports = uint64(a.Task.GetTask().GetNumPorts())
+	return
+}
+
+// GetTask returns the task of the assignment.
+func (a *Assignment) GetTask() *TaskV0 {
+	return a.Task
+}
+
+// SetTask sets the task in the assignment to the given task.
+func (a *Assignment) SetTask(task *TaskV0) {
+	a.Task = task
+}
+
+// GetResmgrTaskV0 returns the resource manager task for this assignment.
+func (a *Assignment) GetResmgrTaskV0() *resmgr.Task {
+	return a.Task.GetTask()
 }
