@@ -92,7 +92,6 @@ func NewEngine(
 		strategy:     strategy,
 		pool:         pool,
 		metrics:      scope,
-		hostsService: hostsService,
 	}
 	result.daemon = async.NewDaemon("Placement Engine", result)
 	result.reserver = reserver.NewReserver(scope, config, hostsService, taskService)
@@ -108,7 +107,6 @@ type engine struct {
 	strategy     plugins.Strategy
 	daemon       async.Daemon
 	reserver     reserver.Reserver
-	hostsService hosts.Service
 }
 
 func (e *engine) Start() {
