@@ -23,8 +23,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 
-	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
-
 	"github.com/uber/peloton/pkg/common/async"
 	"github.com/uber/peloton/pkg/placement/config"
 	"github.com/uber/peloton/pkg/placement/hosts"
@@ -32,7 +30,6 @@ import (
 	"github.com/uber/peloton/pkg/placement/models"
 	"github.com/uber/peloton/pkg/placement/offers"
 	"github.com/uber/peloton/pkg/placement/plugins"
-	"github.com/uber/peloton/pkg/placement/plugins/v0"
 	"github.com/uber/peloton/pkg/placement/reserver"
 	"github.com/uber/peloton/pkg/placement/tasks"
 )
@@ -228,14 +225,15 @@ func (e *engine) processAssignments(
 	unfulfilledAssignment := &concurrencySafeAssignmentSlice{}
 	tasks := models.ToPluginTasks(assignments)
 	tasksByNeeds := e.strategy.GroupTasksByPlacementNeeds(tasks)
-	for _, group := range tasksByNeeds {
+	for i := range tasksByNeeds {
+		group := tasksByNeeds[i]
 		batch := []models.Task{}
 		for _, idx := range group.Tasks {
 			batch = append(batch, assignments[idx])
 		}
-		filter := v0_plugins.PlacementNeedsToHostFilter(group.PlacementNeeds)
 		e.pool.Enqueue(async.JobFunc(func(context.Context) {
-			unfulfilledAssignment.append(e.placeAssignmentGroup(ctx, filter, batch)...)
+			unfulfilled := e.placeAssignmentGroup(ctx, group.PlacementNeeds, batch)
+			unfulfilledAssignment.append(unfulfilled...)
 		}))
 	}
 
@@ -253,11 +251,11 @@ func (e *engine) processAssignments(
 // which need to be tried in the next round.
 func (e *engine) placeAssignmentGroup(
 	ctx context.Context,
-	filter *hostsvc.HostFilter,
+	needs plugins.PlacementNeeds,
 	assignments []models.Task) []models.Task {
 	for len(assignments) > 0 {
 		log.WithFields(log.Fields{
-			"filter":          filter,
+			"needs":           needs,
 			"len_assignments": len(assignments),
 			"assignments":     assignments,
 		}).Info("placing assignment group")
@@ -267,7 +265,7 @@ func (e *engine) placeAssignmentGroup(
 			ctx,
 			e.config.FetchOfferTasks,
 			e.config.TaskType,
-			filter)
+			needs)
 
 		existing := e.findUsedHosts(assignments)
 		now := time.Now()
@@ -277,7 +275,7 @@ func (e *engine) placeAssignmentGroup(
 				ctx,
 				e.config.FetchOfferTasks,
 				e.config.TaskType,
-				filter)
+				needs)
 			now = time.Now()
 		}
 
@@ -287,7 +285,7 @@ func (e *engine) placeAssignmentGroup(
 		// We were starved for offers
 		if len(offers) == 0 {
 			log.WithFields(log.Fields{
-				"filter":      filter,
+				"needs":       needs,
 				"assignments": assignments,
 			}).Info("failed to place tasks due to offer starvation")
 			e.returnStarvedAssignments(ctx, assignments, reason)
@@ -323,7 +321,7 @@ func (e *engine) placeAssignmentGroup(
 		assignments = retryable
 
 		log.WithFields(log.Fields{
-			"filter":     filter,
+			"needs":      needs,
 			"assigned":   assigned,
 			"retryable":  retryable,
 			"unassigned": unassigned,

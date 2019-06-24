@@ -231,7 +231,7 @@ func TestMimirFilters(t *testing.T) {
 		assert.Equal(t, 4, len(tasksByNeeds))
 
 		for _, group := range tasksByNeeds {
-			filter := v0_plugins.PlacementNeedsToHostFilter(group.PlacementNeeds)
+			filter := plugins_v0.PlacementNeedsToHostFilter(group.PlacementNeeds)
 			batch := group.Tasks
 			assert.NotNil(t, filter)
 

@@ -20,7 +20,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 
 	"github.com/uber/peloton/pkg/common/async"
@@ -351,8 +350,8 @@ func TestEnginePlaceNoHostsMakesTaskExceedDeadline(t *testing.T) {
 		).Times(1).
 		Return()
 
-	filter := &hostsvc.HostFilter{}
-	engine.placeAssignmentGroup(context.Background(), filter, assignments)
+	needs := plugins.PlacementNeeds{}
+	engine.placeAssignmentGroup(context.Background(), needs, assignments)
 }
 
 func TestEnginePlaceTaskExceedMaxRoundsAndGetsPlaced(t *testing.T) {
@@ -397,8 +396,8 @@ func TestEnginePlaceTaskExceedMaxRoundsAndGetsPlaced(t *testing.T) {
 		).MinTimes(1).
 		Return(offers, _testReason)
 
-	filter := &hostsvc.HostFilter{}
-	engine.placeAssignmentGroup(context.Background(), filter, assignments)
+	needs := plugins.PlacementNeeds{}
+	engine.placeAssignmentGroup(context.Background(), needs, assignments)
 }
 
 func TestEnginePlaceTaskExceedMaxPlacementDeadlineGetsPlaced(t *testing.T) {
@@ -438,8 +437,8 @@ func TestEnginePlaceTaskExceedMaxPlacementDeadlineGetsPlaced(t *testing.T) {
 		).MinTimes(1).
 		Return(offers, _testReason)
 
-	filter := &hostsvc.HostFilter{}
-	engine.placeAssignmentGroup(context.Background(), filter, assignments)
+	needs := plugins.PlacementNeeds{}
+	engine.placeAssignmentGroup(context.Background(), needs, assignments)
 }
 
 func TestEnginePlaceCallToStrategy(t *testing.T) {

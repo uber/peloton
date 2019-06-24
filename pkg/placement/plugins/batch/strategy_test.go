@@ -105,7 +105,7 @@ func TestBatchFiltersWithResources(t *testing.T) {
 	tasksByNeeds := strategy.GroupTasksByPlacementNeeds(tasks)
 	assert.Equal(t, 2, len(tasksByNeeds))
 	for _, group := range tasksByNeeds {
-		filter := v0_plugins.PlacementNeedsToHostFilter(group.PlacementNeeds)
+		filter := plugins_v0.PlacementNeedsToHostFilter(group.PlacementNeeds)
 		batch := group.Tasks
 		assert.Equal(t, uint32(len(batch)), filter.GetQuantity().GetMaxHosts())
 		switch filter.ResourceConstraint.Minimum.CpuLimit {
@@ -133,7 +133,7 @@ func TestBatchFiltersWithPorts(t *testing.T) {
 
 	assert.Equal(t, 2, len(tasksByNeeds))
 	for _, group := range tasksByNeeds {
-		filter := v0_plugins.PlacementNeedsToHostFilter(group.PlacementNeeds)
+		filter := plugins_v0.PlacementNeedsToHostFilter(group.PlacementNeeds)
 		batch := group.Tasks
 		assert.Equal(t, uint32(len(batch)), filter.GetQuantity().GetMaxHosts())
 		switch filter.ResourceConstraint.NumPorts {
@@ -162,7 +162,7 @@ func TestBatchFiltersWithPlacementHint(t *testing.T) {
 	assert.Equal(t, 2, len(tasksByNeeds))
 
 	for _, group := range tasksByNeeds {
-		filter := v0_plugins.PlacementNeedsToHostFilter(group.PlacementNeeds)
+		filter := plugins_v0.PlacementNeedsToHostFilter(group.PlacementNeeds)
 		batch := group.Tasks
 		assert.Equal(t, uint32(len(batch)), filter.GetQuantity().GetMaxHosts())
 		switch filter.ResourceConstraint.NumPorts {

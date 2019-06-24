@@ -28,8 +28,11 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 	resource_mocks "github.com/uber/peloton/.gen/peloton/private/resmgrsvc/mocks"
+
 	"github.com/uber/peloton/pkg/placement/metrics"
 	"github.com/uber/peloton/pkg/placement/models"
+	"github.com/uber/peloton/pkg/placement/plugins"
+	"github.com/uber/peloton/pkg/placement/plugins/v0"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -45,7 +48,8 @@ func TestOfferService_Dequeue(t *testing.T) {
 	service := NewService(mockHostManager, mockResourceManager, metrics)
 
 	ctx := context.Background()
-	filter := &hostsvc.HostFilter{}
+	needs := plugins.PlacementNeeds{}
+	filter := plugins_v0.PlacementNeedsToHostFilter(needs)
 
 	// Acquire Host Offers API call failed.
 	mockHostManager.EXPECT().
@@ -53,7 +57,7 @@ func TestOfferService_Dequeue(t *testing.T) {
 			gomock.Any(),
 			&hostsvc.AcquireHostOffersRequest{Filter: filter}).
 		Return(nil, errors.New("acquire host offers failed"))
-	hosts, reason := service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, filter)
+	hosts, reason := service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, needs)
 	assert.Equal(t, reason, _failedToAcquireHostOffers)
 
 	// Acquire Host Offers API response has error
@@ -67,7 +71,7 @@ func TestOfferService_Dequeue(t *testing.T) {
 					Message: "acquire host offers response err",
 				},
 			}}, nil)
-	hosts, reason = service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, filter)
+	hosts, reason = service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, needs)
 	assert.Equal(t, reason, _failedToAcquireHostOffers)
 
 	// Acquire Host Offers does not return any offer
@@ -78,7 +82,7 @@ func TestOfferService_Dequeue(t *testing.T) {
 		Return(&hostsvc.AcquireHostOffersResponse{
 			HostOffers: nil,
 		}, nil)
-	hosts, reason = service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, filter)
+	hosts, reason = service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, needs)
 	assert.Equal(t, reason, _noHostOffers)
 
 	// Acquire Host Offers get tasks failure
@@ -112,7 +116,7 @@ func TestOfferService_Dequeue(t *testing.T) {
 		mockResourceManager.EXPECT().GetTasksByHosts(gomock.Any(), tasksRequest).
 			Return(nil, errors.New("get tasks by host failed")),
 	)
-	hosts, reason = service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, filter)
+	hosts, reason = service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, needs)
 
 	// Acquire Host Offers successful call
 	gomock.InOrder(
@@ -144,7 +148,7 @@ func TestOfferService_Dequeue(t *testing.T) {
 				Error: nil,
 			}, nil),
 	)
-	hosts, reason = service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, filter)
+	hosts, reason = service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, needs)
 	assert.Equal(t, string(filterResultStr), reason)
 	assert.Equal(t, 1, len(hosts))
 	assert.Equal(t, "hostname", hosts[0].Hostname())

@@ -30,6 +30,9 @@ import (
 
 	"github.com/uber/peloton/pkg/placement/metrics"
 	"github.com/uber/peloton/pkg/placement/models"
+	"github.com/uber/peloton/pkg/placement/offers"
+	"github.com/uber/peloton/pkg/placement/plugins"
+	"github.com/uber/peloton/pkg/placement/plugins/v0"
 )
 
 const (
@@ -39,24 +42,11 @@ const (
 	_timeout                   = 10 * time.Second
 )
 
-// Service will manage offers used by any placement strategy.
-type Service interface {
-	// Acquire fetches a batch of offers from the host manager.
-	Acquire(ctx context.Context,
-		fetchTasks bool,
-		taskType resmgr.TaskType,
-		filter *hostsvc.HostFilter,
-	) (offers []models.Offer, reason string)
-
-	// Release returns the acquired offers back to host manager.
-	Release(ctx context.Context, offers []models.Offer)
-}
-
 // NewService will create a new offer service.
 func NewService(
 	hostManager hostsvc.InternalHostServiceYARPCClient,
 	resourceManager resmgrsvc.ResourceManagerServiceYARPCClient,
-	metrics *metrics.Metrics) Service {
+	metrics *metrics.Metrics) offers.Service {
 	return &service{
 		hostManager:     hostManager,
 		resourceManager: resourceManager,
@@ -75,7 +65,8 @@ func (s *service) Acquire(
 	ctx context.Context,
 	fetchTasks bool,
 	taskType resmgr.TaskType,
-	filter *hostsvc.HostFilter) (offers []models.Offer, reason string) {
+	needs plugins.PlacementNeeds) (offers []models.Offer, reason string) {
+	filter := plugins_v0.PlacementNeedsToHostFilter(needs)
 	// Get list of host -> resources (aggregate of outstanding offers)
 	hostOffers, filterResults, err := s.fetchOffers(ctx, filter)
 	if err != nil {

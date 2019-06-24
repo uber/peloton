@@ -35,7 +35,7 @@ import (
 	"github.com/uber/peloton/pkg/placement/config"
 	"github.com/uber/peloton/pkg/placement/hosts"
 	tally_metrics "github.com/uber/peloton/pkg/placement/metrics"
-	"github.com/uber/peloton/pkg/placement/offers"
+	offers_v0 "github.com/uber/peloton/pkg/placement/offers/v0"
 	"github.com/uber/peloton/pkg/placement/plugins"
 	"github.com/uber/peloton/pkg/placement/plugins/batch"
 	mimir_strategy "github.com/uber/peloton/pkg/placement/plugins/mimir"
@@ -371,7 +371,7 @@ func main() {
 		dispatcher.ClientConfig(common.PelotonResourceManager))
 	hostManager := hostsvc.NewInternalHostServiceYARPCClient(
 		dispatcher.ClientConfig(common.PelotonHostManager))
-	offerService := offers.NewService(
+	offerService := offers_v0.NewService(
 		hostManager,
 		resourceManager,
 		tallyMetrics,

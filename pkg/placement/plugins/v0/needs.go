@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package v0_plugins
+package plugins_v0
 
 import (
 	peloton_api_v0_peloton "github.com/uber/peloton/.gen/peloton/api/v0/peloton"
