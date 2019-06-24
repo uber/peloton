@@ -22,3 +22,6 @@ event_publisher:
   publish_events: false
   # 16mb - increase size to workaround update instance event blowing up
   grpc_msg_size: 16777216
+
+rate_limit:
+  enabled: false

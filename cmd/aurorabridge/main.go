@@ -232,6 +232,12 @@ func main() {
 			Fatal("Could not enable security feature")
 	}
 
+	rateLimitMiddleware, err := inbound.NewRateLimitInboundMiddleware(cfg.RateLimit)
+	if err != nil {
+		log.WithError(err).
+			Fatal("Could not create rate limit middleware")
+	}
+
 	authInboundMiddleware := inbound.NewAuthInboundMiddleware(securityManager)
 
 	securityClient, err := auth_impl.CreateNewSecurityClient(&cfg.Auth)
@@ -250,9 +256,9 @@ func main() {
 			Tally: rootScope,
 		},
 		InboundMiddleware: yarpc.InboundMiddleware{
-			Unary:  authInboundMiddleware,
-			Stream: authInboundMiddleware,
-			Oneway: authInboundMiddleware,
+			Unary:  yarpc.UnaryInboundMiddleware(rateLimitMiddleware, authInboundMiddleware),
+			Stream: yarpc.StreamInboundMiddleware(rateLimitMiddleware, authInboundMiddleware),
+			Oneway: yarpc.OnewayInboundMiddleware(rateLimitMiddleware, authInboundMiddleware),
 		},
 		OutboundMiddleware: yarpc.OutboundMiddleware{
 			Unary:  authOutboundMiddleware,

@@ -16,11 +16,12 @@ package main
 
 import (
 	"github.com/uber/peloton/pkg/aurorabridge"
-	auth "github.com/uber/peloton/pkg/auth"
+	"github.com/uber/peloton/pkg/auth"
 	"github.com/uber/peloton/pkg/common/health"
 	"github.com/uber/peloton/pkg/common/leader"
 	"github.com/uber/peloton/pkg/common/logging"
 	"github.com/uber/peloton/pkg/common/metrics"
+	"github.com/uber/peloton/pkg/middleware/inbound"
 )
 
 // Config defines aurorabridge configuration.
@@ -36,4 +37,5 @@ type Config struct {
 	ServiceHandler aurorabridge.ServiceHandlerConfig `yaml:"service_handler"`
 	EventPublisher aurorabridge.EventPublisherConfig `yaml:"event_publisher"`
 	Auth           auth.Config                       `yaml:"auth"`
+	RateLimit      inbound.RateLimitConfig           `yaml:"rate_limit"`
 }
