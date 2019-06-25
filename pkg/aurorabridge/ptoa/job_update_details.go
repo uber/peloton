@@ -45,7 +45,7 @@ func NewJobUpdateDetails(
 	}
 
 	workflowEvents := workflow.GetEvents()
-	var updateEvents []*api.JobUpdateEvent
+	updateEvents := []*api.JobUpdateEvent{}
 	for i := range workflowEvents {
 		// Assuming peloton workflow events are sorted in descending order
 		pe := workflowEvents[len(workflowEvents)-1-i]
@@ -64,7 +64,7 @@ func NewJobUpdateDetails(
 		return nil, err
 	}
 
-	var instanceUpdateEvents []*api.JobInstanceUpdateEvent
+	instanceUpdateEvents := []*api.JobInstanceUpdateEvent{}
 	for _, events := range workflow.GetInstanceEvents() {
 		id := events.GetInstanceId()
 		instanceEvents := events.GetEvents()

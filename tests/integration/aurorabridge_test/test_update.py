@@ -145,7 +145,7 @@ def test__simple_update_with_no_diff(client):
 
     res = client.get_job_update_details(None, api.JobUpdateQuery(key=res.key))
     assert len(res.detailsList[0].updateEvents) > 0
-    assert res.detailsList[0].instanceEvents is None
+    assert len(res.detailsList[0].instanceEvents) == 0
 
     # Do another update with same config, which will yield no impact
     res = client.start_job_update(
@@ -156,7 +156,7 @@ def test__simple_update_with_no_diff(client):
 
     res = client.get_job_update_details(None, api.JobUpdateQuery(key=res.key))
     assert len(res.detailsList[0].updateEvents) > 0
-    assert res.detailsList[0].instanceEvents is None
+    assert len(res.detailsList[0].instanceEvents) == 0
 
 
 def test__simple_update_with_diff(client):
@@ -200,7 +200,7 @@ def test__simple_update_with_diff(client):
 
     res = client.get_job_update_details(None, api.JobUpdateQuery(key=res.key))
     assert len(res.detailsList[0].updateEvents) > 0
-    assert res.detailsList[0].instanceEvents is None
+    assert len(res.detailsList[0].instanceEvents) == 0
 
 
 def test__override_rolling_forward_update(client):
