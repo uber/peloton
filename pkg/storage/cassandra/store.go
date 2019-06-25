@@ -37,6 +37,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/update"
 	pb_volume "github.com/uber/peloton/.gen/peloton/api/v0/volume"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
+	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
 	"github.com/uber/peloton/pkg/common"
@@ -402,6 +403,7 @@ func (s *Store) CreateTaskConfig(
 	instanceID int64,
 	taskConfig *task.TaskConfig,
 	configAddOn *models.ConfigAddOn,
+	podSpec *pbpod.PodSpec,
 	version uint64,
 ) error {
 	configBuffer, err := proto.Marshal(taskConfig)
@@ -418,6 +420,18 @@ func (s *Store) CreateTaskConfig(
 		return err
 	}
 
+	var specBuffer []byte
+	apiVersion := common.V0Api
+	if podSpec != nil {
+		specBuffer, err = proto.Marshal(podSpec)
+		if err != nil {
+			s.metrics.TaskMetrics.TaskCreateConfigFail.Inc(1)
+			log.WithError(err).Error("Failed to marshal podSpec")
+			return err
+		}
+		apiVersion = common.V1AlphaApi
+	}
+
 	queryBuilder := s.DataStore.NewQuery()
 
 	stmt := queryBuilder.Insert(taskConfigV2Table).
@@ -427,14 +441,20 @@ func (s *Store) CreateTaskConfig(
 			"instance_id",
 			"creation_time",
 			"config",
-			"config_addon").
+			"config_addon",
+			"spec",
+			"api_version",
+		).
 		Values(
 			id.GetValue(),
 			version,
 			instanceID,
 			time.Now().UTC(),
 			configBuffer,
-			addOnBuffer)
+			addOnBuffer,
+			specBuffer,
+			apiVersion,
+		)
 
 	err = s.applyStatement(ctx, stmt, id.GetValue())
 	if err != nil {
@@ -1229,6 +1249,47 @@ func (s *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint
 		resultMap[taskInfo.InstanceId] = taskInfo
 	}
 	return resultMap, nil
+}
+
+// GetPodSpec gets the pod spec for an instance
+func (s *Store) GetPodSpec(
+	ctx context.Context,
+	id *peloton.JobID,
+	instanceID uint32,
+	version uint64,
+) (*pbpod.PodSpec, error) {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select("spec").From(taskConfigV2Table).
+		Where(
+			qb.Eq{
+				"job_id":  id.GetValue(),
+				"version": version,
+				"instance_id": []interface{}{
+					instanceID, common.DefaultTaskConfigID},
+			})
+	allResults, err := s.executeRead(ctx, stmt)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(allResults) == 0 {
+		return nil, yarpcerrors.NotFoundErrorf(
+			"task:%s not found",
+			fmt.Sprintf(taskIDFmt, id.GetValue(), int(instanceID)))
+	}
+
+	var podSpec pbpod.PodSpec
+	value := allResults[len(allResults)-1]
+	if specBuffer, ok := value["spec"].([]byte); ok {
+		if len(specBuffer) > 0 {
+			err := proto.Unmarshal([]byte(specBuffer), &podSpec)
+			if err != nil {
+				return nil, err
+			}
+			return &podSpec, nil
+		}
+	}
+	return nil, nil
 }
 
 // GetTaskConfig returns the task specific config

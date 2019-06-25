@@ -3748,6 +3748,7 @@ func (suite *jobTestSuite) TestRollbackWorkflowSuccess() {
 			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),
+			gomock.Any(),
 			jobVersion+1,
 		).Return(nil)
 
@@ -3954,6 +3955,7 @@ func (suite *jobTestSuite) TestRollbackWorkflowGetTargetConfigFailure() {
 			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),
+			gomock.Any(),
 			jobVersion+1,
 		).Return(nil)
 
@@ -4041,6 +4043,7 @@ func (suite *jobTestSuite) TestRollbackWorkflowCopyConfigFailure() {
 		CreateTaskConfig(
 			gomock.Any(),
 			suite.jobID,
+			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),
@@ -4152,6 +4155,7 @@ func (suite *jobTestSuite) TestRollbackWorkflowSuccessAfterModifyUpdateFails() {
 		CreateTaskConfig(
 			gomock.Any(),
 			suite.jobID,
+			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),
@@ -4267,6 +4271,7 @@ func (suite *jobTestSuite) TestRollbackWorkflowSuccessAfterModifyUpdateFails() {
 			CreateTaskConfig(
 				gomock.Any(),
 				suite.jobID,
+				gomock.Any(),
 				gomock.Any(),
 				gomock.Any(),
 				gomock.Any(),
@@ -4393,6 +4398,7 @@ func (suite *jobTestSuite) TestRollbackWorkflowSuccessAfterJobRuntimeUpdateDBWri
 		CreateTaskConfig(
 			gomock.Any(),
 			suite.jobID,
+			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),
@@ -4556,6 +4562,7 @@ func (suite *jobTestSuite) TestRollbackWorkflowSuccessAfterJobRuntimeDBWriteSucc
 			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),
+			gomock.Any(),
 			jobVersion+1,
 		).Return(nil)
 
@@ -4670,6 +4677,7 @@ func (suite *jobTestSuite) TestJobCreateTaskConfigsSuccess() {
 			int64(-1),
 			jobConfig.GetDefaultConfig(),
 			gomock.Any(),
+			nil,
 			jobConfig.GetChangeLog().GetVersion()).
 		Return(nil)
 
@@ -4681,6 +4689,7 @@ func (suite *jobTestSuite) TestJobCreateTaskConfigsSuccess() {
 				int64(i),
 				taskConfig,
 				gomock.Any(),
+				nil,
 				jobConfig.GetChangeLog().GetVersion()).
 			Return(nil)
 	}
@@ -4691,6 +4700,92 @@ func (suite *jobTestSuite) TestJobCreateTaskConfigsSuccess() {
 			suite.jobID,
 			jobConfig,
 			&models.ConfigAddOn{},
+			nil,
+		),
+	)
+}
+
+// TestJobCreateTaskConfigsWithSpec tests success case of creating
+// task configs along with with pod spec
+func (suite *jobTestSuite) TestJobCreateTaskConfigsWithSpec() {
+	instanceCount := uint32(10)
+	jobConfig := &pbjob.JobConfig{
+		ChangeLog: &peloton.ChangeLog{
+			Version: 1,
+		},
+		DefaultConfig: &pbtask.TaskConfig{
+			Name: "instance",
+			Resource: &pbtask.ResourceConfig{
+				CpuLimit:    0.8,
+				MemLimitMb:  800,
+				DiskLimitMb: 1500,
+			},
+		},
+		InstanceCount: instanceCount,
+		InstanceConfig: map[uint32]*pbtask.TaskConfig{
+			2: {
+				Name: "instance2",
+				Resource: &pbtask.ResourceConfig{
+					CpuLimit:    1,
+					MemLimitMb:  500,
+					DiskLimitMb: 1000,
+				},
+			},
+			4: {
+				Name: "instance4",
+				Resource: &pbtask.ResourceConfig{
+					CpuLimit:    1,
+					MemLimitMb:  600,
+					DiskLimitMb: 1200,
+				},
+			},
+		},
+	}
+
+	podSpec := &pbpod.PodSpec{
+		PodName:    &v1alphapeloton.PodName{Value: "test-pod"},
+		Containers: []*pbpod.ContainerSpec{{}},
+	}
+	jobSpec := &stateless.JobSpec{
+		DefaultSpec: podSpec,
+		InstanceSpec: map[uint32]*pbpod.PodSpec{
+			2: podSpec,
+			4: podSpec,
+		},
+		Revision: &v1alphapeloton.Revision{Version: 1},
+	}
+
+	suite.taskStore.EXPECT().
+		CreateTaskConfig(
+			gomock.Any(),
+			suite.jobID,
+			int64(-1),
+			jobConfig.GetDefaultConfig(),
+			gomock.Any(),
+			jobSpec.GetDefaultSpec(),
+			jobConfig.GetChangeLog().GetVersion()).
+		Return(nil)
+
+	for i, taskConfig := range jobConfig.GetInstanceConfig() {
+		suite.taskStore.EXPECT().
+			CreateTaskConfig(
+				gomock.Any(),
+				suite.jobID,
+				int64(i),
+				taskConfig,
+				gomock.Any(),
+				podSpec,
+				jobConfig.GetChangeLog().GetVersion()).
+			Return(nil)
+	}
+
+	suite.NoError(
+		suite.job.CreateTaskConfigs(
+			context.Background(),
+			suite.jobID,
+			jobConfig,
+			&models.ConfigAddOn{},
+			jobSpec,
 		),
 	)
 }
@@ -4735,6 +4830,7 @@ func (suite *jobTestSuite) TestJobCreateTaskConfigsNoDefaultConfigSuccess() {
 				int64(i),
 				taskConfig,
 				gomock.Any(),
+				nil,
 				jobConfig.GetChangeLog().GetVersion()).
 			Return(nil)
 	}
@@ -4745,6 +4841,7 @@ func (suite *jobTestSuite) TestJobCreateTaskConfigsNoDefaultConfigSuccess() {
 			suite.jobID,
 			jobConfig,
 			&models.ConfigAddOn{},
+			nil,
 		),
 	)
 }
@@ -4777,6 +4874,7 @@ func (suite *jobTestSuite) TestJobCreateTaskConfigsFailureToCreateDefaultConfig(
 			int64(-1),
 			jobConfig.GetDefaultConfig(),
 			gomock.Any(),
+			nil,
 			jobConfig.GetChangeLog().GetVersion()).
 		Return(yarpcerrors.InternalErrorf("test error"))
 
@@ -4786,6 +4884,7 @@ func (suite *jobTestSuite) TestJobCreateTaskConfigsFailureToCreateDefaultConfig(
 			suite.jobID,
 			jobConfig,
 			&models.ConfigAddOn{},
+			nil,
 		),
 	)
 }

@@ -106,6 +106,12 @@ type JobConfigOps interface {
 		version uint64,
 	) (*JobConfigOpsResult, error)
 
+	// GetResultCurrentVersion retrieves current version of job_config
+	GetResultCurrentVersion(
+		ctx context.Context,
+		id *peloton.JobID,
+	) (*JobConfigOpsResult, error)
+
 	// Delete removes an object from the table.
 	Delete(ctx context.Context, id *peloton.JobID, version uint64) error
 }
@@ -309,6 +315,19 @@ func (d *jobConfigOps) Get(
 
 	d.store.metrics.OrmJobMetrics.JobConfigGet.Inc(1)
 	return config, configAddOn, nil
+}
+
+// GetResultCurrentVersion gets the latest version JobConfigObject from DB
+func (d *jobConfigOps) GetResultCurrentVersion(
+	ctx context.Context,
+	id *peloton.JobID,
+) (*JobConfigOpsResult, error) {
+	// Get latest version from job runtime
+	runtime, err := d.jobRuntimeOps.Get(ctx, id)
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to get Job Runtime")
+	}
+	return d.GetResult(ctx, id, runtime.GetConfigurationVersion())
 }
 
 // GetResult gets a row from DB and returns it as JobConfigOpsResult

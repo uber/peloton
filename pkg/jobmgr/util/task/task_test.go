@@ -70,6 +70,7 @@ func (suite *TaskTestSuite) TestTasksRunInParallel() {
 			int64(id),
 			taskConfig,
 			nil,
+			nil,
 			1,
 		)
 	}
@@ -81,6 +82,7 @@ func (suite *TaskTestSuite) TestTasksRunInParallel() {
 				suite.jobID,
 				int64(i),
 				taskConfig,
+				nil,
 				nil,
 				uint64(1)).
 			Return(nil)
@@ -109,6 +111,7 @@ func (suite *TaskTestSuite) TestTaskRunInParallelFail() {
 			int64(id),
 			taskConfig,
 			nil,
+			nil,
 			1,
 		)
 	}
@@ -119,6 +122,7 @@ func (suite *TaskTestSuite) TestTaskRunInParallelFail() {
 			suite.jobID,
 			gomock.Any(),
 			taskConfig,
+			nil,
 			nil,
 			uint64(1)).
 		Return(yarpcerrors.AbortedErrorf("db error")).

@@ -291,7 +291,7 @@ func (suite *MockDatastoreTestSuite) TestCreateTaskConfigFailures() {
 	}
 
 	err := suite.store.CreateTaskConfig(context.Background(), jobID,
-		0, &task.TaskConfig{Name: "dummy-task"}, nil, 0)
+		0, &task.TaskConfig{Name: "dummy-task"}, nil, nil, 0)
 	suite.Error(err)
 }
 

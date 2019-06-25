@@ -34,6 +34,8 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/update"
 	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
+	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
 	"github.com/uber/peloton/pkg/common"
@@ -185,6 +187,7 @@ func createTaskConfigs(ctx context.Context, id *peloton.JobID, jobConfig *job.Jo
 			common.DefaultTaskConfigID,
 			jobConfig.GetDefaultConfig(),
 			configAddOn,
+			nil,
 			version,
 		); err != nil {
 			return err
@@ -200,6 +203,7 @@ func createTaskConfigs(ctx context.Context, id *peloton.JobID, jobConfig *job.Jo
 			int64(instanceID),
 			merged,
 			configAddOn,
+			nil,
 			version,
 		); err != nil {
 			return err
@@ -1420,6 +1424,7 @@ func (suite *CassandraStoreTestSuite) TestTaskVersionMigration() {
 			0,
 			&task.TaskConfig{},
 			configAddOn,
+			nil,
 			0,
 		),
 	)
@@ -1483,20 +1488,28 @@ func (suite *CassandraStoreTestSuite) TestGetTaskConfigs() {
 	}
 
 	// create default task config
-	store.CreateTaskConfig(context.Background(), jobID,
+	store.CreateTaskConfig(
+		context.Background(),
+		jobID,
 		common.DefaultTaskConfigID,
 		&task.TaskConfig{
 			Name: "default",
-		}, configAddOn,
+		},
+		configAddOn,
+		nil,
 		0)
 
 	// create 5 tasks with versions
 	for i := int64(0); i < 5; i++ {
-		suite.NoError(store.CreateTaskConfig(context.Background(), jobID,
+		suite.NoError(store.CreateTaskConfig(
+			context.Background(),
+			jobID,
 			i,
 			&task.TaskConfig{
 				Name: fmt.Sprintf("task-%d", i),
-			}, configAddOn,
+			},
+			configAddOn,
+			nil,
 			0))
 		instanceIDs = append(instanceIDs, uint32(i))
 	}
@@ -2705,7 +2718,14 @@ func (suite *CassandraStoreTestSuite) TestGetTaskRuntime() {
 	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
 	configAddOn := &models.ConfigAddOn{}
 	var tID = fmt.Sprintf("%s-%d-%d", jobID.GetValue(), 0, 1)
-	suite.NoError(store.CreateTaskConfig(context.Background(), jobID, 0, &task.TaskConfig{}, configAddOn, 0))
+	suite.NoError(store.CreateTaskConfig(
+		context.Background(),
+		jobID,
+		0,
+		&task.TaskConfig{},
+		configAddOn,
+		nil,
+		0))
 	suite.NoError(store.CreateTaskRuntime(
 		context.Background(),
 		jobID,
@@ -3521,8 +3541,74 @@ func (suite *CassandraStoreTestSuite) TestCreateTaskConfigSuccess() {
 		0,
 		taskConfig,
 		&models.ConfigAddOn{},
+		nil,
 		1,
 	))
+}
+
+// TestCreateGetPodSpec tests success case of creating and retrieving podSpec.
+func (suite *CassandraStoreTestSuite) TestCreateGetPodSpec() {
+	taskConfig := &task.TaskConfig{
+		Name: testJob,
+		Resource: &task.ResourceConfig{
+			CpuLimit:    0.8,
+			MemLimitMb:  800,
+			DiskLimitMb: 1500,
+		},
+	}
+
+	podSpec := &pbpod.PodSpec{
+		PodName:    &v1alphapeloton.PodName{Value: "test-pod"},
+		Containers: []*pbpod.ContainerSpec{{}},
+	}
+	suite.NoError(store.CreateTaskConfig(
+		context.Background(),
+		&peloton.JobID{Value: testJob},
+		0,
+		taskConfig,
+		&models.ConfigAddOn{},
+		podSpec,
+		1,
+	))
+
+	spec, err := store.GetPodSpec(
+		context.Background(),
+		&peloton.JobID{Value: testJob},
+		0,
+		1,
+	)
+
+	suite.NoError(err)
+	suite.Equal(podSpec, spec)
+
+	_, err = store.GetPodSpec(
+		context.Background(),
+		&peloton.JobID{Value: uuid.New()},
+		0,
+		1,
+	)
+	suite.Error(err)
+
+	// Try to create a config with pod spec set to nil for instance id 1
+	// and then try GetPodSpec() call. It should return a not found error.
+	suite.NoError(store.CreateTaskConfig(
+		context.Background(),
+		&peloton.JobID{Value: testJob},
+		1,
+		taskConfig,
+		&models.ConfigAddOn{},
+		nil,
+		1,
+	))
+
+	spec, err = store.GetPodSpec(
+		context.Background(),
+		&peloton.JobID{Value: testJob},
+		1,
+		1,
+	)
+	suite.NoError(err)
+	suite.Nil(spec)
 }
 
 // TestTaskConfigsForLegacyJobs tests if a legacy task config be retrieved

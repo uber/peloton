@@ -116,6 +116,12 @@ func (s *JobConfigObjectTestSuite) TestGetCurrentVersion() {
 	s.NoError(err)
 	s.True(proto.Equal(config, s.config))
 	s.True(proto.Equal(configAddOn, s.configAddOn))
+
+	obj, err := jobConfigOps.GetResultCurrentVersion(ctx, s.jobID)
+	s.NoError(err)
+	s.True(proto.Equal(obj.JobConfig, s.config))
+	s.True(proto.Equal(obj.ConfigAddOn, s.configAddOn))
+	s.True(proto.Equal(obj.JobSpec, s.spec))
 }
 
 // TestCreateGetDeleteJobConfigFail tests failure cases due to ORM Client errors
@@ -130,7 +136,7 @@ func (s *JobConfigObjectTestSuite) TestCreateGetDeleteJobConfigFail() {
 	mockClient.EXPECT().CreateIfNotExists(gomock.Any(), gomock.Any()).
 		Return(errors.New("createifnotexists failed"))
 	mockClient.EXPECT().Get(gomock.Any(), gomock.Any()).
-		Return(errors.New("get failed")).Times(3)
+		Return(errors.New("get failed")).Times(4)
 	mockClient.EXPECT().Delete(gomock.Any(), gomock.Any()).
 		Return(errors.New("delete failed"))
 
@@ -158,6 +164,10 @@ func (s *JobConfigObjectTestSuite) TestCreateGetDeleteJobConfigFail() {
 	_, err = configOps.GetResult(ctx, s.jobID, version)
 	s.Error(err)
 	s.Equal("get failed", err.Error())
+
+	_, err = configOps.GetResultCurrentVersion(ctx, s.jobID)
+	s.Error(err)
+	s.Equal("Failed to get Job Runtime: get failed", err.Error())
 
 	err = configOps.Delete(ctx, s.jobID, version)
 	s.Error(err)

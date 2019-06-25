@@ -27,6 +27,7 @@ import (
 	pbupdate "github.com/uber/peloton/.gen/peloton/api/v0/update"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
 	"github.com/uber/peloton/pkg/common"
@@ -62,6 +63,7 @@ type Job interface {
 		jobID *peloton.JobID,
 		jobConfig *pbjob.JobConfig,
 		configAddOn *models.ConfigAddOn,
+		spec *stateless.JobSpec,
 	) error
 
 	// CreateTaskRuntimes creates the task runtimes in cache and DB.
@@ -461,6 +463,7 @@ func (j *job) CreateTaskConfigs(
 	jobID *peloton.JobID,
 	jobConfig *pbjob.JobConfig,
 	configAddOn *models.ConfigAddOn,
+	spec *stateless.JobSpec,
 ) error {
 	if jobConfig.GetDefaultConfig() != nil {
 		// Create default task config in DB
@@ -470,6 +473,7 @@ func (j *job) CreateTaskConfigs(
 			common.DefaultTaskConfigID,
 			jobConfig.GetDefaultConfig(),
 			configAddOn,
+			spec.GetDefaultSpec(),
 			jobConfig.GetChangeLog().GetVersion(),
 		); err != nil {
 			log.WithError(err).
@@ -483,6 +487,7 @@ func (j *job) CreateTaskConfigs(
 
 	createSingleTaskConfig := func(id uint32) error {
 		var cfg *pbtask.TaskConfig
+		var instanceSpec, podSpec *pbpod.PodSpec
 		var ok bool
 		if cfg, ok = jobConfig.GetInstanceConfig()[id]; !ok {
 			return yarpcerrors.NotFoundErrorf(
@@ -491,12 +496,28 @@ func (j *job) CreateTaskConfigs(
 		}
 		taskConfig := taskconfig.Merge(jobConfig.GetDefaultConfig(), cfg)
 
+		if spec != nil {
+			// The assumption here is that if the spec is present, it has
+			// already been converted to v0 JobConfig. So the id can be
+			// used to retrieve InstanceSpec in the same way as InstanceConfig
+			if instanceSpec, ok = spec.GetInstanceSpec()[id]; !ok {
+				return yarpcerrors.NotFoundErrorf(
+					"failed to get pod spec for instance %v", id,
+				)
+			}
+			podSpec = taskconfig.MergePodSpec(
+				spec.GetDefaultSpec(),
+				instanceSpec,
+			)
+		}
+
 		return j.jobFactory.taskStore.CreateTaskConfig(
 			ctx,
 			jobID,
 			int64(id),
 			taskConfig,
 			configAddOn,
+			podSpec,
 			jobConfig.GetChangeLog().GetVersion(),
 		)
 	}
@@ -2218,7 +2239,13 @@ func (j *job) copyJobAndTaskConfig(
 		Version: configCopy.GetChangeLog().GetVersion(),
 	}
 	// copy task configs
-	if err = j.CreateTaskConfigs(ctx, j.id, jobConfig, configAddOn); err != nil {
+	if err = j.CreateTaskConfigs(
+		ctx,
+		j.id,
+		jobConfig,
+		configAddOn,
+		spec,
+	); err != nil {
 		return nil, errors.Wrap(err,
 			"failed to create task configs for workflow rolling back")
 	}
