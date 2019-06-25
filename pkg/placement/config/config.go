@@ -19,6 +19,7 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/pkg/auth"
+	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/common/health"
 	"github.com/uber/peloton/pkg/common/leader"
 	"github.com/uber/peloton/pkg/common/logging"
@@ -103,6 +104,10 @@ type PlacementConfig struct {
 	// MaxDesiredHostPlacementDuration is the max time duration to try to
 	// place a task on the desired host.
 	MaxDesiredHostPlacementDuration time.Duration `yaml:"max_desired_host_placement_duration"`
+
+	// HostManagerAPIVersion is the API version that the placement engine
+	// should use to talk to host manager.
+	HostManagerAPIVersion api.Version `yaml:"hostmgr_api_version"`
 }
 
 // MaxRoundsConfig is the config of the maximal number of successful rounds
