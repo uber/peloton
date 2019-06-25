@@ -491,7 +491,7 @@ def test__update_with_pinned_instances__start_stopped_instances(client):
 
     res = client.get_job_update_details(None, api.JobUpdateQuery(key=res.key))
     assert len(res.detailsList) == 1
-    assert res.detailsList[0].instanceEvents is None
+    assert len(res.detailsList[0].instanceEvents) == 0
 
     res = client.get_tasks_without_configs(
         api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
@@ -617,7 +617,7 @@ def test__update_with_pinned_instances__start_stopped_instances_all(client):
 
     res = client.get_job_update_details(None, api.JobUpdateQuery(key=res.key))
     assert len(res.detailsList) == 1
-    assert res.detailsList[0].instanceEvents is None
+    assert len(res.detailsList[0].instanceEvents) == 0
 
     res = client.get_tasks_without_configs(
         api.TaskQuery(jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING})
