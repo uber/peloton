@@ -63,32 +63,6 @@ type Task interface {
 	// Job identifier the task belongs to.
 	JobID() *peloton.JobID
 
-	// CreateTask creates the task runtime in DB and cache
-	CreateTask(ctx context.Context, runtime *pbtask.RuntimeInfo, owner string) error
-
-	// PatchTask patches diff to the existing runtime cache
-	// in task and persists to DB.
-	PatchTask(ctx context.Context, diff jobmgrcommon.RuntimeDiff) error
-
-	// CompareAndSetTask replaces the exiting task runtime in DB and cache.
-	// It uses RuntimeInfo.Revision.Version for concurrency control, and it would
-	// update RuntimeInfo.Revision.Version automatically upon success.
-	// Caller should not manually modify the value of RuntimeInfo.Revision.Version.
-	CompareAndSetTask(
-		ctx context.Context,
-		runtime *pbtask.RuntimeInfo,
-		jobType pbjob.JobType,
-	) (*pbtask.RuntimeInfo, error)
-
-	// ReplaceTask replaces cache with runtime and config;
-	// forceReplace would decide whether to check version when replacing the runtime and config
-	// forceReplace is used for Refresh, which is for debugging only
-	ReplaceTask(
-		runtime *pbtask.RuntimeInfo,
-		taskConfig *pbtask.TaskConfig,
-		forceReplace bool,
-	) error
-
 	// GetRuntime returns the task run time
 	GetRuntime(ctx context.Context) (*pbtask.RuntimeInfo, error)
 
@@ -107,10 +81,6 @@ type Task interface {
 
 	// StateSummary of the task.
 	StateSummary() TaskStateSummary
-
-	// DeleteTask deletes any state, if any, stored by the task and let the
-	// listeners know that the task is being deleted.
-	DeleteTask()
 }
 
 // TaskStateVector defines the state of a task.
@@ -325,7 +295,8 @@ func (t *task) cleanTaskCache() {
 	t.config = nil
 }
 
-func (t *task) CreateTask(ctx context.Context, runtime *pbtask.RuntimeInfo, owner string) error {
+// createTask creates the task runtime in DB and cache
+func (t *task) createTask(ctx context.Context, runtime *pbtask.RuntimeInfo, owner string) error {
 	var runtimeCopy *pbtask.RuntimeInfo
 	var labelsCopy []*peloton.Label
 
@@ -365,9 +336,9 @@ func (t *task) CreateTask(ctx context.Context, runtime *pbtask.RuntimeInfo, owne
 	return nil
 }
 
-// PatchRuntime patches diff to the existing runtime cache
+// patchTask patches diff to the existing runtime cache
 // in task and persists to DB.
-func (t *task) PatchTask(ctx context.Context, diff jobmgrcommon.RuntimeDiff) error {
+func (t *task) patchTask(ctx context.Context, diff jobmgrcommon.RuntimeDiff) error {
 	if diff == nil {
 		return yarpcerrors.InvalidArgumentErrorf(
 			"unexpected nil diff")
@@ -440,7 +411,11 @@ func (t *task) PatchTask(ctx context.Context, diff jobmgrcommon.RuntimeDiff) err
 	return nil
 }
 
-func (t *task) CompareAndSetTask(
+// compareAndSetTask replaces the existing task runtime in DB and cache.
+// It uses RuntimeInfo.Revision.Version for concurrency control, and it would
+// update RuntimeInfo.Revision.Version automatically upon success.
+// Caller should not manually modify the value of RuntimeInfo.Revision.Version.
+func (t *task) compareAndSetTask(
 	ctx context.Context,
 	runtime *pbtask.RuntimeInfo,
 	jobType pbjob.JobType,
@@ -515,7 +490,9 @@ func (t *task) CompareAndSetTask(
 	return runtimeCopy, nil
 }
 
-func (t *task) DeleteTask() {
+// deleteTask deletes any state, if any, stored by the task and let the
+// listeners know that the task is being deleted.
+func (t *task) deleteTask() {
 	// There is no state to clean up as of now.
 	// If the goal state was set to DELETED, then let the
 	// listeners know that the task has been deleted.
@@ -552,16 +529,16 @@ func (t *task) DeleteTask() {
 	labelsCopy = t.copyLabelsInCache()
 }
 
-// ReplaceTask replaces runtime and config in cache with runtime input.
+// replaceTask replaces runtime and config in cache with runtime input.
 // forceReplace would decide whether to check version when replacing the runtime and config,
 // it should only be used in Refresh for debugging purpose
-func (t *task) ReplaceTask(
+func (t *task) replaceTask(
 	runtime *pbtask.RuntimeInfo,
 	taskConfig *pbtask.TaskConfig,
 	forceReplace bool) error {
 	if runtime == nil || runtime.GetRevision() == nil {
 		return yarpcerrors.InvalidArgumentErrorf(
-			"ReplaceTask expects a non-nil runtime with non-nil Revision")
+			"replaceTask expects a non-nil runtime with non-nil Revision")
 	}
 
 	var runtimeCopy *pbtask.RuntimeInfo

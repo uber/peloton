@@ -160,6 +160,16 @@ type Job interface {
 		spec *stateless.JobSpec,
 	) (jobmgrcommon.JobConfig, error)
 
+	// CompareAndSetTask replaces the existing task runtime in DB and cache.
+	// It uses RuntimeInfo.Revision.Version for concurrency control, and it would
+	// update RuntimeInfo.Revision.Version automatically upon success.
+	// Caller should not manually modify the value of RuntimeInfo.Revision.Version.
+	CompareAndSetTask(
+		ctx context.Context,
+		id uint32,
+		runtime *pbtask.RuntimeInfo,
+	) (*pbtask.RuntimeInfo, error)
+
 	// IsPartiallyCreated returns if job has not been fully created yet
 	IsPartiallyCreated(config jobmgrcommon.JobConfig) bool
 
@@ -522,7 +532,7 @@ func (j *job) CreateTaskRuntimes(
 		}
 
 		t := j.addTaskToJobMap(id)
-		return t.CreateTask(ctx, runtime, owner)
+		return t.createTask(ctx, runtime, owner)
 	}
 	return taskutil.RunInParallel(
 		j.ID().GetValue(),
@@ -539,7 +549,7 @@ func (j *job) PatchTasks(
 		if err != nil {
 			return err
 		}
-		return t.PatchTask(ctx, runtimeDiffs[id])
+		return t.(*task).patchTask(ctx, runtimeDiffs[id])
 	}
 
 	return taskutil.RunInParallel(
@@ -554,7 +564,7 @@ func (j *job) ReplaceTasks(
 
 	replaceSingleTask := func(id uint32) error {
 		t := j.addTaskToJobMap(id)
-		return t.ReplaceTask(
+		return t.replaceTask(
 			taskInfos[id].GetRuntime(),
 			taskInfos[id].GetConfig(),
 			forceReplace,
@@ -583,7 +593,7 @@ func (j *job) RemoveTask(id uint32) {
 	defer j.Unlock()
 
 	if t, ok := j.tasks[id]; ok {
-		t.DeleteTask()
+		t.deleteTask()
 	}
 
 	delete(j.tasks, id)
@@ -961,6 +971,23 @@ func (j *job) CompareAndSetConfig(
 	defer j.Unlock()
 
 	return j.compareAndSetConfig(ctx, config, configAddOn, spec)
+}
+
+// CompareAndSetTask replaces the existing task runtime in DB and cache.
+// It uses RuntimeInfo.Revision.Version for concurrency control, and it would
+// update RuntimeInfo.Revision.Version automatically upon success.
+// Caller should not manually modify the value of RuntimeInfo.Revision.Version.
+func (j *job) CompareAndSetTask(
+	ctx context.Context,
+	id uint32,
+	runtime *pbtask.RuntimeInfo,
+) (*pbtask.RuntimeInfo, error) {
+	t, err := j.AddTask(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	return t.(*task).compareAndSetTask(ctx, runtime, j.jobType)
 }
 
 // CurrentState of the job.

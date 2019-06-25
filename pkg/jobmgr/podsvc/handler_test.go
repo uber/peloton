@@ -454,8 +454,8 @@ func (suite *podHandlerTestSuite) TestStartPodSuccess() {
 				},
 			}, nil, nil),
 
-		suite.cachedTask.EXPECT().
-			CompareAndSetTask(gomock.Any(), gomock.Any(), pbjob.JobType_SERVICE).
+		suite.cachedJob.EXPECT().
+			CompareAndSetTask(gomock.Any(), uint32(testInstanceID), gomock.Any()).
 			Return(nil, nil),
 
 		suite.goalStateDriver.EXPECT().
@@ -575,8 +575,8 @@ func (suite *podHandlerTestSuite) TestStartPodSuccessWithJobRuntimeUnexpectedVer
 				},
 			}, nil, nil),
 
-		suite.cachedTask.EXPECT().
-			CompareAndSetTask(gomock.Any(), gomock.Any(), pbjob.JobType_SERVICE).
+		suite.cachedJob.EXPECT().
+			CompareAndSetTask(gomock.Any(), uint32(testInstanceID), gomock.Any()).
 			Return(nil, nil),
 
 		suite.goalStateDriver.EXPECT().
@@ -672,8 +672,8 @@ func (suite *podHandlerTestSuite) TestStartPodSuccessWithPodRuntimeUnexpectedVer
 				},
 			}, nil, nil),
 
-		suite.cachedTask.EXPECT().
-			CompareAndSetTask(gomock.Any(), gomock.Any(), pbjob.JobType_SERVICE).
+		suite.cachedJob.EXPECT().
+			CompareAndSetTask(gomock.Any(), uint32(testInstanceID), gomock.Any()).
 			Return(nil, jobmgrcommon.UnexpectedVersionError),
 
 		suite.cachedTask.EXPECT().
@@ -696,8 +696,8 @@ func (suite *podHandlerTestSuite) TestStartPodSuccessWithPodRuntimeUnexpectedVer
 				},
 			}, nil, nil),
 
-		suite.cachedTask.EXPECT().
-			CompareAndSetTask(gomock.Any(), gomock.Any(), pbjob.JobType_SERVICE).
+		suite.cachedJob.EXPECT().
+			CompareAndSetTask(gomock.Any(), uint32(testInstanceID), gomock.Any()).
 			Return(nil, nil),
 
 		suite.goalStateDriver.EXPECT().

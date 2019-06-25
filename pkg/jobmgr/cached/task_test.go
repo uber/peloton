@@ -176,7 +176,7 @@ func (suite *taskTestSuite) TestCreateRuntime() {
 			version).
 		Return(nil, nil, nil)
 
-	err := tt.CreateTask(context.Background(), runtime, "team10")
+	err := tt.createTask(context.Background(), runtime, "team10")
 	suite.Nil(err)
 	suite.False(tt.initializedAt.IsZero())
 	suite.checkListeners(tt, tt.jobType)
@@ -230,7 +230,7 @@ func (suite *taskTestSuite) TestPatchTask() {
 			version).
 		Return(taskConfig, nil, nil)
 
-	err := tt.PatchTask(context.Background(), diff)
+	err := tt.patchTask(context.Background(), diff)
 	suite.Nil(err)
 	suite.checkListeners(tt, tt.jobType)
 }
@@ -280,7 +280,7 @@ func (suite *taskTestSuite) TestPatchTask_WithInitializedState() {
 		Return(nil)
 
 	oldTime := time.Now()
-	err := tt.PatchTask(context.Background(), diff)
+	err := tt.patchTask(context.Background(), diff)
 	suite.Nil(err)
 	suite.False(tt.initializedAt.IsZero())
 	suite.NotEqual(oldTime, tt.initializedAt)
@@ -324,7 +324,7 @@ func (suite *taskTestSuite) TestPatchTask_KillInitializedTask() {
 		}).
 		Return(nil)
 
-	err := tt.PatchTask(context.Background(), diff)
+	err := tt.patchTask(context.Background(), diff)
 	suite.Nil(err)
 	suite.checkListeners(tt, pbjob.JobType_BATCH)
 }
@@ -378,7 +378,7 @@ func (suite *taskTestSuite) TestPatchTask_NoRuntimeInCache() {
 			version).
 		Return(taskConfig, nil, nil)
 
-	err := tt.PatchTask(context.Background(), diff)
+	err := tt.patchTask(context.Background(), diff)
 	suite.Nil(err)
 	suite.checkListeners(tt, pbjob.JobType_BATCH)
 }
@@ -403,7 +403,7 @@ func (suite *taskTestSuite) TestPatchTask_DBError() {
 			gomock.Any()).
 		Return(fmt.Errorf("fake db error"))
 
-	err := tt.PatchTask(context.Background(), diff)
+	err := tt.patchTask(context.Background(), diff)
 	suite.NotNil(err)
 	suite.checkListenersNotCalled()
 }
@@ -451,7 +451,7 @@ func (suite *taskTestSuite) TestPatchTaskGetConfigDBError() {
 			version).
 		Return(nil, nil, fmt.Errorf("fake db error"))
 
-	err := tt.PatchTask(context.Background(), diff)
+	err := tt.patchTask(context.Background(), diff)
 	suite.NotNil(err)
 	suite.checkListenersNotCalled()
 }
@@ -467,7 +467,7 @@ func (suite *taskTestSuite) TestCompareAndSetNilRuntime() {
 		labels: labels,
 	}
 
-	_, err := tt.CompareAndSetTask(
+	_, err := tt.compareAndSetTask(
 		context.Background(),
 		nil,
 		pbjob.JobType_BATCH,
@@ -523,7 +523,7 @@ func (suite *taskTestSuite) TestCompareAndSetTask() {
 			version).
 		Return(taskConfig, nil, nil)
 
-	_, err := tt.CompareAndSetTask(
+	_, err := tt.compareAndSetTask(
 		context.Background(),
 		newRuntime,
 		pbjob.JobType_BATCH,
@@ -543,7 +543,7 @@ func (suite *taskTestSuite) TestCompareAndSetTaskFailValidation() {
 	newRuntime := initializeTaskRuntime(pbtask.TaskState_PENDING, 2)
 	newRuntime.GoalState = pbtask.TaskState_SUCCEEDED
 
-	_, err := tt.CompareAndSetTask(
+	_, err := tt.compareAndSetTask(
 		context.Background(),
 		newRuntime,
 		pbjob.JobType_BATCH,
@@ -608,7 +608,7 @@ func (suite *taskTestSuite) TestCompareAndSetTaskLoadRuntime() {
 			version).
 		Return(taskConfig, nil, nil)
 
-	_, err := tt.CompareAndSetTask(
+	_, err := tt.compareAndSetTask(
 		context.Background(),
 		newRuntime,
 		pbjob.JobType_BATCH,
@@ -633,7 +633,7 @@ func (suite *taskTestSuite) TestCompareAndSetTaskLoadRuntimeDBError() {
 		GetTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID).
 		Return(runtime, fmt.Errorf("fake db error"))
 
-	_, err := tt.CompareAndSetTask(
+	_, err := tt.compareAndSetTask(
 		context.Background(),
 		newRuntime,
 		pbjob.JobType_BATCH,
@@ -653,7 +653,7 @@ func (suite *taskTestSuite) TestCompareAndSetTaskVersionError() {
 	newRuntime := initializeTaskRuntime(pbtask.TaskState_RUNNING, 3)
 	newRuntime.GoalState = pbtask.TaskState_SUCCEEDED
 
-	_, err := tt.CompareAndSetTask(
+	_, err := tt.compareAndSetTask(
 		context.Background(),
 		newRuntime,
 		pbjob.JobType_BATCH,
@@ -695,7 +695,7 @@ func (suite *taskTestSuite) TestCompareAndSetTaskDBError() {
 		}).
 		Return(fmt.Errorf("fake DB Error"))
 
-	_, err := tt.CompareAndSetTask(
+	_, err := tt.compareAndSetTask(
 		context.Background(),
 		newRuntime,
 		pbjob.JobType_BATCH,
@@ -745,7 +745,7 @@ func (suite *taskTestSuite) TestCompareAndSetTaskConfigDBError() {
 			version).
 		Return(nil, nil, fmt.Errorf("fake DB Error"))
 
-	_, err := tt.CompareAndSetTask(
+	_, err := tt.compareAndSetTask(
 		context.Background(),
 		newRuntime,
 		pbjob.JobType_BATCH,
@@ -763,7 +763,7 @@ func (suite *taskTestSuite) TestReplaceTask() {
 
 	newRuntime := initializeTaskRuntime(pbtask.TaskState_RUNNING, 3)
 
-	err := tt.ReplaceTask(newRuntime, nil, false)
+	err := tt.replaceTask(newRuntime, nil, false)
 	suite.Nil(err)
 	suite.Equal(tt.runtime.GetState(), pbtask.TaskState_RUNNING)
 	suite.checkListeners(tt, tt.jobType)
@@ -793,7 +793,7 @@ func (suite *taskTestSuite) TestReplaceTask_NoExistingCache() {
 			Version: 1,
 		},
 	}
-	tt.ReplaceTask(&runtime, taskConfig, false)
+	tt.replaceTask(&runtime, taskConfig, false)
 
 	curState := tt.CurrentState()
 	curGoalState := tt.GoalState()
@@ -813,7 +813,7 @@ func (suite *taskTestSuite) TestReplaceTask_StaleRuntime() {
 
 	newRuntime := initializeTaskRuntime(pbtask.TaskState_RUNNING, 1)
 
-	err := tt.ReplaceTask(newRuntime, nil, false)
+	err := tt.replaceTask(newRuntime, nil, false)
 	suite.Nil(err)
 	suite.Equal(tt.runtime.GetState(), pbtask.TaskState_LAUNCHED)
 	suite.checkListenersNotCalled()
@@ -826,7 +826,7 @@ func (suite *taskTestSuite) TestReplaceTaskNilRuntime() {
 	tt := suite.initializeTask(suite.taskStore, suite.jobID, suite.instanceID,
 		runtime)
 
-	err := tt.ReplaceTask(nil, nil, false)
+	err := tt.replaceTask(nil, nil, false)
 	suite.Error(err)
 	suite.Equal(pbtask.TaskState_LAUNCHED, tt.runtime.GetState())
 	suite.checkListenersNotCalled()
@@ -993,7 +993,7 @@ func (suite *taskTestSuite) TestDeleteTask() {
 	tt := suite.initializeTask(suite.taskStore, suite.jobID,
 		suite.instanceID, runtime)
 
-	tt.DeleteTask()
+	tt.deleteTask()
 	suite.checkListeners(tt, tt.jobType)
 }
 
@@ -1004,7 +1004,7 @@ func (suite *taskTestSuite) TestDeleteTaskNoRuntime() {
 		suite.instanceID, nil)
 	tt.runtime = nil
 
-	tt.DeleteTask()
+	tt.deleteTask()
 	suite.checkListenersNotCalled()
 }
 
@@ -1015,7 +1015,7 @@ func (suite *taskTestSuite) TestDeleteRunningTask() {
 	tt := suite.initializeTask(suite.taskStore, suite.jobID,
 		suite.instanceID, runtime)
 
-	tt.DeleteTask()
+	tt.deleteTask()
 	suite.checkListenersNotCalled()
 }
 
@@ -1151,17 +1151,17 @@ func (suite *taskTestSuite) TestStateTransitionMetrics() {
 					gomock.Any()).
 				Return(nil)
 
-			err := tt.CreateTask(context.Background(), runtime, "")
+			err := tt.createTask(context.Background(), runtime, "")
 			suite.NoError(err, msg)
 
 			if usePatch {
 				diff := jobmgrcommon.RuntimeDiff{
 					jobmgrcommon.StateField: tc.toState,
 				}
-				err = tt.PatchTask(context.Background(), diff)
+				err = tt.patchTask(context.Background(), diff)
 			} else {
 				runtime.State = tc.toState
-				_, err = tt.CompareAndSetTask(
+				_, err = tt.compareAndSetTask(
 					context.Background(),
 					runtime,
 					tt.jobType)

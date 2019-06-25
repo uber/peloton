@@ -244,8 +244,11 @@ func (h *serviceHandler) startPod(
 			jobmgrtask.GetDefaultTaskGoalState(jobType)
 		taskRuntime.Message = "PodSVC.StartPod request"
 
-		if _, err = cachedTask.CompareAndSetTask(
-			ctx, taskRuntime, jobType); err == nil {
+		if _, err = cachedJob.CompareAndSetTask(
+			ctx,
+			cachedTask.ID(),
+			taskRuntime,
+		); err == nil {
 			return nil
 		}
 		if err == jobmgrcommon.UnexpectedVersionError {

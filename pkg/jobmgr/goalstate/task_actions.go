@@ -18,6 +18,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+
 	"github.com/uber/peloton/pkg/common/goalstate"
 
 	log "github.com/sirupsen/logrus"
@@ -31,11 +33,6 @@ func TaskReloadRuntime(ctx context.Context, entity goalstate.Entity) error {
 	cachedJob := goalStateDriver.jobFactory.GetJob(taskEnt.jobID)
 	if cachedJob == nil {
 		return nil
-	}
-
-	cachedTask, err := cachedJob.AddTask(ctx, taskEnt.instanceID)
-	if err != nil {
-		return err
 	}
 
 	runtime, err := goalStateDriver.taskStore.GetTaskRuntime(ctx, taskEnt.jobID, taskEnt.instanceID)
@@ -61,7 +58,16 @@ func TaskReloadRuntime(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	cachedTask.ReplaceTask(runtime, taskConfig, false)
+	taskInfo := &task.TaskInfo{
+		InstanceId: taskEnt.instanceID,
+		JobId:      taskEnt.jobID,
+		Runtime:    runtime,
+		Config:     taskConfig,
+	}
+
+	cachedJob.ReplaceTasks(map[uint32]*task.TaskInfo{
+		taskEnt.instanceID: taskInfo,
+	}, false)
 
 	// This function is called when the runtime in cache is nil.
 	// The task needs to re-enqueued into the goal state engine

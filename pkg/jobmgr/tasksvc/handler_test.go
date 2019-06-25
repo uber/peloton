@@ -692,9 +692,9 @@ func (suite *TaskHandlerTestSuite) TestStartAllTasks() {
 			GetRuntime(gomock.Any()).
 			Return(taskInfos[i].Runtime, nil)
 		if i != runningInstanceID {
-			suite.mockedCachedTask.EXPECT().
+			suite.mockedCachedJob.EXPECT().
 				CompareAndSetTask(gomock.Any(), gomock.Any(), gomock.Any()).
-				Do(func(_ context.Context, runtime *task.RuntimeInfo, _ job.JobType) {
+				Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo) {
 					suite.Equal(runtime.State, task.TaskState_INITIALIZED)
 					suite.Equal(runtime.Healthy, task.HealthState_DISABLED)
 					suite.Equal(runtime.GoalState, task.TaskState_SUCCEEDED)
@@ -1067,7 +1067,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksCompareAndSetFailure() {
 					GoalState: task.TaskState_KILLED,
 				}, nil)
 
-			suite.mockedCachedTask.EXPECT().
+			suite.mockedCachedJob.EXPECT().
 				CompareAndSetTask(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(nil, jobmgrcommon.UnexpectedVersionError)
 		}
@@ -1140,9 +1140,9 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 	suite.mockedCachedTask.EXPECT().
 		GetRuntime(gomock.Any()).
 		Return(singleTaskInfo[1].Runtime, nil)
-	suite.mockedCachedTask.EXPECT().
+	suite.mockedCachedJob.EXPECT().
 		CompareAndSetTask(gomock.Any(), gomock.Any(), gomock.Any()).
-		Do(func(_ context.Context, runtime *task.RuntimeInfo, _ job.JobType) {
+		Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo) {
 			suite.Equal(runtime.State, task.TaskState_INITIALIZED)
 			suite.Equal(runtime.Healthy, task.HealthState_DISABLED)
 			suite.Equal(runtime.GoalState, task.TaskState_SUCCEEDED)

@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/uber/peloton/.gen/mesos/v1"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	pb_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
@@ -216,7 +216,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	case pb_task.TaskState_FAILED:
 		reason := event.GetMesosTaskStatus().GetReason()
 		msg := event.GetMesosTaskStatus().GetMessage()
-		if reason == mesos_v1.TaskStatus_REASON_TASK_INVALID &&
+		if reason == mesos.TaskStatus_REASON_TASK_INVALID &&
 			strings.Contains(msg, _msgMesosDuplicateID) {
 			log.WithField("task_id", updateEvent.taskID).
 				Info("ignoring duplicate task id failure")
@@ -349,11 +349,11 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 
 	// Update the task update times in job cache and then update the task runtime in cache and DB
 	cachedJob.SetTaskUpdateTime(event.MesosTaskStatus.Timestamp)
-	cachedTask, err := cachedJob.AddTask(ctx, taskInfo.GetInstanceId())
-	if err != nil {
-		return err
-	}
-	if _, err := cachedTask.CompareAndSetTask(ctx, newRuntime, cachedJob.GetJobType()); err != nil {
+	if _, err = cachedJob.CompareAndSetTask(
+		ctx,
+		taskInfo.GetInstanceId(),
+		newRuntime,
+	); err != nil {
 		log.WithError(err).
 			WithFields(log.Fields{
 				"task_id": updateEvent.taskID,
@@ -387,7 +387,7 @@ type statusUpateEvent struct {
 	statusMsg string
 
 	isMesosStatus   bool
-	mesosTaskStatus *mesos_v1.TaskStatus
+	mesosTaskStatus *mesos.TaskStatus
 }
 
 // convertEvent converts pb_eventstream.Event to statusUpateEvent
@@ -395,7 +395,7 @@ type statusUpateEvent struct {
 func convertEvent(event *pb_eventstream.Event) (*statusUpateEvent, error) {
 	var err error
 
-	updateEvent := &statusUpateEvent{mesosTaskStatus: &mesos_v1.TaskStatus{}}
+	updateEvent := &statusUpateEvent{mesosTaskStatus: &mesos.TaskStatus{}}
 	if event.Type == pb_eventstream.Event_MESOS_TASK_STATUS {
 		mesosTaskID := event.MesosTaskStatus.GetTaskId().GetValue()
 		updateEvent.taskID, err = util.ParseTaskIDFromMesosTaskID(mesosTaskID)
@@ -438,7 +438,7 @@ func convertEvent(event *pb_eventstream.Event) (*statusUpateEvent, error) {
 func (p *statusUpdate) logTaskMetrics(event *statusUpateEvent) {
 	// Update task state counter for non-reconcilication update.
 	if event.isMesosStatus && event.mesosTaskStatus.GetReason() !=
-		mesos_v1.TaskStatus_REASON_RECONCILIATION {
+		mesos.TaskStatus_REASON_RECONCILIATION {
 		switch event.state {
 		case pb_task.TaskState_RUNNING:
 			p.metrics.TasksRunningTotal.Inc(1)
@@ -449,7 +449,7 @@ func (p *statusUpdate) logTaskMetrics(event *statusUpateEvent) {
 			p.metrics.TasksFailedReason[int32(event.mesosTaskStatus.GetReason())].Inc(1)
 			log.WithFields(log.Fields{
 				"task_id":       event.taskID,
-				"failed_reason": mesos_v1.TaskStatus_Reason_name[int32(event.mesosTaskStatus.GetReason())],
+				"failed_reason": mesos.TaskStatus_Reason_name[int32(event.mesosTaskStatus.GetReason())],
 			}).Debug("received failed task")
 		case pb_task.TaskState_KILLED:
 			p.metrics.TasksKilledTotal.Inc(1)
@@ -461,7 +461,7 @@ func (p *statusUpdate) logTaskMetrics(event *statusUpateEvent) {
 			p.metrics.TasksStartingTotal.Inc(1)
 		}
 	} else if event.isMesosStatus && event.mesosTaskStatus.GetReason() ==
-		mesos_v1.TaskStatus_REASON_RECONCILIATION {
+		mesos.TaskStatus_REASON_RECONCILIATION {
 		p.metrics.TasksReconciledTotal.Inc(1)
 	}
 }
@@ -589,7 +589,7 @@ func getCurrTaskResourceUsage(taskID string, state pb_task.TaskState,
 // persistHealthyField update the healthy field in runtimeDiff
 func (p *statusUpdate) persistHealthyField(
 	state pb_task.TaskState,
-	reason mesos_v1.TaskStatus_Reason,
+	reason mesos.TaskStatus_Reason,
 	healthy bool,
 	newRuntime *pb_task.RuntimeInfo) {
 
@@ -600,7 +600,7 @@ func (p *statusUpdate) persistHealthyField(
 	case state == pb_task.TaskState_RUNNING:
 		// Only record the health check result when
 		// the reason for the event is TASK_HEALTH_CHECK_STATUS_UPDATED
-		if reason == mesos_v1.TaskStatus_REASON_TASK_HEALTH_CHECK_STATUS_UPDATED {
+		if reason == mesos.TaskStatus_REASON_TASK_HEALTH_CHECK_STATUS_UPDATED {
 			newRuntime.Reason = reason.String()
 			if healthy {
 				newRuntime.Healthy = pb_task.HealthState_HEALTHY
@@ -683,7 +683,7 @@ func isDuplicateStateUpdate(
 	}
 
 	newStateReason := event.GetMesosTaskStatus().GetReason()
-	if newStateReason != mesos_v1.TaskStatus_REASON_TASK_HEALTH_CHECK_STATUS_UPDATED {
+	if newStateReason != mesos.TaskStatus_REASON_TASK_HEALTH_CHECK_STATUS_UPDATED {
 		log.WithFields(log.Fields{
 			"db_task_runtime":   taskInfo.GetRuntime(),
 			"task_status_event": event.GetMesosTaskStatus(),

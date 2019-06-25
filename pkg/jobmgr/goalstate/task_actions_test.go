@@ -99,8 +99,8 @@ func (suite *TaskActionTestSuite) TestTaskReloadRuntime() {
 	suite.taskStore.EXPECT().
 		GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
 		Return(&pbtask.TaskConfig{}, nil, nil)
-	suite.cachedTask.EXPECT().
-		ReplaceTask(gomock.Any(), gomock.Any(), gomock.Any())
+	suite.cachedJob.EXPECT().
+		ReplaceTasks(gomock.Any(), gomock.Any())
 	suite.taskGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()

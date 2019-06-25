@@ -608,7 +608,7 @@ func (m *serviceHandler) Start(
 	var failedInstanceIds []uint32
 
 	for _, taskInfo := range taskInfos {
-		cachedTask, err := cachedJob.AddTask(ctx, taskInfo.InstanceId)
+		cachedTask, err := cachedJob.AddTask(ctx, taskInfo.GetInstanceId())
 		if err != nil {
 			log.WithFields(log.Fields{
 				"job_id":      body.GetJobId().GetValue(),
@@ -657,8 +657,11 @@ func (m *serviceHandler) Start(
 			// compare and set calls cannot be batched as one transaction
 			// as if task runtime of only one task has changed, then it should
 			// not cause the entire transaction to fail and to be retried again.
-			_, err = cachedTask.CompareAndSetTask(
-				ctx, taskRuntime, cachedConfig.GetType())
+			_, err = cachedJob.CompareAndSetTask(
+				ctx,
+				taskInfo.GetInstanceId(),
+				taskRuntime,
+			)
 
 			if err == jobmgrcommon.UnexpectedVersionError {
 				count = count + 1
