@@ -1196,6 +1196,7 @@ def test__in_place_update_success_rate_with_component_restart(stateless_job, job
     assert count == 0
 
 
+@pytest.mark.skip(reason="flaky integration test")
 def test__in_place_update_host_maintenance(stateless_job, maintenance):
     # add enough instances so each host should have some tasks running
     stateless_job.job_spec.instance_count = 9
