@@ -50,6 +50,14 @@ HTML_TEMPLATE = """
         Performance Change on <b>Job update</b>
      %s
     </p>
+    <p>
+        Performance Change on <b>Stateless Job create</b>
+     %s
+    </p>
+    <p>
+        Performance Change on <b>Parallel Stateless Job update</b>
+     %s
+    </p>
   </body>
 </html>
 """
@@ -217,6 +225,74 @@ def compare_update(base_version, current_version, f1, f2):
     return enriched_table
 
 
+def compare_parallel_stateless_update(base_version, current_version, f1, f2):
+    dataframe_1, dataframe_2 = to_df(f1), to_df(f2)
+    merge_table = pd.merge(
+        dataframe_1,
+        dataframe_2,
+        how="right",
+        on=[
+            "NumJobs",
+            "NumStartTasks",
+            "Sleep(s)",
+            "BatchSize",
+        ],
+    )
+
+    merge_table["Execution Duration Change (%)"] = merge_table.apply(
+        lambda x: format(
+            (x["AverageTimeInSeconds_y"] - x["AverageTimeInSeconds_x"])
+            / float(x["AverageTimeInSeconds_x"])
+            * 100,
+            ".2f",
+        ),
+        axis=1,
+    )
+
+    enriched_table = styling.enrich_table_layout(
+        merge_table,
+        "Execution Duration Change (%)",
+        "parallel_stateless_update",
+        base_version,
+        current_version,
+    )
+    print("compare_parallel_stateless_update has created table" + merge_table)
+    return enriched_table
+
+
+def compare_stateless_create(base_version, current_version, f1, f2):
+    dataframe_1, dataframe_2 = to_df(f1), to_df(f2)
+    merge_table = pd.merge(
+        dataframe_1,
+        dataframe_2,
+        how="right",
+        on=[
+            "NumStartTasks",
+            "Sleep(s)",
+        ],
+    )
+
+    merge_table["Execution Duration Change (%)"] = merge_table.apply(
+        lambda x: format(
+            (x["TotalTimeInSeconds_y"] - x["TotalTimeInSeconds_x"])
+            / float(x["TotalTimeInSeconds_x"])
+            * 100,
+            ".2f",
+        ),
+        axis=1,
+    )
+
+    enriched_table = styling.enrich_table_layout(
+        merge_table,
+        "Execution Duration Change (%)",
+        "stateless_create",
+        base_version,
+        current_version,
+    )
+    print("compare_stateless_create has created table" + merge_table)
+    return enriched_table
+
+
 """
 Returns a list of formatted `create`, `get`, and `update` results in HTML
 table format.
@@ -236,15 +312,22 @@ def generate_test_results(
     base_version, current_version, base_results, current_results
 ):
     operations, results = (
-        [compare_create, compare_get, compare_update],
-        [None] * 3,
+        [compare_create, compare_get, compare_update, compare_stateless_create,
+         compare_parallel_stateless_update],
+        [None] * 5,
     )
 
     # Aggregates data source with its function operation.
     for i, combo in enumerate(zip(operations, base_results, current_results)):
         func, f1, f2 = combo
+        print("Start operation " + func.__name__)
+        print("Base result: ")
+        print(f1)
+        print("Current result: ")
+        print(f2)
         try:
             results[i] = func(base_version, current_version, f1, f2)
+            print("table is generated: " + results[i])
         except Exception as e:
             results[i] = "<p>Report generation failed: %s</p>" % e
     return results
@@ -290,6 +373,8 @@ def main():
     create_html = results[0]
     get_html = results[1]
     update_html = results[2]
+    stateless_create_html = results[3]
+    parallel_stateless_update_html = results[4]
 
     commit_info = os.environ.get(COMMIT_INFO) or "N/A"
     build_url = os.environ.get(BUILD_URL) or "N/A"
@@ -299,6 +384,8 @@ def main():
         create_html,
         get_html,
         update_html,
+        stateless_create_html,
+        parallel_stateless_update_html,
     )
     print(msg)
     if TO:
