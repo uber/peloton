@@ -28,6 +28,26 @@ message AcquireHostsResponse {
   map<string, uint32> filter_result_counts = 2;
 }
 
+// TerminateLeasesRequest contains the host leases that need to be terminated
+// so that host manager can release the locks on those hosts.
+message TerminateLeasesRequest {
+  // A LeasePair is a structure holding a hostname and its lease id.
+  message LeasePair {
+    // The lease id of the lease pair.
+    hostmgr.LeaseID lease_id = 1;
+
+    // The hostname of the lease pair.
+    string hostname = 2;
+  }
+
+  // The lease pairs of the acquired hosts who's leases need to be terminated.
+  // Each lease pair contains the lease id and the hostname for the lease.
+  repeated LeasePair leases = 1;
+}
+
+// TerminateLeasesResponse is a placeholder response structure.
+message TerminateLeasesResponse {}
+
 // LaunchPodsRequest contains the lease_id of acquired host and list of pods to
 // be launched on that host.
 message LaunchPodsRequest {
@@ -87,6 +107,10 @@ service HostManagerService
   // AcquireHosts acquires a set of hosts from the host manager. Each host will
   // only be used by one client at a given time.
   rpc AcquireHosts(AcquireHostsRequest) returns (AcquireHostsResponse);
+
+  // TerminateLeases terminates the leases for a set of hosts, effectively releasing
+  // the lock that host manager had on those hosts.
+  rpc TerminateLeases(TerminateLeasesRequest) returns (TerminateLeasesResponse);
 
   // LaunchPods launches pods on the cluster.
   rpc LaunchPods(LaunchPodsRequest) returns (LaunchPodsResponse);
