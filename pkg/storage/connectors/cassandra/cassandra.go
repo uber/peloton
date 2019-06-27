@@ -159,6 +159,17 @@ func buildResultRow(e *base.Definition, columns []string) []interface{} {
 		case gocqlUUIDType.Kind():
 			var value *gocql.UUID
 			results[i] = &value
+		case reflect.Ptr:
+			// Special case for custom optional string type:
+			// string type used in Cassandra
+			// converted to/from custom type in ORM layer
+			if typ == reflect.TypeOf(&base.OptionalString{}) {
+				var value *string
+				results[i] = &value
+				break
+			}
+			// for unrecognized pointer types, fall back to default logging
+			fallthrough
 		default:
 			// This should only happen if we start using a new cassandra type
 			// without adding to the translation layer

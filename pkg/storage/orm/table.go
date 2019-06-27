@@ -49,6 +49,21 @@ func (t *Table) GetKeyRowFromObject(
 	for _, pk := range t.Key.PartitionKeys {
 		fieldName := t.ColToField[pk]
 		value := v.FieldByName(fieldName)
+
+		// Special case for optional type:
+		// conversion needed from custom optional type
+		// into raw type understandable by DB layer
+		if base.IsOfTypeOptional(value) {
+			// nil value of type Optional should not be accounted for
+			if !value.IsNil() {
+				row = append(row, base.Column{
+					Name:  pk,
+					Value: base.ConvertFromOptionalToRawType(value),
+				})
+			}
+			continue
+		}
+
 		row = append(row, base.Column{
 			Name:  pk,
 			Value: value.Interface(),
@@ -59,6 +74,21 @@ func (t *Table) GetKeyRowFromObject(
 	for _, ck := range t.Key.ClusteringKeys {
 		fieldName := t.ColToField[ck.Name]
 		value := v.FieldByName(fieldName)
+
+		// Special case for optional type:
+		// conversion needed from custom optional type
+		// into raw type understandable by DB layer
+		if base.IsOfTypeOptional(value) {
+			// nil value of type optional should not be accounted for
+			if !value.IsNil() {
+				row = append(row, base.Column{
+					Name:  ck.Name,
+					Value: base.ConvertFromOptionalToRawType(value),
+				})
+			}
+			continue
+		}
+
 		row = append(row, base.Column{
 			Name:  ck.Name,
 			Value: value.Interface(),
@@ -79,6 +109,19 @@ func (t *Table) GetPartitionKeyRowFromObject(
 	for _, pk := range t.Key.PartitionKeys {
 		fieldName := t.ColToField[pk]
 		value := v.FieldByName(fieldName)
+		// Special case for optional types: only account non-nil values
+		// A value of custom optional type is either
+		// nil or poiting to a non-nil non-zero custom type value
+		if base.IsOfTypeOptional(value) {
+			// nil value of type optional should not be accounted for
+			if !value.IsNil() {
+				row = append(row, base.Column{
+					Name:  pk,
+					Value: base.ConvertFromOptionalToRawType(value),
+				})
+			}
+			continue
+		}
 		row = append(row, base.Column{
 			Name:  pk,
 			Value: value.Interface(),
@@ -116,6 +159,21 @@ func (t *Table) GetRowFromObject(
 			}
 		}
 		value := v.FieldByName(fieldName)
+
+		// Special case for optional type:
+		// conversion needed from custom optional string type
+		// into raw type understandable by DB layer
+		if base.IsOfTypeOptional(value) {
+			// nil value of type optional should not be accounted for
+			if !value.IsNil() {
+				row = append(row, base.Column{
+					Name:  columnName,
+					Value: base.ConvertFromOptionalToRawType(value),
+				})
+			}
+			continue
+		}
+
 		row = append(row, base.Column{
 			Name:  columnName,
 			Value: value.Interface(),
@@ -142,6 +200,11 @@ func (t *Table) SetObjectFromRow(e base.Object, row []base.Column) {
 			fv = reflect.ValueOf(columnValue)
 			if !fv.IsValid() || fv.Kind() == reflect.Ptr && fv.IsNil() {
 				val.Set(reflect.Zero(val.Type()))
+			} else if base.IsOfTypeOptional(val) {
+				// Special case for custom optional type:
+				// Build a new value representing an optional type
+				// built from the raw type fetched from DB
+				val.Set(base.ConvertFromRawToOptionalType(fv))
 			} else {
 				val.Set(reflect.Indirect(fv).Convert(val.Type()))
 			}

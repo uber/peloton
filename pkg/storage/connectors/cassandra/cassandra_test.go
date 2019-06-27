@@ -34,6 +34,7 @@ var connector *cassandraConnector
 // test table name to be created for this test
 var testTableName1 string
 var testTableName2 string
+var testTableName3 string
 
 // testRow in DB representation looks like this:
 //
@@ -127,6 +128,7 @@ func init() {
 
 	testTableName1 = fmt.Sprintf("test_table_%d", rand.Intn(1000))
 	testTableName2 = fmt.Sprintf("test_table_%d", rand.Intn(1000))
+	testTableName3 = fmt.Sprintf("test_table_%d", rand.Intn(1000))
 
 	// create a test table
 	table1 := fmt.Sprintf("CREATE TABLE peloton_test.%s"+
@@ -142,6 +144,15 @@ func init() {
 		testTableName2)
 
 	if err := session.Query(table2).Exec(); err != nil {
+		log.Fatal(err)
+	}
+
+	// create a test table with partition key of type string "name"
+	table3 := fmt.Sprintf("CREATE TABLE peloton_test.%s"+
+		" (name text, data text, PRIMARY KEY ((name)))",
+		testTableName3)
+
+	if err := session.Query(table3).Exec(); err != nil {
 		log.Fatal(err)
 	}
 
@@ -368,6 +379,64 @@ func (suite *CassandraConnSuite) TestCreateGetAllIter() {
 	}
 }
 
+// TestCreateGetAllOptionalStringType tests the Create and GetAll
+// operations for the case of PK of type OptionalString type
+func (suite *CassandraConnSuite) TestCreateGetAllOptionalStringType() {
+	// Definition stores schema information about an Object
+	obj := &base.Definition{
+		Name: testTableName3,
+		Key: &base.PrimaryKey{
+			PartitionKeys: []string{"name"},
+		},
+		// Column name to data type mapping of the object
+		ColumnToType: map[string]reflect.Type{
+			"name": reflect.TypeOf(&base.OptionalString{}),
+			"data": reflect.TypeOf("data"),
+		},
+	}
+	row0 := []base.Column{
+		{
+			Name:  "name",
+			Value: "name0", // already converted into string type at the stage of value as a Column.Value
+		},
+		{
+			Name:  "data",
+			Value: "testdata0",
+		},
+	}
+	row1 := []base.Column{
+		{
+			Name:  "name",
+			Value: "name1", // already converted into string type at the stage of value as a Column.Value
+		},
+		{
+			Name:  "data",
+			Value: "testdata1",
+		},
+	}
+	err := connector.Create(context.Background(), obj, row0)
+	suite.NoError(err)
+	err = connector.Create(context.Background(), obj, row1)
+	suite.NoError(err)
+
+	// Calling GetAll() with no key row specified to return all rows
+	rows, err := connector.GetAll(context.Background(), obj, []base.Column{})
+	suite.NoError(err)
+	suite.Len(rows, 2)
+
+	for _, row := range rows {
+		for _, col := range row {
+			val := col.Value.(*string)
+			if col.Name == "name" {
+				suite.True(*val == "name0" || *val == "name1")
+			} else { // col.Name == "data"
+				suite.Equal("data", col.Name)
+				suite.True(*val == "testdata0" || *val == "testdata1")
+			}
+		}
+	}
+}
+
 // TestCreateIfNotExists tests the CreateIfNotExists operation
 func (suite *CassandraConnSuite) TestCreateIfNotExists() {
 	// Definition stores schema information about an Object
@@ -425,4 +494,55 @@ func (suite *CassandraConnSuite) TestDBFailures() {
 	// delete using wrong table name
 	err = connector.Delete(ctx, obj, keyRow)
 	suite.Error(err)
+}
+
+// TestBuildResultRow tests buildResultRow
+// notably with OptionalString type
+func (suite *CassandraConnSuite) TestBuildResultRow() {
+	obj := &base.Definition{
+		Name: testTableName3,
+		Key: &base.PrimaryKey{
+			PartitionKeys: []string{"name"},
+		},
+		// Column name to data type mapping of the object
+		ColumnToType: map[string]reflect.Type{
+			"name": reflect.TypeOf(&base.OptionalString{}),
+			"data": reflect.TypeOf("data"),
+		},
+	}
+	columns := []string{"name", "data"}
+
+	row := buildResultRow(obj, columns)
+	suite.Len(row, 2)
+	var value *string
+	suite.IsType(&value, row[0])
+	suite.IsType(&value, row[1])
+}
+
+// TestBuildResultRowUnknownPtrType tests that an unknown
+// pointer type should not be accounted for
+func (suite *CassandraConnSuite) TestBuildResultRowUnknownPtrType() {
+	// New type unknown to be used as pointer
+	type unknownPtrType struct{}
+
+	obj := &base.Definition{
+		Name: testTableName3,
+		Key: &base.PrimaryKey{
+			PartitionKeys: []string{"name"},
+		},
+		// Column name to data type mapping of the object
+		ColumnToType: map[string]reflect.Type{
+			"name": reflect.TypeOf("name"),
+			"data": reflect.TypeOf(&unknownPtrType{}),
+		},
+	}
+	columns := []string{"name", "data"}
+
+	row := buildResultRow(obj, columns)
+	suite.Len(row, 2)
+
+	suite.NotNil(row[0])
+	var value *string
+	suite.IsType(&value, row[0])
+	suite.Nil(row[1])
 }

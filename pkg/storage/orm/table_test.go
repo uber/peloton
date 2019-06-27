@@ -27,6 +27,14 @@ type ValidObject struct {
 	Data        string `column:"name=data"`
 }
 
+// ValidObjectWithOptString is a representation of the orm annotations
+// with a primary key of type optional string
+type ValidObjectWithOptString struct {
+	base.Object `cassandra:"name=valid_object_opt_string, primaryKey=((name))"`
+	Name        *base.OptionalString `column:"name=name"`
+	Data        string               `column:"name=data"`
+}
+
 // InvalidObject1 has primary key as empty
 type InvalidObject1 struct {
 	base.Object `cassandra:"name=valid_object, primaryKey=()"`
@@ -100,6 +108,28 @@ func (suite *ORMTestSuite) TestSetObjectFromRow() {
 	suite.Equal("", e.Data)
 }
 
+// TestSetObjectFromRowWithOptionalString tests setting from a row
+// an object with an optional string type as primary key
+func (suite *ORMTestSuite) TestSetObjectFromRowWithOptionalString() {
+	e := &ValidObjectWithOptString{}
+	table, err := orm.TableFromObject(e)
+	suite.NoError(err)
+
+	var testRow = []base.Column{
+		{
+			Name:  "name",
+			Value: "some_name",
+		},
+		{
+			Name:  "data",
+			Value: "random data",
+		},
+	}
+	table.SetObjectFromRow(e, testRow)
+	suite.Equal(e.Name, &base.OptionalString{Value: "some_name"})
+	suite.Equal(e.Data, testRow[1].Value)
+}
+
 // TestGetRowFromObject tests building a row (list of base.Column) from base
 // object
 func (suite *ORMTestSuite) TestGetRowFromObject() {
@@ -119,6 +149,32 @@ func (suite *ORMTestSuite) TestGetRowFromObject() {
 	suite.ensureRowsEqual(selectedFieldsRow, keyRow)
 }
 
+// TestGetRowFromObjectWithOptString tests building a row (list of base.Column) from base
+// object, with PK of type custom optional string
+func (suite *ORMTestSuite) TestGetRowFromObjectWithOptString() {
+	e := &ValidObjectWithOptString{
+		Name: &base.OptionalString{Value: "testname"},
+		Data: "testdata",
+	}
+	table, err := orm.TableFromObject(e)
+	suite.NoError(err)
+
+	row := table.GetRowFromObject(e)
+	suite.ensureRowsEqual(
+		row,
+		[]base.Column{
+			{
+				Name:  "name",
+				Value: "testname",
+			},
+			{
+				Name:  "data",
+				Value: "testdata",
+			},
+		},
+	)
+}
+
 // TestGetKeyRowFromObject tests getting primary key row (list of primary key
 // base.Column) from base object
 func (suite *ORMTestSuite) TestGetKeyRowFromObject() {
@@ -136,6 +192,21 @@ func (suite *ORMTestSuite) TestGetKeyRowFromObject() {
 	suite.Equal(len(keyRow), 2)
 }
 
+// TestGetKeyRowFromObjectWithOptString tests getting primary key row (list of primary key
+// base.Column) from base object, with PK of type custom optional string
+func (suite *ORMTestSuite) TestGetKeyRowFromObjectWithOptString() {
+	e := &ValidObjectWithOptString{
+		Name: &base.OptionalString{Value: "testname"},
+		Data: "testdata",
+	}
+	table, err := orm.TableFromObject(e)
+	suite.NoError(err)
+
+	keyRow := table.GetKeyRowFromObject(e)
+	suite.Equal(e.Name.String(), keyRow[0].Value)
+	suite.Len(keyRow, 1)
+}
+
 // TestGetPartitionKeyRowFromObject tests getting partition key row
 // (list of primary key base.Column) from base object
 func (suite *ORMTestSuite) TestGetPartitionKeyRowFromObject() {
@@ -150,4 +221,32 @@ func (suite *ORMTestSuite) TestGetPartitionKeyRowFromObject() {
 	keyRow := table.GetPartitionKeyRowFromObject(e)
 	suite.Equal(e.ID, keyRow[0].Value)
 	suite.Equal(len(keyRow), 1)
+}
+
+// TestGetPartitionKeyRowFromObjectWithOptString tests getting partition key row
+// (list of primary key base.Column) from base object
+// with PK of type custom optional string
+func (suite *ORMTestSuite) TestGetPartitionKeyRowFromObjectWithOptString() {
+	// If optional string type value is not nil
+	e := &ValidObjectWithOptString{
+		Name: &base.OptionalString{Value: "testname"},
+		Data: "testdata",
+	}
+	table, err := orm.TableFromObject(e)
+	suite.NoError(err)
+
+	keyRow := table.GetPartitionKeyRowFromObject(e)
+	suite.Equal(e.Name.String(), keyRow[0].Value)
+	suite.Len(keyRow, 1)
+
+	// If optional string type value is nil
+	e = &ValidObjectWithOptString{
+		Name: nil,
+		Data: "testdata",
+	}
+	table, err = orm.TableFromObject(e)
+	suite.NoError(err)
+
+	keyRow = table.GetPartitionKeyRowFromObject(e)
+	suite.Len(keyRow, 0)
 }
