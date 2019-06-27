@@ -320,14 +320,8 @@ def generate_test_results(
     # Aggregates data source with its function operation.
     for i, combo in enumerate(zip(operations, base_results, current_results)):
         func, f1, f2 = combo
-        print("Start operation " + func.__name__)
-        print("Base result: ")
-        print(f1)
-        print("Current result: ")
-        print(f2)
         try:
             results[i] = func(base_version, current_version, f1, f2)
-            print("table is generated: " + results[i])
         except Exception as e:
             results[i] = "<p>Report generation failed: %s</p>" % e
     return results
