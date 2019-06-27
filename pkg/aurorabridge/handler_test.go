@@ -1104,27 +1104,25 @@ func (suite *ServiceHandlerTestSuite) expectQueryJobsWithLabels(
 	jobIDs []*peloton.JobID,
 	jobKey *api.JobKey,
 ) {
-	var summaries []*stateless.JobSummary
+	var jobCache []*jobmgrsvc.QueryJobCacheResponse_JobCache
 	for _, jobID := range jobIDs {
-		summaries = append(summaries, &stateless.JobSummary{
-			JobId:  jobID,
-			Name:   atop.NewJobName(jobKey),
-			Labels: labels,
+		jobCache = append(jobCache, &jobmgrsvc.QueryJobCacheResponse_JobCache{
+			JobId: jobID,
+			Name:  atop.NewJobName(jobKey),
 		})
 	}
 
-	suite.jobClient.EXPECT().
-		QueryJobs(gomock.Any(),
-			&statelesssvc.QueryJobsRequest{
-				Spec: &stateless.QuerySpec{
+	suite.jobmgrClient.EXPECT().
+		QueryJobCache(
+			gomock.Any(),
+			&jobmgrsvc.QueryJobCacheRequest{
+				Spec: &jobmgrsvc.QueryJobCacheRequest_CacheQuerySpec{
 					Labels: labels,
-					Pagination: &pbquery.PaginationSpec{
-						Limit:    suite.config.QueryJobsLimit,
-						MaxLimit: suite.config.QueryJobsLimit,
-					},
 				},
 			}).
-		Return(&statelesssvc.QueryJobsResponse{Records: summaries}, nil)
+		Return(&jobmgrsvc.QueryJobCacheResponse{
+			Result: jobCache,
+		}, nil)
 }
 
 func (suite *ServiceHandlerTestSuite) expectGetJobVersion(id *peloton.JobID, v *peloton.EntityVersion) {
@@ -1298,74 +1296,6 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKey()
 	}
 }
 
-// TestGetJobIDsFromTaskQuery_PartialJobKeyFilterUnexpected checks
-// getJobIDsFromTaskQuery returns result when input query only contains
-// partial job key parameters - role, environment, and/or job_name,
-// meanwhile jobs that does not contain expected labels are filtered out.
-func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKeyFilterUnexpected() {
-	defer goleak.VerifyNoLeaks(suite.T())
-
-	role := "role1"
-	env := "env1"
-	jobID1 := fixture.PelotonJobID()
-	jobID2 := fixture.PelotonJobID()
-	jobID3 := fixture.PelotonJobID()
-
-	labels := append(
-		label.BuildPartialAuroraJobKeyLabels(role, env, ""),
-		common.BridgeJobLabel,
-	)
-
-	var summaries []*stateless.JobSummary
-	for _, jobID := range []*peloton.JobID{jobID1, jobID2} {
-		summaries = append(summaries, &stateless.JobSummary{
-			JobId:  jobID,
-			Name:   atop.NewJobName(nil),
-			Labels: labels,
-		})
-	}
-
-	var unexpctedLabels []*peloton.Label
-	for _, l := range labels {
-		unexpctedLabels = append(unexpctedLabels, &peloton.Label{
-			Key:   l.GetKey(),
-			Value: l.GetValue() + "_unexpcted",
-		})
-	}
-	summaries = append(summaries, &stateless.JobSummary{
-		JobId:  jobID3,
-		Name:   atop.NewJobName(nil),
-		Labels: unexpctedLabels,
-	})
-
-	suite.jobClient.EXPECT().
-		QueryJobs(gomock.Any(),
-			&statelesssvc.QueryJobsRequest{
-				Spec: &stateless.QuerySpec{
-					Labels: labels,
-					Pagination: &pbquery.PaginationSpec{
-						Limit:    suite.config.QueryJobsLimit,
-						MaxLimit: suite.config.QueryJobsLimit,
-					},
-				},
-			}).
-		Return(&statelesssvc.QueryJobsResponse{Records: summaries}, nil)
-
-	query := &api.TaskQuery{
-		Role:        ptr.String(role),
-		Environment: ptr.String(env),
-	}
-
-	jobIDs, err := suite.handler.getJobIDsFromTaskQuery(suite.ctx, query)
-	suite.NoError(err)
-	suite.Equal(2, len(jobIDs))
-	for _, jobID := range jobIDs {
-		if jobID.Value != jobID1.Value && jobID.Value != jobID2.Value {
-			suite.Fail("unexpected job id: \"%s\"", jobID.Value)
-		}
-	}
-}
-
 // TestGetJobIDsFromTaskQuery_PartialJobKeyError checks getJobIDsFromTaskQuery
 // returns error when the query fails and input query only contains partial
 // job key parameters - role, environment, and/or job_name.
@@ -1380,18 +1310,15 @@ func (suite *ServiceHandlerTestSuite) TestGetJobIDsFromTaskQuery_PartialJobKeyEr
 		common.BridgeJobLabel,
 	)
 
-	suite.jobClient.EXPECT().
-		QueryJobs(gomock.Any(),
-			&statelesssvc.QueryJobsRequest{
-				Spec: &stateless.QuerySpec{
+	suite.jobmgrClient.EXPECT().
+		QueryJobCache(
+			gomock.Any(),
+			&jobmgrsvc.QueryJobCacheRequest{
+				Spec: &jobmgrsvc.QueryJobCacheRequest_CacheQuerySpec{
 					Labels: labels,
-					Pagination: &pbquery.PaginationSpec{
-						Limit:    suite.config.QueryJobsLimit,
-						MaxLimit: suite.config.QueryJobsLimit,
-					},
 				},
 			}).
-		Return(nil, errors.New("failed to get job summary"))
+		Return(nil, errors.New("failed to query job cache"))
 
 	query := &api.TaskQuery{
 		Role:    ptr.String(role),

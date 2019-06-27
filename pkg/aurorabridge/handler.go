@@ -1941,14 +1941,14 @@ func (h *ServiceHandler) queryJobIDs(
 		return []*peloton.JobID{id}, nil
 	}
 
-	summaries, err := h.queryJobSummaries(ctx, role, env, name)
+	jobCache, err := h.queryJobCache(ctx, role, env, name)
 	if err != nil {
 		return nil, err
 	}
 
-	jobIDs := make([]*peloton.JobID, 0, len(summaries))
-	for _, summary := range summaries {
-		jobIDs = append(jobIDs, summary.GetJobId())
+	jobIDs := make([]*peloton.JobID, 0, len(jobCache))
+	for _, cache := range jobCache {
+		jobIDs = append(jobIDs, cache.GetJobId())
 	}
 	return jobIDs, nil
 }
@@ -1975,60 +1975,6 @@ func (h *ServiceHandler) getJobCacheFromJobKey(
 			Name:  atop.NewJobName(k),
 		},
 	}, nil
-}
-
-// queryJobSummaries takes optional job key components and returns the Peloton
-// job summaries which match the set parameters. E.g. queryJobSummaries("myservice", "", "")
-// will return summaries which match role=myservice.
-func (h *ServiceHandler) queryJobSummaries(
-	ctx context.Context,
-	role, env, name string,
-) ([]*stateless.JobSummary, error) {
-	labels := append(
-		label.BuildPartialAuroraJobKeyLabels(role, env, name),
-		common.BridgeJobLabel,
-	)
-
-	req := &statelesssvc.QueryJobsRequest{
-		Spec: &stateless.QuerySpec{
-			Labels: labels,
-			Pagination: &pbquery.PaginationSpec{
-				Limit:    h.config.QueryJobsLimit,
-				MaxLimit: h.config.QueryJobsLimit,
-			},
-		},
-	}
-	resp, err := h.jobClient.QueryJobs(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	// In peloton, query job by labels is implemented by "string contains",
-	// so need to filter unexpected jobs.
-	var summaries []*stateless.JobSummary
-	for _, s := range resp.GetRecords() {
-		// since we expect bridge-specific label keys to be present at most
-		// once, using a map is good enough here.
-		labelMap := make(map[string]string)
-		for _, l := range s.GetLabels() {
-			labelMap[l.GetKey()] = l.GetValue()
-		}
-
-		match := true
-		for _, el := range labels {
-			v, ok := labelMap[el.GetKey()]
-			if !ok || v != el.GetValue() {
-				match = false
-				break
-			}
-		}
-
-		if match {
-			summaries = append(summaries, s)
-		}
-	}
-
-	return summaries, nil
 }
 
 // queryJobCache calls jobmgr's private QueryJobCache API, passes the querying
