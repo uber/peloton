@@ -106,9 +106,6 @@ type TaskStore interface {
 	// GetTasksForJobAndStates gets the task info for all
 	// tasks in a given job and in a given state
 	GetTasksForJobAndStates(ctx context.Context, id *peloton.JobID, states []task.TaskState) (map[uint32]*task.TaskInfo, error)
-	// GetTaskIDsForJobAndState gets the task identifiers for all
-	// tasks in a given job and in a given state
-	GetTaskIDsForJobAndState(ctx context.Context, id *peloton.JobID, state string) ([]uint32, error)
 	// GetTaskRuntimesForJobByRange gets the task runtime for all
 	// tasks in a job with instanceID in the given range
 	GetTaskRuntimesForJobByRange(ctx context.Context, id *peloton.JobID, instanceRange *task.InstanceRange) (map[uint32]*task.RuntimeInfo, error)
@@ -126,9 +123,6 @@ type TaskStore interface {
 	GetTaskByID(ctx context.Context, taskID string) (*task.TaskInfo, error)
 	// QueryTasks queries for all tasks in a job matching the QuerySpec
 	QueryTasks(ctx context.Context, id *peloton.JobID, spec *task.QuerySpec) ([]*task.TaskInfo, uint32, error)
-	// GetTaskStateSummaryForJob gets the map state to instanceIDs
-	// (in that state) in a given job
-	GetTaskStateSummaryForJob(ctx context.Context, id *peloton.JobID) (map[string]uint32, error)
 	// GetPodEvents returns pod events (state transition for a job instance).
 	// limit parameter manages number of pod events to return
 	// and optional runID parameter to fetch pod events only for that run if

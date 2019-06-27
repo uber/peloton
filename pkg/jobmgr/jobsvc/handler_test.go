@@ -182,9 +182,6 @@ func (suite *JobHandlerTestSuite) setupMocks(
 	suite.mockedGoalStateDriver.EXPECT().EnqueueJob(jobID, gomock.Any()).AnyTimes()
 	suite.mockedGoalStateDriver.EXPECT().EnqueueTask(
 		jobID, gomock.Any(), gomock.Any()).AnyTimes()
-	suite.mockedTaskStore.EXPECT().
-		GetTaskStateSummaryForJob(context.Background(), gomock.Any()).
-		Return(map[string]uint32{}, nil).AnyTimes()
 }
 
 func (suite *JobHandlerTestSuite) SetupTest() {

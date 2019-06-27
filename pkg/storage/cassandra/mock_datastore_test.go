@@ -168,14 +168,6 @@ func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetTasks() {
 		context.Background(), suite.testJobID.GetValue(), 0)
 	suite.Error(err)
 
-	_, err = suite.store.GetTaskIDsForJobAndState(
-		context.Background(), suite.testJobID, task.TaskState_PENDING.String())
-	suite.Error(err)
-
-	_, err = suite.store.getTaskStateCount(
-		context.Background(), suite.testJobID, task.TaskState_PENDING.String())
-	suite.Error(err)
-
 	_, err = suite.store.getTask(context.Background(), testJob, 0)
 	suite.Error(err)
 }
@@ -188,10 +180,6 @@ func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetTaskConfig() {
 
 	_, _, err = suite.store.GetTaskConfigs(
 		context.Background(), suite.testJobID, []uint32{0}, 0)
-	suite.Error(err)
-
-	_, err = suite.store.GetTaskStateSummaryForJob(
-		context.Background(), suite.testJobID)
 	suite.Error(err)
 }
 

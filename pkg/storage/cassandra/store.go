@@ -76,7 +76,6 @@ const (
 	jobUpdateEvents        = "job_update_events"
 	podWorkflowEventsTable = "pod_workflow_events"
 	frameworksTable        = "frameworks"
-	taskJobStateView       = "mv_task_by_state"
 	jobByStateView         = "mv_job_by_state"
 	updatesByJobView       = "mv_updates_by_job"
 	resPoolsTable          = "respools"
@@ -1436,61 +1435,25 @@ func (s *Store) getTaskInfoFromRuntimeRecord(ctx context.Context, id *peloton.Jo
 	}, nil
 }
 
-//TODO GetTaskIDsForJobAndState and GetTasksForJobAndState have similar functionalities.
-// They need to be merged with the common function only returning a task summary
-// instead of full config and runtime.
-
-// GetTaskIDsForJobAndState returns a list of instance-ids for a peloton job with certain state.
-func (s *Store) GetTaskIDsForJobAndState(ctx context.Context, id *peloton.JobID, state string) ([]uint32, error) {
-	jobID := id.GetValue()
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("instance_id").From(taskJobStateView).
-		Where(qb.Eq{"job_id": jobID, "state": state})
-	allResults, err := s.executeRead(ctx, stmt)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", jobID).
-			WithField("task_state", state).
-			Error("fail to fetch instance id list from db")
-		s.metrics.TaskMetrics.TaskIDsGetForJobAndStateFail.Inc(1)
-		return nil, err
-	}
-
-	var result []uint32
-	for _, value := range allResults {
-		var record TaskRuntimeRecord
-		err := FillObject(value, &record, reflect.TypeOf(record))
-		if err != nil {
-			log.WithError(err).
-				WithField("job_id", jobID).
-				WithField("task_state", state).
-				Error("fail to fill task id into task record")
-			s.metrics.TaskMetrics.TaskIDsGetForJobAndStateFail.Inc(1)
-			return nil, err
-		}
-		result = append(result, uint32(record.InstanceID))
-	}
-
-	s.metrics.TaskMetrics.TaskIDsGetForJobAndState.Inc(1)
-	return result, nil
-}
-
-// GetTasksForJobAndStates returns the tasks for a peloton job which are in one of the specified states.
+// GetTasksForJobAndStates returns the tasks for a peloton job which are in
+// one of the specified states.
 // result map key is TaskID, value is TaskHost
-func (s *Store) GetTasksForJobAndStates(ctx context.Context, id *peloton.JobID, states []task.TaskState) (map[uint32]*task.TaskInfo, error) {
+func (s *Store) GetTasksForJobAndStates(
+	ctx context.Context,
+	id *peloton.JobID,
+	states []task.TaskState) (map[uint32]*task.TaskInfo, error) {
 	jobID := id.GetValue()
 	queryBuilder := s.DataStore.NewQuery()
-	var taskStates []string
+	taskStates := make(map[string]bool)
 	for _, state := range states {
-		taskStates = append(taskStates, state.String())
+		taskStates[state.String()] = true
 	}
-	stmt := queryBuilder.Select("instance_id").From(taskJobStateView).
-		Where(qb.Eq{"job_id": jobID, "state": taskStates})
+	stmt := queryBuilder.Select("instance_id", "state").From(taskRuntimeTable).
+		Where(qb.Eq{"job_id": jobID})
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID).
-			WithField("states", states).
 			Error("Failed to GetTasksForJobAndStates")
 		s.metrics.TaskMetrics.TaskGetForJobAndStatesFail.Inc(1)
 		return nil, err
@@ -1508,17 +1471,23 @@ func (s *Store) GetTasksForJobAndStates(ctx context.Context, id *peloton.JobID, 
 			s.metrics.TaskMetrics.TaskGetForJobAndStatesFail.Inc(1)
 			return nil, err
 		}
-		resultMap[uint32(record.InstanceID)], err = s.getTask(ctx, id.GetValue(), uint32(record.InstanceID))
-		if err != nil {
-			log.WithError(err).
-				WithField("job_id", jobID).
-				WithField("instance_id", record.InstanceID).
-				WithField("value", value).
-				Error("Failed to get taskInfo from task")
-			s.metrics.TaskMetrics.TaskGetForJobAndStatesFail.Inc(1)
-			return nil, err
+		for i := 0; i < len(taskStates); i++ {
+			if _, ok := taskStates[record.State]; !ok {
+				continue
+			}
+			resultMap[uint32(record.InstanceID)], err = s.getTask(ctx,
+				id.GetValue(), uint32(record.InstanceID))
+			if err != nil {
+				log.WithError(err).
+					WithField("job_id", jobID).
+					WithField("instance_id", record.InstanceID).
+					WithField("value", value).
+					Error("Failed to get taskInfo from task")
+				s.metrics.TaskMetrics.TaskGetForJobAndStatesFail.Inc(1)
+				return nil, err
+			}
+			s.metrics.TaskMetrics.TaskGetForJobAndStates.Inc(1)
 		}
-		s.metrics.TaskMetrics.TaskGetForJobAndStates.Inc(1)
 	}
 	s.metrics.TaskMetrics.TaskGetForJobAndStates.Inc(1)
 	return resultMap, nil
@@ -1584,47 +1553,6 @@ func (s *Store) GetTasksByQuerySpec(
 		"duration":   time.Since(start).Seconds(),
 	}).Debug("Query in memory filtering time")
 	return filteredTasks, nil
-}
-
-// getTaskStateCount returns the task count for a peloton job with certain state
-func (s *Store) getTaskStateCount(ctx context.Context, id *peloton.JobID, state string) (uint32, error) {
-	jobID := id.GetValue()
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("count (*)").From(taskJobStateView).
-		Where(qb.Eq{"job_id": jobID, "state": state})
-	allResults, err := s.executeRead(ctx, stmt)
-	if err != nil {
-		log.
-			WithField("job_id", jobID).
-			WithField("state", state).
-			WithError(err).
-			Error("Fail to getTaskStateCount by jobId")
-		return 0, err
-	}
-
-	log.Debugf("counts: %v", allResults)
-	for _, value := range allResults {
-		for _, count := range value {
-			val := count.(int64)
-			return uint32(val), nil
-		}
-	}
-	return 0, nil
-}
-
-// GetTaskStateSummaryForJob returns the tasks count (runtime_config) for a peloton job with certain state
-func (s *Store) GetTaskStateSummaryForJob(ctx context.Context, id *peloton.JobID) (map[string]uint32, error) {
-	resultMap := make(map[string]uint32)
-	for _, state := range task.TaskState_name {
-		count, err := s.getTaskStateCount(ctx, id, state)
-		if err != nil {
-			s.metrics.TaskMetrics.TaskSummaryForJobFail.Inc(1)
-			return nil, err
-		}
-		resultMap[state] = count
-	}
-	s.metrics.TaskMetrics.TaskSummaryForJob.Inc(1)
-	return resultMap, nil
 }
 
 // GetTaskRuntimesForJobByRange returns the Task RuntimeInfo for batch jobs by

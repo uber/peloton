@@ -117,50 +117,6 @@ func TestCassandraStore(t *testing.T) {
 	assert.True(t, testScope.Snapshot().Counters()["execute.execute+result=success,store=peloton_test"].Value() > 0)
 }
 
-// TestGetTaskIDsForJobAndState tests reading task IDs for given job and state
-func (suite *CassandraStoreTestSuite) TestGetTaskIDsForJobAndState() {
-	var taskStore storage.TaskStore
-	taskStore = store
-	var jobID = peloton.JobID{Value: uuid.New()}
-	runtimes := make(map[uint32]*task.RuntimeInfo)
-	jobConfig := buildJobConfig()
-	jobConfig.InstanceCount = 10
-	jobConfig.InstanceConfig = map[uint32]*task.TaskConfig{}
-
-	for i := 0; i < 10; i++ {
-		taskInfo := createTaskInfo(jobConfig, &jobID, 0)
-		taskInfo.Config = &task.TaskConfig{Name: fmt.Sprintf("task_%d", i)}
-		jobConfig.InstanceConfig[uint32(i)] = taskInfo.Config
-		taskInfo.Runtime.State = task.TaskState_RUNNING
-		if i%2 == 0 {
-			taskInfo.Runtime.State = task.TaskState_PENDING
-		}
-		runtimes[uint32(i)] = taskInfo.Runtime
-	}
-
-	err := suite.createJob(context.Background(), &jobID, jobConfig, &models.ConfigAddOn{}, "user1")
-	suite.Nil(err)
-
-	for i := 0; i < 10; i++ {
-		runtimes[uint32(i)].ConfigVersion = jobConfig.GetChangeLog().
-			GetVersion()
-		err = taskStore.CreateTaskRuntime(context.Background(),
-			&jobID, uint32(i), runtimes[uint32(i)], "test", jobConfig.GetType())
-		suite.NoError(err)
-	}
-
-	// get the task configs
-	ids, err := store.GetTaskIDsForJobAndState(
-		context.Background(), &jobID, task.TaskState_PENDING.String())
-	suite.NoError(err)
-	suite.Equal(5, len(ids))
-
-	ids, err = store.GetTaskIDsForJobAndState(
-		context.Background(), &jobID, task.TaskState_RUNNING.String())
-	suite.NoError(err)
-	suite.Equal(5, len(ids))
-}
-
 func (suite *CassandraStoreTestSuite) createJob(
 	ctx context.Context,
 	id *peloton.JobID,
@@ -1596,13 +1552,6 @@ func (suite *CassandraStoreTestSuite) TestGetTaskStateSummary() {
 			taskInfo.Runtime,
 			jobConfig.GetType())
 		suite.Nil(err)
-	}
-
-	taskStateSummary, err := store.GetTaskStateSummaryForJob(context.Background(), &jobID)
-	suite.Nil(err)
-	suite.Equal(len(taskStateSummary), len(task.TaskState_name))
-	for _, state := range task.TaskState_name {
-		suite.Equal(taskStateSummary[state], uint32(2))
 	}
 }
 
