@@ -536,11 +536,11 @@ var (
 	host            = app.Command("host", "manage hosts")
 	hostMaintenance = host.Command("maintenance", "host maintenance")
 
-	hostMaintenanceStart          = hostMaintenance.Command("start", "start host maintenance on a list of hosts")
-	hostMaintenanceStartHostnames = hostMaintenanceStart.Arg("hostnames", "comma separated hostnames").Required().String()
+	hostMaintenanceStart         = hostMaintenance.Command("start", "start maintenance on a host")
+	hostMaintenanceStartHostname = hostMaintenanceStart.Arg("hostname", "hostname").Required().String()
 
-	hostMaintenanceComplete          = hostMaintenance.Command("complete", "complete host maintenance on a list of hosts")
-	hostMaintenanceCompleteHostnames = hostMaintenanceComplete.Arg("hostnames", "comma separated hostnames").Required().String()
+	hostMaintenanceComplete         = hostMaintenance.Command("complete", "complete maintenance on a host")
+	hostMaintenanceCompleteHostname = hostMaintenanceComplete.Arg("hostname", "hostname").Required().String()
 
 	hostQuery       = host.Command("query", "query hosts by state(s)")
 	hostQueryStates = hostQuery.Flag("states", "host state(s) to filter").Default("").Short('s').String()
@@ -835,9 +835,9 @@ func main() {
 	case taskRestart.FullCommand():
 		err = client.TaskRestartAction(*taskRestartJobName, *taskRestartInstanceRanges)
 	case hostMaintenanceStart.FullCommand():
-		err = client.HostMaintenanceStartAction(*hostMaintenanceStartHostnames)
+		err = client.HostMaintenanceStartAction(*hostMaintenanceStartHostname)
 	case hostMaintenanceComplete.FullCommand():
-		err = client.HostMaintenanceCompleteAction(*hostMaintenanceCompleteHostnames)
+		err = client.HostMaintenanceCompleteAction(*hostMaintenanceCompleteHostname)
 	case hostQuery.FullCommand():
 		err = client.HostQueryAction(*hostQueryStates)
 	case jobMgrThrottledPods.FullCommand():

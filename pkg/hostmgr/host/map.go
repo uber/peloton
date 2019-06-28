@@ -165,13 +165,14 @@ type MaintenanceHostInfoMap interface {
 	// GetDownHostInfos returns HostInfo of hosts in DOWN state
 	// If the hostFilter is empty then HostInfos of all DOWN hosts is returned.
 	GetDownHostInfos(hostFilter []string) []*host.HostInfo
-	// AddHostInfos adds HostInfos to the map. AddHostInfos is called when one
-	// or more hosts transition to maintenance states (DRAINING and DRAINED).
-	AddHostInfos(hostInfos []*host.HostInfo)
-	// RemoveHostInfos removes the HostInfos of the specified hosts from the map
-	// RemoveHostInfos is needed to remove entries of hosts from the map when
+	// AddHostInfo adds a HostInfo to the map. AddHostInfo is called when a host
+	// transitions to a maintenance states (DRAINING and DRAINED).
+	AddHostInfo(hostInfo *host.HostInfo)
+	// RemoveHostInfo removes the host's hostInfo from
+	// the relevant host state based list of hostInfos
+	// RemoveHostInfo is needed to remove entries of hosts from the map when
 	// hosts transition from one of the maintenance states to UP state.
-	RemoveHostInfos(hosts []string)
+	RemoveHostInfo(host string)
 	// UpdateHostState updates the HostInfo.HostState of the specified
 	// host from 'from' state to 'to' state.
 	UpdateHostState(hostname string, from host.HostState, to host.HostState) error
@@ -242,34 +243,30 @@ func (m *maintenanceHostInfoMap) GetDownHostInfos(hostFilter []string) []*host.H
 }
 
 // AddHostInfo adds hostInfo to the specified host state bucket
-func (m *maintenanceHostInfoMap) AddHostInfos(
-	hostInfos []*host.HostInfo) {
+func (m *maintenanceHostInfoMap) AddHostInfo(
+	hostInfo *host.HostInfo) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	for _, hostInfo := range hostInfos {
-		switch hostInfo.State {
-		case host.HostState_HOST_STATE_DRAINING:
-			m.drainingHosts[hostInfo.GetHostname()] = hostInfo
-		case host.HostState_HOST_STATE_DOWN:
-			m.downHosts[hostInfo.GetHostname()] = hostInfo
-		}
+	switch hostInfo.State {
+	case host.HostState_HOST_STATE_DRAINING:
+		m.drainingHosts[hostInfo.GetHostname()] = hostInfo
+	case host.HostState_HOST_STATE_DOWN:
+		m.downHosts[hostInfo.GetHostname()] = hostInfo
 	}
 
 	m.metrics.DrainingHosts.Update(float64(len(m.drainingHosts)))
 	m.metrics.DownHosts.Update(float64(len(m.downHosts)))
 }
 
-// RemoveHostInfos removes the hostInfos of the specified hosts from
-// the specified host state bucket
-func (m *maintenanceHostInfoMap) RemoveHostInfos(hosts []string) {
+// RemoveHostInfo removes the host's hostInfo from
+// the relevant host state based list of hostInfos
+func (m *maintenanceHostInfoMap) RemoveHostInfo(host string) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	for _, host := range hosts {
-		delete(m.drainingHosts, host)
-		delete(m.downHosts, host)
-	}
+	delete(m.drainingHosts, host)
+	delete(m.downHosts, host)
 
 	m.metrics.DrainingHosts.Update(float64(len(m.drainingHosts)))
 	m.metrics.DownHosts.Update(float64(len(m.downHosts)))

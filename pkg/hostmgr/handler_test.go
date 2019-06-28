@@ -2128,78 +2128,67 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerGetDrainingHosts() {
 func (suite *HostMgrHandlerTestSuite) TestServiceHandlerMarkHostsDrained() {
 	defer suite.ctrl.Finish()
 
-	hostInfos := []*hpb.HostInfo{
-		{
-			Hostname: "testhost",
-			Ip:       "0.0.0.0",
-			State:    hpb.HostState_HOST_STATE_DRAINING,
-		},
+	hostname := "testhost"
+	hostInfo := &hpb.HostInfo{
+		Hostname: hostname,
+		Ip:       "0.0.0.0",
+		State:    hpb.HostState_HOST_STATE_DRAINING,
 	}
 
-	var drainingMachines []*mesos_maintenance.ClusterStatus_DrainingMachine
-	for _, hostInfo := range hostInfos {
-		machineID := &mesos.MachineID{
-			Hostname: &hostInfo.Hostname,
-			Ip:       &hostInfo.Ip,
-		}
-		drainingMachines = append(drainingMachines,
-			&mesos_maintenance.ClusterStatus_DrainingMachine{
-				Id: machineID,
-			})
+	drainingMachines := []*mesos_maintenance.ClusterStatus_DrainingMachine{
+		{
+			Id: &mesos.MachineID{
+				Hostname: &hostInfo.Hostname,
+				Ip:       &hostInfo.Ip,
+			},
+		},
 	}
 
 	gomock.InOrder(
 		suite.maintenanceHostInfoMap.EXPECT().
 			GetDrainingHostInfos([]string{}).
-			Return(hostInfos),
+			Return([]*hpb.HostInfo{hostInfo}),
 
 		suite.masterOperatorClient.EXPECT().
 			StartMaintenance(gomock.Any()).
 			Return(nil).
 			Do(func(machineIds []*mesos.MachineID) {
-				for i := range drainingMachines {
-					suite.Exactly(drainingMachines[i].Id, machineIds[i])
-				}
+				suite.Exactly(drainingMachines[0].Id, machineIds[0])
 			}),
 	)
+	suite.maintenanceHostInfoMap.EXPECT().UpdateHostState(
+		hostInfo.GetHostname(),
+		hpb.HostState_HOST_STATE_DRAINING,
+		hpb.HostState_HOST_STATE_DOWN)
 
-	for _, hostInfo := range hostInfos {
-		suite.maintenanceHostInfoMap.EXPECT().UpdateHostState(
-			hostInfo.GetHostname(),
-			hpb.HostState_HOST_STATE_DRAINING,
-			hpb.HostState_HOST_STATE_DOWN)
-	}
-
-	var hostnames []string
-	for _, hostInfo := range hostInfos {
-		hostnames = append(hostnames, hostInfo.GetHostname())
-	}
-	resp, err := suite.handler.MarkHostsDrained(
+	resp, err := suite.handler.MarkHostDrained(
 		context.Background(),
-		&hostsvc.MarkHostsDrainedRequest{
-			Hostnames: hostnames,
+		&hostsvc.MarkHostDrainedRequest{
+			Hostname: hostname,
 		})
 	suite.NoError(err)
-	suite.NotNil(resp)
+	suite.Equal(&hostsvc.MarkHostDrainedResponse{
+		Hostname: hostname,
+	}, resp)
 
 	// Test host-not-DRAINING
 	suite.maintenanceHostInfoMap.EXPECT().
 		GetDrainingHostInfos([]string{}).
 		Return([]*hpb.HostInfo{})
 
-	resp, err = suite.handler.MarkHostsDrained(
+	resp, err = suite.handler.MarkHostDrained(
 		context.Background(),
-		&hostsvc.MarkHostsDrainedRequest{
-			Hostnames: hostnames,
+		&hostsvc.MarkHostDrainedRequest{
+			Hostname: hostname,
 		})
-	suite.Nil(resp.GetMarkedHosts())
+	suite.Equal("", resp.GetHostname())
 
 	// Test StartMaintenance error
 	suite.maintenanceHostInfoMap.EXPECT().
 		GetDrainingHostInfos([]string{}).
 		Return([]*hpb.HostInfo{
 			{
-				Hostname: "host1",
+				Hostname: hostname,
 				Ip:       "0.0.0.0",
 				State:    hpb.HostState_HOST_STATE_DRAINING,
 			},
@@ -2208,13 +2197,13 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerMarkHostsDrained() {
 	suite.masterOperatorClient.EXPECT().
 		StartMaintenance(gomock.Any()).
 		Return(fmt.Errorf("fake StartMaintenance error"))
-	resp, err = suite.handler.MarkHostsDrained(
+	resp, err = suite.handler.MarkHostDrained(
 		context.Background(),
-		&hostsvc.MarkHostsDrainedRequest{
-			Hostnames: []string{"host1"},
+		&hostsvc.MarkHostDrainedRequest{
+			Hostname: hostname,
 		})
 	suite.Error(err)
-	suite.Nil(resp.GetMarkedHosts())
+	suite.Equal("", resp.GetHostname())
 }
 
 func getAcquireHostOffersRequest() *hostsvc.AcquireHostOffersRequest {

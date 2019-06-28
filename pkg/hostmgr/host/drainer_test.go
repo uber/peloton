@@ -169,11 +169,13 @@ func (suite *drainerTestSuite) TestDrainerStartSuccess() {
 		MinTimes(1).
 		MaxTimes(2)
 
-	suite.mockMaintenanceQueue.EXPECT().
-		Enqueue(drainingHostnames).
-		Return(nil).
-		MinTimes(1).
-		MaxTimes(2)
+	for _, drainingHostname := range drainingHostnames {
+		suite.mockMaintenanceQueue.EXPECT().
+			Enqueue(drainingHostname).
+			Return(nil).
+			MinTimes(1).
+			MaxTimes(2)
+	}
 
 	suite.drainer.Start()
 	// Starting drainer again should be no-op
@@ -232,11 +234,13 @@ func (suite *drainerTestSuite) TestDrainerStartEnqueueFailure() {
 		MinTimes(1).
 		MaxTimes(2)
 
-	suite.mockMaintenanceQueue.EXPECT().
-		Enqueue(drainingHostnames).
-		Return(fmt.Errorf("Fake Enqueue error")).
-		MinTimes(1).
-		MaxTimes(2)
+	for _, drainingHostname := range drainingHostnames {
+		suite.mockMaintenanceQueue.EXPECT().
+			Enqueue(drainingHostname).
+			Return(fmt.Errorf("Fake Enqueue error")).
+			MinTimes(1).
+			MaxTimes(2)
+	}
 
 	suite.drainer.Start()
 	time.Sleep(2 * drainerPeriod)

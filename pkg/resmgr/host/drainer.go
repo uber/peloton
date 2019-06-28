@@ -27,7 +27,7 @@ import (
 	"github.com/uber/peloton/pkg/resmgr/preemption"
 	rmtask "github.com/uber/peloton/pkg/resmgr/task"
 
-	"github.com/hashicorp/go-multierror"
+	multierror "github.com/hashicorp/go-multierror"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 )
@@ -174,34 +174,37 @@ func (d *Drainer) drainHosts() error {
 		}
 	}
 	if len(drainedHosts) != 0 {
-		err := d.markHostsDrained(drainedHosts)
-		if err != nil {
-			errs = multierror.Append(err, errs)
-			return errs
+		for _, host := range drainedHosts {
+			if err := d.markHostDrained(host); err != nil {
+				errs = multierror.Append(err, errs)
+				return errs
+			}
+			log.WithField("hostname", host).Info("Marked host as drained")
 		}
-		log.WithField("hosts", drainedHosts).Info("Marked hosts as drained")
 	}
 	return errs
 }
 
-func (d *Drainer) markHostsDrained(hosts []string) error {
+func (d *Drainer) markHostDrained(host string) error {
 	err := backoff.Retry(
 		func() error {
-			log.WithField("hosts", hosts).
-				Info("Attempting to mark hosts as drained")
+			log.WithField("hostname", host).
+				Info("Attempting to mark host as drained")
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			response, err := d.hostMgrClient.MarkHostsDrained(
+			_, err := d.hostMgrClient.MarkHostDrained(
 				ctx,
-				&hostsvc.MarkHostsDrainedRequest{
-					Hostnames: hosts,
-				})
-			for _, host := range response.GetMarkedHosts() {
-				d.drainingHosts.Remove(host)
-				log.WithField("hostname", host).
-					Info("successfully marked host as drained, removing from queue")
+				&hostsvc.MarkHostDrainedRequest{
+					Hostname: host,
+				},
+			)
+			if err != nil {
+				return err
 			}
-			return err
+			d.drainingHosts.Remove(host)
+			log.WithField("hostname", host).
+				Info("successfully marked host as drained, removing from queue")
+			return nil
 		},
 		backoff.NewRetryPolicy(
 			markHostDrainedBackoffRetryCount,

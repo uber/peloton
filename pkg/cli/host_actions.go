@@ -35,27 +35,25 @@ const (
 	getHostsFormatBody    = "%s\t%.2f\t%.2f\t%.2f MB\t%.2f MB\t%s\t%s\n"
 )
 
-// HostMaintenanceStartAction is the action for starting host maintenance. StartMaintenance puts the host(s)
+// HostMaintenanceStartAction is the action for starting host maintenance. StartMaintenance puts the host
 // into DRAINING state by posting a maintenance schedule to Mesos Master. Inverse offers are sent out and
-// all future offers from the(se) host(s) are tagged with unavailability (Please check Mesos Maintenance
-// Primitives for more info). The hosts are first drained of tasks before they are put into maintenance
+// all future offers from the host are tagged with unavailability (Please check Mesos Maintenance
+// Primitives for more info). The host is first drained of tasks before being put into maintenance
 // by posting to /machine/down endpoint of Mesos Master.
-// The hosts transition from UP to DRAINING and finally to DOWN.
-func (c *Client) HostMaintenanceStartAction(hosts string) error {
-	hostnames, err := c.ExtractHostnames(hosts, hostSeparator)
-	if err != nil {
-		return err
+// The host transitions from UP to DRAINING and finally to DOWN.
+func (c *Client) HostMaintenanceStartAction(hostname string) error {
+	if len(hostname) == 0 {
+		return fmt.Errorf("Empty hostname")
 	}
-
 	request := &host_svc.StartMaintenanceRequest{
-		Hostnames: hostnames,
+		Hostname: hostname,
 	}
-	_, err = c.hostClient.StartMaintenance(c.ctx, request)
+	resp, err := c.hostClient.StartMaintenance(c.ctx, request)
 	if err != nil {
+		fmt.Fprintf(tabWriter, "Error submitting host %s for maintenance: %s\n", hostname, err)
 		return err
 	}
-
-	fmt.Fprintf(tabWriter, "Started draining hosts\n")
+	fmt.Fprintf(tabWriter, "Host successfully submitted for maintenance: %s\n", resp.GetHostname())
 	tabWriter.Flush()
 	return nil
 }
@@ -63,21 +61,20 @@ func (c *Client) HostMaintenanceStartAction(hosts string) error {
 // HostMaintenanceCompleteAction is the action for completing host maintenance. Complete maintenance brings UP a host
 // which is in maintenance by posting to /machine/up endpoint of Mesos Master i.e. the machine transitions from DOWN to
 // UP state (Please check Mesos Maintenance Primitives for more info)
-func (c *Client) HostMaintenanceCompleteAction(hosts string) error {
-	hostnames, err := c.ExtractHostnames(hosts, hostSeparator)
-	if err != nil {
-		return err
+func (c *Client) HostMaintenanceCompleteAction(hostname string) error {
+	if len(hostname) == 0 {
+		return fmt.Errorf("Missing hostname")
 	}
-
 	request := &host_svc.CompleteMaintenanceRequest{
-		Hostnames: hostnames,
+		Hostname: hostname,
 	}
-	_, err = c.hostClient.CompleteMaintenance(c.ctx, request)
+	resp, err := c.hostClient.CompleteMaintenance(c.ctx, request)
 	if err != nil {
+		fmt.Fprintf(tabWriter, "Error submitting host %s for maintenance completion: %s\n", hostname, err)
 		return err
 	}
 
-	fmt.Fprintf(tabWriter, "Maintenance completed\n")
+	fmt.Fprintf(tabWriter, "Host successfully submitted for maintenance completion: %s\n", resp.GetHostname())
 	tabWriter.Flush()
 	return nil
 }

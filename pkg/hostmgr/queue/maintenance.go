@@ -23,7 +23,6 @@ import (
 	"github.com/uber/peloton/pkg/common/stringset"
 
 	log "github.com/sirupsen/logrus"
-	"go.uber.org/multierr"
 )
 
 // maxMaintenanceQueueSize is the max size of the maintenance queue.
@@ -41,8 +40,8 @@ type maintenanceQueue struct {
 
 // MaintenanceQueue is the interface for maintenance queue.
 type MaintenanceQueue interface {
-	// Enqueue enqueues a list of hostnames into the maintenance queue
-	Enqueue(hostnames []string) error
+	// Enqueue enqueues a hostname into the maintenance queue
+	Enqueue(hostname string) error
 	// Dequeue dequeues a hostname from the maintenance queue
 	Dequeue(maxWaitTime time.Duration) (string, error)
 	// Length returns the length of maintenance queue at any time
@@ -63,26 +62,21 @@ func NewMaintenanceQueue() MaintenanceQueue {
 }
 
 // Enqueue enqueues a list of hostnames into the maintenance queue
-func (mq *maintenanceQueue) Enqueue(hostnames []string) error {
+func (mq *maintenanceQueue) Enqueue(hostname string) error {
 	mq.lock.Lock()
 	defer mq.lock.Unlock()
 
-	var errs error
-	for _, host := range hostnames {
-		if mq.hostSet.Contains(host) {
-			log.
-				WithField("host", host).
-				Debug("Skipping enqueue. Host already present in maintenance queue.")
-			continue
-		}
-		err := mq.queue.Enqueue(host)
-		if err != nil {
-			errs = multierr.Append(errs, err)
-			continue
-		}
-		mq.hostSet.Add(host)
+	if mq.hostSet.Contains(hostname) {
+		log.
+			WithField("host", hostname).
+			Debug("Skipping enqueue. Host already present in maintenance queue.")
+		return nil
 	}
-	return errs
+	if err := mq.queue.Enqueue(hostname); err != nil {
+		return err
+	}
+	mq.hostSet.Add(hostname)
+	return nil
 }
 
 // Dequeue dequeues a hostname from the maintenance queue

@@ -434,9 +434,9 @@ service InternalHostService
   // to get hosts which are to be drained.
   rpc GetDrainingHosts (GetDrainingHostsRequest) returns (GetDrainingHostsResponse);
 
-  // Mark the hosts as drained. This method is called by Resource Manager  to
-  // notify Host Manager that specified DRAINING hosts are cleared of all tasks.
-  rpc MarkHostsDrained (MarkHostsDrainedRequest) returns (MarkHostsDrainedResponse);
+  // Mark a host as drained. This method is called by Resource Manager to
+  // notify Host Manager the specified DRAINING host is cleared of all tasks.
+  rpc MarkHostDrained (MarkHostDrainedRequest) returns (MarkHostDrainedResponse);
 
   // Return Mesos agent info
   rpc GetMesosAgentInfo(GetMesosAgentInfoRequest)
@@ -935,19 +935,19 @@ message GetDrainingHostsResponse {
 }
 
 /*
-* MarkHostsDrainedRequest is the request message for InternalHostService.MarkHostsDrained
+* MarkHostDrainedRequest is the request message for InternalHostService.MarkHostDrained
 */
-message MarkHostsDrainedRequest {
-    // Hostnames of the hosts to be marked as drained
-    repeated string hostnames = 1;
+message MarkHostDrainedRequest {
+    // Hostname of the host to be marked as drained
+    string hostname = 1;
 }
 
 /*
-* MarkHostsDrainedResponse is the response message for InternalHostService.MarkHostsDrained
+* MarkHostDrainedResponse is the response message for InternalHostService.MarkHostDrained
 */
-message MarkHostsDrainedResponse {
-    // Hostnames of the hosts successfully marked as drained
-    repeated string marked_hosts = 1;
+message MarkHostDrainedResponse {
+    // Hostname of the host successfully marked as drained
+    string hostname = 1;
 }
 
 /**

@@ -82,14 +82,6 @@ func (suite *hostmgrActionsTestSuite) TestClientHostMaintenanceStartAction() {
 	// Test empty hostname error
 	err = c.HostMaintenanceStartAction("")
 	suite.Error(err)
-
-	//Test duplicate hostname error
-	err = c.HostMaintenanceStartAction("hostname, hostname")
-	suite.Error(err)
-
-	// Test invalid input error
-	err = c.HostMaintenanceStartAction("hostname,,")
-	suite.Error(err)
 }
 
 func (suite *hostmgrActionsTestSuite) TestClientHostMaintenanceCompleteAction() {
@@ -100,31 +92,25 @@ func (suite *hostmgrActionsTestSuite) TestClientHostMaintenanceCompleteAction() 
 		ctx:        suite.ctx,
 	}
 
-	resp := &hostsvc.CompleteMaintenanceResponse{}
+	hostname := "hostname"
+	resp := &hostsvc.CompleteMaintenanceResponse{
+		Hostname: hostname}
 
 	suite.mockHostmgr.EXPECT().
 		CompleteMaintenance(gomock.Any(), gomock.Any()).
 		Return(resp, nil)
-	err := c.HostMaintenanceCompleteAction("hostname")
+	err := c.HostMaintenanceCompleteAction(hostname)
 	suite.NoError(err)
 
 	//Test CompleteMaintenance error
 	suite.mockHostmgr.EXPECT().
 		CompleteMaintenance(gomock.Any(), gomock.Any()).
 		Return(nil, fmt.Errorf("fake CompleteMaintenance error"))
-	err = c.HostMaintenanceCompleteAction("hostname")
+	err = c.HostMaintenanceCompleteAction(hostname)
 	suite.Error(err)
 
 	// Test empty hostname error
 	err = c.HostMaintenanceCompleteAction("")
-	suite.Error(err)
-
-	//Test duplicate hostname error
-	err = c.HostMaintenanceCompleteAction("hostname, hostname")
-	suite.Error(err)
-
-	// Test invalid input error
-	err = c.HostMaintenanceStartAction("hostname,,")
 	suite.Error(err)
 }
 

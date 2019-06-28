@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/uber/peloton/.gen/mesos/v1"
+	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	host_mocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
@@ -220,8 +220,8 @@ func (suite *DrainerTestSuite) TestDrainCycle_MarkHostsDrained() {
 			Hostnames: []string{"dummyhost"},
 		}, nil)
 	suite.mockHostmgr.EXPECT().
-		MarkHostsDrained(gomock.Any(), gomock.Any()).
-		Return(&hostsvc.MarkHostsDrainedResponse{}, nil)
+		MarkHostDrained(gomock.Any(), gomock.Any()).
+		Return(&hostsvc.MarkHostDrainedResponse{}, nil)
 	err := suite.drainer.performDrainCycle()
 	suite.NoError(err)
 }

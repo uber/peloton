@@ -69,8 +69,8 @@ type Metrics struct {
 	GetDrainingHosts     tally.Counter
 	GetDrainingHostsFail tally.Counter
 
-	MarkHostsDrained     tally.Counter
-	MarkHostsDrainedFail tally.Counter
+	MarkHostDrained     tally.Counter
+	MarkHostDrainedFail tally.Counter
 
 	WatchEventCancel   tally.Counter
 	WatchEventOverflow tally.Counter
@@ -134,8 +134,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		GetDrainingHosts:     scope.Counter("get_draining_hosts"),
 		GetDrainingHostsFail: scope.Counter("get_draining_hosts_fail"),
 
-		MarkHostsDrained:     scope.Counter("mark_hosts_drained"),
-		MarkHostsDrainedFail: scope.Counter("mark_hosts_drained_fail"),
+		MarkHostDrained:     scope.Counter("mark_host_drained"),
+		MarkHostDrainedFail: scope.Counter("mark_host_drained_fail"),
 
 		WatchEventCancel:           watchEventScope.Counter("watch_event_cancel"),
 		WatchEventOverflow:         watchEventScope.Counter("watch_event_overflow"),

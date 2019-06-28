@@ -195,11 +195,15 @@ func (suite *HostMapTestSuite) TestMaintenanceHostInfoMap() {
 		downHosts = append(downHosts, hostInfo.GetHostname())
 	}
 	suite.Nil(maintenanceHostInfoMap.GetDrainingHostInfos([]string{}))
-	maintenanceHostInfoMap.AddHostInfos(drainingHostInfos)
+	for _, drainingHostInfo := range drainingHostInfos {
+		maintenanceHostInfoMap.AddHostInfo(drainingHostInfo)
+	}
 	suite.NotEmpty(maintenanceHostInfoMap.GetDrainingHostInfos(drainingHosts))
 
 	suite.Nil(maintenanceHostInfoMap.GetDownHostInfos([]string{}))
-	maintenanceHostInfoMap.AddHostInfos(downHostInfos)
+	for _, downHostInfo := range downHostInfos {
+		maintenanceHostInfoMap.AddHostInfo(downHostInfo)
+	}
 	suite.NotEmpty(maintenanceHostInfoMap.GetDownHostInfos(downHosts))
 
 	drainingHostInfoMap := make(map[string]*host.HostInfo)
@@ -277,19 +281,27 @@ func (suite *HostMapTestSuite) TestMaintenanceHostInfoMap() {
 	suite.Error(err)
 
 	// Test RemoveHostInfos
-	maintenanceHostInfoMap.RemoveHostInfos(drainingHosts)
+	for _, drainingHost := range drainingHosts {
+		maintenanceHostInfoMap.RemoveHostInfo(drainingHost)
+	}
 	suite.Empty(maintenanceHostInfoMap.GetDrainingHostInfos([]string{}))
 	suite.NotEmpty(maintenanceHostInfoMap.GetDownHostInfos([]string{}))
 
-	maintenanceHostInfoMap.RemoveHostInfos(downHosts)
+	for _, downHost := range downHosts {
+		maintenanceHostInfoMap.RemoveHostInfo(downHost)
+	}
 	suite.Empty(maintenanceHostInfoMap.GetDrainingHostInfos([]string{}))
 	suite.Empty(maintenanceHostInfoMap.GetDownHostInfos([]string{}))
 
 	// Test ClearAndFillMap
-	maintenanceHostInfoMap.AddHostInfos(drainingHostInfos)
+	for _, drainingHostInfo := range drainingHostInfos {
+		maintenanceHostInfoMap.AddHostInfo(drainingHostInfo)
+	}
 	suite.NotEmpty(maintenanceHostInfoMap.GetDrainingHostInfos(drainingHosts))
 
-	maintenanceHostInfoMap.AddHostInfos(downHostInfos)
+	for _, downHostInfo := range downHostInfos {
+		maintenanceHostInfoMap.AddHostInfo(downHostInfo)
+	}
 	suite.NotEmpty(maintenanceHostInfoMap.GetDownHostInfos(downHosts))
 
 	maintenanceHostInfoMap.ClearAndFillMap(drainingHostInfos)

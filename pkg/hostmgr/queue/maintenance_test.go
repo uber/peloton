@@ -28,15 +28,15 @@ import (
 
 type MaintenanceQueueTestSuite struct {
 	suite.Suite
-	mockCtrl      *gomock.Controller
-	maxWaitTime   time.Duration
-	testHostnames []string
+	mockCtrl     *gomock.Controller
+	maxWaitTime  time.Duration
+	testHostname string
 }
 
 func (suite *MaintenanceQueueTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
 	suite.maxWaitTime = 1
-	suite.testHostnames = []string{"testHost1", "testHost2"}
+	suite.testHostname = "testHostname"
 }
 
 func TestMaintenanceQueue(t *testing.T) {
@@ -45,25 +45,22 @@ func TestMaintenanceQueue(t *testing.T) {
 
 func (suite *MaintenanceQueueTestSuite) TestMaintenanceQueueEnqueueDequeue() {
 	maintenanceQueue := NewMaintenanceQueue()
-	err := maintenanceQueue.Enqueue(suite.testHostnames)
+	err := maintenanceQueue.Enqueue(suite.testHostname)
 	suite.NoError(err)
 
 	// Check length
-	suite.Equal(len(suite.testHostnames), maintenanceQueue.Length())
+	suite.Equal(1, maintenanceQueue.Length())
 
 	// Test enqueuing duplicates
-	err = maintenanceQueue.Enqueue(suite.testHostnames)
+	err = maintenanceQueue.Enqueue(suite.testHostname)
 	suite.NoError(err)
 
 	// Length should remain the same
-	suite.Equal(len(suite.testHostnames), maintenanceQueue.Length())
+	suite.Equal(1, maintenanceQueue.Length())
 
-	for _, hostname := range suite.testHostnames {
-		h, err := maintenanceQueue.Dequeue(suite.maxWaitTime * time.Second)
-		suite.NoError(err)
-		suite.Equal(hostname, h)
-	}
-
+	h, err := maintenanceQueue.Dequeue(suite.maxWaitTime * time.Second)
+	suite.NoError(err)
+	suite.Equal(suite.testHostname, h)
 }
 
 func (suite *MaintenanceQueueTestSuite) TestMaintenanceQueueErrors() {
@@ -74,9 +71,8 @@ func (suite *MaintenanceQueueTestSuite) TestMaintenanceQueueErrors() {
 	}
 	// Test Enqueue error
 	queue.EXPECT().Enqueue(gomock.Any()).
-		Return(fmt.Errorf("fake enqueue error")).
-		Times(len(suite.testHostnames))
-	err := maintenanceQueue.Enqueue(suite.testHostnames)
+		Return(fmt.Errorf("fake enqueue error"))
+	err := maintenanceQueue.Enqueue(suite.testHostname)
 	suite.Error(err)
 
 	// Test Dequeue error
@@ -94,18 +90,16 @@ func (suite *MaintenanceQueueTestSuite) TestMaintenanceQueueClear() {
 		queue: queue,
 	}
 
-	queue.EXPECT().Length().Return(len(suite.testHostnames))
+	queue.EXPECT().Length().Return(1)
 	queue.EXPECT().
 		Dequeue(gomock.Any()).
-		Return(gomock.Any(), nil).
-		Times(len(suite.testHostnames))
+		Return(gomock.Any(), nil)
 	maintenanceQueue.Clear()
 
 	// Test Dequeue error
-	queue.EXPECT().Length().Return(len(suite.testHostnames))
+	queue.EXPECT().Length().Return(1)
 	queue.EXPECT().
 		Dequeue(gomock.Any()).
-		Return(gomock.Any(), fmt.Errorf("fake dequeue error")).
-		Times(len(suite.testHostnames))
+		Return(gomock.Any(), fmt.Errorf("fake dequeue error"))
 	maintenanceQueue.Clear()
 }

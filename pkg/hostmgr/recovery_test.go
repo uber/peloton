@@ -116,8 +116,8 @@ func (suite *RecoveryTestSuite) TestStart() {
 
 		suite.mockMaintenanceQueue.EXPECT().
 			Enqueue(gomock.Any()).
-			Return(nil).Do(func(hostnames []string) {
-			suite.EqualValues(drainingHostnames, hostnames)
+			Return(nil).Do(func(hostname string) {
+			suite.EqualValues(drainingHostnames[0], hostname)
 		}),
 	)
 	err := suite.recoveryHandler.Start()

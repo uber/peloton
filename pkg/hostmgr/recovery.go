@@ -19,6 +19,7 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
 	"github.com/uber/peloton/pkg/hostmgr/metrics"
 	"github.com/uber/peloton/pkg/hostmgr/queue"
+	"go.uber.org/multierr"
 
 	hpb "github.com/uber/peloton/.gen/peloton/api/v0/host"
 
@@ -112,5 +113,12 @@ func (r *recoveryHandler) recoverMaintenanceState() error {
 			})
 	}
 	r.maintenanceHostInfoMap.ClearAndFillMap(hostInfos)
-	return r.maintenanceQueue.Enqueue(drainingHosts)
+
+	var errs error
+	for _, drainingHost := range drainingHosts {
+		if err := r.maintenanceQueue.Enqueue(drainingHost); err != nil {
+			errs = multierr.Append(errs, err)
+		}
+	}
+	return errs
 }

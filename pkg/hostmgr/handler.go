@@ -34,7 +34,6 @@ import (
 	"github.com/uber/peloton/pkg/common/constraints"
 	"github.com/uber/peloton/pkg/common/queue"
 	"github.com/uber/peloton/pkg/common/reservation"
-	"github.com/uber/peloton/pkg/common/stringset"
 	"github.com/uber/peloton/pkg/common/util"
 	yarpcutil "github.com/uber/peloton/pkg/common/util/yarpc"
 	"github.com/uber/peloton/pkg/hostmgr/config"
@@ -1600,74 +1599,61 @@ func (h *ServiceHandler) GetDrainingHosts(
 	}, nil
 }
 
-// MarkHostsDrained implements InternalHostService.MarkHostsDrained
+// MarkHostDrained implements InternalHostService.MarkHostDrained
 // Mark the host as drained. This method is called by Resource Manager Drainer
-// when there are no tasks on the DRAINING hosts
-func (h *ServiceHandler) MarkHostsDrained(
+// when there are no tasks on the DRAINING host
+func (h *ServiceHandler) MarkHostDrained(
 	ctx context.Context,
-	request *hostsvc.MarkHostsDrainedRequest,
-) (*hostsvc.MarkHostsDrainedResponse, error) {
-	hostSet := stringset.New()
-	for _, host := range request.GetHostnames() {
-		hostSet.Add(host)
-	}
-	var machineIDs []*mesos.MachineID
-	for _, hostInfo := range h.maintenanceHostInfoMap.GetDrainingHostInfos([]string{}) {
-		if hostSet.Contains(hostInfo.GetHostname()) {
-			machineIDs = append(machineIDs, &mesos.MachineID{
-				Hostname: &hostInfo.Hostname,
-				Ip:       &hostInfo.Ip,
-			})
+	request *hostsvc.MarkHostDrainedRequest,
+) (*hostsvc.MarkHostDrainedResponse, error) {
+
+	// Verify the host requested is in DRAINING state
+	var hostInfo *hpb.HostInfo
+	for _, hostInfoDraining := range h.maintenanceHostInfoMap.GetDrainingHostInfos([]string{}) {
+		if hostInfoDraining.GetHostname() == request.GetHostname() {
+			hostInfo = hostInfoDraining
 		}
 	}
-
-	if len(machineIDs) != len(request.Hostnames) {
-		log.WithFields(log.Fields{
-			"machine_ids_in_map": machineIDs,
-			"request":            request,
-		}).Errorf("failed to find some hostnames in maintenanceHostInfoMap")
-	}
-	// No-op if none of the hosts in the request are 'DRAINING'
-	if len(machineIDs) == 0 {
-		return &hostsvc.MarkHostsDrainedResponse{}, nil
-	}
-	var downedHosts []string
-	var errs error
-	for _, machineID := range machineIDs {
-		// Start maintenance on the host by posting to
-		// /machine/down endpoint of the Mesos Master
-		err := h.operatorMasterClient.StartMaintenance([]*mesos.MachineID{machineID})
-		if err != nil {
-			errs = multierr.Append(errs, err)
-			log.WithError(err).
-				WithField("machine", machineID).
-				Error(fmt.Sprintf("failed to down host"))
-			h.metrics.MarkHostsDrainedFail.Inc(1)
-			continue
-		}
-
-		if err := h.maintenanceHostInfoMap.UpdateHostState(
-			machineID.GetHostname(),
-			hpb.HostState_HOST_STATE_DRAINING,
-			hpb.HostState_HOST_STATE_DOWN); err != nil {
-			// log error and add this host to the list of downedHosts since
-			// the Mesos StartMaintenance call was successful. The maintenance
-			// map will converge on reconciliation with Mesos master.
-			log.WithFields(
-				log.Fields{
-					"hostname": machineID.GetHostname(),
-					"from":     hpb.HostState_HOST_STATE_DRAINING.String(),
-					"to":       hpb.HostState_HOST_STATE_DOWN.String(),
-				}).WithError(err).
-				Error("failed to update host state in host map")
-		}
-		downedHosts = append(downedHosts, machineID.GetHostname())
+	if hostInfo == nil {
+		// NOOP if host is not in DRAINING state
+		return nil, yarpcerrors.InvalidArgumentErrorf("Host not in DRAINING state")
 	}
 
-	h.metrics.MarkHostsDrained.Inc(int64(len(downedHosts)))
-	return &hostsvc.MarkHostsDrainedResponse{
-		MarkedHosts: downedHosts,
-	}, errs
+	machineID := &mesos.MachineID{
+		Hostname: &hostInfo.Hostname,
+		Ip:       &hostInfo.Ip,
+	}
+
+	// Start maintenance on the host by posting to
+	// /machine/down endpoint of the Mesos Master
+	if err := h.operatorMasterClient.StartMaintenance([]*mesos.MachineID{machineID}); err != nil {
+		log.WithError(err).
+			WithField("machine", machineID).
+			Error(fmt.Sprintf("failed to down host"))
+		h.metrics.MarkHostDrainedFail.Inc(1)
+		return nil, err
+	}
+
+	if err := h.maintenanceHostInfoMap.UpdateHostState(
+		machineID.GetHostname(),
+		hpb.HostState_HOST_STATE_DRAINING,
+		hpb.HostState_HOST_STATE_DOWN); err != nil {
+		// log error and add this host to the list of downedHosts since
+		// the Mesos StartMaintenance call was successful. The maintenance
+		// map will converge on reconciliation with Mesos master.
+		log.WithFields(
+			log.Fields{
+				"hostname": machineID.GetHostname(),
+				"from":     hpb.HostState_HOST_STATE_DRAINING.String(),
+				"to":       hpb.HostState_HOST_STATE_DOWN.String(),
+			}).WithError(err).
+			Error("failed to update host state in host map")
+	}
+
+	h.metrics.MarkHostDrained.Inc(1)
+	return &hostsvc.MarkHostDrainedResponse{
+		Hostname: request.GetHostname(),
+	}, nil
 }
 
 // GetMesosAgentInfo implements InternalHostService.GetMesosAgentInfo

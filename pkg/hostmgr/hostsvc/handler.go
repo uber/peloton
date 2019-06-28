@@ -137,7 +137,7 @@ func (m *serviceHandler) StartMaintenance(
 ) (*host_svc.StartMaintenanceResponse, error) {
 	m.metrics.StartMaintenanceAPI.Inc(1)
 
-	machineIds, err := buildMachineIDsForHosts(request.GetHostnames())
+	machineID, err := buildMachineIDForHost(request.GetHostname())
 	if err != nil {
 		m.metrics.StartMaintenanceFail.Inc(1)
 		return nil, err
@@ -158,9 +158,9 @@ func (m *serviceHandler) StartMaintenance(
 	// omitting the duration means that the unavailability will last forever. Since
 	// we do not know the duration, we are omitting it.
 
-	// Construct maintenance window
+	// Construct updated maintenance window including new host
 	maintenanceWindow := &mesos_maintenance.Window{
-		MachineIds: machineIds,
+		MachineIds: []*mesos.MachineID{machineID},
 		Unavailability: &mesos.Unavailability{
 			Start: &mesos.TimeInfo{
 				Nanoseconds: &nanos,
@@ -169,6 +169,7 @@ func (m *serviceHandler) StartMaintenance(
 	}
 	schedule.Windows = append(schedule.Windows, maintenanceWindow)
 
+	// Post updated maintenance schedule
 	err = m.operatorMasterClient.UpdateMaintenanceSchedule(schedule)
 	if err != nil {
 		m.metrics.StartMaintenanceFail.Inc(1)
@@ -177,25 +178,23 @@ func (m *serviceHandler) StartMaintenance(
 	log.WithField("maintenance_schedule", schedule).
 		Info("Maintenance Schedule posted to Mesos Master")
 
-	var hostInfos []*hpb.HostInfo
-	for _, machine := range machineIds {
-		hostInfos = append(hostInfos,
-			&hpb.HostInfo{
-				Hostname: machine.GetHostname(),
-				Ip:       machine.GetIp(),
-				State:    hpb.HostState_HOST_STATE_DRAINING,
-			})
+	hostInfo := &hpb.HostInfo{
+		Hostname: machineID.GetHostname(),
+		Ip:       machineID.GetIp(),
+		State:    hpb.HostState_HOST_STATE_DRAINING,
 	}
-	m.maintenanceHostInfoMap.AddHostInfos(hostInfos)
-	// Enqueue hostnames into maintenance queue to initiate
-	// the rescheduling of tasks running on these hosts
-	err = m.maintenanceQueue.Enqueue(request.GetHostnames())
+	m.maintenanceHostInfoMap.AddHostInfo(hostInfo)
+	// Enqueue hostname into maintenance queue to initiate
+	// the rescheduling of tasks running on this host
+	err = m.maintenanceQueue.Enqueue(request.GetHostname())
 	if err != nil {
 		return nil, err
 	}
 
 	m.metrics.StartMaintenanceSuccess.Inc(1)
-	return &host_svc.StartMaintenanceResponse{}, nil
+	return &host_svc.StartMaintenanceResponse{
+		Hostname: request.GetHostname(),
+	}, nil
 }
 
 // CompleteMaintenance completes maintenance on the specified hosts. It brings
@@ -208,36 +207,34 @@ func (m *serviceHandler) CompleteMaintenance(
 ) (*host_svc.CompleteMaintenanceResponse, error) {
 	m.metrics.CompleteMaintenanceAPI.Inc(1)
 
+	// Get all DOWN hosts and validate host is in DOWN state
 	downHostInfoMap := make(map[string]*hpb.HostInfo)
 	for _, hostInfo := range m.maintenanceHostInfoMap.GetDownHostInfos([]string{}) {
 		downHostInfoMap[hostInfo.GetHostname()] = hostInfo
 	}
-
-	var machineIds []*mesos.MachineID
-	hostnames := request.GetHostnames()
-	for _, hostname := range hostnames {
-		hostInfo, ok := downHostInfoMap[hostname]
-		if !ok {
-			m.metrics.CompleteMaintenanceFail.Inc(1)
-			return nil, fmt.Errorf("invalid request. Host %s is not DOWN", hostname)
-		}
-		machineID := &mesos.MachineID{
-			Hostname: &hostInfo.Hostname,
-			Ip:       &hostInfo.Ip,
-		}
-		machineIds = append(machineIds, machineID)
+	hostInfo, ok := downHostInfoMap[request.GetHostname()]
+	if !ok {
+		m.metrics.CompleteMaintenanceFail.Inc(1)
+		return nil, fmt.Errorf("invalid request. Host %s is not DOWN", request.GetHostname())
 	}
 
-	err := m.operatorMasterClient.StopMaintenance(machineIds)
+	// Stop Maintenance for the host on Mesos Master
+	machineID := &mesos.MachineID{
+		Hostname: &hostInfo.Hostname,
+		Ip:       &hostInfo.Ip,
+	}
+	err := m.operatorMasterClient.StopMaintenance([]*mesos.MachineID{machineID})
 	if err != nil {
 		m.metrics.CompleteMaintenanceFail.Inc(1)
 		return nil, err
 	}
 
-	m.maintenanceHostInfoMap.RemoveHostInfos(hostnames)
+	m.maintenanceHostInfoMap.RemoveHostInfo(request.GetHostname())
 
 	m.metrics.CompleteMaintenanceSuccess.Inc(1)
-	return &host_svc.CompleteMaintenanceResponse{}, nil
+	return &host_svc.CompleteMaintenanceResponse{
+		Hostname: request.GetHostname(),
+	}, nil
 }
 
 // Build host info for registered agents
@@ -264,30 +261,23 @@ func buildHostInfoForRegisteredAgents() (map[string]*hpb.HostInfo, error) {
 	return upHosts, nil
 }
 
-// Build machine ID for specified hosts
-func buildMachineIDsForHosts(
-	hostnames []string,
-) ([]*mesos.MachineID, error) {
-	var machineIds []*mesos.MachineID
+// Build machine ID for a specified host
+func buildMachineIDForHost(hostname string) (*mesos.MachineID, error) {
 	agentMap := host.GetAgentMap()
 	if agentMap == nil || len(agentMap.RegisteredAgents) == 0 {
 		return nil, fmt.Errorf("no registered agents")
 	}
-	for i := 0; i < len(hostnames); i++ {
-		hostname := hostnames[i]
-		if _, ok := agentMap.RegisteredAgents[hostname]; !ok {
-			return nil, fmt.Errorf("unknown host %s", hostname)
-		}
-		pid := agentMap.RegisteredAgents[hostname].GetPid()
-		ip, _, err := util.ExtractIPAndPortFromMesosAgentPID(pid)
-		if err != nil {
-			return nil, err
-		}
-		machineID := &mesos.MachineID{
-			Hostname: &hostname,
-			Ip:       &ip,
-		}
-		machineIds = append(machineIds, machineID)
+	if _, ok := agentMap.RegisteredAgents[hostname]; !ok {
+		return nil, fmt.Errorf("unknown host %s", hostname)
 	}
-	return machineIds, nil
+	pid := agentMap.RegisteredAgents[hostname].GetPid()
+	ip, _, err := util.ExtractIPAndPortFromMesosAgentPID(pid)
+	if err != nil {
+		return nil, err
+	}
+	machineID := &mesos.MachineID{
+		Hostname: &hostname,
+		Ip:       &ip,
+	}
+	return machineID, nil
 }

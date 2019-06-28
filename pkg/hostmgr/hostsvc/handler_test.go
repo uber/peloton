@@ -23,7 +23,7 @@ import (
 	mesosmaintenance "github.com/uber/peloton/.gen/mesos/v1/maintenance"
 	mesosmaster "github.com/uber/peloton/.gen/mesos/v1/master"
 	hpb "github.com/uber/peloton/.gen/peloton/api/v0/host"
-	"github.com/uber/peloton/.gen/peloton/api/v0/host/svc"
+	svcpb "github.com/uber/peloton/.gen/peloton/api/v0/host/svc"
 
 	"github.com/uber/peloton/pkg/common/stringset"
 	"github.com/uber/peloton/pkg/hostmgr/host"
@@ -41,10 +41,12 @@ type HostSvcHandlerTestSuite struct {
 	suite.Suite
 
 	ctx                      context.Context
+	upMachine                *mesos.MachineID
 	upMachines               []*mesos.MachineID
+	downMachine              *mesos.MachineID
 	downMachines             []*mesos.MachineID
+	drainingMachine          *mesos.MachineID
 	drainingMachines         []*mesos.MachineID
-	hostsToDown              []string
 	mockCtrl                 *gomock.Controller
 	handler                  *serviceHandler
 	mockMasterOperatorClient *ym.MockMasterOperatorClient
@@ -56,58 +58,30 @@ func (suite *HostSvcHandlerTestSuite) SetupSuite() {
 	suite.handler = &serviceHandler{
 		metrics: NewMetrics(tally.NoopScope),
 	}
-	testUpMachines := []struct {
-		host string
-		ip   string
-	}{
-		{
-			host: "host1",
-			ip:   "172.17.0.5",
-		},
-	}
-	for _, test := range testUpMachines {
-		suite.upMachines = append(suite.upMachines, &mesos.MachineID{
-			Hostname: &test.host,
-			Ip:       &test.ip,
-		})
-	}
 
-	testDownMachines := []struct {
-		host string
-		ip   string
-	}{
-		{
-			host: "host2",
-			ip:   "172.17.0.6",
-		},
+	upHost := "host1"
+	upIP := "172.17.0.5"
+	suite.upMachine = &mesos.MachineID{
+		Hostname: &upHost,
+		Ip:       &upIP,
 	}
-	for _, test := range testDownMachines {
-		suite.downMachines = append(suite.downMachines, &mesos.MachineID{
-			Hostname: &test.host,
-			Ip:       &test.ip,
-		})
-	}
+	suite.upMachines = append(suite.upMachines, suite.upMachine)
 
-	testDrainingMachines := []struct {
-		host string
-		ip   string
-	}{
-		{
-			host: "host3",
-			ip:   "172.17.0.7",
-		},
+	downHost := "host2"
+	downIP := "172.17.0.6"
+	suite.downMachine = &mesos.MachineID{
+		Hostname: &downHost,
+		Ip:       &downIP,
 	}
-	for _, test := range testDrainingMachines {
-		suite.drainingMachines = append(
-			suite.drainingMachines,
-			&mesos.MachineID{
-				Hostname: &test.host,
-				Ip:       &test.ip,
-			})
+	suite.downMachines = append(suite.downMachines, suite.downMachine)
+
+	drainingHost := "host3"
+	drainingIP := "172.17.0.7"
+	suite.drainingMachine = &mesos.MachineID{
+		Hostname: &drainingHost,
+		Ip:       &drainingIP,
 	}
-	for _, machine := range suite.downMachines {
-		suite.hostsToDown = append(suite.hostsToDown, machine.GetHostname())
-	}
+	suite.drainingMachines = append(suite.drainingMachines, suite.drainingMachine)
 }
 
 func (suite *HostSvcHandlerTestSuite) SetupTest() {
@@ -138,26 +112,27 @@ func (suite *HostSvcHandlerTestSuite) makeAgentsResponse() *mesosmaster.Response
 	response := &mesosmaster.Response_GetAgents{
 		Agents: []*mesosmaster.Response_GetAgents_Agent{},
 	}
-	for i, upMachine := range suite.upMachines {
-		pid := fmt.Sprintf("slave(%d)@%s:0.0.0.0", i, upMachine.GetIp())
-		agent := &mesosmaster.Response_GetAgents_Agent{
-			AgentInfo: &mesos.AgentInfo{
-				Hostname: upMachine.Hostname,
-			},
-			Pid: &pid,
-		}
-		response.Agents = append(response.Agents, agent)
+
+	pidUp := fmt.Sprintf("slave(0)@%s:0.0.0.0", suite.upMachine.GetIp())
+	hostnameUp := suite.upMachine.GetHostname()
+	agentUp := &mesosmaster.Response_GetAgents_Agent{
+		AgentInfo: &mesos.AgentInfo{
+			Hostname: &hostnameUp,
+		},
+		Pid: &pidUp,
 	}
-	for i, drainingMachine := range suite.drainingMachines {
-		pid := fmt.Sprintf("slave(%d)@%s:0.0.0.0", i, drainingMachine.GetIp())
-		agent := &mesosmaster.Response_GetAgents_Agent{
-			AgentInfo: &mesos.AgentInfo{
-				Hostname: drainingMachine.Hostname,
-			},
-			Pid: &pid,
-		}
-		response.Agents = append(response.Agents, agent)
+	response.Agents = append(response.Agents, agentUp)
+
+	pidDraining := fmt.Sprintf("slave(0)@%s:0.0.0.0", suite.drainingMachine.GetIp())
+	hostnameDraining := suite.drainingMachine.GetHostname()
+	agentDraining := &mesosmaster.Response_GetAgents_Agent{
+		AgentInfo: &mesos.AgentInfo{
+			Hostname: &hostnameDraining,
+		},
+		Pid: &pidDraining,
 	}
+	response.Agents = append(response.Agents, agentDraining)
+
 	return response
 }
 
@@ -171,18 +146,11 @@ func (suite *HostSvcHandlerTestSuite) TearDownTest() {
 }
 
 func (suite *HostSvcHandlerTestSuite) TestStartMaintenance() {
-	var (
-		hosts     []string
-		hostInfos []*hpb.HostInfo
-	)
-
-	for _, machine := range suite.upMachines {
-		hosts = append(hosts, machine.GetHostname())
-		hostInfos = append(hostInfos, &hpb.HostInfo{
-			Hostname: machine.GetHostname(),
-			Ip:       machine.GetIp(),
-			State:    hpb.HostState_HOST_STATE_DRAINING,
-		})
+	hostname := suite.upMachine.GetHostname()
+	hostInfo := &hpb.HostInfo{
+		Hostname: hostname,
+		Ip:       suite.upMachine.GetIp(),
+		State:    hpb.HostState_HOST_STATE_DRAINING,
 	}
 
 	gomock.InOrder(
@@ -193,39 +161,37 @@ func (suite *HostSvcHandlerTestSuite) TestStartMaintenance() {
 		suite.mockMasterOperatorClient.EXPECT().
 			UpdateMaintenanceSchedule(gomock.Any()).Return(nil),
 		suite.mockMaintenanceMap.EXPECT().
-			AddHostInfos(hostInfos),
+			AddHostInfo(hostInfo),
 		suite.mockMaintenanceQueue.EXPECT().
-			Enqueue(hosts).Return(nil),
+			Enqueue(hostname).Return(nil),
 	)
 
-	_, err := suite.handler.StartMaintenance(suite.ctx,
+	resp, err := suite.handler.StartMaintenance(
+		suite.ctx,
 		&svcpb.StartMaintenanceRequest{
-			Hostnames: hosts,
+			Hostname: hostname,
 		})
 	suite.NoError(err)
+	suite.Equal(&svcpb.StartMaintenanceResponse{
+		Hostname: hostname,
+	}, resp)
 }
 
 func (suite *HostSvcHandlerTestSuite) TestStartMaintenanceError() {
-	var (
-		hosts     []string
-		hostInfos []*hpb.HostInfo
-	)
-
-	for _, machine := range suite.upMachines {
-		hosts = append(hosts, machine.GetHostname())
-		hostInfos = append(hostInfos, &hpb.HostInfo{
-			Hostname: machine.GetHostname(),
-			Ip:       machine.GetIp(),
-			State:    hpb.HostState_HOST_STATE_DRAINING,
-		})
+	hostname := suite.upMachine.GetHostname()
+	hostInfo := &hpb.HostInfo{
+		Hostname: hostname,
+		Ip:       suite.upMachine.GetIp(),
+		State:    hpb.HostState_HOST_STATE_DRAINING,
 	}
+
 	// Test error while getting maintenance schedule
 	suite.mockMasterOperatorClient.EXPECT().
 		GetMaintenanceSchedule().
 		Return(nil, fmt.Errorf("fake GetMaintenanceSchedule error"))
 	response, err := suite.handler.StartMaintenance(suite.ctx,
 		&svcpb.StartMaintenanceRequest{
-			Hostnames: hosts,
+			Hostname: hostname,
 		})
 	suite.Error(err)
 	suite.Nil(response)
@@ -241,7 +207,7 @@ func (suite *HostSvcHandlerTestSuite) TestStartMaintenanceError() {
 		Return(fmt.Errorf("fake UpdateMaintenanceSchedule error"))
 	response, err = suite.handler.StartMaintenance(suite.ctx,
 		&svcpb.StartMaintenanceRequest{
-			Hostnames: hosts,
+			Hostname: hostname,
 		})
 	suite.Error(err)
 	suite.Nil(response)
@@ -256,29 +222,29 @@ func (suite *HostSvcHandlerTestSuite) TestStartMaintenanceError() {
 		suite.mockMasterOperatorClient.EXPECT().
 			UpdateMaintenanceSchedule(gomock.Any()).Return(nil),
 		suite.mockMaintenanceMap.EXPECT().
-			AddHostInfos(hostInfos),
+			AddHostInfo(hostInfo),
 		suite.mockMaintenanceQueue.EXPECT().
-			Enqueue(hosts).Return(fmt.Errorf("fake Enqueue error")),
+			Enqueue(hostname).Return(fmt.Errorf("fake Enqueue error")),
 	)
 	response, err = suite.handler.StartMaintenance(suite.ctx,
 		&svcpb.StartMaintenanceRequest{
-			Hostnames: hosts,
+			Hostname: hostname,
 		})
 	suite.Error(err)
 	suite.Nil(response)
 
 	// Test Unknown host error
 	response, err = suite.handler.StartMaintenance(suite.ctx, &svcpb.StartMaintenanceRequest{
-		Hostnames: []string{"invalid"},
+		Hostname: "invalid",
 	})
 	suite.Error(err)
 	suite.Nil(response)
 
 	// TestExtractIPFromMesosAgentPID error
 	pid := "invalidPID"
-	host.GetAgentMap().RegisteredAgents[hosts[0]].Pid = &pid
+	host.GetAgentMap().RegisteredAgents[hostname].Pid = &pid
 	response, err = suite.handler.StartMaintenance(suite.ctx, &svcpb.StartMaintenanceRequest{
-		Hostnames: hosts,
+		Hostname: hostname,
 	})
 	suite.Error(err)
 	suite.Nil(response)
@@ -292,86 +258,68 @@ func (suite *HostSvcHandlerTestSuite) TestStartMaintenanceError() {
 	suite.mockMasterOperatorClient.EXPECT().Agents().Return(nil, nil)
 	loader.Load(nil)
 	response, err = suite.handler.StartMaintenance(suite.ctx, &svcpb.StartMaintenanceRequest{
-		Hostnames: hosts,
+		Hostname: hostname,
 	})
 	suite.Error(err)
 	suite.Nil(response)
 }
 
 func (suite *HostSvcHandlerTestSuite) TestCompleteMaintenance() {
-	var (
-		hosts     []string
-		hostInfos []*hpb.HostInfo
-	)
-
-	for _, machine := range suite.downMachines {
-		hosts = append(hosts, machine.GetHostname())
-		hostInfos = append(hostInfos,
-			&hpb.HostInfo{
-				Hostname: machine.GetHostname(),
-				Ip:       machine.GetIp(),
-				State:    hpb.HostState_HOST_STATE_DOWN,
-			})
+	hostname := suite.downMachine.GetHostname()
+	hostInfo := &hpb.HostInfo{
+		Hostname: hostname,
+		Ip:       suite.downMachine.GetIp(),
+		State:    hpb.HostState_HOST_STATE_DOWN,
 	}
 
 	suite.mockMaintenanceMap.EXPECT().
 		GetDownHostInfos([]string{}).
-		Return(hostInfos)
+		Return([]*hpb.HostInfo{hostInfo})
 	suite.mockMasterOperatorClient.EXPECT().
-		StopMaintenance(suite.downMachines).Return(nil)
+		StopMaintenance([]*mesos.MachineID{suite.downMachine}).Return(nil)
 	suite.mockMaintenanceMap.EXPECT().
-		RemoveHostInfos(hosts)
+		RemoveHostInfo(hostname)
 
 	resp, err := suite.handler.CompleteMaintenance(suite.ctx,
 		&svcpb.CompleteMaintenanceRequest{
-			Hostnames: suite.hostsToDown,
+			Hostname: hostname,
 		})
 	suite.NoError(err)
-	suite.NotNil(resp)
+	suite.Equal(&svcpb.CompleteMaintenanceResponse{
+		Hostname: hostname,
+	}, resp)
 }
 
 func (suite *HostSvcHandlerTestSuite) TestCompleteMaintenanceError() {
 	// Test error while stopping maintenance
-	var (
-		hosts     []string
-		hostInfos []*hpb.HostInfo
-	)
-
-	for _, machine := range suite.downMachines {
-		hosts = append(hosts, machine.GetHostname())
-		hostInfos = append(hostInfos,
-			&hpb.HostInfo{
-				Hostname: machine.GetHostname(),
-				Ip:       machine.GetIp(),
-				State:    hpb.HostState_HOST_STATE_DOWN,
-			})
+	hostname := suite.downMachine.GetHostname()
+	hostInfo := &hpb.HostInfo{
+		Hostname: hostname,
+		Ip:       suite.downMachine.GetIp(),
+		State:    hpb.HostState_HOST_STATE_DOWN,
 	}
 
 	suite.mockMaintenanceMap.EXPECT().
 		GetDownHostInfos([]string{}).
-		Return(hostInfos)
+		Return([]*hpb.HostInfo{hostInfo})
 	suite.mockMasterOperatorClient.EXPECT().
-		StopMaintenance(suite.downMachines).
+		StopMaintenance([]*mesos.MachineID{suite.downMachine}).
 		Return(fmt.Errorf("fake StopMaintenance error"))
 
 	resp, err := suite.handler.CompleteMaintenance(suite.ctx,
 		&svcpb.CompleteMaintenanceRequest{
-			Hostnames: suite.hostsToDown,
+			Hostname: hostname,
 		})
 	suite.Error(err)
 	suite.Nil(resp)
 
 	// Test 'Host not down' error
-	var hostnames []string
-	for _, hostInfo := range hostInfos {
-		hostnames = append(hostnames, hostInfo.GetHostname())
-	}
 	suite.mockMaintenanceMap.EXPECT().
 		GetDownHostInfos([]string{}).
 		Return([]*hpb.HostInfo{})
 	resp, err = suite.handler.CompleteMaintenance(suite.ctx,
 		&svcpb.CompleteMaintenanceRequest{
-			Hostnames: suite.hostsToDown,
+			Hostname: "anyhostname",
 		})
 	suite.Error(err)
 	suite.Nil(resp)
