@@ -22,6 +22,7 @@ type PortRange struct {
 }
 
 // NewPortRange creates a new modifiable port range from a Mesos value range.
+// Both the begin and end ports are part of the port range.
 func NewPortRange(begin, end uint64) *PortRange {
 	return &PortRange{
 		Begin: begin,

@@ -39,6 +39,14 @@ message HostInfo {
     HostState state = 3;
 }
 
+// Portrange describes a range of ports.
+message PortRange {
+    // The start of the port range.
+    uint64 begin = 1;
+
+    // The end of the port range, inclusive.
+    uint64 end = 2;
+}
 
 // HostSummary describes the resources available on a host for placement along
 // with metadata like host labels.
@@ -51,4 +59,7 @@ message HostSummary {
 
   // Host Labels.
   repeated peloton.Label labels = 3;
+
+  // Available port ranges.
+  repeated PortRange available_ports = 4;
 }
