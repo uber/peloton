@@ -140,19 +140,11 @@ message Placement {
     mesos.v1.TaskID mesosTaskID = 2;
   }
 
-  // The list of tasks to be placed
-  // DEPRECATED in favor of taskIDs
-  repeated api.v0.peloton.TaskID tasks = 1 [deprecated=true];
-
   // The name of the host where the tasks are placed
   string hostname = 2;
 
   // The Mesos agent ID of the host where the tasks are placed
   mesos.v1.AgentID agentId = 3;
-
-  // The list of Mesos offers of the placed tasks
-  // DEPRECATED: see `HostOfferID`
-  repeated mesos.v1.OfferID offerIds = 4 [deprecated=true];
 
   // The list of allocated ports which should be sufficient for all placed tasks
   repeated uint32 ports = 5;

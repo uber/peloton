@@ -247,11 +247,9 @@ func (s *service) createPlacements(assigned []models.Task) []*resmgr.Placement {
 		selectedPorts := models.AssignPorts(offer, tasks)
 		agentID := offer.AgentID()
 		placement := &resmgr.Placement{
-			Hostname: offer.Hostname(),
-			AgentId:  &mesos.AgentID{Value: &agentID},
-			Type:     s.config.TaskType,
-			// TODO: Tasks is actually a list of TaskIDs. Should fix the proto.
-			Tasks:       getTaskIDs(tasks),
+			Hostname:    offer.Hostname(),
+			AgentId:     &mesos.AgentID{Value: &agentID},
+			Type:        s.config.TaskType,
 			TaskIDs:     getPlacementTasks(tasks),
 			Ports:       formatPorts(selectedPorts),
 			HostOfferID: &peloton.HostOfferID{Value: offer.ID()},
@@ -279,14 +277,6 @@ func (s *service) createTasks(gang *resmgrsvc.Gang, now time.Time) []*models.Tas
 			desiredHostPlacementDeadline, maxRounds)
 	}
 	return tasks
-}
-
-func getTaskIDs(tasks []models.Task) []*peloton.TaskID {
-	taskIDs := make([]*peloton.TaskID, len(tasks))
-	for i, task := range tasks {
-		taskIDs[i] = &peloton.TaskID{Value: task.PelotonID()}
-	}
-	return taskIDs
 }
 
 func getPlacementTasks(tasks []models.Task) []*resmgr.Placement_Task {

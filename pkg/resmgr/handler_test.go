@@ -542,8 +542,7 @@ func (s *handlerTestSuite) TestSetAndGetPlacementsSuccess() {
 		Placements: placements,
 	}
 	for _, placement := range setReq.Placements {
-		for i, t := range placement.GetTaskIDs() {
-			s.Equal(placement.Tasks[i], t.GetPelotonTaskID())
+		for _, t := range placement.GetTaskIDs() {
 			rmTask := handler.rmTracker.GetTask(t.GetPelotonTaskID())
 			tasktestutil.ValidateStateTransitions(rmTask, []task.TaskState{
 				task.TaskState_PENDING,
@@ -581,7 +580,7 @@ func (s *handlerTestSuite) TestTransitTasksInPlacement() {
 		task.TaskState_LAUNCHING,
 		"placement dequeued, waiting for launch")
 
-	s.EqualValues(len(p.Tasks), 0)
+	s.EqualValues(len(p.TaskIDs), 0)
 
 	resp, err := respool.NewRespool(tally.NoopScope, "respool-1", nil, &pb_respool.ResourcePoolConfig{
 		Name:      "respool-1",
@@ -622,7 +621,7 @@ func (s *handlerTestSuite) TestTransitTasksInPlacement() {
 		},
 		task.TaskState_LAUNCHING,
 		"placement dequeued, waiting for launch")
-	s.EqualValues(len(p.Tasks), 0)
+	s.EqualValues(len(p.TaskIDs), 0)
 
 	tracker.EXPECT().GetTask(gomock.Any()).Return(rmTask).Times(5)
 	placements = s.getPlacements(10, 5)
@@ -632,7 +631,7 @@ func (s *handlerTestSuite) TestTransitTasksInPlacement() {
 		},
 		task.TaskState_RUNNING,
 		"placement dequeued, waiting for launch")
-	s.EqualValues(len(p.Tasks), 0)
+	s.EqualValues(len(p.TaskIDs), 0)
 
 	s.handler.rmTracker = rm_task.GetTracker()
 	s.rmTaskTracker.Clear()
@@ -645,8 +644,7 @@ func (s *handlerTestSuite) TestGetTasksByHosts() {
 	hostnames := make([]string, 0, len(setReq.Placements))
 	for _, placement := range setReq.Placements {
 		hostnames = append(hostnames, placement.Hostname)
-		for i, t := range placement.GetTaskIDs() {
-			s.Equal(placement.Tasks[i], t.GetPelotonTaskID())
+		for _, t := range placement.GetTaskIDs() {
 			rmTask := s.handler.rmTracker.GetTask(t.GetPelotonTaskID())
 			tasktestutil.ValidateStateTransitions(rmTask, []task.TaskState{
 				task.TaskState_PENDING,
@@ -670,22 +668,22 @@ func (s *handlerTestSuite) TestGetTasksByHosts() {
 		s.True(exists)
 	}
 	for _, placement := range setReq.Placements {
-		s.Equal(len(placement.Tasks), len(res.HostTasksMap[placement.Hostname].Tasks))
+		s.Equal(len(placement.TaskIDs), len(res.HostTasksMap[placement.Hostname].Tasks))
 	}
 }
 
 func (s *handlerTestSuite) TestRemoveTasksFromPlacement() {
-	rmTasks, tasks := s.createRMTasks()
+	rmTasks, _ := s.createRMTasks()
 	placement := &resmgr.Placement{
 		TaskIDs:  getPlacementTasks(rmTasks),
 		Hostname: fmt.Sprintf("host-%d", 1),
 	}
 	s.Equal(len(placement.GetTaskIDs()), 5)
-	taskstoremove := make(map[string]*peloton.TaskID)
+	tasksToRemove := make(map[string]struct{})
 	for j := 0; j < 2; j++ {
-		taskstoremove[tasks[j].GetValue()] = tasks[j]
+		tasksToRemove[rmTasks[j].GetTaskId().GetValue()] = struct{}{}
 	}
-	newPlacement := s.handler.removeTasksFromPlacements(placement, taskstoremove)
+	newPlacement := s.handler.removeTasksFromPlacements(placement, tasksToRemove)
 	s.NotNil(newPlacement)
 	s.Equal(len(newPlacement.GetTaskIDs()), 3)
 }
@@ -1133,8 +1131,7 @@ func (s *handlerTestSuite) TestGetActiveTasks() {
 		Placements: s.getPlacements(10, 5),
 	}
 	for _, placement := range setReq.Placements {
-		for i, t := range placement.GetTaskIDs() {
-			s.Equal(placement.Tasks[i], t.GetPelotonTaskID())
+		for _, t := range placement.GetTaskIDs() {
 			rmTask := s.handler.rmTracker.GetTask(t.GetPelotonTaskID())
 			tasktestutil.ValidateStateTransitions(rmTask, []task.TaskState{
 				task.TaskState_PENDING,
@@ -1958,7 +1955,6 @@ func (s *handlerTestSuite) getPlacements(numJobs int, numTasks int) []*resmgr.Pl
 		}
 
 		placement := &resmgr.Placement{
-			Tasks:    pelotonTasks,
 			TaskIDs:  placementTasks,
 			Hostname: fmt.Sprintf("host-%d", i),
 		}
