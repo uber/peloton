@@ -120,6 +120,20 @@ type OrmJobMetrics struct {
 	SecretInfoDeleteFail tally.Counter
 }
 
+// OrmRespoolMetrics tracks counters for resource pools related tables accessed through ORM layer.
+type OrmRespoolMetrics struct {
+	RespoolCreate     tally.Counter
+	RespoolCreateFail tally.Counter
+	RespoolGet        tally.Counter
+	RespoolGetFail    tally.Counter
+	RespoolGetAll     tally.Counter
+	RespoolGetAllFail tally.Counter
+	RespoolUpdate     tally.Counter
+	RespoolUpdateFail tally.Counter
+	RespoolDelete     tally.Counter
+	RespoolDeleteFail tally.Counter
+}
+
 // TaskMetrics is a struct for tracking all the task related counters in the storage layer
 type TaskMetrics struct {
 	TaskCreate     tally.Counter
@@ -308,6 +322,7 @@ type Metrics struct {
 	ErrorMetrics          *ErrorMetrics
 	WorkflowMetrics       *WorkflowMetrics
 	OrmJobMetrics         *OrmJobMetrics
+	OrmRespoolMetrics     *OrmRespoolMetrics
 	OrmTaskMetrics        *OrmTaskMetrics
 }
 
@@ -570,6 +585,12 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	podEventsFailScope := podEventsScope.Tagged(
 		map[string]string{"result": "fail"})
 
+	respoolScope := ormScope.SubScope("respool")
+	respoolSuccessScope := respoolScope.Tagged(
+		map[string]string{"result": "success"})
+	respoolFailedScope := respoolScope.Tagged(
+		map[string]string{"result": "fail"})
+
 	secretInfoScope := ormScope.SubScope("secret_info")
 	secretInfoSuccessScope := secretInfoScope.Tagged(
 		map[string]string{"result": "success"})
@@ -608,6 +629,19 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		SecretInfoDeleteFail: secretInfoFailScope.Counter("delete"),
 	}
 
+	ormRespoolMetrics := &OrmRespoolMetrics{
+		RespoolCreate:     respoolSuccessScope.Counter("create"),
+		RespoolCreateFail: respoolFailedScope.Counter("create"),
+		RespoolGet:        respoolSuccessScope.Counter("get"),
+		RespoolGetFail:    respoolFailedScope.Counter("get"),
+		RespoolGetAll:     respoolSuccessScope.Counter("getAll"),
+		RespoolGetAllFail: respoolFailedScope.Counter("getAll"),
+		RespoolUpdate:     respoolSuccessScope.Counter("update"),
+		RespoolUpdateFail: respoolFailedScope.Counter("update"),
+		RespoolDelete:     respoolSuccessScope.Counter("delete"),
+		RespoolDeleteFail: respoolFailedScope.Counter("delete"),
+	}
+
 	ormTaskMetrics := &OrmTaskMetrics{
 		PodEventsAdd:     podEventsSuccessScope.Counter("add"),
 		PodEventsAddFail: podEventsFailScope.Counter("add"),
@@ -625,6 +659,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		ErrorMetrics:          errorMetrics,
 		WorkflowMetrics:       workflowMetrics,
 		OrmJobMetrics:         ormJobMetrics,
+		OrmRespoolMetrics:     ormRespoolMetrics,
 		OrmTaskMetrics:        ormTaskMetrics,
 	}
 
