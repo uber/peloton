@@ -140,11 +140,7 @@ func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetJobSummary() {
 
 // TestDataStoreFailureGetJob tests datastore failures in getting job
 func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetJob() {
-	_, err := suite.store.GetJobsByStates(
-		context.Background(), []job.JobState{job.JobState_RUNNING})
-	suite.Error(err)
-
-	_, err = suite.store.GetMaxJobConfigVersion(
+	_, err := suite.store.GetMaxJobConfigVersion(
 		context.Background(), suite.testJobID.GetValue())
 	suite.Error(err)
 }

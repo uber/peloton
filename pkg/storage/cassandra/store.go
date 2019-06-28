@@ -77,7 +77,6 @@ const (
 	jobUpdateEvents        = "job_update_events"
 	podWorkflowEventsTable = "pod_workflow_events"
 	frameworksTable        = "frameworks"
-	jobByStateView         = "mv_job_by_state"
 	updatesByJobView       = "mv_updates_by_job"
 	resPoolsTable          = "respools"
 	volumeTable            = "persistent_volumes"
@@ -802,48 +801,6 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 
 	s.metrics.JobMetrics.JobQuery.Inc(1)
 	return results, summaryResults, total, nil
-}
-
-// GetJobsByStates returns all Jobs which belong one of the states
-func (s *Store) GetJobsByStates(ctx context.Context, states []job.JobState) ([]peloton.JobID, error) {
-	queryBuilder := s.DataStore.NewQuery()
-
-	var jobStates []string
-	for _, state := range states {
-		jobStates = append(jobStates, state.String())
-	}
-	callStart := time.Now()
-
-	stmt := queryBuilder.Select("job_id").From(jobByStateView).
-		Where(qb.Eq{"state": jobStates})
-	allResults, err := s.executeRead(ctx, stmt)
-	if err != nil {
-		log.WithError(err).
-			Error("GetJobsByStates failed")
-		s.metrics.JobMetrics.JobGetByStatesFail.Inc(1)
-		callDuration := time.Since(callStart)
-		s.metrics.JobMetrics.JobGetByStatesFailDuration.Record(callDuration)
-		return nil, err
-	}
-
-	var jobs []peloton.JobID
-	for _, value := range allResults {
-		var record JobRuntimeRecord
-		err := FillObject(value, &record, reflect.TypeOf(record))
-		if err != nil {
-			log.WithError(err).
-				Error("Failed to get JobRuntimeRecord from record")
-			s.metrics.JobMetrics.JobGetByStatesFail.Inc(1)
-			callDuration := time.Since(callStart)
-			s.metrics.JobMetrics.JobGetByStatesFailDuration.Record(callDuration)
-			return nil, err
-		}
-		jobs = append(jobs, peloton.JobID{Value: record.JobID.String()})
-	}
-	s.metrics.JobMetrics.JobGetByStates.Inc(1)
-	callDuration := time.Since(callStart)
-	s.metrics.JobMetrics.JobGetByStatesDuration.Record(callDuration)
-	return jobs, nil
 }
 
 func getActiveJobShardIDFromJobID(jobID *peloton.JobID) uint32 {

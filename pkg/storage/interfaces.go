@@ -56,8 +56,6 @@ type JobStore interface {
 	// DeleteJob deletes the job configuration, runtime
 	// and all tasks in DB of a given job
 	DeleteJob(ctx context.Context, jobID string) error
-	// GetJobsByStates gets all jobs in a given state
-	GetJobsByStates(ctx context.Context, state []job.JobState) ([]peloton.JobID, error)
 	// GetMaxJobConfigVersion returns the maximum version of configs of a given job
 	GetMaxJobConfigVersion(ctx context.Context, jobID string) (uint64, error)
 	// GetAllJobsInJobIndex returns job summary for all the jobs in the job index table

@@ -45,9 +45,6 @@ type JobMetrics struct {
 	JobGetRuntime     tally.Counter
 	JobGetRuntimeFail tally.Counter
 
-	JobGetByStates     tally.Counter
-	JobGetByStatesFail tally.Counter
-
 	JobGetAll     tally.Counter
 	JobGetAllFail tally.Counter
 
@@ -68,10 +65,6 @@ type JobMetrics struct {
 
 	JobGetNameToID     tally.Counter
 	JobGetNameToIDFail tally.Counter
-
-	// Timers
-	JobGetByStatesDuration     tally.Timer
-	JobGetByStatesFailDuration tally.Timer
 
 	// Recovery
 	ActiveJobsAddSuccess    tally.Counter
@@ -386,8 +379,6 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		JobGetRuntime:         jobSuccessScope.Counter("get_runtime"),
 		JobGetRuntimeFail:     jobFailScope.Counter("get_runtime"),
-		JobGetByStates:        jobSuccessScope.Counter("get_job_by_state"),
-		JobGetByStatesFail:    jobFailScope.Counter("get_job_by_state"),
 		JobGetAll:             jobSuccessScope.Counter("get_job_all"),
 		JobGetAllFail:         jobFailScope.Counter("get_job_all"),
 		JobGetByRespoolID:     jobSuccessScope.Counter("get_job_by_respool_id"),
@@ -405,9 +396,6 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		JobUpdateInfo:     jobSuccessScope.Counter("update_info"),
 		JobUpdateInfoFail: jobFailScope.Counter("update_info"),
-
-		JobGetByStatesDuration:     jobSuccessScope.Timer("get_job_by_state_duration"),
-		JobGetByStatesFailDuration: jobFailScope.Timer("get_job_by_state_duration"),
 
 		ActiveJobsAddSuccess:    jobSuccessScope.Counter("add_active_job"),
 		ActiveJobsAddFail:       jobFailScope.Counter("add_active_job"),

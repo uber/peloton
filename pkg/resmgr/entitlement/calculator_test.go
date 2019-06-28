@@ -72,10 +72,6 @@ func (s *EntitlementCalculatorTestSuite) initRespoolTree() {
 	)
 	mockJobStore := store_mocks.NewMockJobStore(s.mockCtrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(s.mockCtrl)
-	gomock.InOrder(
-		mockJobStore.EXPECT().GetJobsByStates(context.Background(), gomock.Any()).
-			Return(nil, nil).AnyTimes(),
-	)
 	s.resTree = respool.NewTree(tally.NoopScope, mockResPoolStore, mockJobStore,
 		mockTaskStore, res_common.PreemptionConfig{Enabled: false})
 
@@ -899,10 +895,6 @@ func (s *EntitlementCalculatorTestSuite) TestStaticRespoolsEntitlement() {
 	)
 	mockJobStore := store_mocks.NewMockJobStore(s.mockCtrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(s.mockCtrl)
-	gomock.InOrder(
-		mockJobStore.EXPECT().GetJobsByStates(context.Background(), gomock.Any()).
-			Return(nil, nil).AnyTimes(),
-	)
 
 	resTree := respool.NewTree(tally.NoopScope, mockResPoolStore, mockJobStore,
 		mockTaskStore, res_common.PreemptionConfig{Enabled: false})

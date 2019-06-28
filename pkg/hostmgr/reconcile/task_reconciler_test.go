@@ -61,14 +61,6 @@ func (m *mockFrameworkInfoProvider) GetFrameworkID(ctx context.Context) *mesos.F
 	return &mesos.FrameworkID{Value: &tmp}
 }
 
-var (
-	_nonTerminalJobStates = []job.JobState{
-		job.JobState_PENDING,
-		job.JobState_RUNNING,
-		job.JobState_KILLING,
-	}
-)
-
 type TaskReconcilerTestSuite struct {
 	suite.Suite
 
@@ -181,8 +173,8 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationPeriodicalCalls() {
 	finishCh := make(chan struct{}, 1)
 	gomock.InOrder(
 		suite.mockJobStore.EXPECT().
-			GetJobsByStates(context.Background(), _nonTerminalJobStates).
-			Return([]peloton.JobID{*suite.testJobID}, nil),
+			GetActiveJobs(context.Background()).
+			Return([]*peloton.JobID{suite.testJobID}, nil),
 		suite.mockTaskStore.EXPECT().
 			GetTasksForJobAndStates(
 				context.Background(),
@@ -260,8 +252,8 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationCallFailure() {
 	finishCh := make(chan struct{}, 1)
 	gomock.InOrder(
 		suite.mockJobStore.EXPECT().
-			GetJobsByStates(context.Background(), _nonTerminalJobStates).
-			Return([]peloton.JobID{*suite.testJobID}, nil),
+			GetActiveJobs(context.Background()).
+			Return([]*peloton.JobID{suite.testJobID}, nil),
 		suite.mockTaskStore.EXPECT().
 			GetTasksForJobAndStates(
 				context.Background(),
@@ -322,8 +314,8 @@ func (suite *TaskReconcilerTestSuite) TestReconcilerNotStartIfAlreadyRunning() {
 	finishCh := make(chan struct{}, 1)
 	gomock.InOrder(
 		suite.mockJobStore.EXPECT().
-			GetJobsByStates(context.Background(), _nonTerminalJobStates).
-			Return([]peloton.JobID{*suite.testJobID}, nil),
+			GetActiveJobs(context.Background()).
+			Return([]*peloton.JobID{suite.testJobID}, nil),
 		suite.mockTaskStore.EXPECT().
 			GetTasksForJobAndStates(
 				context.Background(),
@@ -376,8 +368,8 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationWithStatingStates() {
 	finishCh := make(chan struct{}, 1)
 	gomock.InOrder(
 		suite.mockJobStore.EXPECT().
-			GetJobsByStates(context.Background(), _nonTerminalJobStates).
-			Return([]peloton.JobID{*suite.testJobID}, nil),
+			GetActiveJobs(context.Background()).
+			Return([]*peloton.JobID{suite.testJobID}, nil),
 		suite.mockTaskStore.EXPECT().
 			GetTasksForJobAndStates(
 				context.Background(),
@@ -456,10 +448,10 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconciliationExplicitTurnTurn() {
 	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), false)
 }
 
-func (suite *TaskReconcilerTestSuite) TestTaskReconcilerGetJobsByStatesError() {
+func (suite *TaskReconcilerTestSuite) TestTaskReconcilerGetActiveJobsError() {
 	suite.mockJobStore.EXPECT().
-		GetJobsByStates(context.Background(), _nonTerminalJobStates).
-		Return(nil, fmt.Errorf("Fake GetJobsByStates error"))
+		GetActiveJobs(context.Background()).
+		Return(nil, fmt.Errorf("Fake GetActiveJobs error"))
 
 	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), true)
 	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
@@ -473,8 +465,8 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilerGetJobsByStatesError() {
 func (suite *TaskReconcilerTestSuite) TestTaskReconcilerGetTasksForJobAndStates() {
 	gomock.InOrder(
 		suite.mockJobStore.EXPECT().
-			GetJobsByStates(context.Background(), _nonTerminalJobStates).
-			Return([]peloton.JobID{*suite.testJobID}, nil),
+			GetActiveJobs(context.Background()).
+			Return([]*peloton.JobID{suite.testJobID}, nil),
 		suite.mockTaskStore.EXPECT().
 			GetTasksForJobAndStates(
 				context.Background(),

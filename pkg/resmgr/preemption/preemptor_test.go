@@ -1022,10 +1022,6 @@ func (suite *PreemptorTestSuite) getResourceTree() respool.Tree {
 	)
 	mockJobStore := store_mocks.NewMockJobStore(suite.mockCtrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(suite.mockCtrl)
-	gomock.InOrder(
-		mockJobStore.EXPECT().GetJobsByStates(context.Background(),
-			gomock.Any()).Return(nil, nil).AnyTimes(),
-	)
 	return respool.NewTree(tally.NoopScope, mockResPoolStore, mockJobStore,
 		mockTaskStore, res_common.PreemptionConfig{
 			Enabled: true,

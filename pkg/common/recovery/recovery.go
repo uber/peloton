@@ -256,15 +256,6 @@ func recoverJobsBatch(
 	}
 }
 
-// getDereferencedJobIDsList dereferences the jobIDs list
-func getDereferencedJobIDsList(jobIDs []*peloton.JobID) []peloton.JobID {
-	result := []peloton.JobID{}
-	for _, jobID := range jobIDs {
-		result = append(result, *jobID)
-	}
-	return result
-}
-
 // RecoverActiveJobs is the handler to start a job recovery.
 func RecoverActiveJobs(
 	ctx context.Context,
@@ -284,7 +275,7 @@ func RecoverActiveJobs(
 		return err
 	}
 
-	activeJobIDsCopy := getDereferencedJobIDsList(activeJobIDs)
+	activeJobIDsCopy := util.GetDereferencedJobIDsList(activeJobIDs)
 
 	mtx.activeJobs.Update(float64(len(activeJobIDsCopy)))
 

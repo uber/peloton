@@ -601,6 +601,16 @@ func TestCreateMesosTaskID(t *testing.T) {
 	}
 }
 
+// TestGetDereferencedJobIDsList tests GetDereferencedJobIDsList
+func TestGetDereferencedJobIDsList(t *testing.T) {
+	jobIDs := []*peloton.JobID{
+		{Value: "test-1"},
+		{Value: "test-2"},
+	}
+	expectedIds := GetDereferencedJobIDsList(jobIDs)
+	assert.Equal(t, 2, len(expectedIds))
+}
+
 // ConvertTimestampToUnixSecondsSuccess tests ConvertTimestampToUnixSeconds
 // success case
 func ConvertTimestampToUnixSecondsSuccess(t *testing.T) {

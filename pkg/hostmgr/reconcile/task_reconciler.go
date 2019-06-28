@@ -23,9 +23,9 @@ import (
 	"github.com/uber-go/tally"
 
 	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
-	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 
+	"github.com/uber/peloton/pkg/common/util"
 	hostmgr_mesos "github.com/uber/peloton/pkg/hostmgr/mesos"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
 	"github.com/uber/peloton/pkg/storage"
@@ -189,16 +189,13 @@ func (r *taskReconciler) getReconcileTasks(ctx context.Context) (
 	[]*sched.Call_Reconcile_Task, error) {
 
 	var reconcileTasks []*sched.Call_Reconcile_Task
-	jobStates := []job.JobState{
-		job.JobState_PENDING,
-		job.JobState_RUNNING,
-		job.JobState_KILLING,
-	}
-	jobIDs, err := r.jobStore.GetJobsByStates(ctx, jobStates)
+	activeJobIDs, err := r.jobStore.GetActiveJobs(ctx)
 	if err != nil {
-		log.WithError(err).Error("Failed to get running jobs.")
+		log.WithError(err).Error("Failed to get active jobs.")
 		return reconcileTasks, err
 	}
+	jobIDs := util.GetDereferencedJobIDsList(activeJobIDs)
+
 	log.WithField("job_ids", jobIDs).Info("explicit reconcile job ids.")
 
 	for _, jobID := range jobIDs {

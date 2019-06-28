@@ -613,3 +613,12 @@ func ConvertTimestampToUnixSeconds(timestamp string) (int64, error) {
 
 	return ts.Unix(), nil
 }
+
+// GetDereferencedJobIDsList dereferences the jobIDs list
+func GetDereferencedJobIDsList(jobIDs []*peloton.JobID) []peloton.JobID {
+	result := []peloton.JobID{}
+	for _, jobID := range jobIDs {
+		result = append(result, *jobID)
+	}
+	return result
+}
