@@ -45,8 +45,8 @@ import (
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/algorithms"
 	"github.com/uber/peloton/pkg/placement/tasks"
 
-	hostsvc_v1 "github.com/uber/peloton/.gen/peloton/api/v1alpha/host/svc"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	hostsvc_v1 "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
@@ -388,7 +388,7 @@ func main() {
 			tallyMetrics,
 		)
 	} else if cfg.Placement.HostManagerAPIVersion.IsV1() {
-		hostManagerV1 := hostsvc_v1.NewHostServiceYARPCClient(
+		hostManagerV1 := hostsvc_v1.NewHostManagerServiceYARPCClient(
 			dispatcher.ClientConfig(common.PelotonHostManager))
 		offerService = offers_v1.NewService(
 			hostManagerV1,

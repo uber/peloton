@@ -1,18 +1,133 @@
+// Copyright (c) 2019 Uber Technologies, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package offers
 
 import (
-	hostsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/host/svc"
+	"context"
+	"encoding/json"
+	"time"
+
+	log "github.com/sirupsen/logrus"
+
+	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
+	hostsvc "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 
 	"github.com/uber/peloton/pkg/placement/metrics"
+	"github.com/uber/peloton/pkg/placement/models"
+	"github.com/uber/peloton/pkg/placement/models/v1"
 	"github.com/uber/peloton/pkg/placement/offers"
+	"github.com/uber/peloton/pkg/placement/plugins"
+	"github.com/uber/peloton/pkg/placement/plugins/v1"
 )
+
+const (
+	_failedToAcquireHosts = "failed to acquire hosts"
+	_noHostsAcquired      = "no hosts acquired"
+	_timeout              = 10 * time.Second
+)
+
+type service struct {
+	hostManager hostsvc.HostManagerServiceYARPCClient
+	metrics     *metrics.Metrics
+}
 
 // NewService returns a new offer service that calls
 // out to the v1 api of hostmanager.
 func NewService(
-	hostManager hostsvc.HostServiceYARPCClient,
+	hostManager hostsvc.HostManagerServiceYARPCClient,
 	metrics *metrics.Metrics,
 ) offers.Service {
-	// TODO: Implement this.
-	return nil
+	return &service{
+		hostManager: hostManager,
+		metrics:     metrics,
+	}
+}
+
+// Acquire acquires a batch of leases from host manager.
+func (s *service) Acquire(
+	ctx context.Context,
+	fetchTasks bool,
+	taskType resmgr.TaskType,
+	needs plugins.PlacementNeeds,
+) ([]models.Offer, string) {
+	filter := plugins_v1.PlacementNeedsToHostFilter(needs)
+	req := &hostsvc.AcquireHostsRequest{Filter: filter}
+	resp, err := s.hostManager.AcquireHosts(ctx, req)
+	if err != nil {
+		return nil, _failedToAcquireHosts
+	}
+
+	log.WithFields(log.Fields{
+		"acquire_hosts_request":  req,
+		"acquire_hosts_response": resp,
+	}).Debug("acquire host offers returned")
+
+	if len(resp.Hosts) == 0 {
+		return nil, _noHostsAcquired
+	}
+
+	// Ignore error. It literally will never happen.
+	jsonFilterRes, _ := json.Marshal(resp.FilterResultCounts)
+	log.WithFields(log.Fields{
+		"hosts_acquired":      resp.Hosts,
+		"filter_results":      resp.FilterResultCounts,
+		"filter_results_json": string(jsonFilterRes),
+		"fetch_tasks":         fetchTasks,
+		"task_type":           taskType,
+	}).Debug("HostManager acquired the hosts")
+	s.metrics.OfferGet.Inc(1)
+
+	offers := make([]models.Offer, len(resp.Hosts))
+	for i, host := range resp.Hosts {
+		offers[i] = models_v1.NewOffer(host)
+	}
+	return offers, string(jsonFilterRes)
+}
+
+// Release releases a set of leases from host manager so they can
+// be re-acquired.
+func (s *service) Release(
+	ctx context.Context,
+	leases []models.Offer,
+) {
+	if len(leases) == 0 {
+		return
+	}
+
+	req := &hostsvc.TerminateLeasesRequest{}
+	for _, lease := range leases {
+		pair := &hostsvc.TerminateLeasesRequest_LeasePair{
+			Hostname: lease.Hostname(),
+			LeaseId: &hostmgr.LeaseID{
+				Value: lease.ID(),
+			},
+		}
+		req.Leases = append(req.Leases, pair)
+	}
+
+	ctx, cancelFunc := context.WithTimeout(ctx, _timeout)
+	defer cancelFunc()
+
+	_, err := s.hostManager.TerminateLeases(ctx, req)
+	if err != nil {
+		log.WithField("error", err).Error("release host offers failed")
+		return
+	}
+
+	log.WithFields(log.Fields{
+		"terminate_host_leases_request": req,
+	}).Debug("terminate host leases request returned with no error")
 }
