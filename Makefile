@@ -202,6 +202,8 @@ mockgens: build-mockgen gens $(GOMOCK)
 	$(call local_mockgen,pkg/hostmgr/watchevent,WatchProcessor)
 	$(call local_mockgen,pkg/hostmgr/mesos/yarpc/encoding/mpb,SchedulerClient;MasterOperatorClient)
 	$(call local_mockgen,pkg/hostmgr/mesos/yarpc/transport/mhttp,Inbound)
+	$(call local_mockgen,pkg/hostmgr/p2k/hostcache,HostCache)
+	$(call local_mockgen,pkg/hostmgr/p2k/plugins,Plugin)
 	$(call local_mockgen,pkg/jobmgr/cached,JobFactory;Job;Task;JobConfigCache;Update)
 	$(call local_mockgen,pkg/jobmgr/goalstate,Driver)
 	$(call local_mockgen,pkg/jobmgr/task/activermtask,ActiveRMTasks)
@@ -263,7 +265,7 @@ aurorabridge-integ-test: get-gokind
 
 # launch peloton with PELOTON={any value}, default to none
 minicluster: $(GOKIND)
-	PELOTON=$(PELOTON) ./scripts/minicluster.sh setup
+	PELOTON=$(PELOTON) ./scripts/minicluster.sh setup --k8s
 
 minicluster-teardown: $(GOKIND)
 	./scripts/minicluster.sh teardown

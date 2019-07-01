@@ -22,6 +22,7 @@ import (
 	"github.com/uber/peloton/pkg/common/metrics"
 	"github.com/uber/peloton/pkg/hostmgr/config"
 	"github.com/uber/peloton/pkg/hostmgr/mesos"
+	"github.com/uber/peloton/pkg/hostmgr/p2k/config"
 	storage "github.com/uber/peloton/pkg/storage/config"
 )
 
@@ -35,4 +36,5 @@ type Config struct {
 	Health       health.Config         `yaml:"health"`
 	SentryConfig logging.SentryConfig  `yaml:"sentry"`
 	Auth         auth.Config           `yaml:"auth"`
+	K8s          p2kconfig.K8sConfig   `yaml:"k8s"`
 }

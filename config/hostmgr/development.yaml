@@ -18,6 +18,10 @@ metrics:
   #  enable: true
   #  endpoint: localhost:1234
 
+k8s:
+  enabled: false
+  kubeconfig: /.kube/kind-config-peloton-k8s
+
 storage:
   db_write_concurrency: 40
 

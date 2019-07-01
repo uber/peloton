@@ -51,7 +51,7 @@ import:
 - package: gopkg.in/validator.v2
   version: 0a9835d809fb647a62611d30cb792e0b5dd65b11
 - package: gopkg.in/yaml.v2
-  version: a5b47d31c556af34a302ce5d659e6fea44d90de0
+  version: ^2
 - package: github.com/gemnasium/migrate
   version: v1.4.1
 - package: github.com/docker/leadership
@@ -96,6 +96,20 @@ import:
 - package: github.com/Jeffail/gabs
   version: v1.2.0
 - package: golang.org/x/time
+- package: k8s.io/client-go
+  version: ~11.0.0
+  subpackages:
+  - informers
+  - kubernetes
+  - rest
+  - tools/cache
+  - tools/clientcmds
+  - kubernetes/fake
+- package: github.com/m3db/prometheus_client_golang
+  version: 8ae269d24972b8695572fa6b2e3718b5ea82d6b4
+  subpackages:
+  - prometheus
+  - prometheus/promhttp
 
 # packages below needed for proto gen files
 - package: go.uber.org/fx

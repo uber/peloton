@@ -21,6 +21,8 @@ import (
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 
 	"github.com/uber/peloton/pkg/common/util"
 )
@@ -218,6 +220,54 @@ func FromResourceConfig(rc *task.ResourceConfig) (r Resources) {
 	r.Disk = rc.GetDiskLimitMb()
 	r.GPU = rc.GetGpuLimit()
 	return r
+}
+
+// FromResourceSpec creates a new instance of `Resources` from a `ResourceSpec`
+func FromResourceSpec(rc *pbpod.ResourceSpec) (r Resources) {
+	r.CPU = rc.GetCpuLimit()
+	r.Mem = rc.GetMemLimitMb()
+	r.Disk = rc.GetDiskLimitMb()
+	r.GPU = rc.GetGpuLimit()
+	return r
+}
+
+// FromPodSpec creates a new instance of `Resources` from a `PodSpec`
+func FromPodSpec(podspec *pbpod.PodSpec) (r Resources) {
+	var res Resources
+	for _, c := range podspec.GetContainers() {
+		res = FromResourceSpec(
+			c.GetResource(),
+		)
+		r = r.Add(res)
+	}
+	for _, c := range podspec.GetInitContainers() {
+		res = FromResourceSpec(
+			c.GetResource(),
+		)
+		r = r.Add(res)
+	}
+	return r
+}
+
+// FromResourceSpec creates a new instance of `Resources` from
+// `peloton.Resources`
+func FromPelotonResources(rp *peloton.Resources) (r Resources) {
+	r.CPU = rp.GetCpu()
+	r.Mem = rp.GetMemMb()
+	r.Disk = rp.GetDiskMb()
+	r.GPU = rp.GetGpu()
+	return r
+}
+
+// ToPelotonResources creates a new instance of `peloton.Resources` from
+// `Resources`
+func ToPelotonResources(rs Resources) *peloton.Resources {
+	return &peloton.Resources{
+		Cpu:    rs.CPU,
+		MemMb:  rs.Mem,
+		DiskMb: rs.Disk,
+		Gpu:    rs.GPU,
+	}
 }
 
 // FromMesosResource returns the scalar Resources from a single Mesos resource object.

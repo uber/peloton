@@ -9,6 +9,7 @@ import print_utils
 import kind
 import utils
 
+
 PELOTON_K8S_NAME = "peloton-k8s"
 
 zk_url = None
@@ -19,14 +20,7 @@ work_dir = os.path.dirname(os.path.abspath(__file__))
 # Delete the kind cluster.
 def teardown_k8s():
     k8s = kind.Kind(PELOTON_K8S_NAME)
-    try:
-        return k8s.teardown()
-    except OSError as e:
-        if e.errno == 2:
-            print_utils.warn("kubernetes was not running")
-            return True
-        else:
-            raise
+    return k8s.teardown()
 
 
 def teardown_mesos_agent(config, agent_index, is_exclusive=False):
@@ -131,29 +125,22 @@ def run_mesos(config):
     print_utils.okgreen("started container %s" % master_container)
 
     # Run mesos slaves
-    cli.pull(config["mesos_slave_image"])
-    for i in range(0, config["num_agents"]):
+    cli.pull(config['mesos_slave_image'])
+    for i in range(0, config['num_agents']):
         run_mesos_agent(config, i, i)
-    for i in range(0, config.get("num_exclusive_agents", 0)):
+    for i in range(0, config.get('num_exclusive_agents', 0)):
         run_mesos_agent(
             config,
-            i,
-            config["num_agents"] + i,
+            i, config['num_agents'] + i,
             is_exclusive=True,
-            exclusive_label_value=config.get("exclusive_label_value", ""),
-        )
+            exclusive_label_value=config.get('exclusive_label_value', ''))
 
 
 #
 # Run a mesos agent
 #
-def run_mesos_agent(
-        config,
-        agent_index,
-        port_offset,
-        is_exclusive=False,
-        exclusive_label_value="",
-):
+def run_mesos_agent(config, agent_index, port_offset, is_exclusive=False,
+                    exclusive_label_value=''):
     prefix = config["mesos_agent_container"]
     attributes = config["attributes"]
     if is_exclusive:
@@ -170,7 +157,8 @@ def run_mesos_agent(
             port_bindings={config["default_agent_port"]: port},
             binds=[
                 work_dir + "/files:/files",
-                work_dir + "/mesos_config/etc_mesos-slave:/etc/mesos-slave",
+                work_dir
+                + "/mesos_config/etc_mesos-slave:/etc/mesos-slave",
                 "/var/run/docker.sock:/var/run/docker.sock",
             ],
             privileged=True,
@@ -258,7 +246,7 @@ def create_cassandra_store(config):
         # by api design, exec_start needs to be called after exec_create
         # to run 'docker exec'
         resp = cli.exec_start(exec_id=setup_exe)
-        if resp == "":
+        if resp is "":
             resp = cli.exec_start(exec_id=show_exe)
             if "CREATE KEYSPACE peloton_test WITH" in resp:
                 print_utils.okgreen("cassandra store is created")
@@ -277,8 +265,12 @@ def create_cassandra_store(config):
 # Starts a container and waits for it to come up
 #
 def start_and_wait(
-        application_name, container_name, ports, config, extra_env=None
+    application_name, container_name, ports, config, extra_env=None,
+    mounts=None,
 ):
+    if mounts is None:
+        mounts = []
+
     # TODO: It's very implicit that the first port is the HTTP port, perhaps we
     # should split it out even more.
     election_zk_servers = None
@@ -310,8 +302,8 @@ def start_and_wait(
         # used to migrate the schema;used inside host manager
         "AUTO_MIGRATE": config["auto_migrate"],
         "CLUSTER": "minicluster",
-        "AUTH_TYPE": os.getenv("AUTH_TYPE", "NOOP"),
-        "AUTH_CONFIG_FILE": os.getenv("AUTH_CONFIG_FILE"),
+        'AUTH_TYPE': os.getenv('AUTH_TYPE', 'NOOP'),
+        'AUTH_CONFIG_FILE': os.getenv('AUTH_CONFIG_FILE'),
     }
     if len(ports) > 1:
         env["GRPC_PORT"] = ports[1]
@@ -323,8 +315,8 @@ def start_and_wait(
     # BIND_MOUNTS allows additional files to be mounted in the
     # the container. Expected format is a comma-separated list
     # of items of the form <host-path>:<container-path>
-    mounts = os.environ.get("BIND_MOUNTS", "")
-    mounts = mounts.split(",") if mounts else []
+    extra_mounts = os.environ.get("BIND_MOUNTS", "").split(",") or []
+    mounts.extend(list(filter(None, extra_mounts)))
     container = cli.create_container(
         name=container_name,
         hostname=container_name,
@@ -355,13 +347,24 @@ def run_peloton_resmgr(config):
         ports = [port + i * 10 for port in config["peloton_resmgr_ports"]]
         name = config["peloton_resmgr_container"] + repr(i)
         utils.remove_existing_container(name)
-        start_and_wait("resmgr", name, ports, config)
+        start_and_wait(
+            "resmgr",
+            name,
+            ports,
+            config,
+        )
 
 
 #
 # Run peloton hostmgr app
 #
 def run_peloton_hostmgr(config):
+    k8s = kind.Kind(PELOTON_K8S_NAME)
+    mounts = []
+    if k8s.is_running():
+        kubeconfig_dir = os.path.dirname(k8s.get_kubeconfig())
+        mounts = [kubeconfig_dir + ":/.kube"]
+
     for i in range(0, config["peloton_hostmgr_instance_count"]):
         # to not cause port conflicts among apps, increase port
         # by 10 for each instance
@@ -379,6 +382,7 @@ def run_peloton_hostmgr(config):
                 "SCARCE_RESOURCE_TYPES": scarce_resource,
                 "SLACK_RESOURCE_TYPES": slack_resource,
             },
+            mounts=mounts,
         )
 
 
@@ -448,4 +452,9 @@ def run_peloton_archiver(config):
         ports = [port + i * 10 for port in config["peloton_archiver_ports"]]
         name = config["peloton_archiver_container"] + repr(i)
         utils.remove_existing_container(name)
-        start_and_wait("archiver", name, ports, config)
+        start_and_wait(
+            "archiver",
+            name,
+            ports,
+            config,
+        )

@@ -44,6 +44,11 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/transport/mhttp"
 	hostmetric "github.com/uber/peloton/pkg/hostmgr/metrics"
 	"github.com/uber/peloton/pkg/hostmgr/offer"
+	"github.com/uber/peloton/pkg/hostmgr/p2k/hostcache"
+	"github.com/uber/peloton/pkg/hostmgr/p2k/hostmgrsvc"
+	"github.com/uber/peloton/pkg/hostmgr/p2k/plugins"
+	"github.com/uber/peloton/pkg/hostmgr/p2k/plugins/k8s"
+	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 	"github.com/uber/peloton/pkg/hostmgr/queue"
 	"github.com/uber/peloton/pkg/hostmgr/reconcile"
 	"github.com/uber/peloton/pkg/hostmgr/task"
@@ -195,6 +200,12 @@ var (
 		"config file for the auth feature, which is specific to the auth type used").
 		Default("").
 		Envar("AUTH_CONFIG_FILE").
+		String()
+
+	kubeConfigFile = app.Flag(
+		"kube-config-file",
+		"YAML config file for kubernetes plugin").
+		Envar("KUBECONFIG").
 		String()
 )
 
@@ -580,6 +591,42 @@ func main() {
 		rootScope,
 	)
 
+	if cfg.K8s.Enabled {
+		podEventCh := make(chan *scalar.PodEvent, k8s.EventChanSize)
+		hostEventCh := make(chan *scalar.HostEvent, k8s.EventChanSize)
+
+		// If k8s config file is present, this will return a k8s plugin, else a
+		// mesos plugin, for now.
+		plugin, err := plugins.New(
+			cfg.K8s.Kubeconfig,
+			podEventCh,
+			hostEventCh,
+		)
+		if err != nil {
+			log.WithError(err).Fatal("Cannot init host manager plugin.")
+		}
+
+		// Create host cache instance.
+		hc := hostcache.New(hostEventCh, plugin)
+
+		// This should start the event stream for pods and hosts
+		// TODO: do this after leader election (T3224499).
+		hc.Start()
+		defer hc.Stop()
+
+		// Start plugin event listners to listen for scheduler events
+		// TODO: do this after leader election (T3224499).
+		plugin.Start()
+		defer plugin.Stop()
+
+		// Create v1alpha hostmgr internal service handler.
+		hostmgrsvc.NewServiceHandler(
+			dispatcher,
+			rootScope,
+			plugin,
+			hc,
+		)
+	}
 	// Create new hostmgr internal service handler.
 	serviceHandler := hostmgr.NewServiceHandler(
 		dispatcher,
