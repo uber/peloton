@@ -57,13 +57,12 @@ func (l lease) AgentID() string {
 // gives control over.
 func (l lease) GetAvailableResources() (scalar.Resources, uint64) {
 	res := l.hostLease.GetHostSummary().GetResources()
-	// TODO(pourchet): Add ports once API has them.
 	return scalar.Resources{
 		CPU:  res.Cpu,
 		Mem:  res.MemMb,
 		Disk: res.DiskMb,
 		GPU:  res.Gpu,
-	}, 0
+	}, l.countFreePorts()
 }
 
 // ToMimirGroup returns the mimir placement group so that the placement
@@ -75,6 +74,19 @@ func (l lease) ToMimirGroup() *placement.Group {
 
 // AvailablePortRanges returns the list of available port ranges in this lease.
 func (l lease) AvailablePortRanges() map[*models.PortRange]struct{} {
-	// TODO(pourchet): Add to API and implement.
-	return nil
+	ranges := l.hostLease.GetHostSummary().GetAvailablePorts()
+	result := map[*models.PortRange]struct{}{}
+	for _, r := range ranges {
+		result[models.NewPortRange(r.Begin, r.End)] = struct{}{}
+	}
+	return result
+}
+
+func (l lease) countFreePorts() uint64 {
+	ranges := l.hostLease.GetHostSummary().GetAvailablePorts()
+	var total uint64
+	for _, r := range ranges {
+		total += r.End - r.Begin + 1
+	}
+	return total
 }
