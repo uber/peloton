@@ -207,6 +207,15 @@ func (h *ServiceHandler) GetEvents(
 	return nil, nil
 }
 
+// TerminateLeases implements HostManagerService.TerminateLeases
+func (h *ServiceHandler) TerminateLeases(
+	ctx context.Context,
+	req *svc.TerminateLeasesRequest,
+) (resp *svc.TerminateLeasesResponse, err error) {
+	return nil, yarpcerrors.UnimplementedErrorf(
+		"TerminateLeases not implemented")
+}
+
 // validateLaunchPodsRequest does some sanity checks on launch pods request.
 func validateLaunchPodsRequest(req *svc.LaunchPodsRequest) error {
 	if len(req.Pods) <= 0 {
