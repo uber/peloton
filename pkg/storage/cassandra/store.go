@@ -1843,7 +1843,7 @@ func (s *Store) deletePodEventsOnDeleteJob(
 	)
 	if err != nil {
 		// if the config is not found, then the job has already been deleted.
-		if yarpcerrors.IsNotFound(err) {
+		if yarpcerrors.IsNotFound(errors.Cause(err)) {
 			return nil
 		}
 		return err
