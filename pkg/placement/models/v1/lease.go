@@ -20,6 +20,7 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 	"github.com/uber/peloton/pkg/placement/models"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/model/placement"
+	"github.com/uber/peloton/pkg/placement/plugins/mimir/v1"
 )
 
 // lease implements the models.Offer interface. Internally it keeps the API
@@ -68,8 +69,12 @@ func (l lease) GetAvailableResources() (scalar.Resources, uint64) {
 // ToMimirGroup returns the mimir placement group so that the placement
 // strategy can place tasks on that group.
 func (l lease) ToMimirGroup() *placement.Group {
-	// TODO(pourchet): Implement.
-	return nil
+	res, ports := l.GetAvailableResources()
+	labels := map[string]string{}
+	for _, label := range l.hostLease.GetHostSummary().GetLabels() {
+		labels[label.Key] = label.Value
+	}
+	return mimir_v1.CreateGroup(l.Hostname(), res, ports, labels)
 }
 
 // AvailablePortRanges returns the list of available port ranges in this lease.
