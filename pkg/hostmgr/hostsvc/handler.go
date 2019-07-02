@@ -32,7 +32,9 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
+	"go.uber.org/multierr"
 	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 // serviceHandler implements peloton.api.host.svc.HostService
@@ -135,19 +137,45 @@ func (m *serviceHandler) StartMaintenance(
 	ctx context.Context,
 	request *host_svc.StartMaintenanceRequest,
 ) (*host_svc.StartMaintenanceResponse, error) {
-	m.metrics.StartMaintenanceAPI.Inc(1)
+	// StartMaintenanceRequest using deprecated field `hostnames`
+	var errs error
+	if len(request.GetHostnames()) != 0 {
+		for _, hostname := range request.GetHostnames() {
+			if err := m.startMaintenance(ctx, hostname); err != nil {
+				// Not error out on 1rst error, continue and aggregate errors
+				errs = multierr.Append(errs, err)
+			}
+		}
+		if errs != nil {
+			return nil, yarpcerrors.InternalErrorf(errs.Error())
+		}
+		return &host_svc.StartMaintenanceResponse{}, nil
+	}
+	// StartMaintenanceRequest using prefered field `hostname`
+	if err := m.startMaintenance(ctx, request.GetHostname()); err != nil {
+		return nil, yarpcerrors.InternalErrorf(err.Error())
+	}
+	return &host_svc.StartMaintenanceResponse{
+		Hostname: request.GetHostname(),
+	}, nil
+}
 
-	machineID, err := buildMachineIDForHost(request.GetHostname())
+func (m *serviceHandler) startMaintenance(
+	ctx context.Context,
+	hostname string,
+) error {
+	m.metrics.StartMaintenanceAPI.Inc(1)
+	machineID, err := buildMachineIDForHost(hostname)
 	if err != nil {
 		m.metrics.StartMaintenanceFail.Inc(1)
-		return nil, err
+		return err
 	}
 
 	// Get current maintenance schedule
 	response, err := m.operatorMasterClient.GetMaintenanceSchedule()
 	if err != nil {
 		m.metrics.StartMaintenanceFail.Inc(1)
-		return nil, err
+		return err
 	}
 	schedule := response.GetSchedule()
 	// Set current time as the `start` of maintenance window
@@ -170,10 +198,9 @@ func (m *serviceHandler) StartMaintenance(
 	schedule.Windows = append(schedule.Windows, maintenanceWindow)
 
 	// Post updated maintenance schedule
-	err = m.operatorMasterClient.UpdateMaintenanceSchedule(schedule)
-	if err != nil {
+	if err = m.operatorMasterClient.UpdateMaintenanceSchedule(schedule); err != nil {
 		m.metrics.StartMaintenanceFail.Inc(1)
-		return nil, err
+		return err
 	}
 	log.WithField("maintenance_schedule", schedule).
 		Info("Maintenance Schedule posted to Mesos Master")
@@ -186,15 +213,12 @@ func (m *serviceHandler) StartMaintenance(
 	m.maintenanceHostInfoMap.AddHostInfo(hostInfo)
 	// Enqueue hostname into maintenance queue to initiate
 	// the rescheduling of tasks running on this host
-	err = m.maintenanceQueue.Enqueue(request.GetHostname())
-	if err != nil {
-		return nil, err
+	if err = m.maintenanceQueue.Enqueue(hostInfo.Hostname); err != nil {
+		return err
 	}
 
 	m.metrics.StartMaintenanceSuccess.Inc(1)
-	return &host_svc.StartMaintenanceResponse{
-		Hostname: request.GetHostname(),
-	}, nil
+	return nil
 }
 
 // CompleteMaintenance completes maintenance on the specified hosts. It brings
@@ -205,17 +229,43 @@ func (m *serviceHandler) CompleteMaintenance(
 	ctx context.Context,
 	request *host_svc.CompleteMaintenanceRequest,
 ) (*host_svc.CompleteMaintenanceResponse, error) {
-	m.metrics.CompleteMaintenanceAPI.Inc(1)
+	// CompleteMaintenanceRequest using deprecated field `hostnames`
+	var errs error
+	if len(request.GetHostnames()) != 0 {
+		for _, hostname := range request.GetHostnames() {
+			if err := m.completeMaintenance(ctx, hostname); err != nil {
+				// Not error out on 1rst error, continue and aggregate errors
+				errs = multierr.Append(errs, err)
+			}
+		}
+		if errs != nil {
+			return nil, yarpcerrors.InternalErrorf(errs.Error())
+		}
+		return &host_svc.CompleteMaintenanceResponse{}, nil
+	}
+	// CompleteMaintenanceRequest using prefered field `hostname`
+	if err := m.completeMaintenance(ctx, request.GetHostname()); err != nil {
+		return nil, yarpcerrors.InternalErrorf(err.Error())
+	}
+	return &host_svc.CompleteMaintenanceResponse{
+		Hostname: request.GetHostname(),
+	}, nil
+}
 
+func (m *serviceHandler) completeMaintenance(
+	ctx context.Context,
+	hostname string,
+) error {
+	m.metrics.CompleteMaintenanceAPI.Inc(1)
 	// Get all DOWN hosts and validate host is in DOWN state
 	downHostInfoMap := make(map[string]*hpb.HostInfo)
 	for _, hostInfo := range m.maintenanceHostInfoMap.GetDownHostInfos([]string{}) {
 		downHostInfoMap[hostInfo.GetHostname()] = hostInfo
 	}
-	hostInfo, ok := downHostInfoMap[request.GetHostname()]
+	hostInfo, ok := downHostInfoMap[hostname]
 	if !ok {
 		m.metrics.CompleteMaintenanceFail.Inc(1)
-		return nil, fmt.Errorf("invalid request. Host %s is not DOWN", request.GetHostname())
+		return fmt.Errorf("invalid request. Host %s is not DOWN", hostname)
 	}
 
 	// Stop Maintenance for the host on Mesos Master
@@ -223,18 +273,15 @@ func (m *serviceHandler) CompleteMaintenance(
 		Hostname: &hostInfo.Hostname,
 		Ip:       &hostInfo.Ip,
 	}
-	err := m.operatorMasterClient.StopMaintenance([]*mesos.MachineID{machineID})
-	if err != nil {
+	if err := m.operatorMasterClient.StopMaintenance([]*mesos.MachineID{machineID}); err != nil {
 		m.metrics.CompleteMaintenanceFail.Inc(1)
-		return nil, err
+		return err
 	}
 
-	m.maintenanceHostInfoMap.RemoveHostInfo(request.GetHostname())
+	m.maintenanceHostInfoMap.RemoveHostInfo(hostInfo.Hostname)
 
 	m.metrics.CompleteMaintenanceSuccess.Inc(1)
-	return &host_svc.CompleteMaintenanceResponse{
-		Hostname: request.GetHostname(),
-	}, nil
+	return nil
 }
 
 // Build host info for registered agents

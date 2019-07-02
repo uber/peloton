@@ -28,7 +28,6 @@ log = logging.getLogger(__name__)
 #       The host draining kicks in and the tasks on host A should be killed in
 #       the next host draining cycle. The tasks should transition to PENDING as
 #       host A is DRAINING and there should be no further scheduling on it.
-@pytest.mark.skip(reason="Protobuf changed, peloton-client > 0.8.8 required")
 def test__start_maintenance_kill_tasks(host_affinity_job, maintenance):
     # Pick a host that is UP and start maintenance on it
     test_host = get_host_in_state(hpb.HOST_STATE_UP)
@@ -72,7 +71,6 @@ def test__start_maintenance_kill_tasks(host_affinity_job, maintenance):
 #          cycle.
 # 3. Complete Maintenance on host A:
 #       Host A should not longer be DOWN. It should transition to UP
-@pytest.mark.skip(reason="Protobuf changed, peloton-client > 0.8.8 required")
 def test__host_maintenance_lifecycle(host_affinity_job, maintenance):
     # Pick a host that is UP and start maintenance on it
     test_host = get_host_in_state(hpb.HOST_STATE_UP)
