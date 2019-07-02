@@ -64,10 +64,8 @@ func (a *Assignment) IsPastMaxRounds() bool {
 // Additionally, if the task has a preferred host and is past its host placement
 // deadline, it will also return true.
 func (a *Assignment) IsPastDeadline(now time.Time) bool {
-	if a.Task.PastDeadline(now) {
-		return true
-	} else if a.PreferredHost() == "" {
-		return false
+	if a.PreferredHost() == "" {
+		return a.Task.PastDeadline(now)
 	}
 	return a.Task.PastDesiredHostPlacementDeadline(now)
 }

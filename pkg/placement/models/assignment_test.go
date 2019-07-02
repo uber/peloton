@@ -147,4 +147,19 @@ func TestAssignment(t *testing.T) {
 		require.Equal(t, float64(0), resLeft.CPU)
 		require.Equal(t, float64(1), resLeft.Mem)
 	})
+
+	t.Run("past deadline", func(t *testing.T) {
+		_, _, _, _, task, assignment := setupAssignmentVariables()
+		now := time.Now()
+		task.Deadline = now.Add(-1 * time.Minute)
+		task.PlacementDeadline = now.Add(1 * time.Minute)
+
+		// no desired host, placement past deadline
+		task.Task.DesiredHost = ""
+		require.True(t, assignment.IsPastDeadline(now))
+
+		// has desired host, placement past deadline
+		task.Task.DesiredHost = "hostname1"
+		require.False(t, assignment.IsPastDeadline(now))
+	})
 }
