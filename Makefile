@@ -29,6 +29,7 @@ DC ?= all
 GEN_DIR = .gen
 UNAME = $(shell uname | tr '[:upper:]' '[:lower:]')
 
+GOKIND = bin/kind
 GOCOV = $(go get github.com/axw/gocov/gocov)
 GOCOV_XML = $(go get github.com/AlekSi/gocov-xml)
 GOLINT = $(go get golang.org/x/lint/golint)
@@ -38,6 +39,7 @@ PHAB_COMMENT = .phabricator-comment
 # See https://golang.org/doc/gdb for details of the flags
 GO_FLAGS = -gcflags '-N -l' -ldflags "-X main.version=$(PACKAGE_VERSION)"
 
+K8S ?= "--k8s"
 THIS_FILE := $(lastword $(MAKEFILE_LIST))
 
 ifeq ($(shell uname),Linux)
@@ -75,7 +77,7 @@ aurorabridge:
 build-mockgen:
 	go get ./vendor/github.com/golang/mock/mockgen
 
-get-gokind:
+$(GOKIND):
 	mkdir -p bin
 	wget -O $(shell pwd)/bin/kind https://github.com/kubernetes-sigs/kind/releases/download/0.2.1/kind-$(UNAME)-amd64
 	chmod a+x $(shell pwd)/bin/kind
@@ -255,20 +257,20 @@ test_pkg: $(GOCOV) $(GENS) mockgens test-containers
 unit-test: $(GOCOV) $(GENS) mockgens
 	gocov test $(ALL_PKGS) --tags "unit" | gocov report
 
-integ-test: get-gokind
+integ-test: $(GOKIND)
 	ls -la $(shell pwd)/bin
 	PATH="$(PATH):$(shell pwd)/bin" ./tests/run-integration-tests.sh
 
-aurorabridge-integ-test: get-gokind
+aurorabridge-integ-test: $(GOKIND)
 	ls -la $(shell pwd)/bin
 	PATH="$(PATH):$(shell pwd)/bin" ./tests/run-aurorabridge-integration-tests.sh
 
 # launch peloton with PELOTON={any value}, default to none
 minicluster: $(GOKIND)
-	PELOTON=$(PELOTON) ./scripts/minicluster.sh setup --k8s
+	PATH="$(PATH):$(shell pwd)/bin" PELOTON=$(PELOTON) ./scripts/minicluster.sh setup $(K8S)
 
 minicluster-teardown: $(GOKIND)
-	./scripts/minicluster.sh teardown
+	PATH="$(PATH):$(shell pwd)/bin" ./scripts/minicluster.sh teardown
 
 # Clone the newest mimir-lib code. Do not manually edit anything under mimir-lib/*
 update-mimir-lib:
