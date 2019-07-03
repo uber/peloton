@@ -20,7 +20,6 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
-	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v0/update"
 	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
@@ -45,7 +44,6 @@ type Store interface {
 	TaskStore
 	UpdateStore
 	FrameworkInfoStore
-	ResourcePoolStore
 	PersistentVolumeStore
 }
 
@@ -227,14 +225,6 @@ type FrameworkInfoStore interface {
 	SetMesosFrameworkID(ctx context.Context, frameworkName string, frameworkID string) error
 	GetMesosStreamID(ctx context.Context, frameworkName string) (string, error)
 	GetFrameworkID(ctx context.Context, frameworkName string) (string, error)
-}
-
-// ResourcePoolStore is the interface to store all the resource pool information
-type ResourcePoolStore interface {
-	CreateResourcePool(ctx context.Context, id *peloton.ResourcePoolID, Config *respool.ResourcePoolConfig, createdBy string) error
-	DeleteResourcePool(ctx context.Context, id *peloton.ResourcePoolID) error
-	UpdateResourcePool(ctx context.Context, id *peloton.ResourcePoolID, Config *respool.ResourcePoolConfig) error
-	GetAllResourcePools(ctx context.Context) (map[string]*respool.ResourcePoolConfig, error)
 }
 
 // PersistentVolumeStore is the interface to store all the persistent volume info

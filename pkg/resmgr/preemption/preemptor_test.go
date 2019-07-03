@@ -41,6 +41,7 @@ import (
 	rm_task "github.com/uber/peloton/pkg/resmgr/task"
 	"github.com/uber/peloton/pkg/resmgr/tasktestutil"
 	store_mocks "github.com/uber/peloton/pkg/storage/mocks"
+	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pkg/errors"
@@ -1015,14 +1016,14 @@ func TestPreemptor(t *testing.T) {
 
 // Have to do this because the preemptor depends on the resTree
 func (suite *PreemptorTestSuite) getResourceTree() respool.Tree {
-	mockResPoolStore := store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
+	mockResPoolOps := objectmocks.NewMockResPoolOps(suite.mockCtrl)
 	gomock.InOrder(
-		mockResPoolStore.EXPECT().
-			GetAllResourcePools(context.Background()).Return(suite.getResPools(), nil).AnyTimes(),
+		mockResPoolOps.EXPECT().
+			GetAll(context.Background()).Return(suite.getResPools(), nil).AnyTimes(),
 	)
 	mockJobStore := store_mocks.NewMockJobStore(suite.mockCtrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(suite.mockCtrl)
-	return respool.NewTree(tally.NoopScope, mockResPoolStore, mockJobStore,
+	return respool.NewTree(tally.NoopScope, mockResPoolOps, mockJobStore,
 		mockTaskStore, res_common.PreemptionConfig{
 			Enabled: true,
 		})

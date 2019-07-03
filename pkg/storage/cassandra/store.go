@@ -32,7 +32,6 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/query"
-	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v0/update"
 	pb_volume "github.com/uber/peloton/.gen/peloton/api/v0/volume"
@@ -211,7 +210,7 @@ func (c *Config) MigrateString() string {
 }
 
 // Store implements JobStore, TaskStore, UpdateStore, FrameworkInfoStore,
-// ResourcePoolStore, and PersistentVolumeStore using a cassandra backend
+// and PersistentVolumeStore using a cassandra backend
 // TODO: Break this up into different files (and or structs) that implement
 // each of these interfaces to keep code modular.
 type Store struct {
@@ -2094,109 +2093,6 @@ func (s *Store) applyStatement(ctx context.Context, stmt api.Statement, itemName
 		return yarpcerrors.AlreadyExistsErrorf(errMsg)
 	}
 	return nil
-}
-
-// CreateResourcePool creates a resource pool with the resource pool id and the config value
-func (s *Store) CreateResourcePool(ctx context.Context, id *peloton.ResourcePoolID, resPoolConfig *respool.ResourcePoolConfig, owner string) error {
-	resourcePoolID := id.GetValue()
-	configBuffer, err := json.Marshal(resPoolConfig)
-	if err != nil {
-		log.Errorf("error = %v", err)
-		s.metrics.ResourcePoolMetrics.ResourcePoolCreateFail.Inc(1)
-		return err
-	}
-
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Insert(resPoolsTable).
-		Columns("respool_id", "respool_config", "owner", "creation_time", "update_time").
-		Values(resourcePoolID, string(configBuffer), owner, time.Now().UTC(), time.Now().UTC()).
-		IfNotExist()
-
-	err = s.applyStatement(ctx, stmt, resourcePoolID)
-	if err != nil {
-		s.metrics.ResourcePoolMetrics.ResourcePoolCreateFail.Inc(1)
-		return err
-	}
-	s.metrics.ResourcePoolMetrics.ResourcePoolCreate.Inc(1)
-	return nil
-}
-
-// DeleteResourcePool Deletes the resource pool
-func (s *Store) DeleteResourcePool(ctx context.Context, id *peloton.ResourcePoolID) error {
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Delete(resPoolsTable).Where(qb.Eq{"respool_id": id.GetValue()})
-	err := s.applyStatement(ctx, stmt, id.GetValue())
-	if err != nil {
-		s.metrics.ResourcePoolMetrics.ResourcePoolDeleteFail.Inc(1)
-		return err
-	}
-	s.metrics.ResourcePoolMetrics.ResourcePoolDelete.Inc(1)
-	return nil
-}
-
-// UpdateResourcePool Updates the resource pool config for a give resource pool
-// ID
-func (s *Store) UpdateResourcePool(ctx context.Context, id *peloton.ResourcePoolID,
-	resPoolConfig *respool.ResourcePoolConfig) error {
-	resourcePoolID := id.GetValue()
-	configBuffer, err := json.Marshal(resPoolConfig)
-	if err != nil {
-		log.
-			WithField("respool_ID", resourcePoolID).
-			WithError(err).
-			Error("Failed to unmarshal resource pool config")
-		s.metrics.ResourcePoolMetrics.ResourcePoolUpdateFail.Inc(1)
-		return err
-	}
-
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Update(resPoolsTable).
-		Set("respool_config", configBuffer).
-		Set("update_time", time.Now().UTC()).
-		Where(qb.Eq{"respool_id": resourcePoolID}).
-		IfOnly("EXISTS")
-
-	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
-		log.WithField("respool_ID", resourcePoolID).
-			WithError(err).
-			Error("Failed to update resource pool config")
-		s.metrics.ResourcePoolMetrics.ResourcePoolUpdateFail.Inc(1)
-		return err
-	}
-	s.metrics.ResourcePoolMetrics.ResourcePoolUpdate.Inc(1)
-	return nil
-}
-
-// GetAllResourcePools Get all the resource pool configs
-func (s *Store) GetAllResourcePools(ctx context.Context) (map[string]*respool.ResourcePoolConfig, error) {
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("respool_id", "owner", "respool_config", "creation_time", "update_time").From(resPoolsTable)
-
-	allResults, err := s.executeRead(ctx, stmt)
-	if err != nil {
-		log.Errorf("Fail to GetAllResourcePools, err=%v", err)
-		s.metrics.ResourcePoolMetrics.ResourcePoolGetFail.Inc(1)
-		return nil, err
-	}
-	var resultMap = make(map[string]*respool.ResourcePoolConfig)
-	for _, value := range allResults {
-		var record ResourcePoolRecord
-		err := FillObject(value, &record, reflect.TypeOf(record))
-		if err != nil {
-			log.Errorf("Failed to Fill into ResourcePoolRecord, err= %v", err)
-			s.metrics.ResourcePoolMetrics.ResourcePoolGetFail.Inc(1)
-			return nil, err
-		}
-		resourcePoolConfig, err := record.GetResourcePoolConfig()
-		if err != nil {
-			log.Errorf("Failed to get ResourceConfig from record, err= %v", err)
-			s.metrics.ResourcePoolMetrics.ResourcePoolGetFail.Inc(1)
-			return nil, err
-		}
-		resultMap[record.RespoolID] = resourcePoolConfig
-		s.metrics.ResourcePoolMetrics.ResourcePoolGet.Inc(1)
-	}
-	return resultMap, nil
 }
 
 // getJobSummaryFromIndex gets the job summary from job index table.

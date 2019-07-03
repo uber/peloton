@@ -24,6 +24,7 @@ import (
 
 	"github.com/uber/peloton/pkg/common"
 	store_mocks "github.com/uber/peloton/pkg/storage/mocks"
+	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -41,19 +42,19 @@ type resPoolConfigValidatorSuite struct {
 func (s *resPoolConfigValidatorSuite) SetupSuite() {
 	fmt.Println("setting up resPoolConfigValidatorSuite")
 	s.mockCtrl = gomock.NewController(s.T())
-	mockResPoolStore := store_mocks.NewMockResourcePoolStore(s.mockCtrl)
-	mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
+	mockResPoolOps := objectmocks.NewMockResPoolOps(s.mockCtrl)
+	mockResPoolOps.EXPECT().GetAll(context.Background()).
 		Return(s.getResPools(), nil).AnyTimes()
 	mockJobStore := store_mocks.NewMockJobStore(s.mockCtrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(s.mockCtrl)
 	s.resourceTree = &tree{
-		store:     mockResPoolStore,
-		root:      nil,
-		metrics:   NewMetrics(tally.NoopScope),
-		resPools:  make(map[string]ResPool),
-		jobStore:  mockJobStore,
-		taskStore: mockTaskStore,
-		scope:     tally.NoopScope,
+		respoolOps: mockResPoolOps,
+		root:       nil,
+		metrics:    NewMetrics(tally.NoopScope),
+		resPools:   make(map[string]ResPool),
+		jobStore:   mockJobStore,
+		taskStore:  mockTaskStore,
+		scope:      tally.NoopScope,
 	}
 }
 

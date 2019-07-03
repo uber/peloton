@@ -27,6 +27,7 @@ import (
 	"github.com/uber/peloton/pkg/resmgr/respool/mocks"
 	"github.com/uber/peloton/pkg/resmgr/scalar"
 	store_mocks "github.com/uber/peloton/pkg/storage/mocks"
+	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -43,23 +44,23 @@ type resPoolHandlerTestSuite struct {
 	resourceTree                res.Tree
 	mockCtrl                    *gomock.Controller
 	handler                     *ServiceHandler
-	mockResPoolStore            *store_mocks.MockResourcePoolStore
+	mockResPoolOps              *objectmocks.MockResPoolOps
 	resourcePoolConfigValidator res.Validator
 }
 
 func (s *resPoolHandlerTestSuite) SetupSuite() {
 	s.mockCtrl = gomock.NewController(s.T())
-	s.mockResPoolStore = store_mocks.NewMockResourcePoolStore(s.mockCtrl)
-	s.mockResPoolStore.
+	s.mockResPoolOps = objectmocks.NewMockResPoolOps(s.mockCtrl)
+	s.mockResPoolOps.
 		EXPECT().
-		GetAllResourcePools(context.Background()).
+		GetAll(context.Background()).
 		Return(s.getResPools(), nil).
 		AnyTimes()
 	mockJobStore := store_mocks.NewMockJobStore(s.mockCtrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(s.mockCtrl)
 	s.resourceTree = res.NewTree(
 		tally.NoopScope,
-		s.mockResPoolStore,
+		s.mockResPoolOps,
 		mockJobStore,
 		mockTaskStore,
 		rc.PreemptionConfig{Enabled: false},
@@ -79,7 +80,7 @@ func (s *resPoolHandlerTestSuite) SetupTest() {
 	s.handler = &ServiceHandler{
 		resPoolTree:            s.resourceTree,
 		metrics:                res.NewMetrics(tally.NoopScope),
-		store:                  s.mockResPoolStore,
+		resPoolOps:             s.mockResPoolOps,
 		resPoolConfigValidator: s.resourcePoolConfigValidator,
 	}
 	s.NoError(s.resourceTree.Start())
@@ -232,7 +233,7 @@ func (s *resPoolHandlerTestSuite) TestNewServiceHandler() {
 		dispatcher,
 		tally.NoopScope,
 		s.resourceTree,
-		s.mockResPoolStore,
+		s.mockResPoolOps,
 	)
 	s.NotNil(handler)
 }
@@ -341,7 +342,7 @@ func (s *resPoolHandlerTestSuite) TestCreateResourcePool() {
 	}
 
 	// set expectations
-	s.mockResPoolStore.EXPECT().CreateResourcePool(
+	s.mockResPoolOps.EXPECT().Create(
 		context.Background(),
 		gomock.Any(),
 		gomock.Eq(mockResourcePoolConfig),
@@ -401,7 +402,7 @@ func (s *resPoolHandlerTestSuite) TestCreateStaticResourcePool() {
 	}
 
 	// set expectations
-	s.mockResPoolStore.EXPECT().CreateResourcePool(
+	s.mockResPoolOps.EXPECT().Create(
 		context.Background(),
 		gomock.Any(),
 		gomock.Eq(mockResourcePoolConfig),
@@ -493,7 +494,7 @@ func (s *resPoolHandlerTestSuite) TestCreateResourcePoolAlreadyExistsError() {
 
 	expectedErrMsg := "resource pool already exits"
 	// set expectations
-	s.mockResPoolStore.EXPECT().CreateResourcePool(
+	s.mockResPoolOps.EXPECT().Create(
 		context.Background(),
 		gomock.Any(),
 		gomock.Eq(mockResourcePoolConfig),
@@ -516,7 +517,7 @@ func (s *resPoolHandlerTestSuite) TestCreateResourcePoolAlreadyExistsError() {
 func (s *resPoolHandlerTestSuite) TestUpdateResourcePool() {
 	updateReq := s.getUpdateRequest()
 	// set expectations
-	s.mockResPoolStore.EXPECT().UpdateResourcePool(
+	s.mockResPoolOps.EXPECT().Update(
 		gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 	updateResp, err := s.handler.UpdateResourcePool(
@@ -534,7 +535,7 @@ func (s *resPoolHandlerTestSuite) TestUpdateError() {
 	updateReq := s.getUpdateRequest()
 	resTree.EXPECT().Get(gomock.Any()).Return(respool, nil)
 	// set expectations
-	s.mockResPoolStore.EXPECT().UpdateResourcePool(
+	s.mockResPoolOps.EXPECT().Update(
 		gomock.Any(), gomock.Any(), gomock.Any()).Return(errors.New("Error"))
 
 	updateResp, err := handler.UpdateResourcePool(
@@ -551,12 +552,12 @@ func (s *resPoolHandlerTestSuite) TestUpsertError() {
 
 	resTree.EXPECT().Get(gomock.Any()).Return(respool, nil)
 	// set expectations
-	s.mockResPoolStore.EXPECT().UpdateResourcePool(
+	s.mockResPoolOps.EXPECT().Update(
 		gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 	resTree.EXPECT().Upsert(gomock.Any(), gomock.Any()).Return(errors.New("error in upsert"))
 	respool.EXPECT().ResourcePoolConfig().Return(nil)
 
-	s.mockResPoolStore.EXPECT().UpdateResourcePool(
+	s.mockResPoolOps.EXPECT().Update(
 		gomock.Any(), gomock.Any(), gomock.Any()).Return(errors.New("Error"))
 
 	_, err := handler.UpdateResourcePool(
@@ -571,7 +572,7 @@ func (s *resPoolHandlerTestSuite) getMockHandlerWithResTreeAndRespool() (*Servic
 	return &ServiceHandler{
 		resPoolTree:            resTree,
 		metrics:                res.NewMetrics(tally.NoopScope),
-		store:                  s.mockResPoolStore,
+		resPoolOps:             s.mockResPoolOps,
 		resPoolConfigValidator: s.resourcePoolConfigValidator,
 	}, resTree, mocks.NewMockResPool(s.mockCtrl)
 }
@@ -775,7 +776,7 @@ func (s *resPoolHandlerTestSuite) TestDeleteResourcePool() {
 	}
 
 	// set expectations
-	s.mockResPoolStore.EXPECT().DeleteResourcePool(
+	s.mockResPoolOps.EXPECT().Delete(
 		context.Background(),
 		gomock.Eq(mockResourcePoolID)).Return(nil)
 
@@ -859,7 +860,7 @@ func (s *resPoolHandlerTestSuite) TestDeleteblahblah() {
 		},
 		{
 			msg:               "respool not deleted",
-			expectedFunctions: s.DeleteResourcePoolStoreError,
+			expectedFunctions: s.DeleteResourcePoolOpsError,
 			err:               nil,
 			respError:         resPoolDeleteErrString,
 		},
@@ -872,7 +873,7 @@ func (s *resPoolHandlerTestSuite) TestDeleteblahblah() {
 		handler := &ServiceHandler{
 			resPoolTree:            resTree,
 			metrics:                res.NewMetrics(tally.NoopScope),
-			store:                  s.mockResPoolStore,
+			resPoolOps:             s.mockResPoolOps,
 			resPoolConfigValidator: s.resourcePoolConfigValidator,
 		}
 		t.expectedFunctions(resTree, respool)
@@ -939,7 +940,10 @@ func (s *resPoolHandlerTestSuite) DeleteResourcePoolDeleteError(resTree *mocks.M
 	resTree.EXPECT().Delete(gomock.Any()).Return(errors.New("Error in Delete"))
 }
 
-func (s *resPoolHandlerTestSuite) DeleteResourcePoolStoreError(resTree *mocks.MockTree, respool *mocks.MockResPool) {
+func (s *resPoolHandlerTestSuite) DeleteResourcePoolOpsError(
+	resTree *mocks.MockTree,
+	respool *mocks.MockResPool,
+) {
 	resTree.EXPECT().GetByPath(gomock.Any()).Return(respool, nil)
 
 	respool.EXPECT().ID().Return("")
@@ -949,7 +953,7 @@ func (s *resPoolHandlerTestSuite) DeleteResourcePoolStoreError(resTree *mocks.Mo
 	respool.EXPECT().GetTotalAllocatedResources().Return(scalar.ZeroResource)
 	respool.EXPECT().GetDemand().Return(scalar.ZeroResource)
 	resTree.EXPECT().Delete(gomock.Any()).Return(nil)
-	s.mockResPoolStore.EXPECT().DeleteResourcePool(gomock.Any(), gomock.Any()).Return(errors.New("Error in DB"))
+	s.mockResPoolOps.EXPECT().Delete(gomock.Any(), gomock.Any()).Return(errors.New("Error in DB"))
 }
 
 func TestResPoolHandler(t *testing.T) {

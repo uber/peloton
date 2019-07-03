@@ -27,6 +27,7 @@ import (
 	"github.com/uber/peloton/pkg/common"
 	rc "github.com/uber/peloton/pkg/resmgr/common"
 	"github.com/uber/peloton/pkg/storage"
+	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -72,9 +73,9 @@ type tree struct {
 
 	preemptionConfig rc.PreemptionConfig
 
-	store   storage.ResourcePoolStore // Store object for resource pool store
-	metrics *Metrics                  // Metrics object for reporting
-	root    ResPool
+	respoolOps ormobjects.ResPoolOps // resource pool related operations
+	metrics    *Metrics              // Metrics object for reporting
+	root       ResPool
 	// map of [ID] = ResPool
 	resPools    map[string]ResPool // Map of all the respools in Tree indexed by ID
 	jobStore    storage.JobStore   // Keeping the jobstore object
@@ -86,13 +87,13 @@ type tree struct {
 // NewTree will initializing the respool tree
 func NewTree(
 	scope tally.Scope,
-	store storage.ResourcePoolStore,
+	respoolOps ormobjects.ResPoolOps,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	cfg rc.PreemptionConfig,
 ) Tree {
 	return &tree{
-		store:            store,
+		respoolOps:       respoolOps,
 		root:             nil,
 		metrics:          NewMetrics(scope),
 		resPools:         make(map[string]ResPool),
@@ -107,7 +108,7 @@ func NewTree(
 // Start initializes the in-memory respool tree by loading resource pools
 // from storage.
 func (t *tree) Start() error {
-	resPoolConfigs, err := t.store.GetAllResourcePools(context.Background())
+	resPoolConfigs, err := t.respoolOps.GetAll(context.Background())
 	if err != nil {
 		log.WithError(err).Error(
 			"failed to get resource pool configs from store")

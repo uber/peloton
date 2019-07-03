@@ -278,6 +278,7 @@ func main() {
 	if ormErr != nil {
 		log.WithError(ormErr).Fatal("Failed to create ORM store for Cassandra")
 	}
+	respoolOps := ormobjects.NewResPoolOps(ormStore)
 
 	// Create both HTTP and GRPC inbounds
 	inbounds := rpc.NewInbounds(
@@ -359,7 +360,7 @@ func main() {
 	// Initializing Resource Pool Tree.
 	tree := respool.NewTree(
 		rootScope,
-		store, // store implements RespoolStore
+		respoolOps,
 		store, // store implements JobStore
 		store, // store implements TaskStore
 		*cfg.ResManager.PreemptionConfig)
@@ -369,7 +370,7 @@ func main() {
 		dispatcher,
 		rootScope,
 		tree,
-		store, // store implements RespoolStore
+		ormobjects.NewResPoolOps(ormStore),
 	)
 
 	// Initializing the rmtasks in-memory tracker

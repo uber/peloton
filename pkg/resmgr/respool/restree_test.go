@@ -18,7 +18,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/uber/peloton/pkg/storage"
 	"testing"
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
@@ -33,6 +32,8 @@ import (
 	rc "github.com/uber/peloton/pkg/resmgr/common"
 	"github.com/uber/peloton/pkg/resmgr/scalar"
 	store_mocks "github.com/uber/peloton/pkg/storage/mocks"
+	ormobjects "github.com/uber/peloton/pkg/storage/objects"
+	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
@@ -66,8 +67,8 @@ func (s *resTreeTestSuite) TestNewTree() {
 	mockCtrl := gomock.NewController(s.T())
 	defer mockCtrl.Finish()
 
-	mockResPoolStore := store_mocks.NewMockResourcePoolStore(mockCtrl)
-	mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
+	mockResPoolOps := objectmocks.NewMockResPoolOps(mockCtrl)
+	mockResPoolOps.EXPECT().GetAll(context.Background()).
 		Return(s.getResPools(), nil).AnyTimes()
 	mockJobStore := store_mocks.NewMockJobStore(mockCtrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(mockCtrl)
@@ -75,7 +76,7 @@ func (s *resTreeTestSuite) TestNewTree() {
 	// Initialize the local tree
 	resTree := NewTree(
 		tally.NoopScope,
-		mockResPoolStore,
+		mockResPoolOps,
 		mockJobStore,
 		mockTaskStore,
 		rc.PreemptionConfig{Enabled: false},
@@ -533,20 +534,20 @@ func (s *resTreeTestSuite) TestBuildTreeError() {
 
 func (s *resTreeTestSuite) withStore(
 	pool map[string]*respool.ResourcePoolConfig,
-	err error) storage.ResourcePoolStore {
-	mockResPoolStore := store_mocks.NewMockResourcePoolStore(s.mockCtrl)
-	mockResPoolStore.
+	err error) ormobjects.ResPoolOps {
+	mockResPoolOps := objectmocks.NewMockResPoolOps(s.mockCtrl)
+	mockResPoolOps.
 		EXPECT().
-		GetAllResourcePools(context.Background()).
+		GetAll(context.Background()).
 		Return(pool, err).
 		AnyTimes()
-	return mockResPoolStore
+	return mockResPoolOps
 }
 
 // Creates and returns the Tree with respool store
-func (s *resTreeTestSuite) getTree(store storage.ResourcePoolStore) *tree {
+func (s *resTreeTestSuite) getTree(respoolOps ormobjects.ResPoolOps) *tree {
 	return &tree{
-		store:       store,
+		respoolOps:  respoolOps,
 		root:        nil,
 		metrics:     NewMetrics(tally.NoopScope),
 		resPools:    make(map[string]ResPool),

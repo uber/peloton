@@ -25,7 +25,7 @@ import (
 	rc "github.com/uber/peloton/pkg/resmgr/common"
 	res "github.com/uber/peloton/pkg/resmgr/respool"
 	"github.com/uber/peloton/pkg/resmgr/scalar"
-	"github.com/uber/peloton/pkg/storage"
+	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 
 	"github.com/pborman/uuid"
 	log "github.com/sirupsen/logrus"
@@ -46,7 +46,7 @@ type ServiceHandler struct {
 
 	cfg rc.PreemptionConfig
 
-	store storage.ResourcePoolStore
+	resPoolOps ormobjects.ResPoolOps
 
 	metrics *res.Metrics
 
@@ -59,7 +59,7 @@ func InitServiceHandler(
 	d *yarpc.Dispatcher,
 	parent tally.Scope,
 	tree res.Tree,
-	store storage.ResourcePoolStore,
+	resPoolOps ormobjects.ResPoolOps,
 ) *ServiceHandler {
 
 	scope := parent.SubScope("respool")
@@ -80,7 +80,7 @@ func InitServiceHandler(
 		metrics:                metrics,
 		resPoolTree:            tree,
 		resPoolConfigValidator: resPoolConfigValidator,
-		store:                  store,
+		resPoolOps:             resPoolOps,
 	}
 
 	d.Register(respool.BuildResourceManagerYARPCProcedures(handler))
@@ -139,7 +139,7 @@ func (h *ServiceHandler) CreateResourcePool(
 	// already has tasks added running, drain, distinguish?
 
 	// insert persistent store.
-	if err := h.store.CreateResourcePool(ctx, resPoolID, resPoolConfig, "peloton"); err != nil {
+	if err := h.resPoolOps.Create(ctx, resPoolID, resPoolConfig, "peloton"); err != nil {
 		h.metrics.CreateResourcePoolFail.Inc(1)
 		log.WithError(err).Infof(
 			"Error creating respoolID: %s in store",
@@ -167,7 +167,7 @@ func (h *ServiceHandler) CreateResourcePool(
 			resPoolID.Value,
 		)
 
-		if err := h.store.DeleteResourcePool(ctx, resPoolID); err != nil {
+		if err := h.resPoolOps.Delete(ctx, resPoolID); err != nil {
 			log.WithError(err).
 				WithField("respool_id", resPoolID.Value).
 				Info("Error rolling back respoolID in store")
@@ -331,7 +331,7 @@ func (h *ServiceHandler) DeleteResourcePool(
 	}
 
 	// Deleting the resource pool from the DB.
-	if err := h.store.DeleteResourcePool(ctx, resPoolID); err != nil {
+	if err := h.resPoolOps.Delete(ctx, resPoolID); err != nil {
 		h.metrics.DeleteResourcePoolFail.Inc(1)
 		// Logging and returning error as this is the API Failed
 		// We need to log the context in resmgr
@@ -457,7 +457,7 @@ func (h *ServiceHandler) UpdateResourcePool(
 	}
 
 	// update persistent store.
-	if err := h.store.UpdateResourcePool(ctx, resPoolID, resPoolConfig); err != nil {
+	if err := h.resPoolOps.Update(ctx, resPoolID, resPoolConfig); err != nil {
 		h.metrics.UpdateResourcePoolFail.Inc(1)
 		log.WithError(
 			err,
@@ -489,8 +489,11 @@ func (h *ServiceHandler) UpdateResourcePool(
 		)
 
 		// update with existing.
-		if err := h.store.UpdateResourcePool(ctx, resPoolID,
-			existingResPool.ResourcePoolConfig()); err != nil {
+		if err := h.resPoolOps.Update(
+			ctx,
+			resPoolID,
+			existingResPool.ResourcePoolConfig(),
+		); err != nil {
 			log.WithError(err).
 				Infof("Error rolling back respoolID: %s in store",
 					resPoolID.Value)

@@ -39,7 +39,7 @@ type ResPoolObject struct {
 	// base.Object DB specific annotations.
 	base.Object `cassandra:"name=respools, primaryKey=((respool_id))"`
 	// RespoolID is the ID of the resource pool being created.
-	RespoolID string `column:"name=respool_id"`
+	RespoolID *base.OptionalString `column:"name=respool_id"`
 	// RespoolConfig contains the resource pool's basic config information.
 	RespoolConfig string `column:"name=respool_config"`
 	// Owner of the resource pool.
@@ -70,6 +70,11 @@ type ResPoolOps interface {
 		config *respool.ResourcePoolConfig,
 		owner string,
 	) error
+
+	// GetAll gets all the resource pool configs.
+	GetAll(
+		ctx context.Context,
+	) (map[string]*respool.ResourcePoolConfig, error)
 
 	// Update modifies the respool in the table.
 	Update(
@@ -110,7 +115,7 @@ func newResPoolObject(
 	owner string,
 ) (*ResPoolObject, error) {
 	obj := &ResPoolObject{
-		RespoolID:    id.GetValue(),
+		RespoolID:    base.NewOptionalString(id.GetValue()),
 		CreationTime: creationTime,
 		Owner:        owner,
 	}
@@ -158,13 +163,37 @@ func (r *resPoolOps) Create(
 	return nil
 }
 
+// GetAll gets all the resource pool configs from the table.
+func (r *resPoolOps) GetAll(ctx context.Context) (map[string]*respool.ResourcePoolConfig, error) {
+	resultObjs := map[string]*respool.ResourcePoolConfig{}
+
+	objs, err := r.store.oClient.GetAll(ctx, &ResPoolObject{})
+	if err != nil {
+		r.store.metrics.OrmRespoolMetrics.RespoolGetAllFail.Inc(1)
+		return nil, err
+	}
+
+	for _, obj := range objs {
+		resPoolObj := obj.(*ResPoolObject)
+		respoolConfig, err := resPoolObj.toConfig()
+		if err != nil {
+			r.store.metrics.OrmRespoolMetrics.RespoolGetAllFail.Inc(1)
+			return nil, err
+		}
+		resultObjs[resPoolObj.RespoolID.Value] = respoolConfig
+	}
+
+	r.store.metrics.OrmRespoolMetrics.RespoolGetAll.Inc(1)
+	return resultObjs, nil
+}
+
 // Get retrieves the ResPoolObject from the table.
 func (r *resPoolOps) GetResult(
 	ctx context.Context,
 	respoolId string,
 ) (*ResPoolOpsResult, error) {
 	respoolObj := &ResPoolObject{
-		RespoolID: respoolId,
+		RespoolID: base.NewOptionalString(respoolId),
 	}
 	if err := r.store.oClient.Get(ctx, respoolObj); err != nil {
 		r.store.metrics.OrmRespoolMetrics.RespoolGetFail.Inc(1)
@@ -196,7 +225,7 @@ func (r *resPoolOps) Update(
 
 	// update `RespoolConfig` and `UpdateTime` field.
 	obj := &ResPoolObject{
-		RespoolID: id.GetValue(),
+		RespoolID: base.NewOptionalString(id.GetValue()),
 	}
 	if err := r.store.oClient.Get(ctx, obj); err != nil {
 		r.store.metrics.OrmRespoolMetrics.RespoolGetFail.Inc(1)
@@ -227,7 +256,7 @@ func (r *resPoolOps) Update(
 // Delete removes the ResPoolObject from the db.
 func (r *resPoolOps) Delete(ctx context.Context, id *peloton.ResourcePoolID) error {
 	resPoolObject := &ResPoolObject{
-		RespoolID: id.GetValue(),
+		RespoolID: base.NewOptionalString(id.GetValue()),
 	}
 	if err := r.store.oClient.Delete(ctx, resPoolObject); err != nil {
 		r.store.metrics.OrmRespoolMetrics.RespoolDeleteFail.Inc(1)

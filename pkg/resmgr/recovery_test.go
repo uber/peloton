@@ -57,18 +57,18 @@ type recoveryTestSuite struct {
 	taskScheduler     rm_task.Scheduler
 	recovery          *RecoveryHandler
 	mockCtrl          *gomock.Controller
-	mockResPoolStore  *store_mocks.MockResourcePoolStore
 	mockJobStore      *store_mocks.MockJobStore
 	mockTaskStore     *store_mocks.MockTaskStore
 	jobConfigOps      *objectmocks.MockJobConfigOps
 	jobRuntimeOps     *objectmocks.MockJobRuntimeOps
+	mockResPoolOps    *objectmocks.MockResPoolOps
 	mockHostmgrClient *host_mocks.MockInternalHostServiceYARPCClient
 }
 
 func (suite *recoveryTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
-	suite.mockResPoolStore = store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
-	suite.mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
+	suite.mockResPoolOps = objectmocks.NewMockResPoolOps(suite.mockCtrl)
+	suite.mockResPoolOps.EXPECT().GetAll(context.Background()).
 		Return(suite.getResPools(), nil).AnyTimes()
 	suite.mockJobStore = store_mocks.NewMockJobStore(suite.mockCtrl)
 	suite.mockTaskStore = store_mocks.NewMockTaskStore(suite.mockCtrl)
@@ -76,7 +76,7 @@ func (suite *recoveryTestSuite) SetupSuite() {
 	suite.jobRuntimeOps = objectmocks.NewMockJobRuntimeOps(suite.mockCtrl)
 	suite.mockHostmgrClient = host_mocks.NewMockInternalHostServiceYARPCClient(suite.mockCtrl)
 
-	suite.resourceTree = rp.NewTree(tally.NoopScope, suite.mockResPoolStore, suite.mockJobStore,
+	suite.resourceTree = rp.NewTree(tally.NoopScope, suite.mockResPoolOps, suite.mockJobStore,
 		suite.mockTaskStore,
 		rc.PreemptionConfig{
 			Enabled: false,

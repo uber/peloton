@@ -29,7 +29,6 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/query"
-	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v0/update"
 	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
@@ -50,7 +49,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/pborman/uuid"
-	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -1723,152 +1721,6 @@ func (suite *CassandraStoreTestSuite) TestGetTaskRuntimesForJobByRange() {
 	suite.Equal(0, len(runtime))
 }
 
-func (suite *CassandraStoreTestSuite) TestCreateGetResourcePoolConfig() {
-	var resourcePoolStore storage.ResourcePoolStore
-	resourcePoolStore = store
-	testCases := []struct {
-		resourcePoolID string
-		owner          string
-		config         *respool.ResourcePoolConfig
-		expectedErr    error
-		msg            string
-	}{
-		{
-			resourcePoolID: "first",
-			owner:          "team1",
-			config:         createResourcePoolConfig(),
-			expectedErr:    nil,
-			msg:            "testcase: create resource pool",
-		},
-		{
-			resourcePoolID: "second",
-			owner:          "",
-			config:         createResourcePoolConfig(),
-			expectedErr:    nil,
-			msg:            "testcase: create resource pool, no owner",
-		},
-		{
-			resourcePoolID: "",
-			owner:          "team2",
-			config:         createResourcePoolConfig(),
-			expectedErr:    errors.New("Key may not be empty"),
-			msg:            "testcase: create resource pool, no resource ID",
-		},
-		{
-			resourcePoolID: "first",
-			owner:          "team1",
-			config:         createResourcePoolConfig(),
-			expectedErr:    errors.New("code:already-exists message:first is not applied, item could exist already"),
-			msg:            "testcase: create resource pool, duplicate ID",
-		},
-	}
-
-	for _, tc := range testCases {
-		actualErr := resourcePoolStore.CreateResourcePool(context.Background(),
-			&peloton.ResourcePoolID{Value: tc.resourcePoolID},
-			tc.config, tc.owner)
-		if tc.expectedErr == nil {
-			suite.Nil(actualErr, tc.msg)
-		} else {
-			suite.EqualError(actualErr, tc.expectedErr.Error(), tc.msg)
-		}
-	}
-
-	// cleanup respools
-	for _, tc := range testCases {
-		if tc.expectedErr == nil {
-			err := resourcePoolStore.DeleteResourcePool(context.Background(),
-				&peloton.ResourcePoolID{Value: tc.resourcePoolID})
-			suite.NoError(err)
-		}
-	}
-}
-
-// TestGetAllResourcePools tests getting all resource pools from store
-func (suite *CassandraStoreTestSuite) TestGetAllResourcePools() {
-	var resourcePoolStore storage.ResourcePoolStore
-	resourcePoolStore = store
-	nResourcePools := 2
-
-	initResourcePools, err := resourcePoolStore.GetAllResourcePools(
-		context.Background())
-	suite.NoError(err)
-
-	// todo move to setup once ^^^ issue resolves
-	for i := 0; i < nResourcePools; i++ {
-		resourcePoolID := &peloton.ResourcePoolID{
-			Value: fmt.Sprintf("%s%d", _resPoolOwner, i)}
-		resourcePoolConfig := createResourcePoolConfig()
-		resourcePoolConfig.Name = resourcePoolID.Value
-		err := resourcePoolStore.CreateResourcePool(context.Background(),
-			resourcePoolID, resourcePoolConfig, _resPoolOwner)
-		suite.NoError(err)
-	}
-
-	resourcePools, err := resourcePoolStore.GetAllResourcePools(
-		context.Background())
-	suite.NoError(err)
-	suite.Len(resourcePools, len(initResourcePools)+nResourcePools)
-
-	// cleanup created resource pools
-	for i := 0; i < nResourcePools; i++ {
-		resourcePoolID := &peloton.ResourcePoolID{
-			Value: fmt.Sprintf("%s%d", _resPoolOwner, i)}
-		err := resourcePoolStore.DeleteResourcePool(
-			context.Background(), resourcePoolID)
-		suite.NoError(err)
-	}
-}
-
-// TestGetAllResourcePoolsEmptyResourcePool tests getting empty resource pool
-func (suite *CassandraStoreTestSuite) TestGetAllResourcePoolsEmptyResourcePool() {
-	var resourcePoolStore storage.ResourcePoolStore
-	resourcePoolStore = store
-	resourcePools, err := resourcePoolStore.GetAllResourcePools(context.Background())
-	suite.NoError(err)
-	suite.Len(resourcePools, 0)
-}
-
-func (suite *CassandraStoreTestSuite) TestUpdateResourcePool() {
-	var resourcePoolStore storage.ResourcePoolStore
-	resourcePoolStore = store
-	resourcePoolID := &peloton.ResourcePoolID{Value: fmt.Sprintf("%s%d",
-		"UpdateRespool", 1)}
-	resourcePoolConfig := createResourcePoolConfig()
-
-	resourcePoolConfig.Name = resourcePoolID.Value
-	err := resourcePoolStore.CreateResourcePool(context.Background(),
-		resourcePoolID, resourcePoolConfig, "Update")
-	suite.NoError(err)
-
-	resourcePoolConfig.Description = "Updated description"
-	err = resourcePoolStore.UpdateResourcePool(context.Background(),
-		resourcePoolID, resourcePoolConfig)
-	suite.NoError(err)
-
-	// GetAllResourcePools
-	resourcePools, err := resourcePoolStore.GetAllResourcePools(context.Background())
-	suite.NoError(err)
-	suite.Equal("Updated description", resourcePools[resourcePoolID.Value].Description)
-
-	// cleanup resource pool
-	err = resourcePoolStore.DeleteResourcePool(
-		context.Background(), resourcePoolID)
-	suite.NoError(err)
-}
-
-func (suite *CassandraStoreTestSuite) TestDeleteResourcePool() {
-	var resourcePoolStore storage.ResourcePoolStore
-	resourcePoolStore = store
-	resourcePoolID := &peloton.ResourcePoolID{Value: fmt.Sprintf("%s%d", "DeleteRespool", 1)}
-	resourcePoolConfig := createResourcePoolConfig()
-	resourcePoolConfig.Name = resourcePoolID.Value
-	err := resourcePoolStore.CreateResourcePool(context.Background(), resourcePoolID, resourcePoolConfig, "Delete")
-	suite.Nil(err)
-	err = resourcePoolStore.DeleteResourcePool(context.Background(), resourcePoolID)
-	suite.Nil(err)
-}
-
 func (suite *CassandraStoreTestSuite) TestPersistentVolumeInfo() {
 	var volumeStore storage.PersistentVolumeStore
 	volumeStore = store
@@ -2662,38 +2514,6 @@ func createTaskInfo(
 		JobId:      jobID,
 	}
 	return &taskInfo
-}
-
-// Returns mock resource pool config
-func createResourcePoolConfig() *respool.ResourcePoolConfig {
-	return &respool.ResourcePoolConfig{
-		Name:        "TestResourcePool_1",
-		ChangeLog:   nil,
-		Description: "test resource pool",
-		LdapGroups:  []string{"l1", "l2"},
-		OwningTeam:  "team1",
-		Parent:      nil,
-		Policy:      1,
-		Resources:   createResourceConfigs(),
-	}
-}
-
-// Returns mock list of resource configs
-func createResourceConfigs() []*respool.ResourceConfig {
-	return []*respool.ResourceConfig{
-		{
-			Kind:        "cpu",
-			Limit:       1000.0,
-			Reservation: 100.0,
-			Share:       1.0,
-		},
-		{
-			Kind:        "gpu",
-			Limit:       4.0,
-			Reservation: 2.0,
-			Share:       1.0,
-		},
-	}
 }
 
 func (suite *CassandraStoreTestSuite) TestGetTaskRuntime() {

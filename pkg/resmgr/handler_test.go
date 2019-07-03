@@ -45,6 +45,7 @@ import (
 	task_mocks "github.com/uber/peloton/pkg/resmgr/task/mocks"
 	"github.com/uber/peloton/pkg/resmgr/tasktestutil"
 	store_mocks "github.com/uber/peloton/pkg/storage/mocks"
+	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/mock/gomock"
@@ -76,8 +77,8 @@ type handlerTestSuite struct {
 func (s *handlerTestSuite) SetupSuite() {
 	s.ctrl = gomock.NewController(s.T())
 
-	mockResPoolStore := store_mocks.NewMockResourcePoolStore(s.ctrl)
-	mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
+	mockResPoolOps := objectmocks.NewMockResPoolOps(s.ctrl)
+	mockResPoolOps.EXPECT().GetAll(context.Background()).
 		Return(s.getResPools(), nil).AnyTimes()
 	mockJobStore := store_mocks.NewMockJobStore(s.ctrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(s.ctrl)
@@ -91,7 +92,7 @@ func (s *handlerTestSuite) SetupSuite() {
 	// setup resource pool tree
 	s.resTree = respool.NewTree(
 		tally.NoopScope,
-		mockResPoolStore,
+		mockResPoolOps,
 		mockJobStore,
 		mockTaskStore,
 		s.cfg)

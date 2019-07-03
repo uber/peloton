@@ -26,12 +26,14 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
+	"github.com/uber/peloton/pkg/storage/objects/base"
 	ormmocks "github.com/uber/peloton/pkg/storage/orm/mocks"
 )
 
 type ResPoolsObjectTestSuite struct {
 	suite.Suite
-	respoolId            *peloton.ResourcePoolID
+	respoolId1           *peloton.ResourcePoolID
+	respoolId2           *peloton.ResourcePoolID
 	resPoolConfig        *respool.ResourcePoolConfig
 	updatedResPoolConfig *respool.ResourcePoolConfig
 }
@@ -45,20 +47,29 @@ func (s *ResPoolsObjectTestSuite) SetupTest() {
 	s.buildResPoolConfig()
 }
 
-// TestCreateResourcePools tests creating resource pools from store.
-func (s *ResPoolsObjectTestSuite) TestCreateResourcePools() {
+// TestCreateGetAllResourcePools tests creating and getting all
+// the resource pools from store.
+func (s *ResPoolsObjectTestSuite) TestCreateGetAllResourcePools() {
 	testResPoolOps := NewResPoolOps(testStore)
 	ctx := context.Background()
-	err := testResPoolOps.Create(ctx, s.respoolId, s.resPoolConfig, "peloton")
+
+	// Create two resource pools.
+	err := testResPoolOps.Create(ctx, s.respoolId1, s.resPoolConfig, "peloton")
+	s.NoError(err)
+	err = testResPoolOps.Create(ctx, s.respoolId2, s.resPoolConfig, "peloton")
 	s.NoError(err)
 
 	// Check the created respool matches what's created in the db.
-	resPoolOpsResult, err := testResPoolOps.GetResult(ctx, s.respoolId.GetValue())
+	results, err := testResPoolOps.GetAll(ctx)
 	s.NoError(err)
-	s.Equal(s.resPoolConfig, resPoolOpsResult.RespoolConfig)
+	s.Len(results, 2)
+	s.Equal(s.resPoolConfig, results[s.respoolId2.GetValue()])
+	s.Equal(s.resPoolConfig, results[s.respoolId1.GetValue()])
 
 	// clean up the created respool
-	err = testResPoolOps.Delete(ctx, s.respoolId)
+	err = testResPoolOps.Delete(ctx, s.respoolId1)
+	s.NoError(err)
+	err = testResPoolOps.Delete(ctx, s.respoolId2)
 	s.NoError(err)
 }
 
@@ -68,22 +79,22 @@ func (s *ResPoolsObjectTestSuite) TestUpdateResourcePool() {
 	ctx := context.Background()
 
 	// Test creating and updating the resource pool.
-	err := testResPoolOps.Create(ctx, s.respoolId, s.resPoolConfig, "peloton")
+	err := testResPoolOps.Create(ctx, s.respoolId1, s.resPoolConfig, "peloton")
 	s.NoError(err)
 
-	resPoolOpsResult, err := testResPoolOps.GetResult(ctx, s.respoolId.GetValue())
+	resPoolOpsResult, err := testResPoolOps.GetResult(ctx, s.respoolId1.GetValue())
 	s.NoError(err)
 	s.Equal(s.resPoolConfig, resPoolOpsResult.RespoolConfig)
 
 	// Update the resource pool
-	err = testResPoolOps.Update(context.Background(), s.respoolId, s.updatedResPoolConfig)
+	err = testResPoolOps.Update(context.Background(), s.respoolId1, s.updatedResPoolConfig)
 	s.NoError(err)
 
-	updatedResPoolOpsResult, err := testResPoolOps.GetResult(ctx, s.respoolId.GetValue())
+	updatedResPoolOpsResult, err := testResPoolOps.GetResult(ctx, s.respoolId1.GetValue())
 	s.NoError(err)
 	s.Equal(s.updatedResPoolConfig, updatedResPoolOpsResult.RespoolConfig)
 
-	err = testResPoolOps.Delete(ctx, s.respoolId)
+	err = testResPoolOps.Delete(ctx, s.respoolId1)
 	s.NoError(err)
 }
 
@@ -92,10 +103,10 @@ func (s *ResPoolsObjectTestSuite) TestDeleteResourcePool() {
 	testResPoolOps := NewResPoolOps(testStore)
 	ctx := context.Background()
 
-	err := testResPoolOps.Create(ctx, s.respoolId, s.resPoolConfig, "peloton")
+	err := testResPoolOps.Create(ctx, s.respoolId1, s.resPoolConfig, "peloton")
 	s.NoError(err)
 
-	err = testResPoolOps.Delete(ctx, s.respoolId)
+	err = testResPoolOps.Delete(ctx, s.respoolId1)
 	s.NoError(err)
 }
 
@@ -184,12 +195,13 @@ func (s *ResPoolsObjectTestSuite) TestNewResPoolObjectCreation() {
 			"peloton",
 		)
 		s.NoError(err)
-		s.Equal(obj.RespoolID, respoolID.GetValue())
+		s.Equal(obj.RespoolID, base.NewOptionalString(respoolID.GetValue()))
 	}
 }
 
 func (s *ResPoolsObjectTestSuite) buildResPoolConfig() {
-	s.respoolId = &peloton.ResourcePoolID{Value: uuid.New()}
+	s.respoolId1 = &peloton.ResourcePoolID{Value: uuid.New()}
+	s.respoolId2 = &peloton.ResourcePoolID{Value: uuid.New()}
 
 	resources := []*respool.ResourceConfig{
 		{

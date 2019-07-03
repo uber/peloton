@@ -38,6 +38,7 @@ import (
 	"github.com/uber/peloton/pkg/resmgr/scalar"
 	"github.com/uber/peloton/pkg/resmgr/tasktestutil"
 	store_mocks "github.com/uber/peloton/pkg/storage/mocks"
+	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 )
 
 type EntitlementCalculatorTestSuite struct {
@@ -65,14 +66,14 @@ func (s *EntitlementCalculatorTestSuite) SetupTest() {
 }
 
 func (s *EntitlementCalculatorTestSuite) initRespoolTree() {
-	mockResPoolStore := store_mocks.NewMockResourcePoolStore(s.mockCtrl)
+	mockResPoolOps := objectmocks.NewMockResPoolOps(s.mockCtrl)
 	gomock.InOrder(
-		mockResPoolStore.EXPECT().
-			GetAllResourcePools(context.Background()).Return(s.getResPools(), nil).AnyTimes(),
+		mockResPoolOps.EXPECT().
+			GetAll(context.Background()).Return(s.getResPools(), nil).AnyTimes(),
 	)
 	mockJobStore := store_mocks.NewMockJobStore(s.mockCtrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(s.mockCtrl)
-	s.resTree = respool.NewTree(tally.NoopScope, mockResPoolStore, mockJobStore,
+	s.resTree = respool.NewTree(tally.NoopScope, mockResPoolOps, mockJobStore,
 		mockTaskStore, res_common.PreemptionConfig{Enabled: false})
 
 	s.calculator.resPoolTree = s.resTree
@@ -888,15 +889,15 @@ func (s *EntitlementCalculatorTestSuite) TestStaticRespoolsEntitlement() {
 	// Building Local Tree for this test suite
 	mockCtrl := gomock.NewController(s.T())
 	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(mockCtrl)
-	mockResPoolStore := store_mocks.NewMockResourcePoolStore(mockCtrl)
+	mockResPoolOps := objectmocks.NewMockResPoolOps(s.mockCtrl)
 	gomock.InOrder(
-		mockResPoolStore.EXPECT().
-			GetAllResourcePools(context.Background()).Return(s.getStaticResPools(), nil).AnyTimes(),
+		mockResPoolOps.EXPECT().
+			GetAll(context.Background()).Return(s.getStaticResPools(), nil).AnyTimes(),
 	)
 	mockJobStore := store_mocks.NewMockJobStore(s.mockCtrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(s.mockCtrl)
 
-	resTree := respool.NewTree(tally.NoopScope, mockResPoolStore, mockJobStore,
+	resTree := respool.NewTree(tally.NoopScope, mockResPoolOps, mockJobStore,
 		mockTaskStore, res_common.PreemptionConfig{Enabled: false})
 
 	// Creating local Calculator object

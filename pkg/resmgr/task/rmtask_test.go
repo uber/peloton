@@ -35,6 +35,7 @@ import (
 	"github.com/uber/peloton/pkg/resmgr/respool/mocks"
 	"github.com/uber/peloton/pkg/resmgr/scalar"
 	store_mocks "github.com/uber/peloton/pkg/storage/mocks"
+	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pkg/errors"
@@ -55,13 +56,13 @@ type RMTaskTestSuite struct {
 
 func (s *RMTaskTestSuite) SetupSuite() {
 	s.ctrl = gomock.NewController(s.T())
-	mockResPoolStore := store_mocks.NewMockResourcePoolStore(s.ctrl)
-	mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
+	mockResPoolOps := objectmocks.NewMockResPoolOps(s.ctrl)
+	mockResPoolOps.EXPECT().GetAll(context.Background()).
 		Return(s.getResPools(), nil).AnyTimes()
 	mockJobStore := store_mocks.NewMockJobStore(s.ctrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(s.ctrl)
 
-	s.resTree = respool.NewTree(tally.NoopScope, mockResPoolStore, mockJobStore,
+	s.resTree = respool.NewTree(tally.NoopScope, mockResPoolOps, mockJobStore,
 		mockTaskStore, rc.PreemptionConfig{
 			Enabled: false,
 		})
