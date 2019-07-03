@@ -405,17 +405,6 @@ func (suite *CassandraStoreTestSuite) TestGetMaxJobConfigVersion() {
 	suite.Equal(uint64(1), version)
 }
 
-// TestGetAllJobsInJobIndex tests getting all jobs in the job_index table
-func (suite *CassandraStoreTestSuite) TestGetAllJobsInJobIndex() {
-	var jobStore storage.JobStore
-	jobStore = store
-
-	_, err := jobStore.GetAllJobsInJobIndex(
-		context.Background(),
-	)
-	suite.NoError(err)
-}
-
 func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 	var jobStore storage.JobStore
 	jobStore = store

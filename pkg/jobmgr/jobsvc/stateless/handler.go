@@ -1326,7 +1326,7 @@ func (h *serviceHandler) ListJobs(
 		log.Debug("JobSVC.ListJobs succeeded")
 	}()
 
-	jobSummaries, err := h.jobStore.GetAllJobsInJobIndex(stream.Context())
+	jobSummaries, err := h.jobIndexOps.GetAll(stream.Context())
 	if err != nil {
 		return err
 	}

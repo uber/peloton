@@ -17,14 +17,16 @@ package objects
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	"reflect"
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
 	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/pkg/storage/objects/base"
 	ormmocks "github.com/uber/peloton/pkg/storage/orm/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -123,7 +125,7 @@ func (s *JobIndexObjectTestSuite) TestCreateDeleteJobIndex() {
 	s.NoError(err)
 	for _, tc := range testcases {
 		jobID := &peloton.JobID{Value: tc.id}
-		tc.expectedObj.JobID = tc.id
+		tc.expectedObj.JobID = base.NewOptionalString(tc.id)
 
 		// verify newJobIndexObject
 		obj, err := newJobIndexObject(jobID, tc.config, tc.runtime, nil)
@@ -149,6 +151,75 @@ func (s *JobIndexObjectTestSuite) TestCreateDeleteJobIndex() {
 		_, err = db.Get(ctx, jobID)
 		s.Error(err)
 		s.True(yarpcerrors.IsNotFound(err))
+	}
+}
+
+// TestGetAllJobIndex tests getting all JobIndexObjects in DB
+func (s *JobIndexObjectTestSuite) TestGetAllJobIndex() {
+	db := NewJobIndexOps(testStore)
+	ctx := context.Background()
+
+	testcases := []struct {
+		description string
+		id          string
+		expectedObj *JobIndexObject
+	}{
+		{
+			description: "dummy job 1",
+			id:          uuid.New(),
+		},
+		{
+			description: "dummy job 2",
+			id:          uuid.New(),
+		},
+	}
+
+	jobId_1 := &peloton.JobID{Value: testcases[0].id}
+	jobId_2 := &peloton.JobID{Value: testcases[1].id}
+
+	expectedObj_1 := &job.JobSummary{
+		Id:            jobId_1,
+		Name:          s.config.Name,
+		Owner:         s.config.OwningTeam,
+		OwningTeam:    s.config.OwningTeam,
+		InstanceCount: s.config.InstanceCount,
+		Type:          s.config.Type,
+		RespoolID:     s.config.RespoolID,
+		Runtime:       s.runtime,
+		Labels:        s.config.Labels,
+		SLA:           s.sla,
+	}
+
+	expectedObj_2 := &job.JobSummary{
+		Id:            jobId_2,
+		Name:          s.config.Name,
+		Owner:         s.config.OwningTeam,
+		OwningTeam:    s.config.OwningTeam,
+		InstanceCount: s.config.InstanceCount,
+		Type:          s.config.Type,
+		RespoolID:     s.config.RespoolID,
+		Runtime:       s.runtime,
+		Labels:        s.config.Labels,
+		SLA:           s.sla,
+	}
+
+	err := db.Create(ctx, jobId_1, s.config, s.runtime, s.sla)
+	s.NoError(err)
+	err = db.Create(ctx, jobId_2, s.config, s.runtime, s.sla)
+	s.NoError(err)
+
+	objs, err := db.GetAll(ctx)
+	s.NoError(err)
+	s.Len(objs, 2)
+
+	for _, summary := range objs {
+		if summary.Id.GetValue() == expectedObj_1.Id.GetValue() {
+			s.True(reflect.DeepEqual(expectedObj_1, summary))
+		} else if summary.Id.GetValue() == expectedObj_2.Id.GetValue() {
+			s.True(reflect.DeepEqual(expectedObj_2, summary))
+		} else {
+			s.Fail("GetAll doesn't get the correct jobSummary.")
+		}
 	}
 }
 
@@ -252,7 +323,7 @@ func (s *JobIndexObjectTestSuite) TestUpdateJobIndex() {
 	s.NoError(err)
 	for _, tc := range testcases {
 		jobID := &peloton.JobID{Value: uuid.New()}
-		tc.expectedObj.JobID = jobID.Value
+		tc.expectedObj.JobID = base.NewOptionalString(jobID.Value)
 
 		err = db.Create(ctx, jobID, nil, nil, nil)
 		s.NoError(err)
@@ -287,6 +358,8 @@ func (s *JobIndexObjectTestSuite) TestJobIndexOpsClientFail() {
 		Return(errors.New("create failed"))
 	mockClient.EXPECT().Get(gomock.Any(), gomock.Any()).
 		Return(errors.New("get failed")).Times(2)
+	mockClient.EXPECT().GetAll(gomock.Any(), gomock.Any()).
+		Return(nil, errors.New("getAll failed"))
 	mockClient.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(errors.New("update failed"))
 	mockClient.EXPECT().Delete(gomock.Any(), gomock.Any()).
@@ -302,6 +375,10 @@ func (s *JobIndexObjectTestSuite) TestJobIndexOpsClientFail() {
 	_, err = indexOps.Get(ctx, jobID)
 	s.Error(err)
 	s.Equal("get failed", err.Error())
+
+	_, err = indexOps.GetAll(ctx)
+	s.Error(err)
+	s.Equal("getAll failed", err.Error())
 
 	_, err = indexOps.GetSummary(ctx, jobID)
 	s.Error(err)

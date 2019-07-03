@@ -83,6 +83,8 @@ type OrmJobMetrics struct {
 	JobIndexCreateFail tally.Counter
 	JobIndexGet        tally.Counter
 	JobIndexGetFail    tally.Counter
+	JobIndexGetAll     tally.Counter
+	JobIndexGetAllFail tally.Counter
 	JobIndexUpdate     tally.Counter
 	JobIndexUpdateFail tally.Counter
 	JobIndexDelete     tally.Counter
@@ -590,6 +592,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		JobIndexCreateFail: jobIndexFailScope.Counter("create"),
 		JobIndexGet:        jobIndexSuccessScope.Counter("get"),
 		JobIndexGetFail:    jobIndexFailScope.Counter("get"),
+		JobIndexGetAll:     jobIndexSuccessScope.Counter("geAll"),
+		JobIndexGetAllFail: jobIndexFailScope.Counter("getAll"),
 		JobIndexUpdate:     jobIndexSuccessScope.Counter("update"),
 		JobIndexUpdateFail: jobIndexFailScope.Counter("update"),
 		JobIndexDelete:     jobIndexSuccessScope.Counter("delete"),

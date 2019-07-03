@@ -58,7 +58,7 @@ type JobIndexObject struct {
 	base.Object `cassandra:"name=job_index, primaryKey=((job_id))"`
 
 	// JobID of the job
-	JobID string `column:"name=job_id"`
+	JobID *base.OptionalString `column:"name=job_id"`
 	// Type of job
 	JobType uint32 `column:"name=job_type"`
 
@@ -107,6 +107,9 @@ type JobIndexOps interface {
 	// Get retrieves a row from the table.
 	Get(ctx context.Context, id *peloton.JobID) (*JobIndexObject, error)
 
+	// GetAll returns the job summaries of all the jobs.
+	GetAll(ctx context.Context) ([]*job.JobSummary, error)
+
 	// GetSummary returns a JobSummary for a row in the table
 	GetSummary(ctx context.Context, id *peloton.JobID) (*job.JobSummary, error)
 
@@ -132,7 +135,10 @@ func newJobIndexObject(
 	runtime *job.RuntimeInfo,
 	slaConfig *job.SlaConfig) (*JobIndexObject, error) {
 
-	obj := &JobIndexObject{JobID: id.GetValue()}
+	obj := &JobIndexObject{
+		JobID: base.NewOptionalString(id.GetValue()),
+	}
+
 	jobLog := log.WithField("object", "JobIndex").
 		WithField("job_id", id.GetValue())
 
@@ -218,8 +224,13 @@ func newJobIndexObject(
 
 // ToJobSummary generates a JobSummary from the JobIndexObject
 func (j *JobIndexObject) ToJobSummary() (*job.JobSummary, error) {
+	jobId := j.JobID
+	if jobId == nil {
+		return nil, errors.New("job doesn't contain JobID")
+	}
+
 	summary := &job.JobSummary{
-		Id:            &peloton.JobID{Value: j.JobID},
+		Id:            &peloton.JobID{Value: jobId.String()},
 		Name:          j.Name,
 		Owner:         j.Owner,
 		OwningTeam:    j.Owner,
@@ -298,7 +309,7 @@ func (d *jobIndexOps) Get(
 ) (*JobIndexObject, error) {
 
 	jobIndexObject := &JobIndexObject{
-		JobID: id.GetValue(),
+		JobID: base.NewOptionalString(id.GetValue()),
 	}
 
 	if err := d.store.oClient.Get(ctx, jobIndexObject); err != nil {
@@ -308,6 +319,30 @@ func (d *jobIndexOps) Get(
 
 	d.store.metrics.OrmJobMetrics.JobIndexGet.Inc(1)
 	return jobIndexObject, nil
+}
+
+// GetAll returns the job summaries of all the jobs.
+func (d *jobIndexOps) GetAll(ctx context.Context) ([]*job.JobSummary, error) {
+	resultObjs := []*job.JobSummary{}
+
+	objs, err := d.store.oClient.GetAll(ctx, &JobIndexObject{})
+	if err != nil {
+		d.store.metrics.OrmJobMetrics.JobIndexGetAllFail.Inc(1)
+		return nil, err
+	}
+
+	for _, obj := range objs {
+		jobObj := obj.(*JobIndexObject)
+		jobSummary, err := jobObj.ToJobSummary()
+		if err != nil {
+			d.store.metrics.OrmJobMetrics.JobIndexGetAllFail.Inc(1)
+			return nil, err
+		}
+		resultObjs = append(resultObjs, jobSummary)
+	}
+
+	d.store.metrics.OrmJobMetrics.JobIndexGetAll.Inc(1)
+	return resultObjs, nil
 }
 
 // GetSummary gets JobSummary for JobIndexObject from db
@@ -371,7 +406,7 @@ func (d *jobIndexOps) Delete(
 	id *peloton.JobID,
 ) error {
 	jobIndexObject := &JobIndexObject{
-		JobID: id.GetValue(),
+		JobID: base.NewOptionalString(id.GetValue()),
 	}
 	if err := d.store.oClient.Delete(ctx, jobIndexObject); err != nil {
 		d.store.metrics.OrmJobMetrics.JobIndexDeleteFail.Inc(1)

@@ -58,9 +58,6 @@ type JobStore interface {
 	DeleteJob(ctx context.Context, jobID string) error
 	// GetMaxJobConfigVersion returns the maximum version of configs of a given job
 	GetMaxJobConfigVersion(ctx context.Context, jobID string) (uint64, error)
-	// GetAllJobsInJobIndex returns job summary for all the jobs in the job index table
-	GetAllJobsInJobIndex(ctx context.Context) ([]*job.JobSummary, error)
-
 	// AddActiveJob adds job to active jobs table
 	AddActiveJob(ctx context.Context, id *peloton.JobID) error
 	// GetActiveJobs fetches all active jobs

@@ -1822,8 +1822,8 @@ func (suite *statelessHandlerTestSuite) TestListJobsSuccess() {
 		},
 	}
 
-	suite.jobStore.EXPECT().
-		GetAllJobsInJobIndex(gomock.Any()).
+	suite.jobIndexOps.EXPECT().
+		GetAll(gomock.Any()).
 		Return(jobs, nil)
 
 	suite.updateStore.EXPECT().
@@ -1859,8 +1859,8 @@ func (suite *statelessHandlerTestSuite) TestListJobsSuccess() {
 // TestListJobsGetSummaryDBError tests getting DB error when fetching all
 // job summaries from DB in the ListJobs API invocation
 func (suite *statelessHandlerTestSuite) TestListJobsGetSummaryDBError() {
-	suite.jobStore.EXPECT().
-		GetAllJobsInJobIndex(gomock.Any()).
+	suite.jobIndexOps.EXPECT().
+		GetAll(gomock.Any()).
 		Return(nil, fmt.Errorf("fake db error"))
 
 	suite.listJobsServer.EXPECT().Context().Return(context.Background()).AnyTimes()
@@ -1886,8 +1886,8 @@ func (suite *statelessHandlerTestSuite) TestListJobsGetUpdateError() {
 		},
 	}
 
-	suite.jobStore.EXPECT().
-		GetAllJobsInJobIndex(gomock.Any()).
+	suite.jobIndexOps.EXPECT().
+		GetAll(gomock.Any()).
 		Return(jobs, nil)
 
 	suite.updateStore.EXPECT().
@@ -1930,8 +1930,8 @@ func (suite *statelessHandlerTestSuite) TestListJobsSendError() {
 		},
 	}
 
-	suite.jobStore.EXPECT().
-		GetAllJobsInJobIndex(gomock.Any()).
+	suite.jobIndexOps.EXPECT().
+		GetAll(gomock.Any()).
 		Return(jobs, nil)
 
 	suite.updateStore.EXPECT().
