@@ -503,6 +503,7 @@ func (h *ServiceHandler) SetPlacements(
 			},
 			t.TaskState_PLACED,
 			_reasonPlacementReceived)
+
 		h.rmTracker.SetPlacement(newPlacement)
 
 		err := h.placements.Enqueue(newPlacement)
@@ -671,7 +672,8 @@ func (h *ServiceHandler) transitTasksInPlacement(
 	invalidTaskSet := make(map[string]struct{})
 	for _, task := range placement.GetTaskIDs() {
 		rmTask := h.rmTracker.GetTask(task.GetPelotonTaskID())
-		if rmTask == nil {
+		if rmTask == nil ||
+			task.GetMesosTaskID().GetValue() != rmTask.Task().GetTaskId().GetValue() {
 			invalidTaskSet[task.GetMesosTaskID().GetValue()] = struct{}{}
 			continue
 		}

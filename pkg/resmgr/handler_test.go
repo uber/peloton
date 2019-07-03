@@ -565,6 +565,56 @@ func (s *handlerTestSuite) TestSetAndGetPlacementsSuccess() {
 	s.Equal(placements, getResp.GetPlacements())
 }
 
+// TestSetPlacementsRunIDDifferentFromTracker tests the failure case of
+// writing placements due to mesos task id of the task in placement being
+// different from that in the tracker
+func (s *handlerTestSuite) TestSetPlacementsRunIDDifferentFromTracker() {
+	handler := &ServiceHandler{
+		metrics:     NewMetrics(tally.NoopScope),
+		resPoolTree: nil,
+		placements: queue.NewQueue(
+			"placement-queue",
+			reflect.TypeOf(resmgr.Placement{}),
+			maxPlacementQueueSize,
+		),
+		rmTracker: s.rmTaskTracker,
+	}
+	handler.eventStreamHandler = s.handler.eventStreamHandler
+
+	placements := s.getPlacements(1, 2)
+	placement := proto.Clone(placements[0]).(*resmgr.Placement)
+	// Change run id of the task
+	placement.TaskIDs[0].MesosTaskID.Value = &[]string{
+		fmt.Sprintf("%s-2", placement.GetTaskIDs()[0].GetPelotonTaskID().GetValue()),
+	}[0]
+	setReq := &resmgrsvc.SetPlacementsRequest{
+		Placements: []*resmgr.Placement{placement},
+	}
+	for _, placement := range placements {
+		for _, t := range placement.GetTaskIDs() {
+			rmTask := handler.rmTracker.GetTask(t.GetPelotonTaskID())
+			tasktestutil.ValidateStateTransitions(rmTask, []task.TaskState{
+				task.TaskState_PENDING,
+				task.TaskState_READY,
+				task.TaskState_PLACING})
+		}
+	}
+	setResp, err := handler.SetPlacements(s.context, setReq)
+	s.NoError(err)
+	s.Nil(setResp.GetError())
+
+	getReq := &resmgrsvc.GetPlacementsRequest{
+		Limit:   10,
+		Timeout: 1 * 1000, // 1 sec
+	}
+	getResp, err := handler.GetPlacements(s.context, getReq)
+	s.NoError(err)
+	s.Nil(getResp.GetError())
+	s.Len(getResp.GetPlacements(), 1)
+	s.Len(getResp.GetPlacements()[0].GetTaskIDs(), 1)
+	s.Equal(getResp.GetPlacements()[0].GetTaskIDs()[0], placements[0].GetTaskIDs()[1])
+}
+
 func (s *handlerTestSuite) TestTransitTasksInPlacement() {
 
 	tracker := task_mocks.NewMockTracker(s.ctrl)

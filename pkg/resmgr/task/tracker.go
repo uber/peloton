@@ -17,7 +17,7 @@ package task
 import (
 	"sync"
 
-	"github.com/uber/peloton/.gen/mesos/v1"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
@@ -220,7 +220,7 @@ func (tr *tracker) getTask(t *peloton.TaskID) *RMTask {
 // setPlacement writes the host:task mapping for the given hostname and mesos-task-id
 // in the placements map of the tracker. Before writing to placements map it checks
 // if the task is present in the tracker. If not present, the mapping is not set
-func (tr *tracker) setPlacement(t *mesos_v1.TaskID, hostname string) {
+func (tr *tracker) setPlacement(t *mesos.TaskID, hostname string) {
 	taskID, err := util.ParseTaskIDFromMesosTaskID(t.GetValue())
 	if err != nil {
 		log.WithError(err).
@@ -372,7 +372,8 @@ func (tr *tracker) markItDone(t *RMTask, mesosTaskID string) error {
 	// terminate the rm task
 	t.Terminate()
 
-	log.WithField("task_id", tID.Value).Info("Deleting the task from Tracker")
+	log.WithField("task_id", t.Task().GetTaskId().GetValue()).
+		Info("Deleting the task from Tracker")
 	tr.deleteTask(tID)
 	return nil
 }
