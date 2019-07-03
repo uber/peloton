@@ -607,14 +607,14 @@ func main() {
 		}
 
 		// Create host cache instance.
-		hc := hostcache.New(hostEventCh, plugin)
+		hc := hostcache.New(hostEventCh, podEventCh, plugin)
 
 		// This should start the event stream for pods and hosts
 		// TODO: do this after leader election (T3224499).
 		hc.Start()
 		defer hc.Stop()
 
-		// Start plugin event listners to listen for scheduler events
+		// Start plugin event listeners to listen for scheduler events
 		// TODO: do this after leader election (T3224499).
 		plugin.Start()
 		defer plugin.Stop()

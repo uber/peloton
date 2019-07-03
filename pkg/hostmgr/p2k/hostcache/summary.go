@@ -26,6 +26,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
 
+	p2kscalar "github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 
 	"github.com/pborman/uuid"
@@ -102,6 +103,10 @@ type HostSummary interface {
 
 	// TerminateLease is called when terminating the lease on a host.
 	TerminateLease() error
+
+	// HandlePodEvent is called when a pod event occurs for a pod
+	// that affects this host.
+	HandlePodEvent(event *p2kscalar.PodEvent) error
 }
 
 // hostSummary is a data struct holding resources and metadata of a host.
@@ -390,6 +395,11 @@ func (a *hostSummary) TerminateLease() error {
 		return yarpcerrors.InvalidArgumentErrorf("failed to set cas status: %s", err)
 	}
 
+	return nil
+}
+
+func (a *hostSummary) HandlePodEvent(event *p2kscalar.PodEvent) error {
+	// TODO(pourchet): Implement.
 	return nil
 }
 

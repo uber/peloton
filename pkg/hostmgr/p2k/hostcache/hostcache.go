@@ -58,7 +58,11 @@ type hostCache struct {
 
 	// The event channel on which the underlying cluster manager plugin will send
 	// host events to host cache.
-	eventCh chan *scalar.HostEvent
+	hostEventCh chan *scalar.HostEvent
+
+	// The event channel on which the underlying cluster manager plugin will send
+	// pod events to host cache.
+	podEventCh chan *scalar.PodEvent
 
 	// Cluster manager plugin.
 	plugin plugins.Plugin
@@ -69,14 +73,16 @@ type hostCache struct {
 
 // New returns a new instance of host cache.
 func New(
-	eventCh chan *scalar.HostEvent,
+	hostEventCh chan *scalar.HostEvent,
+	podEventCh chan *scalar.PodEvent,
 	plugin plugins.Plugin,
 ) HostCache {
 	return &hostCache{
-		hostIndex: make(map[string]HostSummary),
-		eventCh:   eventCh,
-		plugin:    plugin,
-		lifecycle: lifecycle.NewLifeCycle(),
+		hostIndex:   make(map[string]HostSummary),
+		hostEventCh: hostEventCh,
+		podEventCh:  podEventCh,
+		plugin:      plugin,
+		lifecycle:   lifecycle.NewLifeCycle(),
 	}
 }
 
@@ -187,7 +193,7 @@ func (c *hostCache) GetClusterCapacity() (
 func (c *hostCache) waitForHostEvents() {
 	for {
 		select {
-		case event := <-c.eventCh:
+		case event := <-c.hostEventCh:
 			switch event.GetEventType() {
 			case scalar.AddHost:
 				c.addHost(event)
@@ -199,6 +205,48 @@ func (c *hostCache) waitForHostEvents() {
 		case <-c.lifecycle.StopCh():
 			return
 		}
+	}
+}
+
+// waitForPodEvents will start a goroutine that waits on the pod events
+// channel. The underlying plugin manager will send events to this channel
+// when a pod status changes. Example: pod P1 on host H1 was deleted, or
+// evicted.
+func (c *hostCache) waitForPodEvents() {
+	for {
+		select {
+		case event := <-c.podEventCh:
+			c.handlePodEvent(event)
+		case <-c.lifecycle.StopCh():
+			return
+		}
+	}
+}
+
+func (c *hostCache) handlePodEvent(event *scalar.PodEvent) {
+	// TODO: evaluate locking strategy
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	hostname := event.Event.GetHostname()
+	summary, found := c.hostIndex[hostname]
+	if !found {
+		// TODO(pourchet): Figure out how to handle this.
+		// This should never happen, it means that we receive a pod
+		// event on a host that we have no data for.
+		log.WithFields(log.Fields{
+			"hostname": hostname,
+			"pod_id":   event.Event.GetPodId().GetValue(),
+		}).Errorf("delete pod event ignored: host summary not found")
+		return
+	}
+
+	err := summary.HandlePodEvent(event)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"hostname": hostname,
+			"pod_id":   event.Event.GetPodId().GetValue(),
+		}).Errorf("handle pod event: %v", err)
 	}
 }
 
@@ -328,6 +376,7 @@ func (c *hostCache) Start() {
 	}
 
 	go c.waitForHostEvents()
+	go c.waitForPodEvents()
 }
 
 // Stop will stop the host cache go routine that listens for host events
