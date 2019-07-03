@@ -1585,7 +1585,7 @@ func (h *ServiceHandler) GetDrainingHosts(
 				log.WithError(err).
 					Error("unable to dequeue task from maintenance queue")
 				h.metrics.GetDrainingHostsFail.Inc(1)
-				return nil, err
+				return nil, yarpcerrors.InternalErrorf(err.Error())
 			}
 			break
 		}
@@ -1616,7 +1616,7 @@ func (h *ServiceHandler) MarkHostDrained(
 	}
 	if hostInfo == nil {
 		// NOOP if host is not in DRAINING state
-		return nil, yarpcerrors.InvalidArgumentErrorf("Host not in DRAINING state")
+		return nil, yarpcerrors.NotFoundErrorf("Host not in DRAINING state")
 	}
 
 	machineID := &mesos.MachineID{
@@ -1631,7 +1631,7 @@ func (h *ServiceHandler) MarkHostDrained(
 			WithField("machine", machineID).
 			Error(fmt.Sprintf("failed to down host"))
 		h.metrics.MarkHostDrainedFail.Inc(1)
-		return nil, err
+		return nil, yarpcerrors.InternalErrorf(err.Error())
 	}
 
 	if err := h.maintenanceHostInfoMap.UpdateHostState(

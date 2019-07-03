@@ -95,7 +95,7 @@ func (m *serviceHandler) QueryHosts(
 			upHosts, err := buildHostInfoForRegisteredAgents()
 			if err != nil {
 				m.metrics.QueryHostsFail.Inc(1)
-				return nil, err
+				return nil, yarpcerrors.InternalErrorf(err.Error())
 			}
 			// Remove draining and down hosts from the result.
 			// This is needed because AgentMap is updated every 15s
@@ -153,6 +153,10 @@ func (m *serviceHandler) StartMaintenance(
 	}
 	// StartMaintenanceRequest using prefered field `hostname`
 	if err := m.startMaintenance(ctx, request.GetHostname()); err != nil {
+		if yarpcerrors.IsYARPCError(err) {
+			// Allow YARPC NotFound error to be returned as such
+			return nil, err
+		}
 		return nil, yarpcerrors.InternalErrorf(err.Error())
 	}
 	return &host_svc.StartMaintenanceResponse{
@@ -245,6 +249,10 @@ func (m *serviceHandler) CompleteMaintenance(
 	}
 	// CompleteMaintenanceRequest using prefered field `hostname`
 	if err := m.completeMaintenance(ctx, request.GetHostname()); err != nil {
+		if yarpcerrors.IsYARPCError(err) {
+			// Allow YARPC NotFound error to be returned as such
+			return nil, err
+		}
 		return nil, yarpcerrors.InternalErrorf(err.Error())
 	}
 	return &host_svc.CompleteMaintenanceResponse{
@@ -257,7 +265,7 @@ func (m *serviceHandler) completeMaintenance(
 	hostname string,
 ) error {
 	m.metrics.CompleteMaintenanceAPI.Inc(1)
-	// Get all DOWN hosts and validate host is in DOWN state
+	// Get all DOWN hosts and validate requested host is in DOWN state
 	downHostInfoMap := make(map[string]*hpb.HostInfo)
 	for _, hostInfo := range m.maintenanceHostInfoMap.GetDownHostInfos([]string{}) {
 		downHostInfoMap[hostInfo.GetHostname()] = hostInfo
@@ -265,7 +273,7 @@ func (m *serviceHandler) completeMaintenance(
 	hostInfo, ok := downHostInfoMap[hostname]
 	if !ok {
 		m.metrics.CompleteMaintenanceFail.Inc(1)
-		return fmt.Errorf("invalid request. Host %s is not DOWN", hostname)
+		return yarpcerrors.NotFoundErrorf("Host is not DOWN")
 	}
 
 	// Stop Maintenance for the host on Mesos Master
