@@ -313,6 +313,21 @@ func (suite *HostMapTestSuite) TestMaintenanceHostInfoMap() {
 	suite.Empty(maintenanceHostInfoMap.GetDrainingHostInfos([]string{}))
 }
 
+// TestIsHostUp tests IsHostUp()
+func (suite *HostMapTestSuite) TestIsHostUp() {
+	loader := &Loader{
+		OperatorClient:         suite.operatorClient,
+		Scope:                  suite.testScope,
+		SlackResourceTypes:     []string{common.MesosCPU},
+		MaintenanceHostInfoMap: NewMaintenanceHostInfoMap(tally.NoopScope),
+	}
+	// Mock 1 host `id-0` as an Up registered agent
+	suite.operatorClient.EXPECT().Agents().Return(makeAgentsResponse(1), nil)
+	loader.Load(nil)
+	suite.True(IsHostUp("id-0"))
+	suite.False(IsHostUp("testfalse"))
+}
+
 func TestHostMapTestSuite(t *testing.T) {
 	suite.Run(t, new(HostMapTestSuite))
 }

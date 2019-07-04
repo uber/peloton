@@ -169,6 +169,12 @@ func (m *serviceHandler) startMaintenance(
 	hostname string,
 ) error {
 	m.metrics.StartMaintenanceAPI.Inc(1)
+	// Validate requested host is registered in UP state
+	if !host.IsHostUp(hostname) {
+		m.metrics.StartMaintenanceFail.Inc(1)
+		return yarpcerrors.NotFoundErrorf("Host is not registered as an UP agent")
+	}
+
 	machineID, err := buildMachineIDForHost(hostname)
 	if err != nil {
 		m.metrics.StartMaintenanceFail.Inc(1)

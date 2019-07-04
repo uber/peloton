@@ -50,7 +50,6 @@ func (c *Client) HostMaintenanceStartAction(hostname string) error {
 	}
 	resp, err := c.hostClient.StartMaintenance(c.ctx, request)
 	if err != nil {
-		fmt.Fprintf(tabWriter, "Error submitting host %s for maintenance: %s\n", hostname, err)
 		return err
 	}
 	fmt.Fprintf(tabWriter, "Host successfully submitted for maintenance: %s\n", resp.GetHostname())
@@ -70,10 +69,8 @@ func (c *Client) HostMaintenanceCompleteAction(hostname string) error {
 	}
 	resp, err := c.hostClient.CompleteMaintenance(c.ctx, request)
 	if err != nil {
-		fmt.Fprintf(tabWriter, "Error submitting host %s for maintenance completion: %s\n", hostname, err)
 		return err
 	}
-
 	fmt.Fprintf(tabWriter, "Host successfully submitted for maintenance completion: %s\n", resp.GetHostname())
 	tabWriter.Flush()
 	return nil
