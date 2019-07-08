@@ -52,7 +52,7 @@ type Matcher struct {
 // otherwise they are untouched.
 func (m *Matcher) tryMatch(
 	hostname string,
-	s summary.HostSummary) {
+	s summary.HostSummary) hostsvc.HostFilterResult {
 	result := m.tryMatchImpl(hostname, s)
 	if name, ok := hostsvc.HostFilterResult_name[int32(result)]; !ok {
 		log.WithField("value", result).
@@ -60,6 +60,7 @@ func (m *Matcher) tryMatch(
 	} else {
 		m.filterResultCounts[strings.ToLower(name)]++
 	}
+	return result
 }
 
 func (m *Matcher) tryMatchImpl(

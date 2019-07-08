@@ -316,6 +316,10 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 				p.metrics.TasksInPlacePlacementTotal.Inc(1)
 				if taskInfo.GetRuntime().GetDesiredHost() == taskInfo.GetRuntime().GetHost() {
 					p.metrics.TasksInPlacePlacementSuccess.Inc(1)
+				} else {
+					log.WithField("job_id", taskInfo.GetJobId().GetValue()).
+						WithField("instance_id", taskInfo.GetInstanceId()).
+						Info("task fail to place on desired host")
 				}
 			}
 		}

@@ -263,7 +263,12 @@ func (p *offerPool) ClaimForPlace(hostFilter *hostsvc.HostFilter) (
 	// if host hint is provided, try to return the hosts in hints first
 	for _, filterHints := range hostFilter.GetHint().GetHostHint() {
 		if hs, ok := p.hostOfferIndex[filterHints.GetHostname()]; ok {
-			matcher.tryMatch(hs.GetHostname(), hs)
+			if result := matcher.tryMatch(hs.GetHostname(), hs); result != hostsvc.HostFilterResult_MATCH {
+				log.WithField("task_id", filterHints.GetTaskID().GetValue()).
+					WithField("hostname", hs.GetHostname()).
+					WithField("match_result", result.String()).
+					Info("failed to match task with desired host")
+			}
 			if matcher.HasEnoughHosts() {
 				break
 			}
