@@ -305,6 +305,24 @@ type OrmTaskMetrics struct {
 	PodEventsGetFail tally.Counter
 }
 
+// OrmHostInfoMetrics tracks counters for host info related table
+type OrmHostInfoMetrics struct {
+	HostInfoAdd     tally.Counter
+	HostInfoAddFail tally.Counter
+
+	HostInfoGet     tally.Counter
+	HostInfoGetFail tally.Counter
+
+	HostInfoGetAll     tally.Counter
+	HostInfoGetAllFail tally.Counter
+
+	HostInfoUpdate     tally.Counter
+	HostInfoUpdateFail tally.Counter
+
+	HostInfoDelete     tally.Counter
+	HostInfoDeleteFail tally.Counter
+}
+
 // Metrics is a struct for tracking all the general purpose counters that have relevance to the storage
 // layer, i.e. how many jobs and tasks were created/deleted in the storage layer
 type Metrics struct {
@@ -319,6 +337,7 @@ type Metrics struct {
 	OrmJobMetrics         *OrmJobMetrics
 	OrmRespoolMetrics     *OrmRespoolMetrics
 	OrmTaskMetrics        *OrmTaskMetrics
+	OrmHostInfoMetrics    *OrmHostInfoMetrics
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics initialized and rooted at the given tally.Scope
@@ -356,6 +375,10 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	volumeScope := scope.SubScope("persistent_volume")
 	volumeSuccessScope := volumeScope.Tagged(map[string]string{"result": "success"})
 	volumeFailScope := volumeScope.Tagged(map[string]string{"result": "fail"})
+
+	hostInfoScope := scope.SubScope("host_info")
+	hostInfoSuccessScope := hostInfoScope.Tagged(map[string]string{"result": "success"})
+	hostInfoFailScope := hostInfoScope.Tagged(map[string]string{"result": "fail"})
 
 	storageErrorScope := scope.SubScope("storage_error")
 
@@ -641,6 +664,19 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		PodEventsGetFail: podEventsFailScope.Counter("get"),
 	}
 
+	ormHostInfoMetrics := &OrmHostInfoMetrics{
+		HostInfoAdd:        hostInfoSuccessScope.Counter("add"),
+		HostInfoAddFail:    hostInfoFailScope.Counter("add"),
+		HostInfoGet:        hostInfoSuccessScope.Counter("get"),
+		HostInfoGetFail:    hostInfoFailScope.Counter("get"),
+		HostInfoGetAll:     hostInfoSuccessScope.Counter("get_all"),
+		HostInfoGetAllFail: hostInfoFailScope.Counter("get_all"),
+		HostInfoUpdate:     hostInfoSuccessScope.Counter("update"),
+		HostInfoUpdateFail: hostInfoFailScope.Counter("update"),
+		HostInfoDelete:     hostInfoSuccessScope.Counter("delete"),
+		HostInfoDeleteFail: hostInfoFailScope.Counter("delete"),
+	}
+
 	metrics := &Metrics{
 		JobMetrics:            jobMetrics,
 		TaskMetrics:           taskMetrics,
@@ -653,6 +689,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		OrmJobMetrics:         ormJobMetrics,
 		OrmRespoolMetrics:     ormRespoolMetrics,
 		OrmTaskMetrics:        ormTaskMetrics,
+		OrmHostInfoMetrics:    ormHostInfoMetrics,
 	}
 
 	return metrics

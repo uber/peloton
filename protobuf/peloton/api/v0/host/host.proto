@@ -27,12 +27,15 @@ enum HostState {
 }
 
 message HostInfo {
-    // The hostname of the host
+    // Hostname of the host
     string hostname = 1;
 
-    // The IP address of the host
+    // IP address of the host
     string ip = 2;
 
-    // The current state of the host
+    // Current state of the host
     HostState state = 3;
+
+    // Goal state of the host
+    HostState goal_state = 4;
 }
