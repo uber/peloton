@@ -16,6 +16,7 @@ from collections import Counter
 import json
 import os
 import pandas as pd
+import numpy as np
 import sys
 import threading
 import time
@@ -33,7 +34,7 @@ PERF_TEST_CONDUCTED = [
     ('JOB_GET', '_job_get.csv'),
     ('JOB_UPDATE', '_job_update.csv'),
     ('JOB_STATELESS_CREATE', '_job_stateless_create.csv'),
-    ('JOB_STATELESS_UPDATE', '_job_stateless_update.csv'),
+    # ('JOB_STATELESS_UPDATE', '_job_stateless_update.csv'),
     ('JOB_PARALLEL_STATELESS_UPDATE',
      '_job_parallel_stateless_update.csv'),
 ]
@@ -104,6 +105,7 @@ def main():
         os.makedirs(res_dir)
     base_csv_name = args.output_file_prefix
     output_csv_files_list = output_files_list(res_dir, base_csv_name)
+    print("Output file paths are: " + str(output_csv_files_list))
 
     try:
         cluster_config = json.loads(open(vcluster_config).read())
@@ -403,7 +405,8 @@ class PerformanceTest:
             }
         ]
         df = pd.DataFrame(
-            record, columns=["NumStartTasks", "Sleep(s)", "TotalTimeInSeconds"]
+            record, columns=["NumStartTasks", "Sleep(s)", "TotalTimeInSeconds"],
+            dtype=np.int64
         )
         print("Test StatelessCreate")
         print(df)
@@ -552,6 +555,7 @@ class PerformanceTest:
                 "BatchSize",
                 "AverageTimeInSeconds",
             ],
+            dtype=np.int64
         )
         print("Test ParallelStatelessUpdate")
         print(df)

@@ -300,8 +300,8 @@ table format.
 Args:
     base_version: Peloton perf test base verion
     current_version: current Peloton perf test version
-    f1: pandas.DataFrame, benchmark result on job update
-    f2: pandas.DataFrame, benchmark result on job update
+    base_df: pandas.DataFrame, benchmark result on job update
+    current_df: pandas.DataFrame, benchmark result on job update
 
 Returns:
     a list of HTML perf test results.
@@ -309,7 +309,7 @@ Returns:
 
 
 def generate_test_results(
-    base_version, current_version, base_results, current_results
+    base_version, current_version, base_df, current_df
 ):
     operations, results = (
         [compare_create, compare_get, compare_update, compare_stateless_create,
@@ -318,8 +318,11 @@ def generate_test_results(
     )
 
     # Aggregates data source with its function operation.
-    for i, combo in enumerate(zip(operations, base_results, current_results)):
+    for i, combo in enumerate(zip(operations, base_df, current_df)):
         func, f1, f2 = combo
+        print("Operation " + func.__name__ + " has the following dataframes: ")
+        print(base_df)
+        print(current_df)
         try:
             results[i] = func(base_version, current_version, f1, f2)
         except Exception as e:
