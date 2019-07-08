@@ -1,5 +1,5 @@
-hash: 80211219ba0b5d848aebc5f188db4d5c8c799c974675cd44f3df5b9f44087b30
-updated: 2019-07-01T13:06:52.263231-07:00
+hash: fe8e10689673cb7261a1ebbab5cf08fcbd9fc343cbae3abf9f87d9cc4256e0b3
+updated: 2019-07-08T14:26:18.336942-07:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -153,11 +153,11 @@ imports:
   - prometheus
   - prometheus/promhttp
 - name: github.com/m3db/prometheus_client_model
-  version: 8b2299a4bf7d7fc10835527021716d4b4a6e8700
+  version: d3fff8420252ef63bffb96f689d1a85096c97321
   subpackages:
   - go
 - name: github.com/m3db/prometheus_common
-  version: 25aaa3dff79bb48116615ebe1dea6a494b74ce77
+  version: d550673fc477123acb69017380567e8fafc765fc
   subpackages:
   - expfmt
   - internal/bitbucket.org/ww/goautoneg
@@ -263,7 +263,6 @@ imports:
 - name: go.uber.org/automaxprocs
   version: 6fecebd30e89df4ebcb6ca6dc1d0a5c8d2aa10a0
   subpackages:
-  - internal/cgroups
   - internal/runtime
   - maxprocs
 - name: go.uber.org/dig
@@ -385,12 +384,14 @@ imports:
 - name: golang.org/x/oauth2
   version: a6bd8cefa1811bd24b86f8902872e4e8225f74c4
   subpackages:
+  - google
   - internal
+  - jws
+  - jwt
 - name: golang.org/x/sys
   version: 4e1fef5609515ec7a2cee7b5de30ba6d9b438cbf
   subpackages:
   - unix
-  - windows
 - name: golang.org/x/text
   version: b19bf474d317b857955b12035d2c5acb57ce8b01
   subpackages:
@@ -420,38 +421,34 @@ imports:
   - internal/fastwalk
   - internal/gopathwalk
   - internal/semver
-- name: google.golang.org/appengine
-  version: 54a98f90d1c46b7731eb8fb305d2a321c30ef610
-  subpackages:
-  - internal
-  - internal/base
-  - internal/datastore
-  - internal/log
-  - internal/remote_api
-  - internal/urlfetch
-  - urlfetch
 - name: google.golang.org/genproto
   version: b0a3dcfcd1a9bd48e63634bd8802960804cf8315
   subpackages:
   - googleapis/rpc/status
 - name: google.golang.org/grpc
-  version: 8dea3dc473e90c8179e519d91302d0597c0ca1d1
+  version: 1d89a3c832915b2314551c1d2a506874d62e53f7
   repo: https://github.com/grpc/grpc-go
   subpackages:
   - balancer
   - balancer/base
   - balancer/roundrobin
+  - binarylog/grpc_binarylog_v1
   - codes
   - connectivity
   - credentials
+  - credentials/internal
   - encoding
   - encoding/proto
   - grpclog
   - internal
   - internal/backoff
+  - internal/balancerload
+  - internal/binarylog
   - internal/channelz
   - internal/envconfig
   - internal/grpcrand
+  - internal/grpcsync
+  - internal/syscall
   - internal/transport
   - keepalive
   - metadata
@@ -460,13 +457,14 @@ imports:
   - resolver
   - resolver/dns
   - resolver/passthrough
+  - serviceconfig
   - stats
   - status
   - tap
 - name: gopkg.in/alecthomas/kingpin.v2
   version: 947dcec5ba9c011838740e680966fd7087a71d0d
 - name: gopkg.in/cheggaaa/pb.v1
-  version: c112833d014c77e8bde723fd0158e3156951639f
+  version: 11d8df0cfef0bcb94e149d1189e5739e275f4df6
 - name: gopkg.in/cheggaaa/pb.v2
   version: c112833d014c77e8bde723fd0158e3156951639f
   subpackages:
@@ -535,6 +533,7 @@ imports:
   - core/v1
   - events/v1beta1
   - extensions/v1beta1
+  - imagepolicy/v1alpha1
   - networking/v1
   - networking/v1beta1
   - node/v1alpha1
@@ -553,9 +552,14 @@ imports:
 - name: k8s.io/apimachinery
   version: d7deff9243b165ee192f5551710ea4285dcfd615
   subpackages:
+  - pkg/api/apitesting
+  - pkg/api/apitesting/fuzzer
+  - pkg/api/apitesting/roundtrip
+  - pkg/api/equality
   - pkg/api/errors
   - pkg/api/meta
   - pkg/api/resource
+  - pkg/apis/meta/fuzzer
   - pkg/apis/meta/internalversion
   - pkg/apis/meta/v1
   - pkg/apis/meta/v1/unstructured

@@ -34,6 +34,8 @@ import:
   version: b12bb1eedf12e90b75899bf8a73ce2d8fc4d9938
   subpackages:
   - internal/stack
+  # There is a change in stream timeout behavior in v1.38.0,
+  # need to fix the behavior before upgrading dependency
 - package: go.uber.org/yarpc
   version: v1.37.0
   subpackages:
@@ -87,7 +89,7 @@ import:
   subpackages:
   - lib/go/thrift
 - package: google.golang.org/grpc
-  version: v1.15.0
+  version: ~1.22.0
   repo: https://github.com/grpc/grpc-go
 - package: go.uber.org/thriftrw
   version: ^v1.18.0
