@@ -104,6 +104,14 @@ type OrmJobMetrics struct {
 	JobConfigDelete     tally.Counter
 	JobConfigDeleteFail tally.Counter
 
+	// active_jobs.
+	ActiveJobsCreate     tally.Counter
+	ActiveJobsCreateFail tally.Counter
+	ActiveJobsGetAll     tally.Counter
+	ActiveJobsGetAllFail tally.Counter
+	ActiveJobsDelete     tally.Counter
+	ActiveJobsDeleteFail tally.Counter
+
 	// secret_info
 	SecretInfoCreate     tally.Counter
 	SecretInfoCreateFail tally.Counter
@@ -586,6 +594,12 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 	ormScope := scope.SubScope("orm")
 
+	activeJobsScope := ormScope.SubScope("active_jobs")
+	activeJobsSuccessScope := activeJobsScope.Tagged(
+		map[string]string{"result": "success"})
+	activeJobsFailScope := activeJobsScope.Tagged(
+		map[string]string{"result": "fail"})
+
 	jobIndexScope := ormScope.SubScope("job_index")
 	jobIndexSuccessScope := jobIndexScope.Tagged(
 		map[string]string{"result": "success"})
@@ -651,6 +665,13 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		JobConfigGetFail:    jobConfigFailScope.Counter("get"),
 		JobConfigDelete:     jobConfigSuccessScope.Counter("delete"),
 		JobConfigDeleteFail: jobConfigFailScope.Counter("delete"),
+
+		ActiveJobsCreate:     activeJobsSuccessScope.Counter("create"),
+		ActiveJobsCreateFail: activeJobsFailScope.Counter("create"),
+		ActiveJobsGetAll:     activeJobsSuccessScope.Counter("getAll"),
+		ActiveJobsGetAllFail: activeJobsFailScope.Counter("getAll"),
+		ActiveJobsDelete:     activeJobsSuccessScope.Counter("delete"),
+		ActiveJobsDeleteFail: activeJobsFailScope.Counter("delete"),
 
 		SecretInfoCreate:     secretInfoSuccessScope.Counter("create"),
 		SecretInfoCreateFail: secretInfoFailScope.Counter("create"),
