@@ -212,8 +212,11 @@ func (t *tracker) stopTask(ctx context.Context, task *peloton.TaskID) error {
 
 	// update the task in DB and cache, and then schedule to goalstate
 	cachedJob := t.jobFactory.AddJob(jobID)
-	err = cachedJob.PatchTasks(ctx,
-		map[uint32]jobmgrcommon.RuntimeDiff{uint32(instanceID): runtimeDiff})
+	_, _, err = cachedJob.PatchTasks(
+		ctx,
+		map[uint32]jobmgrcommon.RuntimeDiff{uint32(instanceID): runtimeDiff},
+		false,
+	)
 	if err != nil {
 		return err
 	}

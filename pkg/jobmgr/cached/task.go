@@ -81,6 +81,9 @@ type Task interface {
 
 	// StateSummary of the task.
 	StateSummary() TaskStateSummary
+
+	// TerminationStatus of the task.
+	TerminationStatus() *pbtask.TerminationStatus
 }
 
 // TaskStateVector defines the state of a task.
@@ -302,8 +305,13 @@ func (t *task) createTask(ctx context.Context, runtime *pbtask.RuntimeInfo, owne
 
 	// notify listeners after dropping the lock
 	defer func() {
-		t.jobFactory.notifyTaskRuntimeChanged(t.JobID(), t.ID(), t.jobType,
-			runtimeCopy, labelsCopy)
+		t.jobFactory.notifyTaskRuntimeChanged(
+			t.JobID(),
+			t.ID(),
+			t.jobType,
+			runtimeCopy,
+			labelsCopy,
+		)
 	}()
 	t.Lock()
 	defer t.Unlock()
@@ -354,8 +362,13 @@ func (t *task) patchTask(ctx context.Context, diff jobmgrcommon.RuntimeDiff) err
 
 	// notify listeners after dropping the lock
 	defer func() {
-		t.jobFactory.notifyTaskRuntimeChanged(t.JobID(), t.ID(), t.jobType,
-			runtimeCopy, labelsCopy)
+		t.jobFactory.notifyTaskRuntimeChanged(
+			t.JobID(),
+			t.ID(),
+			t.jobType,
+			runtimeCopy,
+			labelsCopy,
+		)
 	}()
 	t.Lock()
 	defer t.Unlock()
@@ -430,8 +443,13 @@ func (t *task) compareAndSetTask(
 
 	// notify listeners after dropping the lock
 	defer func() {
-		t.jobFactory.notifyTaskRuntimeChanged(t.JobID(), t.ID(), jobType,
-			runtimeCopy, labelsCopy)
+		t.jobFactory.notifyTaskRuntimeChanged(
+			t.JobID(),
+			t.ID(),
+			jobType,
+			runtimeCopy,
+			labelsCopy,
+		)
 	}()
 
 	t.Lock()
@@ -707,6 +725,13 @@ func (t *task) StateSummary() TaskStateSummary {
 		GoalState:    t.runtime.GetGoalState(),
 		HealthState:  t.runtime.GetHealthy(),
 	}
+}
+
+func (t *task) TerminationStatus() *pbtask.TerminationStatus {
+	t.RLock()
+	defer t.RUnlock()
+
+	return t.runtime.GetTerminationStatus()
 }
 
 func (t *task) logStateTransitionMetrics(runtime *pbtask.RuntimeInfo) {

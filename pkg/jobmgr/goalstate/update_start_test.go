@@ -415,8 +415,8 @@ func (suite *UpdateStartTestSuite) TestUpdateContainsUnchangedInstance() {
 		}).AnyTimes()
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+		PatchTasks(gomock.Any(), gomock.Any(), false).
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff, _ bool) {
 			for i := uint32(len(instancesTotal)); i < suite.jobConfig.GetInstanceCount(); i++ {
 				runtimeDiff := runtimeDiffs[i]
 				suite.NotNil(runtimeDiff)
@@ -425,8 +425,7 @@ func (suite *UpdateStartTestSuite) TestUpdateContainsUnchangedInstance() {
 				suite.Equal(runtimeDiff[jobmgrcommon.ConfigVersionField],
 					suite.jobConfig.GetChangeLog().Version)
 			}
-		}).
-		Return(nil)
+		}).Return(nil, nil, nil)
 
 	suite.cachedUpdate.EXPECT().
 		WriteProgress(
@@ -497,8 +496,8 @@ func (suite *UpdateStartTestSuite) TestUpdateStart_ContainsUnchangedInstance_Pat
 		}).AnyTimes()
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any()).
-		Return(yarpcerrors.UnavailableErrorf("test error"))
+		PatchTasks(gomock.Any(), gomock.Any(), false).
+		Return(nil, nil, yarpcerrors.UnavailableErrorf("test error"))
 
 	err := UpdateStart(context.Background(), suite.updateEnt)
 	suite.Error(err)
