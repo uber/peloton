@@ -60,21 +60,22 @@ import (
 )
 
 type serviceHandler struct {
-	jobStore        storage.JobStore
-	updateStore     storage.UpdateStore
-	taskStore       storage.TaskStore
-	jobIndexOps     ormobjects.JobIndexOps
-	jobConfigOps    ormobjects.JobConfigOps
-	jobRuntimeOps   ormobjects.JobRuntimeOps
-	jobNameToIDOps  ormobjects.JobNameToIDOps
-	secretInfoOps   ormobjects.SecretInfoOps
-	respoolClient   respool.ResourceManagerYARPCClient
-	jobFactory      cached.JobFactory
-	goalStateDriver goalstate.Driver
-	candidate       leader.Candidate
-	rootCtx         context.Context
-	jobSvcCfg       jobsvc.Config
-	activeRMTasks   activermtask.ActiveRMTasks
+	jobStore           storage.JobStore
+	updateStore        storage.UpdateStore
+	taskStore          storage.TaskStore
+	jobIndexOps        ormobjects.JobIndexOps
+	jobConfigOps       ormobjects.JobConfigOps
+	jobRuntimeOps      ormobjects.JobRuntimeOps
+	jobNameToIDOps     ormobjects.JobNameToIDOps
+	jobUpdateEventsOps ormobjects.JobUpdateEventsOps
+	secretInfoOps      ormobjects.SecretInfoOps
+	respoolClient      respool.ResourceManagerYARPCClient
+	jobFactory         cached.JobFactory
+	goalStateDriver    goalstate.Driver
+	candidate          leader.Candidate
+	rootCtx            context.Context
+	jobSvcCfg          jobsvc.Config
+	activeRMTasks      activermtask.ActiveRMTasks
 }
 
 var (
@@ -103,14 +104,15 @@ func InitV1AlphaJobServiceHandler(
 	activeRMTasks activermtask.ActiveRMTasks,
 ) {
 	handler := &serviceHandler{
-		jobStore:       jobStore,
-		updateStore:    updateStore,
-		taskStore:      taskStore,
-		jobIndexOps:    ormobjects.NewJobIndexOps(ormStore),
-		jobConfigOps:   ormobjects.NewJobConfigOps(ormStore),
-		jobRuntimeOps:  ormobjects.NewJobRuntimeOps(ormStore),
-		jobNameToIDOps: ormobjects.NewJobNameToIDOps(ormStore),
-		secretInfoOps:  ormobjects.NewSecretInfoOps(ormStore),
+		jobStore:           jobStore,
+		updateStore:        updateStore,
+		taskStore:          taskStore,
+		jobIndexOps:        ormobjects.NewJobIndexOps(ormStore),
+		jobConfigOps:       ormobjects.NewJobConfigOps(ormStore),
+		jobRuntimeOps:      ormobjects.NewJobRuntimeOps(ormStore),
+		jobNameToIDOps:     ormobjects.NewJobNameToIDOps(ormStore),
+		secretInfoOps:      ormobjects.NewSecretInfoOps(ormStore),
+		jobUpdateEventsOps: ormobjects.NewJobUpdateEventsOps(ormStore),
 		respoolClient: respool.NewResourceManagerYARPCClient(
 			d.ClientConfig(common.PelotonResourceManager),
 		),
@@ -996,7 +998,7 @@ func (h *serviceHandler) GetJob(
 			return nil, errors.Wrap(err, "failed to get update information")
 		}
 
-		workflowEvents, err = h.updateStore.GetJobUpdateEvents(
+		workflowEvents, err = h.jobUpdateEventsOps.GetAll(
 			ctx,
 			jobRuntime.GetUpdateID())
 		if err != nil {
@@ -1412,7 +1414,7 @@ func (h *serviceHandler) ListJobWorkflows(
 			return nil, err
 		}
 
-		workflowEvents, err := h.updateStore.GetJobUpdateEvents(
+		workflowEvents, err := h.jobUpdateEventsOps.GetAll(
 			ctx,
 			updateID)
 		if err != nil {

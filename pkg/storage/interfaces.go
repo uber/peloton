@@ -197,21 +197,6 @@ type UpdateStore interface {
 		instanceID uint32,
 		limit uint32,
 	) ([]*stateless.WorkflowEvent, error)
-
-	// AddJobUpdateEvent adds an update state change event for a job
-	AddJobUpdateEvent(
-		ctx context.Context,
-		updateID *peloton.UpdateID,
-		updateType models.WorkflowType,
-		updateState update.State,
-	) error
-
-	// GetJobUpdateEvents gets update state events for a job
-	// in descending create timestamp order
-	GetJobUpdateEvents(
-		ctx context.Context,
-		updateID *peloton.UpdateID,
-	) ([]*stateless.WorkflowEvent, error)
 }
 
 // FrameworkInfoStore is the interface to store mesosStreamID for peloton frameworks

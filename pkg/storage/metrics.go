@@ -323,21 +323,33 @@ type OrmHostInfoMetrics struct {
 	HostInfoDeleteFail tally.Counter
 }
 
+// OrmJobUpdateEventsMetrics tracks counter of
+// job update events related tables
+type OrmJobUpdateEventsMetrics struct {
+	JobUpdateEventsCreate     tally.Counter
+	JobUpdateEventsCreateFail tally.Counter
+	JobUpdateEventsGet        tally.Counter
+	JobUpdateEventsGetFail    tally.Counter
+	JobUpdateEventsDelete     tally.Counter
+	JobUpdateEventsDeleteFail tally.Counter
+}
+
 // Metrics is a struct for tracking all the general purpose counters that have relevance to the storage
 // layer, i.e. how many jobs and tasks were created/deleted in the storage layer
 type Metrics struct {
-	JobMetrics            *JobMetrics
-	TaskMetrics           *TaskMetrics
-	UpdateMetrics         *UpdateMetrics
-	ResourcePoolMetrics   *ResourcePoolMetrics
-	FrameworkStoreMetrics *FrameworkStoreMetrics
-	VolumeMetrics         *VolumeMetrics
-	ErrorMetrics          *ErrorMetrics
-	WorkflowMetrics       *WorkflowMetrics
-	OrmJobMetrics         *OrmJobMetrics
-	OrmRespoolMetrics     *OrmRespoolMetrics
-	OrmTaskMetrics        *OrmTaskMetrics
-	OrmHostInfoMetrics    *OrmHostInfoMetrics
+	JobMetrics                *JobMetrics
+	TaskMetrics               *TaskMetrics
+	UpdateMetrics             *UpdateMetrics
+	ResourcePoolMetrics       *ResourcePoolMetrics
+	FrameworkStoreMetrics     *FrameworkStoreMetrics
+	VolumeMetrics             *VolumeMetrics
+	ErrorMetrics              *ErrorMetrics
+	WorkflowMetrics           *WorkflowMetrics
+	OrmJobMetrics             *OrmJobMetrics
+	OrmRespoolMetrics         *OrmRespoolMetrics
+	OrmTaskMetrics            *OrmTaskMetrics
+	OrmHostInfoMetrics        *OrmHostInfoMetrics
+	OrmJobUpdateEventsMetrics *OrmJobUpdateEventsMetrics
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics initialized and rooted at the given tally.Scope
@@ -610,6 +622,12 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	secretInfoFailScope := secretInfoScope.Tagged(
 		map[string]string{"result": "fail"})
 
+	jobUpdateEventsScope := ormScope.SubScope("job_update_events")
+	jobUpdateEventsSuccessScope := jobUpdateEventsScope.Tagged(
+		map[string]string{"result": "success"})
+	jobUpdateEventsFailScope := jobUpdateEventsScope.Tagged(
+		map[string]string{"result": "fail"})
+
 	ormJobMetrics := &OrmJobMetrics{
 		JobIndexCreate:     jobIndexSuccessScope.Counter("create"),
 		JobIndexCreateFail: jobIndexFailScope.Counter("create"),
@@ -677,19 +695,29 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		HostInfoDeleteFail: hostInfoFailScope.Counter("delete"),
 	}
 
+	ormJobUpdateEventsMetrics := &OrmJobUpdateEventsMetrics{
+		JobUpdateEventsCreate:     jobUpdateEventsSuccessScope.Counter("create"),
+		JobUpdateEventsCreateFail: jobUpdateEventsFailScope.Counter("create"),
+		JobUpdateEventsGet:        jobUpdateEventsSuccessScope.Counter("get"),
+		JobUpdateEventsGetFail:    jobUpdateEventsFailScope.Counter("get"),
+		JobUpdateEventsDelete:     jobUpdateEventsSuccessScope.Counter("delete"),
+		JobUpdateEventsDeleteFail: jobUpdateEventsFailScope.Counter("delete"),
+	}
+
 	metrics := &Metrics{
-		JobMetrics:            jobMetrics,
-		TaskMetrics:           taskMetrics,
-		UpdateMetrics:         updateMetrics,
-		ResourcePoolMetrics:   resourcePoolMetrics,
-		FrameworkStoreMetrics: frameworkStoreMetrics,
-		VolumeMetrics:         volumeMetrics,
-		ErrorMetrics:          errorMetrics,
-		WorkflowMetrics:       workflowMetrics,
-		OrmJobMetrics:         ormJobMetrics,
-		OrmRespoolMetrics:     ormRespoolMetrics,
-		OrmTaskMetrics:        ormTaskMetrics,
-		OrmHostInfoMetrics:    ormHostInfoMetrics,
+		JobMetrics:                jobMetrics,
+		TaskMetrics:               taskMetrics,
+		UpdateMetrics:             updateMetrics,
+		ResourcePoolMetrics:       resourcePoolMetrics,
+		FrameworkStoreMetrics:     frameworkStoreMetrics,
+		VolumeMetrics:             volumeMetrics,
+		ErrorMetrics:              errorMetrics,
+		WorkflowMetrics:           workflowMetrics,
+		OrmJobMetrics:             ormJobMetrics,
+		OrmRespoolMetrics:         ormRespoolMetrics,
+		OrmTaskMetrics:            ormTaskMetrics,
+		OrmJobUpdateEventsMetrics: ormJobUpdateEventsMetrics,
+		OrmHostInfoMetrics:        ormHostInfoMetrics,
 	}
 
 	return metrics

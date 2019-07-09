@@ -73,7 +73,6 @@ const (
 	taskRuntimeTable       = "task_runtime"
 	podEventsTable         = "pod_events"
 	updatesTable           = "update_info"
-	jobUpdateEvents        = "job_update_events"
 	podWorkflowEventsTable = "pod_workflow_events"
 	frameworksTable        = "frameworks"
 	updatesByJobView       = "mv_updates_by_job"
@@ -214,12 +213,13 @@ func (c *Config) MigrateString() string {
 // TODO: Break this up into different files (and or structs) that implement
 // each of these interfaces to keep code modular.
 type Store struct {
-	DataStore     api.DataStore
-	jobConfigOps  ormobjects.JobConfigOps
-	jobRuntimeOps ormobjects.JobRuntimeOps
-	metrics       *storage.Metrics
-	Conf          *Config
-	retryPolicy   backoff.RetryPolicy
+	DataStore          api.DataStore
+	jobConfigOps       ormobjects.JobConfigOps
+	jobRuntimeOps      ormobjects.JobRuntimeOps
+	jobUpdateEventsOps ormobjects.JobUpdateEventsOps
+	metrics            *storage.Metrics
+	Conf               *Config
+	retryPolicy        backoff.RetryPolicy
 }
 
 // NewStore creates a Store
@@ -241,8 +241,9 @@ func NewStore(config *Config, scope tally.Scope) (*Store, error) {
 
 		// DO NOT ADD MORE ORM Objects here. These are added here for
 		// supporting Job.Query() which cannot be fully moved to ORM
-		jobConfigOps:  ormobjects.NewJobConfigOps(ormStore),
-		jobRuntimeOps: ormobjects.NewJobRuntimeOps(ormStore),
+		jobConfigOps:       ormobjects.NewJobConfigOps(ormStore),
+		jobRuntimeOps:      ormobjects.NewJobRuntimeOps(ormStore),
+		jobUpdateEventsOps: ormobjects.NewJobUpdateEventsOps(ormStore),
 
 		metrics:     storage.NewMetrics(scope.SubScope("storage")),
 		Conf:        config,
@@ -2463,56 +2464,6 @@ func (s *Store) CreateUpdate(
 	return nil
 }
 
-// AddJobUpdateEvent adds an update state change event for a job
-func (s *Store) AddJobUpdateEvent(
-	ctx context.Context,
-	updateID *peloton.UpdateID,
-	updateType models.WorkflowType,
-	updateState update.State,
-) error {
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Insert(jobUpdateEvents).
-		Columns(
-			"update_id",
-			"type",
-			"state",
-			"create_time").
-		Values(
-			updateID.GetValue(),
-			updateType.String(),
-			updateState.String(),
-			qb.UUID{UUID: gocql.UUIDFromTime(time.Now())})
-	err := s.applyStatement(ctx, stmt, updateID.GetValue())
-	if err != nil {
-		s.metrics.UpdateMetrics.JobUpdateEventAddFail.Inc(1)
-		return err
-	}
-
-	s.metrics.UpdateMetrics.JobUpdateEventAdd.Inc(1)
-	return nil
-}
-
-// GetJobUpdateEvents gets update state change events for a job
-// in descending create timestamp order
-func (s *Store) GetJobUpdateEvents(
-	ctx context.Context,
-	updateID *peloton.UpdateID,
-) ([]*stateless.WorkflowEvent, error) {
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("*").From(jobUpdateEvents).
-		Where(qb.Eq{"update_id": updateID.GetValue()})
-	result, err := s.executeRead(ctx, stmt)
-	if err != nil {
-		s.metrics.UpdateMetrics.JobUpdateEventGetFail.Inc(1)
-		return nil, err
-	}
-
-	workflowEvents := s.convertToWorkflowEvents(ctx, updateID, result)
-
-	s.metrics.UpdateMetrics.JobUpdateEventGet.Inc(1)
-	return workflowEvents, nil
-}
-
 // convertWorkflowEvents is a helper method to return workflow events slice
 // from Cassandra read result of workflow events.
 func (s *Store) convertToWorkflowEvents(
@@ -2565,10 +2516,7 @@ func (s *Store) deleteJobUpdateEvents(
 	ctx context.Context,
 	updateID *peloton.UpdateID,
 ) error {
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Delete(jobUpdateEvents).
-		Where(qb.Eq{"update_id": updateID.GetValue()})
-	if err := s.applyStatement(ctx, stmt, updateID.GetValue()); err != nil {
+	if err := s.jobUpdateEventsOps.Delete(ctx, updateID); err != nil {
 		s.metrics.UpdateMetrics.JobUpdateEventDeleteFail.Inc(1)
 		return err
 	}

@@ -56,17 +56,18 @@ const (
 type jobTestSuite struct {
 	suite.Suite
 
-	ctrl           *gomock.Controller
-	jobStore       *storemocks.MockJobStore
-	taskStore      *storemocks.MockTaskStore
-	updateStore    *storemocks.MockUpdateStore
-	jobIndexOps    *objectmocks.MockJobIndexOps
-	jobNameToIDOps *objectmocks.MockJobNameToIDOps
-	jobConfigOps   *objectmocks.MockJobConfigOps
-	jobRuntimeOps  *objectmocks.MockJobRuntimeOps
-	jobID          *peloton.JobID
-	job            *job
-	listeners      []*FakeJobListener
+	ctrl               *gomock.Controller
+	jobStore           *storemocks.MockJobStore
+	taskStore          *storemocks.MockTaskStore
+	updateStore        *storemocks.MockUpdateStore
+	jobIndexOps        *objectmocks.MockJobIndexOps
+	jobNameToIDOps     *objectmocks.MockJobNameToIDOps
+	jobConfigOps       *objectmocks.MockJobConfigOps
+	jobRuntimeOps      *objectmocks.MockJobRuntimeOps
+	jobUpdateEventsOps *objectmocks.MockJobUpdateEventsOps
+	jobID              *peloton.JobID
+	job                *job
+	listeners          []*FakeJobListener
 }
 
 func TestJob(t *testing.T) {
@@ -82,6 +83,7 @@ func (suite *jobTestSuite) SetupTest() {
 	suite.jobNameToIDOps = objectmocks.NewMockJobNameToIDOps(suite.ctrl)
 	suite.jobConfigOps = objectmocks.NewMockJobConfigOps(suite.ctrl)
 	suite.jobRuntimeOps = objectmocks.NewMockJobRuntimeOps(suite.ctrl)
+	suite.jobUpdateEventsOps = objectmocks.NewMockJobUpdateEventsOps(suite.ctrl)
 	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}
 	suite.listeners = append(suite.listeners,
 		new(FakeJobListener),
@@ -94,6 +96,7 @@ func (suite *jobTestSuite) SetupTest() {
 		suite.jobNameToIDOps,
 		suite.jobConfigOps,
 		suite.jobRuntimeOps,
+		suite.jobUpdateEventsOps,
 		suite.jobID)
 }
 
@@ -110,20 +113,22 @@ func (suite *jobTestSuite) initializeJob(
 	jobNameToIDOps *objectmocks.MockJobNameToIDOps,
 	jobConfigOps *objectmocks.MockJobConfigOps,
 	jobRuntimeOps *objectmocks.MockJobRuntimeOps,
+	jobUpdateEventsOps *objectmocks.MockJobUpdateEventsOps,
 	jobID *peloton.JobID) *job {
 	j := &job{
 		id: jobID,
 		jobFactory: &jobFactory{
-			mtx:            NewMetrics(tally.NoopScope),
-			jobStore:       jobStore,
-			taskStore:      taskStore,
-			updateStore:    updateStore,
-			jobIndexOps:    jobIndexOps,
-			jobNameToIDOps: jobNameToIDOps,
-			jobConfigOps:   jobConfigOps,
-			jobRuntimeOps:  jobRuntimeOps,
-			running:        true,
-			jobs:           map[string]*job{},
+			mtx:                NewMetrics(tally.NoopScope),
+			jobStore:           jobStore,
+			taskStore:          taskStore,
+			updateStore:        updateStore,
+			jobIndexOps:        jobIndexOps,
+			jobNameToIDOps:     jobNameToIDOps,
+			jobConfigOps:       jobConfigOps,
+			jobRuntimeOps:      jobRuntimeOps,
+			jobUpdateEventsOps: jobUpdateEventsOps,
+			running:            true,
+			jobs:               map[string]*job{},
 		},
 		tasks: map[uint32]*task{},
 		config: &cachedConfig{
@@ -3186,8 +3191,9 @@ func (suite *jobTestSuite) TestJobCreateWorkflowSuccess() {
 		suite.jobIndexOps.EXPECT().
 			Update(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 			Return(nil),
-		suite.updateStore.EXPECT().
-			AddJobUpdateEvent(
+
+		suite.jobUpdateEventsOps.EXPECT().
+			Create(
 				gomock.Any(),
 				gomock.Any(),
 				gomock.Any(),
@@ -3314,8 +3320,8 @@ func (suite *jobTestSuite) TestJobCreateWorkflowWithStartTasksForStoppedJobSucce
 		suite.jobIndexOps.EXPECT().
 			Update(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 			Return(nil),
-		suite.updateStore.EXPECT().
-			AddJobUpdateEvent(
+		suite.jobUpdateEventsOps.EXPECT().
+			Create(
 				gomock.Any(),
 				gomock.Any(),
 				gomock.Any(),
@@ -3513,8 +3519,8 @@ func (suite *jobTestSuite) TestJobCreateWorkflowWorkflowCreationFailure() {
 		suite.jobIndexOps.EXPECT().
 			Update(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 			Return(nil),
-		suite.updateStore.EXPECT().
-			AddJobUpdateEvent(
+		suite.jobUpdateEventsOps.EXPECT().
+			Create(
 				gomock.Any(),
 				gomock.Any(),
 				gomock.Any(),
@@ -3621,8 +3627,8 @@ func (suite *jobTestSuite) TestJobCreateWorkflowUpdateRuntimeFailure() {
 		suite.jobIndexOps.EXPECT().
 			Update(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 			Return(nil),
-		suite.updateStore.EXPECT().
-			AddJobUpdateEvent(
+		suite.jobUpdateEventsOps.EXPECT().
+			Create(
 				gomock.Any(),
 				gomock.Any(),
 				gomock.Any(),
@@ -3738,8 +3744,8 @@ func (suite *jobTestSuite) TestJobCreateWorkflowOnDeletedJobError() {
 		suite.jobIndexOps.EXPECT().
 			Update(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 			Return(nil),
-		suite.updateStore.EXPECT().
-			AddJobUpdateEvent(
+		suite.jobUpdateEventsOps.EXPECT().
+			Create(
 				gomock.Any(),
 				gomock.Any(),
 				gomock.Any(),
@@ -3851,8 +3857,8 @@ func (suite *jobTestSuite) TestResumeWorkflowSuccess() {
 		suite.jobIndexOps.EXPECT().
 			Update(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 			Return(nil),
-		suite.updateStore.EXPECT().
-			AddJobUpdateEvent(
+		suite.jobUpdateEventsOps.EXPECT().
+			Create(
 				gomock.Any(),
 				gomock.Any(),
 				gomock.Any(),
@@ -3950,8 +3956,8 @@ func (suite *jobTestSuite) TestResumeWorkflowNotExistInCacheSuccess() {
 				PrevState: pbupdate.State_ROLLING_FORWARD,
 				State:     pbupdate.State_PAUSED,
 			}, nil),
-		suite.updateStore.EXPECT().
-			AddJobUpdateEvent(
+		suite.jobUpdateEventsOps.EXPECT().
+			Create(
 				gomock.Any(),
 				gomock.Any(),
 				gomock.Any(),
@@ -4016,8 +4022,8 @@ func (suite *jobTestSuite) TestPauseWorkflowSuccess() {
 		suite.jobIndexOps.EXPECT().
 			Update(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 			Return(nil),
-		suite.updateStore.EXPECT().
-			AddJobUpdateEvent(
+		suite.jobUpdateEventsOps.EXPECT().
+			Create(
 				gomock.Any(),
 				gomock.Any(),
 				gomock.Any(),
@@ -4112,8 +4118,8 @@ func (suite *jobTestSuite) TestPauseWorkflowNotExistInCacheSuccess() {
 			Return(&models.UpdateModel{
 				State: pbupdate.State_ROLLING_FORWARD,
 			}, nil),
-		suite.updateStore.EXPECT().
-			AddJobUpdateEvent(
+		suite.jobUpdateEventsOps.EXPECT().
+			Create(
 				gomock.Any(),
 				gomock.Any(),
 				gomock.Any(),
@@ -4178,8 +4184,8 @@ func (suite *jobTestSuite) TestAbortWorkflowSuccess() {
 		suite.jobIndexOps.EXPECT().
 			Update(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 			Return(nil),
-		suite.updateStore.EXPECT().
-			AddJobUpdateEvent(
+		suite.jobUpdateEventsOps.EXPECT().
+			Create(
 				gomock.Any(),
 				gomock.Any(),
 				gomock.Any(),
@@ -4281,8 +4287,8 @@ func (suite *jobTestSuite) TestAbortWorkflowNotExistInCacheSuccess() {
 				State: pbupdate.State_ROLLING_FORWARD,
 			}, nil),
 
-		suite.updateStore.EXPECT().
-			AddJobUpdateEvent(
+		suite.jobUpdateEventsOps.EXPECT().
+			Create(
 				gomock.Any(),
 				gomock.Any(),
 				gomock.Any(),
@@ -4494,8 +4500,8 @@ func (suite *jobTestSuite) TestRollbackWorkflowSuccess() {
 			Return(nil)
 	}
 
-	suite.updateStore.EXPECT().
-		AddJobUpdateEvent(
+	suite.jobUpdateEventsOps.EXPECT().
+		Create(
 			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),
@@ -4904,8 +4910,8 @@ func (suite *jobTestSuite) TestRollbackWorkflowSuccessAfterModifyUpdateFails() {
 			Return(nil)
 	}
 
-	suite.updateStore.EXPECT().
-		AddJobUpdateEvent(
+	suite.jobUpdateEventsOps.EXPECT().
+		Create(
 			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),
@@ -5004,8 +5010,8 @@ func (suite *jobTestSuite) TestRollbackWorkflowSuccessAfterModifyUpdateFails() {
 			GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, nil).
 			Return(taskRuntimes, nil),
 
-		suite.updateStore.EXPECT().
-			AddJobUpdateEvent(
+		suite.jobUpdateEventsOps.EXPECT().
+			Create(
 				gomock.Any(),
 				gomock.Any(),
 				gomock.Any(),
@@ -5148,8 +5154,8 @@ func (suite *jobTestSuite) TestRollbackWorkflowSuccessAfterJobRuntimeUpdateDBWri
 			Return(nil).AnyTimes()
 	}
 
-	suite.updateStore.EXPECT().
-		AddJobUpdateEvent(
+	suite.jobUpdateEventsOps.EXPECT().
+		Create(
 			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),
@@ -5309,8 +5315,8 @@ func (suite *jobTestSuite) TestRollbackWorkflowSuccessAfterJobRuntimeDBWriteSucc
 			Return(nil).AnyTimes()
 	}
 
-	suite.updateStore.EXPECT().
-		AddJobUpdateEvent(
+	suite.jobUpdateEventsOps.EXPECT().
+		Create(
 			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),
@@ -5781,10 +5787,12 @@ func (suite *jobTestSuite) TestJobRollingCreateSuccess() {
 		Return(nil).
 		Times(int(jobConfig.InstanceCount))
 
-	suite.updateStore.EXPECT().
-		AddJobUpdateEvent(
-			gomock.Any(), gomock.Any(),
-			gomock.Any(), gomock.Any()).
+	suite.jobUpdateEventsOps.EXPECT().
+		Create(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any()).
 		Return(nil)
 
 	suite.updateStore.EXPECT().

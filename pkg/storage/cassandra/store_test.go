@@ -32,7 +32,6 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v0/update"
 	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
-	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/private/models"
@@ -2364,14 +2363,6 @@ func (suite *CassandraStoreTestSuite) TestModifyUpdate() {
 		}
 	}
 
-	// add INITIALIZED update state to job update events
-	suite.NoError(store.AddJobUpdateEvent(
-		context.Background(),
-		updateID,
-		models.WorkflowType_UPDATE,
-		state,
-	))
-
 	// create a new update
 	suite.NoError(store.CreateUpdate(
 		context.Background(),
@@ -2389,14 +2380,6 @@ func (suite *CassandraStoreTestSuite) TestModifyUpdate() {
 			CreationTime:         time.Now().Format(time.RFC3339Nano),
 			UpdateTime:           time.Now().Format(time.RFC3339Nano),
 		},
-	))
-
-	// add ROLLING_BACKWARD update state to job update events
-	suite.NoError(store.AddJobUpdateEvent(
-		context.Background(),
-		updateID,
-		models.WorkflowType_UPDATE,
-		update.State_ROLLING_BACKWARD,
 	))
 
 	suite.NoError(store.ModifyUpdate(
@@ -2428,42 +2411,8 @@ func (suite *CassandraStoreTestSuite) TestModifyUpdate() {
 	suite.Equal(updateResult.GetJobConfigVersion(), jobVersion+1)
 	suite.Equal(updateResult.GetPrevJobConfigVersion(), jobVersion)
 
-	// Get job update events, events are in descending create timestamp order
-	jobUpdateEvents, err := store.GetJobUpdateEvents(
-		context.Background(),
-		updateID)
-	suite.NoError(err)
-	suite.Equal(2, len(jobUpdateEvents))
-	suite.Equal(stateless.WorkflowState_WORKFLOW_STATE_ROLLING_BACKWARD,
-		jobUpdateEvents[0].GetState())
-	suite.Equal(stateless.WorkflowState_WORKFLOW_STATE_INITIALIZED,
-		jobUpdateEvents[1].GetState())
-
-	// Add ROLLING_BACKWARD job update event again,
-	// which will be dedupe
-	suite.NoError(store.AddJobUpdateEvent(
-		context.Background(),
-		updateID,
-		models.WorkflowType_UPDATE,
-		update.State_ROLLING_BACKWARD,
-	))
-
-	jobUpdateEvents, err = store.GetJobUpdateEvents(
-		context.Background(),
-		updateID)
-	suite.NoError(err)
-	suite.Equal(2, len(jobUpdateEvents))
-
-	// delete update
-	suite.NoError(store.DeleteUpdate(
-		context.Background(),
-		updateID,
-		jobID,
-		jobVersion+1,
-	))
-
 	// delete the job
-	store.DeleteJob(context.Background(), jobID.GetValue())
+	suite.NoError(store.DeleteJob(context.Background(), jobID.GetValue()))
 	suite.NoError(deleteJobIndex(context.Background(), jobID))
 
 	updateResult, err = store.GetUpdate(context.Background(), updateID)
@@ -2471,7 +2420,7 @@ func (suite *CassandraStoreTestSuite) TestModifyUpdate() {
 	suite.True(yarpcerrors.IsNotFound(err))
 
 	// job update events are deleted as well with update
-	jobUpdateEvents, err = store.GetJobUpdateEvents(
+	jobUpdateEvents, err := store.jobUpdateEventsOps.GetAll(
 		context.Background(),
 		updateID)
 	suite.NoError(err)

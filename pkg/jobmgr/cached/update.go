@@ -478,7 +478,7 @@ func (u *update) writeProgress(
 		prevState = u.state
 
 		// write job update event on update's state change
-		if err := u.jobFactory.updateStore.AddJobUpdateEvent(
+		if err := u.jobFactory.jobUpdateEventsOps.Create(
 			ctx,
 			u.id,
 			u.workflowType,
@@ -1104,14 +1104,13 @@ func (u *update) writeWorkflowEvents(
 		return err
 	}
 
-	if err := u.jobFactory.updateStore.AddJobUpdateEvent(
+	if err := u.jobFactory.jobUpdateEventsOps.Create(
 		ctx,
 		u.id,
 		workflowType,
 		state); err != nil {
 		return err
 	}
-
 	return nil
 }
 

@@ -95,24 +95,25 @@ type statelessHandlerTestSuite struct {
 
 	handler *serviceHandler
 
-	ctrl            *gomock.Controller
-	cachedJob       *cachedmocks.MockJob
-	cachedWorkflow  *cachedmocks.MockUpdate
-	jobFactory      *cachedmocks.MockJobFactory
-	candidate       *leadermocks.MockCandidate
-	respoolClient   *respoolmocks.MockResourceManagerYARPCClient
-	goalStateDriver *goalstatemocks.MockDriver
-	jobStore        *storemocks.MockJobStore
-	updateStore     *storemocks.MockUpdateStore
-	listJobsServer  *statelesssvcmocks.MockJobServiceServiceListJobsYARPCServer
-	listPodsServer  *statelesssvcmocks.MockJobServiceServiceListPodsYARPCServer
-	taskStore       *storemocks.MockTaskStore
-	jobIndexOps     *objectmocks.MockJobIndexOps
-	jobConfigOps    *objectmocks.MockJobConfigOps
-	jobNameToIDOps  *objectmocks.MockJobNameToIDOps
-	jobRuntimeOps   *objectmocks.MockJobRuntimeOps
-	secretInfoOps   *objectmocks.MockSecretInfoOps
-	activeRMTasks   *activermtaskmocks.MockActiveRMTasks
+	ctrl               *gomock.Controller
+	cachedJob          *cachedmocks.MockJob
+	cachedWorkflow     *cachedmocks.MockUpdate
+	jobFactory         *cachedmocks.MockJobFactory
+	candidate          *leadermocks.MockCandidate
+	respoolClient      *respoolmocks.MockResourceManagerYARPCClient
+	goalStateDriver    *goalstatemocks.MockDriver
+	jobStore           *storemocks.MockJobStore
+	updateStore        *storemocks.MockUpdateStore
+	listJobsServer     *statelesssvcmocks.MockJobServiceServiceListJobsYARPCServer
+	listPodsServer     *statelesssvcmocks.MockJobServiceServiceListPodsYARPCServer
+	taskStore          *storemocks.MockTaskStore
+	jobIndexOps        *objectmocks.MockJobIndexOps
+	jobConfigOps       *objectmocks.MockJobConfigOps
+	jobNameToIDOps     *objectmocks.MockJobNameToIDOps
+	jobRuntimeOps      *objectmocks.MockJobRuntimeOps
+	secretInfoOps      *objectmocks.MockSecretInfoOps
+	jobUpdateEventsOps *objectmocks.MockJobUpdateEventsOps
+	activeRMTasks      *activermtaskmocks.MockActiveRMTasks
 }
 
 func (suite *statelessHandlerTestSuite) SetupTest() {
@@ -130,6 +131,7 @@ func (suite *statelessHandlerTestSuite) SetupTest() {
 	suite.jobRuntimeOps = objectmocks.NewMockJobRuntimeOps(suite.ctrl)
 	suite.jobNameToIDOps = objectmocks.NewMockJobNameToIDOps(suite.ctrl)
 	suite.secretInfoOps = objectmocks.NewMockSecretInfoOps(suite.ctrl)
+	suite.jobUpdateEventsOps = objectmocks.NewMockJobUpdateEventsOps(suite.ctrl)
 	suite.respoolClient = respoolmocks.NewMockResourceManagerYARPCClient(suite.ctrl)
 	suite.listJobsServer = statelesssvcmocks.NewMockJobServiceServiceListJobsYARPCServer(suite.ctrl)
 	suite.listPodsServer = statelesssvcmocks.NewMockJobServiceServiceListPodsYARPCServer(suite.ctrl)
@@ -137,19 +139,20 @@ func (suite *statelessHandlerTestSuite) SetupTest() {
 	suite.listPodsServer.EXPECT().Context().Return(context.Background()).AnyTimes()
 	suite.activeRMTasks = activermtaskmocks.NewMockActiveRMTasks(suite.ctrl)
 	suite.handler = &serviceHandler{
-		jobFactory:      suite.jobFactory,
-		candidate:       suite.candidate,
-		goalStateDriver: suite.goalStateDriver,
-		jobStore:        suite.jobStore,
-		updateStore:     suite.updateStore,
-		taskStore:       suite.taskStore,
-		jobIndexOps:     suite.jobIndexOps,
-		jobConfigOps:    suite.jobConfigOps,
-		jobRuntimeOps:   suite.jobRuntimeOps,
-		jobNameToIDOps:  suite.jobNameToIDOps,
-		secretInfoOps:   suite.secretInfoOps,
-		respoolClient:   suite.respoolClient,
-		rootCtx:         context.Background(),
+		jobFactory:         suite.jobFactory,
+		candidate:          suite.candidate,
+		goalStateDriver:    suite.goalStateDriver,
+		jobStore:           suite.jobStore,
+		updateStore:        suite.updateStore,
+		taskStore:          suite.taskStore,
+		jobIndexOps:        suite.jobIndexOps,
+		jobConfigOps:       suite.jobConfigOps,
+		jobRuntimeOps:      suite.jobRuntimeOps,
+		jobNameToIDOps:     suite.jobNameToIDOps,
+		jobUpdateEventsOps: suite.jobUpdateEventsOps,
+		secretInfoOps:      suite.secretInfoOps,
+		respoolClient:      suite.respoolClient,
+		rootCtx:            context.Background(),
 		jobSvcCfg: jobsvc.Config{
 			EnableSecrets:  true,
 			MaxTasksPerJob: 100000,
@@ -332,8 +335,8 @@ func (suite *statelessHandlerTestSuite) TestGetJobSuccess() {
 			InstancesUpdated: []uint32{0, 1, 2},
 		}, nil)
 
-	suite.updateStore.EXPECT().
-		GetJobUpdateEvents(gomock.Any(), &peloton.UpdateID{Value: testUpdateID}).
+	suite.jobUpdateEventsOps.EXPECT().
+		GetAll(gomock.Any(), &peloton.UpdateID{Value: testUpdateID}).
 		Return([]*stateless.WorkflowEvent{{
 			Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
 			State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
@@ -3450,8 +3453,8 @@ func (suite *statelessHandlerTestSuite) TestListJobWorkflowsSuccess() {
 			InstancesUpdated:     []uint32{0},
 		}, nil)
 
-	suite.updateStore.EXPECT().
-		GetJobUpdateEvents(gomock.Any(), &peloton.UpdateID{Value: testUpdateID1}).
+	suite.jobUpdateEventsOps.EXPECT().
+		GetAll(gomock.Any(), &peloton.UpdateID{Value: testUpdateID1}).
 		Return([]*stateless.WorkflowEvent{workflowEvent2, workflowEvent1}, nil)
 
 	suite.jobRuntimeOps.EXPECT().
@@ -3494,8 +3497,8 @@ func (suite *statelessHandlerTestSuite) TestListJobWorkflowsSuccess() {
 			InstancesRemoved:     []uint32{1},
 		}, nil)
 
-	suite.updateStore.EXPECT().
-		GetJobUpdateEvents(gomock.Any(), &peloton.UpdateID{Value: testUpdateID2}).
+	suite.jobUpdateEventsOps.EXPECT().
+		GetAll(gomock.Any(), &peloton.UpdateID{Value: testUpdateID2}).
 		Return([]*stateless.WorkflowEvent{workflowEvent2, workflowEvent1}, nil)
 
 	suite.updateStore.EXPECT().
@@ -3583,8 +3586,8 @@ func (suite *statelessHandlerTestSuite) TestListJobWorkflowsGetUpdatesLimitInsta
 			InstancesUpdated:     []uint32{0},
 		}, nil)
 
-	suite.updateStore.EXPECT().
-		GetJobUpdateEvents(gomock.Any(), &peloton.UpdateID{Value: testUpdateID1}).
+	suite.jobUpdateEventsOps.EXPECT().
+		GetAll(gomock.Any(), &peloton.UpdateID{Value: testUpdateID1}).
 		Return([]*stateless.WorkflowEvent{workflowEvent2}, nil)
 
 	suite.jobRuntimeOps.EXPECT().
@@ -3627,8 +3630,8 @@ func (suite *statelessHandlerTestSuite) TestListJobWorkflowsGetUpdatesLimitInsta
 			InstancesRemoved:     []uint32{1},
 		}, nil)
 
-	suite.updateStore.EXPECT().
-		GetJobUpdateEvents(gomock.Any(), &peloton.UpdateID{Value: testUpdateID2}).
+	suite.jobUpdateEventsOps.EXPECT().
+		GetAll(gomock.Any(), &peloton.UpdateID{Value: testUpdateID2}).
 		Return([]*stateless.WorkflowEvent{workflowEvent2}, nil)
 
 	suite.updateStore.EXPECT().
