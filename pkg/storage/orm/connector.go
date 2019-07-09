@@ -40,7 +40,8 @@ type Connector interface {
 		keys []base.Column,
 	) ([]base.Column, error)
 
-	// GetAll fetches all rows by partition key of base object
+	// GetAll fetches a list of base objects for the partition key
+	// and the given clustering keys
 	GetAll(
 		ctx context.Context,
 		e *base.Definition,

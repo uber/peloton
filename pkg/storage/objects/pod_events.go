@@ -17,15 +17,14 @@ package objects
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"time"
 
+	"github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
-	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
-	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 
 	"github.com/uber/peloton/pkg/common/util"
-	versionutil "github.com/uber/peloton/pkg/common/util/entityversion"
 	"github.com/uber/peloton/pkg/storage/objects/base"
 
 	"github.com/gocql/gocql"
@@ -47,9 +46,9 @@ type PodEventsObject struct {
 	// InstanceID of the pod event
 	InstanceID uint32 `column:"name=instance_id"`
 	// RunID of the pod event
-	RunID uint64 `column:"name=run_id"`
+	RunID *base.OptionalUInt64 `column:"name=run_id"`
 	// UpdateTime of the pod event
-	UpdateTime gocql.UUID `column:"name=update_time"`
+	UpdateTime *base.OptionalString `column:"name=update_time"`
 	// ActualState of the pod event
 	ActualState string `column:"name=actual_state"`
 	// AgentID of the pod event
@@ -97,7 +96,7 @@ type PodEventsOps interface {
 		jobID string,
 		instanceID uint32,
 		podID ...string,
-	) ([]*pod.PodEvent, error)
+	) ([]*task.PodEvent, error)
 }
 
 // ensure that default implementation (podEventsOps) satisfies the interface
@@ -154,12 +153,13 @@ func (d *podEventsOps) Create(
 		return errors.Wrap(err, "Failed to parse runtime")
 	}
 	podEventsObject := &PodEventsObject{
-		JobID:                jobID.GetValue(),
-		InstanceID:           instanceID,
-		RunID:                runID,
-		DesiredRunID:         desiredRunID,
-		PreviousRunID:        prevRunID,
-		UpdateTime:           gocql.TimeUUID(),
+		JobID:         jobID.GetValue(),
+		InstanceID:    instanceID,
+		RunID:         base.NewOptionalUInt64(runID),
+		DesiredRunID:  desiredRunID,
+		PreviousRunID: prevRunID,
+		UpdateTime: base.NewOptionalString(gocql.TimeUUID().
+			String()),
 		ActualState:          runtime.GetState().String(),
 		GoalState:            runtime.GetGoalState().String(),
 		Healthy:              runtime.GetHealthy().String(),
@@ -181,80 +181,119 @@ func (d *podEventsOps) Create(
 	return nil
 }
 
+// GetAll returns pod events for a Job + Instance + PodID (optional)
+// Pod events are sorted by PodID + Timestamp
 func (d *podEventsOps) GetAll(
 	ctx context.Context,
 	jobID string,
 	instanceID uint32,
-	podID ...string) ([]*pod.PodEvent, error) {
-	var PodEventsObjects []*pod.PodEvent
+	podID ...string) ([]*task.PodEvent, error) {
 	podEventsObject := &PodEventsObject{
 		JobID:      jobID,
 		InstanceID: instanceID,
 	}
-
+	var result []base.Object
+	var runID uint64
 	if len(podID) > 0 && len(podID[0]) > 0 {
 		runID, err := util.ParseRunID(podID[0])
 		if err != nil {
 			return nil, errors.Wrap(err, "Failed to parse runID")
 		}
-		// Events are sorted in descending order by run_id and then update_time.
 		podEventsObject = &PodEventsObject{
 			JobID:      jobID,
 			InstanceID: instanceID,
-			RunID:      runID,
+			RunID:      base.NewOptionalUInt64(runID),
+		}
+		result, err = d.store.oClient.GetAll(ctx,
+			podEventsObject)
+		if err != nil {
+			d.store.metrics.OrmTaskMetrics.PodEventsGetFail.Inc(1)
+			return nil, err
+		}
+	} else {
+		// Events are sorted in descending order by run_id and then update_time.
+		// if pod event is not specified, we will get the latest run_id
+		podEventsObject = &PodEventsObject{
+			JobID:      jobID,
+			InstanceID: instanceID,
+		}
+		allResult, err := d.store.oClient.GetAll(ctx,
+			podEventsObject)
+
+		if err != nil {
+			d.store.metrics.OrmTaskMetrics.PodEventsGetFail.Inc(1)
+			return nil, err
+		}
+
+		if len(allResult) > 0 {
+			runID = base.ConvertFromOptionalToRawType(reflect.ValueOf(
+				allResult[0].(*PodEventsObject).RunID)).(uint64)
+
+			for _, value := range allResult {
+				podEventsObjectValue := value.(*PodEventsObject)
+				currRunID := base.ConvertFromOptionalToRawType(reflect.ValueOf(
+					podEventsObjectValue.RunID)).(uint64)
+				// we only want the pod events of the latest run ID
+				if currRunID != runID {
+					break
+				}
+				result = append(result, podEventsObjectValue)
+			}
 		}
 	}
-	result, err := d.store.oClient.GetAll(ctx,
-		podEventsObject)
-	if err != nil {
-		d.store.metrics.OrmTaskMetrics.PodEventsGetFail.Inc(1)
-		return nil, err
-	}
 
-	var podEvents []*pod.PodEvent
+	var podEvents []*task.PodEvent
 	for _, value := range result {
-		podEvent := &pod.PodEvent{}
+		podEvent := &task.PodEvent{}
 
 		podEventsObjectValue := value.(*PodEventsObject)
-		podID := fmt.Sprintf("%s-%d-%d",
+		mesosTaskID := fmt.Sprintf("%s-%d-%d",
 			podEventsObjectValue.JobID,
 			podEventsObjectValue.InstanceID,
-			podEventsObjectValue.RunID)
+			base.ConvertFromOptionalToRawType(reflect.ValueOf(
+				podEventsObjectValue.RunID)).(uint64))
 
-		prevPodID := fmt.Sprintf("%s-%d-%d",
+		prevMesosTaskID := fmt.Sprintf("%s-%d-%d",
 			podEventsObjectValue.JobID,
 			podEventsObjectValue.InstanceID,
 			podEventsObjectValue.PreviousRunID)
 
-		desiredPodID := fmt.Sprintf("%s-%d-%d",
+		desiredMesosTaskID := fmt.Sprintf("%s-%d-%d",
 			podEventsObjectValue.JobID,
 			podEventsObjectValue.InstanceID,
 			podEventsObjectValue.DesiredRunID)
 
 		// Set podEvent fields
-		podEvent.PodId = &v1alphapeloton.PodID{
-			Value: podID,
+		podEvent.TaskId = &mesos_v1.TaskID{
+			Value: &mesosTaskID,
 		}
-		podEvent.PrevPodId = &v1alphapeloton.PodID{
-			Value: prevPodID,
+		podEvent.PrevTaskId = &mesos_v1.TaskID{
+			Value: &prevMesosTaskID,
 		}
-		podEvent.DesiredPodId = &v1alphapeloton.PodID{
-			Value: desiredPodID,
+		podEvent.DesriedTaskId = &mesos_v1.TaskID{
+			Value: &desiredMesosTaskID,
 		}
-		podEvent.Timestamp =
-			podEventsObjectValue.UpdateTime.Time().Format(time.RFC3339)
-		podEvent.Version = versionutil.GetPodEntityVersion(podEventsObjectValue.ConfigVersion)
-		podEvent.DesiredVersion = versionutil.GetPodEntityVersion(podEventsObjectValue.DesiredConfigVersion)
+		convertedTS, err := gocql.ParseUUID(base.ConvertFromOptionalToRawType(
+			reflect.
+				ValueOf(podEventsObjectValue.UpdateTime)).(string))
+		if err != nil {
+			d.store.metrics.OrmTaskMetrics.PodEventsGetFail.Inc(1)
+			return nil, errors.Wrap(err, "Failed to parse update_time")
+		}
+
+		podEvent.Timestamp = convertedTS.Time().Format(time.RFC3339)
+		podEvent.ConfigVersion = podEventsObjectValue.ConfigVersion
+		podEvent.DesiredConfigVersion = podEventsObjectValue.DesiredConfigVersion
 
 		podEvent.ActualState = podEventsObjectValue.ActualState
-		podEvent.DesiredState = podEventsObjectValue.GoalState
+		podEvent.GoalState = podEventsObjectValue.GoalState
 		podEvent.Message = podEventsObjectValue.Message
 		podEvent.Reason = podEventsObjectValue.Reason
-		podEvent.AgentId = podEventsObjectValue.AgentID
+		podEvent.AgentID = podEventsObjectValue.AgentID
 		podEvent.Hostname = podEventsObjectValue.Hostname
 		podEvent.Healthy = podEventsObjectValue.Healthy
 
-		podEvents = append(PodEventsObjects, podEvent)
+		podEvents = append(podEvents, podEvent)
 	}
 	d.store.metrics.OrmTaskMetrics.PodEventsGet.Inc(1)
 

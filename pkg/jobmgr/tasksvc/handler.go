@@ -84,6 +84,7 @@ func InitServiceHandler(
 		jobRuntimeOps:      ormobjects.NewJobRuntimeOps(ormStore),
 		updateStore:        updateStore,
 		frameworkInfoStore: frameworkInfoStore,
+		podEventsOps:       ormobjects.NewPodEventsOps(ormStore),
 		metrics:            NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
 		resmgrClient:       resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
 		taskLauncher:       launcher.GetLauncher(),
@@ -105,6 +106,7 @@ type serviceHandler struct {
 	jobRuntimeOps      ormobjects.JobRuntimeOps
 	updateStore        storage.UpdateStore
 	frameworkInfoStore storage.FrameworkInfoStore
+	podEventsOps       ormobjects.PodEventsOps
 	metrics            *Metrics
 	resmgrClient       resmgrsvc.ResourceManagerServiceYARPCClient
 	taskLauncher       launcher.Launcher
@@ -239,7 +241,7 @@ func (m *serviceHandler) GetPodEvents(
 	mesosTaskID := body.GetRunId()
 	var result []*task.PodEvent
 	for i := uint64(0); i < limit; i++ {
-		taskEvents, err := m.taskStore.GetPodEvents(
+		taskEvents, err := m.podEventsOps.GetAll(
 			ctx,
 			body.GetJobId().GetValue(),
 			body.GetInstanceId(),
@@ -1429,7 +1431,8 @@ func (m *serviceHandler) getPodEvents(
 	runID string) ([]*task.PodEvent, error) {
 	var events []*task.PodEvent
 	for {
-		taskEvents, err := m.taskStore.GetPodEvents(ctx, id.GetValue(), instanceID, runID)
+		taskEvents, err := m.podEventsOps.GetAll(ctx, id.GetValue(), instanceID,
+			runID)
 		if err != nil {
 			return nil, err
 		}

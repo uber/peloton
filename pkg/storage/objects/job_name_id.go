@@ -38,7 +38,7 @@ type JobNameToIDObject struct {
 	// Name of the job
 	JobName string `column:"name=job_name"`
 	// Update time of the job
-	UpdateTime gocql.UUID `column:"name=update_time"`
+	UpdateTime *base.OptionalString `column:"name=update_time"`
 	// JobID of the job
 	JobID string `column:"name=job_id"`
 }
@@ -80,9 +80,10 @@ func (d *jobNameToIDOps) Create(
 ) error {
 
 	obj := &JobNameToIDObject{
-		JobName:    jobName,
-		JobID:      id.GetValue(),
-		UpdateTime: gocql.UUIDFromTime(time.Now()),
+		JobName: jobName,
+		JobID:   id.GetValue(),
+		UpdateTime: base.NewOptionalString(gocql.UUIDFromTime(time.Now()).
+			String()),
 	}
 
 	if err := d.store.oClient.Create(ctx, obj); err != nil {

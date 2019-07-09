@@ -40,6 +40,7 @@ import (
 	handlerutil "github.com/uber/peloton/pkg/jobmgr/util/handler"
 	taskutil "github.com/uber/peloton/pkg/jobmgr/util/task"
 	"github.com/uber/peloton/pkg/storage"
+	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -55,6 +56,7 @@ type serviceHandler struct {
 	jobStore           storage.JobStore
 	podStore           storage.TaskStore
 	frameworkInfoStore storage.FrameworkInfoStore
+	podEventsOps       ormobjects.PodEventsOps
 	jobFactory         cached.JobFactory
 	goalStateDriver    goalstate.Driver
 	candidate          leader.Candidate
@@ -69,6 +71,7 @@ func InitV1AlphaPodServiceHandler(
 	jobStore storage.JobStore,
 	podStore storage.TaskStore,
 	frameworkInfoStore storage.FrameworkInfoStore,
+	ormStore *ormobjects.Store,
 	jobFactory cached.JobFactory,
 	goalStateDriver goalstate.Driver,
 	candidate leader.Candidate,
@@ -80,6 +83,7 @@ func InitV1AlphaPodServiceHandler(
 		jobStore:           jobStore,
 		podStore:           podStore,
 		frameworkInfoStore: frameworkInfoStore,
+		podEventsOps:       ormobjects.NewPodEventsOps(ormStore),
 		jobFactory:         jobFactory,
 		goalStateDriver:    goalStateDriver,
 		candidate:          candidate,
@@ -491,7 +495,7 @@ func (h *serviceHandler) GetPodEvents(
 		return nil, err
 	}
 
-	taskEvents, err := h.podStore.GetPodEvents(
+	taskEvents, err := h.podEventsOps.GetAll(
 		ctx,
 		jobID,
 		instanceID,
@@ -750,7 +754,7 @@ func (h *serviceHandler) getHostInfo(
 	instanceID uint32,
 	podID string,
 ) (hostname, podid, agentID string, err error) {
-	taskEvents, err := h.podStore.GetPodEvents(ctx, jobID, instanceID, podID)
+	taskEvents, err := h.podEventsOps.GetAll(ctx, jobID, instanceID, podID)
 	if err != nil {
 		return "", "", "", errors.Wrap(err, "failed to get pod events")
 	}
@@ -844,7 +848,7 @@ func (h *serviceHandler) getPodInfoForAllPodRuns(
 
 	pID := podID.GetValue()
 	for {
-		taskEvents, err := h.podStore.GetPodEvents(ctx, jobID, instanceID, pID)
+		taskEvents, err := h.podEventsOps.GetAll(ctx, jobID, instanceID, pID)
 		if err != nil {
 			return nil, err
 		}

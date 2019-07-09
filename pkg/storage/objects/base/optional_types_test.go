@@ -45,6 +45,7 @@ func (s *OptionalTypeTestSuite) TestNewOptionalString() {
 func (s *OptionalTypeTestSuite) TestIsOfTypeOptional() {
 	s.True(
 		IsOfTypeOptional(reflect.ValueOf(&OptionalString{Value: "test"})),
+		IsOfTypeOptional(reflect.ValueOf(&OptionalUInt64{Value: uint64(1)})),
 	)
 	s.False(
 		IsOfTypeOptional(reflect.ValueOf("test")),
@@ -56,12 +57,28 @@ func (s *OptionalTypeTestSuite) TestConvertFromOptionalToRawType() {
 		"test",
 		ConvertFromOptionalToRawType(reflect.ValueOf(&OptionalString{Value: "test"})),
 	)
+	s.Equal(
+		uint64(1),
+		ConvertFromOptionalToRawType(reflect.ValueOf(
+			&OptionalUInt64{Value: uint64(1)})),
+	)
 }
 
 func (s *OptionalTypeTestSuite) TestConvertFromRawToOptionalType() {
 	stringReadFromDB := "test"
+	convertedFromDB := ConvertFromRawToOptionalType(
+		reflect.ValueOf(&stringReadFromDB),
+		reflect.TypeOf(&OptionalString{}))
 	s.Equal(
 		reflect.ValueOf(&OptionalString{Value: "test"}).Interface(),
-		ConvertFromRawToOptionalType(reflect.ValueOf(&stringReadFromDB)).Interface(),
+		convertedFromDB.Interface(),
 	)
+	//C* internally uses int and int64
+	int64ReadFromDB := int64(1)
+	convertedFromDB = ConvertFromRawToOptionalType(
+		reflect.ValueOf(&int64ReadFromDB),
+		reflect.TypeOf(&OptionalUInt64{}))
+	s.Equal(
+		reflect.ValueOf(&OptionalUInt64{Value: uint64(1)}).Interface(),
+		convertedFromDB.Interface())
 }

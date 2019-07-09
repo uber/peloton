@@ -55,6 +55,7 @@ type DriverTestSuite struct {
 	taskStore             *storemocks.MockTaskStore
 	jobConfigOps          *objectmocks.MockJobConfigOps
 	jobRuntimeOps         *objectmocks.MockJobRuntimeOps
+	mockedPodEventsOps    *objectmocks.MockPodEventsOps
 	jobFactory            *cachedmocks.MockJobFactory
 	goalStateDriver       *driver
 	cachedJob             *cachedmocks.MockJob
@@ -77,6 +78,7 @@ func (suite *DriverTestSuite) SetupTest() {
 	suite.jobConfigOps = objectmocks.NewMockJobConfigOps(suite.ctrl)
 	suite.jobRuntimeOps = objectmocks.NewMockJobRuntimeOps(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
+	suite.mockedPodEventsOps = objectmocks.NewMockPodEventsOps(suite.ctrl)
 	suite.goalStateDriver = &driver{
 		jobEngine:                     suite.jobGoalStateEngine,
 		taskEngine:                    suite.taskGoalStateEngine,
@@ -85,6 +87,7 @@ func (suite *DriverTestSuite) SetupTest() {
 		taskStore:                     suite.taskStore,
 		jobConfigOps:                  suite.jobConfigOps,
 		jobRuntimeOps:                 suite.jobRuntimeOps,
+		podEventsOps:                  suite.mockedPodEventsOps,
 		jobFactory:                    suite.jobFactory,
 		mtx:                           NewMetrics(tally.NoopScope),
 		jobScope:                      tally.NoopScope,

@@ -40,6 +40,7 @@ import (
 	logmanagermocks "github.com/uber/peloton/pkg/jobmgr/logmanager/mocks"
 	handlerutil "github.com/uber/peloton/pkg/jobmgr/util/handler"
 	storemocks "github.com/uber/peloton/pkg/storage/mocks"
+	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
@@ -66,6 +67,7 @@ type podHandlerTestSuite struct {
 	jobFactory         *cachedmocks.MockJobFactory
 	candidate          *leadermocks.MockCandidate
 	podStore           *storemocks.MockTaskStore
+	mockedPodEventsOps *objectmocks.MockPodEventsOps
 	goalStateDriver    *goalstatemocks.MockDriver
 	frameworkInfoStore *storemocks.MockFrameworkInfoStore
 	hostmgrClient      *hostmocks.MockInternalHostServiceYARPCClient
@@ -85,10 +87,12 @@ func (suite *podHandlerTestSuite) SetupTest() {
 	suite.hostmgrClient = hostmocks.NewMockInternalHostServiceYARPCClient(suite.ctrl)
 	suite.logmanager = logmanagermocks.NewMockLogManager(suite.ctrl)
 	suite.mesosAgentWorkDir = "test"
+	suite.mockedPodEventsOps = objectmocks.NewMockPodEventsOps(suite.ctrl)
 	suite.handler = &serviceHandler{
 		jobFactory:         suite.jobFactory,
 		candidate:          suite.candidate,
 		podStore:           suite.podStore,
+		podEventsOps:       suite.mockedPodEventsOps,
 		goalStateDriver:    suite.goalStateDriver,
 		frameworkInfoStore: suite.frameworkInfoStore,
 		hostMgrClient:      suite.hostmgrClient,
@@ -1257,8 +1261,8 @@ func (suite *podHandlerTestSuite) TestGetPodSuccess() {
 			nil,
 		),
 
-		suite.podStore.EXPECT().
-			GetPodEvents(
+		suite.mockedPodEventsOps.EXPECT().
+			GetAll(
 				gomock.Any(),
 				testJobID,
 				uint32(testInstanceID),
@@ -1273,8 +1277,8 @@ func (suite *podHandlerTestSuite) TestGetPodSuccess() {
 				configVersion,
 			),
 
-		suite.podStore.EXPECT().
-			GetPodEvents(
+		suite.mockedPodEventsOps.EXPECT().
+			GetAll(
 				gomock.Any(),
 				testJobID,
 				uint32(testInstanceID),
@@ -1440,8 +1444,8 @@ func (suite *podHandlerTestSuite) TestGetPodSuccessLimit() {
 			nil,
 		),
 
-		suite.podStore.EXPECT().
-			GetPodEvents(
+		suite.mockedPodEventsOps.EXPECT().
+			GetAll(
 				gomock.Any(),
 				testJobID,
 				uint32(testInstanceID),
@@ -1456,8 +1460,8 @@ func (suite *podHandlerTestSuite) TestGetPodSuccessLimit() {
 				configVersion,
 			),
 
-		suite.podStore.EXPECT().
-			GetPodEvents(
+		suite.mockedPodEventsOps.EXPECT().
+			GetAll(
 				gomock.Any(),
 				testJobID,
 				uint32(testInstanceID),
@@ -1573,8 +1577,8 @@ func (suite *podHandlerTestSuite) TestGetPodFailureToGetPreviousPodEvents() {
 			nil,
 		),
 
-		suite.podStore.EXPECT().
-			GetPodEvents(
+		suite.mockedPodEventsOps.EXPECT().
+			GetAll(
 				gomock.Any(),
 				testJobID,
 				uint32(testInstanceID),
@@ -1609,8 +1613,8 @@ func (suite *podHandlerTestSuite) TestGetPodEvents() {
 		},
 	}
 
-	suite.podStore.EXPECT().
-		GetPodEvents(gomock.Any(), testJobID, uint32(testInstanceID), "").
+	suite.mockedPodEventsOps.EXPECT().
+		GetAll(gomock.Any(), testJobID, uint32(testInstanceID), "").
 		Return(events, nil)
 	response, err := suite.handler.GetPodEvents(context.Background(), request)
 	suite.NoError(err)
@@ -1633,8 +1637,8 @@ func (suite *podHandlerTestSuite) TestGetPodEventsStoreError() {
 			Value: testPodName,
 		},
 	}
-	suite.podStore.EXPECT().
-		GetPodEvents(gomock.Any(), testJobID, uint32(testInstanceID), "").
+	suite.mockedPodEventsOps.EXPECT().
+		GetAll(gomock.Any(), testJobID, uint32(testInstanceID), "").
 		Return(nil, fmt.Errorf("fake GetPodEvents error"))
 	_, err := suite.handler.GetPodEvents(context.Background(), request)
 	suite.Error(err)
@@ -1676,8 +1680,8 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxSuccess() {
 	logPaths := []string{}
 
 	gomock.InOrder(
-		suite.podStore.EXPECT().
-			GetPodEvents(gomock.Any(), testJobID, uint32(testInstanceID), testPodID).
+		suite.mockedPodEventsOps.EXPECT().
+			GetAll(gomock.Any(), testJobID, uint32(testInstanceID), testPodID).
 			Return(events, nil),
 
 		suite.frameworkInfoStore.EXPECT().
@@ -1737,8 +1741,8 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxGetPodEventsFailure() {
 		},
 	}
 
-	suite.podStore.EXPECT().
-		GetPodEvents(gomock.Any(), testJobID, uint32(testInstanceID), "").
+	suite.mockedPodEventsOps.EXPECT().
+		GetAll(gomock.Any(), testJobID, uint32(testInstanceID), "").
 		Return(nil, yarpcerrors.NotFoundErrorf("test error"))
 	_, err := suite.handler.BrowsePodSandbox(context.Background(), request)
 	suite.Error(err)
@@ -1752,8 +1756,8 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxAbort() {
 		},
 	}
 
-	suite.podStore.EXPECT().
-		GetPodEvents(gomock.Any(), testJobID, uint32(testInstanceID), "").
+	suite.mockedPodEventsOps.EXPECT().
+		GetAll(gomock.Any(), testJobID, uint32(testInstanceID), "").
 		Return(nil, nil)
 	_, err := suite.handler.BrowsePodSandbox(context.Background(), request)
 	suite.Error(err)
@@ -1781,8 +1785,8 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxGetFrameworkIDFailure() {
 	}
 
 	gomock.InOrder(
-		suite.podStore.EXPECT().
-			GetPodEvents(gomock.Any(), testJobID, uint32(testInstanceID), "").
+		suite.mockedPodEventsOps.EXPECT().
+			GetAll(gomock.Any(), testJobID, uint32(testInstanceID), "").
 			Return(events, nil),
 
 		suite.frameworkInfoStore.EXPECT().
@@ -1795,8 +1799,8 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxGetFrameworkIDFailure() {
 
 	// Test error due to empty framework id
 	gomock.InOrder(
-		suite.podStore.EXPECT().
-			GetPodEvents(gomock.Any(), testJobID, uint32(testInstanceID), "").
+		suite.mockedPodEventsOps.EXPECT().
+			GetAll(gomock.Any(), testJobID, uint32(testInstanceID), "").
 			Return(events, nil),
 
 		suite.frameworkInfoStore.EXPECT().
@@ -1837,8 +1841,8 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxListSandboxFilesPathsFailu
 	}
 
 	gomock.InOrder(
-		suite.podStore.EXPECT().
-			GetPodEvents(gomock.Any(), testJobID, uint32(testInstanceID), testPodID).
+		suite.mockedPodEventsOps.EXPECT().
+			GetAll(gomock.Any(), testJobID, uint32(testInstanceID), testPodID).
 			Return(events, nil),
 
 		suite.frameworkInfoStore.EXPECT().
@@ -1903,8 +1907,8 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxGetMesosMasterHostPortFail
 	logPaths := []string{}
 
 	gomock.InOrder(
-		suite.podStore.EXPECT().
-			GetPodEvents(gomock.Any(), testJobID, uint32(testInstanceID), testPodID).
+		suite.mockedPodEventsOps.EXPECT().
+			GetAll(gomock.Any(), testJobID, uint32(testInstanceID), testPodID).
 			Return(events, nil),
 
 		suite.frameworkInfoStore.EXPECT().

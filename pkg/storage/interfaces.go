@@ -125,11 +125,6 @@ type TaskStore interface {
 	GetTaskByID(ctx context.Context, taskID string) (*task.TaskInfo, error)
 	// QueryTasks queries for all tasks in a job matching the QuerySpec
 	QueryTasks(ctx context.Context, id *peloton.JobID, spec *task.QuerySpec) ([]*task.TaskInfo, uint32, error)
-	// GetPodEvents returns pod events (state transition for a job instance).
-	// limit parameter manages number of pod events to return
-	// and optional runID parameter to fetch pod events only for that run if
-	// not provided or unparseable then return for all runs
-	GetPodEvents(ctx context.Context, jobID string, instanceID uint32, podID ...string) ([]*task.PodEvent, error)
 	// DeleteTaskRuntime deletes the task runtime for a given job instance
 	DeleteTaskRuntime(ctx context.Context, id *peloton.JobID, instanceID uint32) error
 	// DeletePodEvents deletes the pod events for provided JobID, InstanceID and RunID in the range [fromRunID-toRunID)

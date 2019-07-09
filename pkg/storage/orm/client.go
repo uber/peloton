@@ -132,8 +132,10 @@ func (c *client) Get(ctx context.Context, e base.Object) error {
 	return nil
 }
 
-// GetAll fetches a list of base objects for the given partition key
-// The base object provided must contain the value of its partition key
+// GetAll fetches a list of base objects for the given partition key and
+// clustering keys
+// The base object provided must contain the value of its partition key and
+// clustering keys
 func (c *client) GetAll(
 	ctx context.Context,
 	e base.Object,
@@ -145,8 +147,8 @@ func (c *client) GetAll(
 		return nil, err
 	}
 
-	// build a partition key row from storage object
-	keyRow := table.GetPartitionKeyRowFromObject(e)
+	// build a partition and clustering key row from storage object
+	keyRow := table.GetKeyRowFromObject(e)
 
 	rows, err := c.connector.GetAll(ctx, &table.Definition, keyRow)
 	if err != nil {
@@ -170,8 +172,8 @@ func (c *client) GetAllIter(
 		return nil, err
 	}
 
-	// build a partition key row from storage object
-	keyRow := table.GetPartitionKeyRowFromObject(e)
+	// build a partition and clustering key row from storage object
+	keyRow := table.GetKeyRowFromObject(e)
 
 	return c.connector.GetAllIter(ctx, &table.Definition, keyRow)
 }

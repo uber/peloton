@@ -677,6 +677,7 @@ func main() {
 		store,
 		store,
 		store,
+		ormStore,
 		jobFactory,
 		goalStateDriver,
 		candidate,

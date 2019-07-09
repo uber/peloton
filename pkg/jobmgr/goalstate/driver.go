@@ -140,6 +140,7 @@ func NewDriver(
 		taskStore:                     taskStore,
 		volumeStore:                   volumeStore,
 		updateStore:                   updateStore,
+		podEventsOps:                  ormobjects.NewPodEventsOps(ormStore),
 		jobConfigOps:                  ormobjects.NewJobConfigOps(ormStore),
 		jobIndexOps:                   ormobjects.NewJobIndexOps(ormStore),
 		jobRuntimeOps:                 ormobjects.NewJobRuntimeOps(ormStore),
@@ -200,6 +201,7 @@ type driver struct {
 	taskStore     storage.TaskStore
 	volumeStore   storage.PersistentVolumeStore
 	updateStore   storage.UpdateStore
+	podEventsOps  ormobjects.PodEventsOps
 	jobConfigOps  ormobjects.JobConfigOps  // DB ops for job_config table
 	jobRuntimeOps ormobjects.JobRuntimeOps // DB ops for job_runtime table
 	jobIndexOps   ormobjects.JobIndexOps   // DB ops for job_index table

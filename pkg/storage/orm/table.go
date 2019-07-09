@@ -204,7 +204,7 @@ func (t *Table) SetObjectFromRow(e base.Object, row []base.Column) {
 				// Special case for custom optional type:
 				// Build a new value representing an optional type
 				// built from the raw type fetched from DB
-				val.Set(base.ConvertFromRawToOptionalType(fv))
+				val.Set(base.ConvertFromRawToOptionalType(fv, val.Type()))
 			} else {
 				val.Set(reflect.Indirect(fv).Convert(val.Type()))
 			}

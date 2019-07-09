@@ -25,6 +25,13 @@ type OptionalString struct {
 	Value string
 }
 
+// OptionalUInt64 type can be used for primary key of type uint64
+// to be evaluated as either nil or some uint64 value
+// different than empty uint64
+type OptionalUInt64 struct {
+	Value uint64
+}
+
 // NewOptionalString returns either new *OptionalString or nil
 func NewOptionalString(v interface{}) *OptionalString {
 	s, ok := v.(string)
@@ -39,12 +46,28 @@ func (s *OptionalString) String() string {
 	return s.Value
 }
 
+// NewOptionalUInt64 returns either new *OptionalUInt64 or nil
+func NewOptionalUInt64(v interface{}) *OptionalUInt64 {
+	s, ok := v.(uint64)
+	if ok {
+		return &OptionalUInt64{Value: s}
+	}
+	return nil
+}
+
+// UInt64 for *OptionalUInt64 type
+func (s *OptionalUInt64) UInt64() uint64 {
+	return s.Value
+}
+
 // IsOfTypeOptional returns whether a value is of type custom optional
-// Currently only support OptionalString type,
+// Currently only support OptionalString, OptionalUInt64 type,
 // but can be extended for additional optional types
 func IsOfTypeOptional(value reflect.Value) bool {
 	switch value.Type() {
 	case reflect.TypeOf(&OptionalString{}):
+		return true
+	case reflect.TypeOf(&OptionalUInt64{}):
 		return true
 	default:
 		return false
@@ -54,17 +77,37 @@ func IsOfTypeOptional(value reflect.Value) bool {
 // ConvertFromOptionalToRawType returns an interface of raw type
 // understandable by the DB layer, extracted from a custom
 // optional type
-// Currently only support OptionalString type,
+// Currently only support OptionalString, OptionalUInt64 type,
 // but can be extended for additional optional types
 func ConvertFromOptionalToRawType(value reflect.Value) interface{} {
-	return value.Interface().(*OptionalString).String()
+	q := value.Type()
+	switch q {
+	case reflect.TypeOf(&OptionalString{}):
+		return value.Interface().(*OptionalString).String()
+	case reflect.TypeOf(&OptionalUInt64{}):
+		return value.Interface().(*OptionalUInt64).UInt64()
+	default:
+		return value
+	}
 }
 
 // ConvertFromRawToOptionalType returns a value representing an
 // optional type built from the raw type fetched from DB
-func ConvertFromRawToOptionalType(value reflect.Value) reflect.Value {
-	return reflect.ValueOf(
-		&OptionalString{
-			Value: reflect.Indirect(value).String(),
-		})
+func ConvertFromRawToOptionalType(value reflect.Value,
+	typ reflect.Type) reflect.Value {
+	switch typ {
+	case reflect.TypeOf(&OptionalString{}):
+		return reflect.ValueOf(
+			&OptionalString{
+				Value: reflect.Indirect(value).String(),
+			})
+	case reflect.TypeOf(&OptionalUInt64{}):
+		return reflect.ValueOf(
+			&OptionalUInt64{
+				Value: uint64(reflect.Indirect(value).Int()),
+			})
+	default:
+		return value
+	}
+
 }

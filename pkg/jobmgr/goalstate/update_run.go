@@ -850,7 +850,7 @@ func updateWithRecentRunID(
 	instanceID uint32,
 	runtime *pbtask.RuntimeInfo,
 	goalStateDriver *driver) error {
-	podEvents, err := goalStateDriver.taskStore.GetPodEvents(
+	podEvents, err := goalStateDriver.podEventsOps.GetAll(
 		ctx,
 		jobID.GetValue(),
 		instanceID)

@@ -168,6 +168,14 @@ func buildResultRow(e *base.Definition, columns []string) []interface{} {
 				results[i] = &value
 				break
 			}
+			// Special case for custom optional int type:
+			// int64 type used in Cassandra
+			// converted to/from custom type in ORM layer
+			if typ == reflect.TypeOf(&base.OptionalUInt64{}) {
+				var value *int64
+				results[i] = &value
+				break
+			}
 			// for unrecognized pointer types, fall back to default logging
 			fallthrough
 		default:

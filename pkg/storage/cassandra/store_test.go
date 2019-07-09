@@ -3036,7 +3036,7 @@ func (suite *CassandraStoreTestSuite) TestPodEvents() {
 
 func (suite *CassandraStoreTestSuite) TestGetPodEvent() {
 	dummyJobID := &peloton.JobID{Value: "dummy id"}
-	_, err := store.GetPodEvents(
+	_, err := store.getPodEvents(
 		context.Background(),
 		dummyJobID.GetValue(),
 		0)
@@ -3069,7 +3069,7 @@ func (suite *CassandraStoreTestSuite) TestGetPodEvent() {
 	}
 
 	store.addPodEvent(context.Background(), jobID, 0, runtime)
-	podEvents, err := store.GetPodEvents(
+	podEvents, err := store.getPodEvents(
 		context.Background(),
 		jobID.GetValue(),
 		0,
@@ -3103,14 +3103,14 @@ func (suite *CassandraStoreTestSuite) TestGetPodEvent() {
 	}
 
 	store.addPodEvent(context.Background(), jobID, 0, runtime)
-	podEvents, err = store.GetPodEvents(
+	podEvents, err = store.getPodEvents(
 		context.Background(),
 		jobID.GetValue(),
 		0)
 	suite.Equal(len(podEvents), 1)
 	suite.NoError(err)
 
-	podEvents, err = store.GetPodEvents(
+	podEvents, err = store.getPodEvents(
 		context.Background(),
 		jobID.GetValue(),
 		0,
@@ -3121,7 +3121,7 @@ func (suite *CassandraStoreTestSuite) TestGetPodEvent() {
 	err = store.DeletePodEvents(context.Background(), jobID.GetValue(), 0, 2, 3)
 	suite.NoError(err)
 
-	podEvents, err = store.GetPodEvents(
+	podEvents, err = store.getPodEvents(
 		context.Background(),
 		jobID.GetValue(),
 		0)
