@@ -82,3 +82,8 @@ class TestMesosAgentFailure(object):
         assert 0 != failure_tester.fw.stop(failure_tester.mesos_agent)
 
         update.wait_for_state(goal_state="SUCCEEDED")
+
+        # Added: restart the agent
+        failure_tester.fw.start(failure_tester.mesos_agent)
+
+
