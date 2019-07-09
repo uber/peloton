@@ -48,6 +48,7 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/p2k/hostmgrsvc"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/plugins"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/plugins/k8s"
+	"github.com/uber/peloton/pkg/hostmgr/p2k/podeventmanager"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 	"github.com/uber/peloton/pkg/hostmgr/queue"
 	"github.com/uber/peloton/pkg/hostmgr/reconcile"
@@ -609,6 +610,13 @@ func main() {
 		// Create host cache instance.
 		hc := hostcache.New(hostEventCh, podEventCh, plugin)
 
+		pem := podeventmanager.New(
+			dispatcher,
+			podEventCh,
+			plugin,
+			cfg.HostManager.TaskUpdateBufferSize,
+			rootScope)
+
 		// This should start the event stream for pods and hosts
 		// TODO: do this after leader election (T3224499).
 		hc.Start()
@@ -625,6 +633,7 @@ func main() {
 			rootScope,
 			plugin,
 			hc,
+			pem,
 		)
 	}
 	// Create new hostmgr internal service handler.

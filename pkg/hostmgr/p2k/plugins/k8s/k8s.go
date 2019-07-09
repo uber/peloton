@@ -15,6 +15,7 @@
 package k8s
 
 import (
+	"context"
 	"fmt"
 
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
@@ -158,6 +159,12 @@ func (k *K8SManager) ReconcileHosts() ([]*scalar.HostInfo, error) {
 
 	log.Info("reconcile hosts")
 	return hostInfos, nil
+}
+
+// AckPodEvent is relevant to Mesos. For K8s for now, this is a noop.
+// We could use some smarts here if we decide to write the resource version
+// to DB after the event has been acknowledged by both JM and RM
+func (k *K8SManager) AckPodEvent(ctx context.Context, event *scalar.PodEvent) {
 }
 
 // K8s Reconcile logic.

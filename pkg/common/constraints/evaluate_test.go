@@ -49,7 +49,7 @@ func (suite *EvaluatorTestSuite) TestKindEvaluator() {
 	// Define reusable test cases.
 	empty := LabelValues(make(map[string]map[string]uint32))
 	hostLabels1 := LabelValues(map[string]map[string]uint32{
-		HostNameKey: {
+		common.HostNameKey: {
 			_testHost1: 1,
 		},
 		_rackLabel: {
@@ -58,7 +58,7 @@ func (suite *EvaluatorTestSuite) TestKindEvaluator() {
 	})
 
 	hostLabels2 := LabelValues(map[string]map[string]uint32{
-		HostNameKey: {
+		common.HostNameKey: {
 			_testHost2: 1,
 		},
 		_rackLabel: {
@@ -78,7 +78,7 @@ func (suite *EvaluatorTestSuite) TestKindEvaluator() {
 		},
 	}
 
-	tmp1, tmp2 := HostNameKey, _testHost1
+	tmp1, tmp2 := common.HostNameKey, _testHost1
 	hostLabel := peloton.Label{
 		Key:   tmp1,
 		Value: tmp2,

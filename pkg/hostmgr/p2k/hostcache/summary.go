@@ -24,8 +24,9 @@ import (
 
 	pbhost "github.com/uber/peloton/.gen/peloton/api/v1alpha/host"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
-
+	"github.com/uber/peloton/pkg/common/v1alpha/constraints"
 	p2kscalar "github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 
@@ -48,8 +49,8 @@ const (
 	// ReservedHost represents a host that is reserved for tasks.
 	ReservedHost
 
-	// HeldHost represents a host is held for tasks, which is used for in-place
-	// update.
+	// HeldHost represents a host hat is held for tasks, which is used for
+	// in-place update.
 	HeldHost
 )
 
@@ -58,6 +59,7 @@ const (
 	// HeldHost status back to ReadyHost status.
 	// TODO: Make this configurable (T3312219).
 	hostHeldStatusTimeout = 3 * time.Minute
+
 	// emptyLeaseID is used when the host is in READY state.
 	emptyLeaseID = ""
 )
@@ -497,18 +499,59 @@ func (a *hostSummary) matchHostFilter(
 	available := a.getAvailable()
 
 	if min != nil {
-		// get min required resources
+		// Get min required resources.
 		minRes := scalar.FromResourceSpec(min)
 		if !available.Contains(minRes) {
 			return hostmgr.HostFilterResult_HOST_FILTER_INSUFFICIENT_RESOURCES
 		}
 	}
 
-	// TODO: Match ports resources
+	// TODO: Match ports resources.
 
-	// TODO: Match non-exclusive constraint
+	sc := c.GetSchedulingConstraint()
 
-	// TODO: Match scheduling constraint
+	// If constraints don't specify an exclusive host, then reject
+	// hosts that are designated as exclusive.
+	if constraints.IsNonExclusiveConstraint(sc) &&
+		constraints.HasExclusiveLabel(a.labels) {
+		log.WithField("hostname", a.hostname).Debug("Skipped exclusive host")
+		return hostmgr.HostFilterResult_HOST_FILTER_MISMATCH_CONSTRAINTS
+	}
+
+	if sc == nil {
+		// No scheduling constraint, we have a match.
+		return hostmgr.HostFilterResult_HOST_FILTER_MATCH
+	}
+
+	// Only evaluator based on host constraints is in use.
+	evaluator := constraints.NewEvaluator(
+		pbpod.LabelConstraint_LABEL_CONSTRAINT_KIND_HOST)
+
+	lv := constraints.GetHostLabelValues(a.hostname, a.labels)
+	result, err := evaluator.Evaluate(sc, lv)
+	if err != nil {
+		log.WithError(err).
+			Error("Error when evaluating input constraint")
+		return hostmgr.HostFilterResult_HOST_FILTER_MISMATCH_CONSTRAINTS
+	}
+
+	switch result {
+	case constraints.EvaluateResultMatch:
+		fallthrough
+	case constraints.EvaluateResultNotApplicable:
+		log.WithFields(log.Fields{
+			"values":     lv,
+			"hostname":   a.hostname,
+			"constraint": sc,
+		}).Debug("Attributes match constraint")
+	default:
+		log.WithFields(log.Fields{
+			"values":     lv,
+			"hostname":   a.hostname,
+			"constraint": sc,
+		}).Debug("Attributes do not match constraint")
+		return hostmgr.HostFilterResult_HOST_FILTER_MISMATCH_CONSTRAINTS
+	}
 
 	return hostmgr.HostFilterResult_HOST_FILTER_MATCH
 }

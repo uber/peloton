@@ -23,6 +23,7 @@ import (
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/hostcache"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/plugins"
+	"github.com/uber/peloton/pkg/hostmgr/p2k/podeventmanager"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 
 	log "github.com/sirupsen/logrus"
@@ -31,13 +32,16 @@ import (
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
-// ServiceHandler implements private.hostmgr.v1alpha.svc.HostManagerService
+// ServiceHandler implements private.hostmgr.v1alpha.svc.HostManagerService.
 type ServiceHandler struct {
 	// Scheduler plugin.
 	plugin plugins.Plugin
 
 	// Host cache.
 	hostCache hostcache.HostCache
+
+	// podEventManager exports pod EventStream
+	podEventManager podeventmanager.PodEventManager
 }
 
 // NewServiceHandler creates a new ServiceHandler.
@@ -46,17 +50,19 @@ func NewServiceHandler(
 	parent tally.Scope,
 	plugin plugins.Plugin,
 	hostCache hostcache.HostCache,
+	pem podeventmanager.PodEventManager,
 ) *ServiceHandler {
 
 	handler := &ServiceHandler{
-		plugin:    plugin,
-		hostCache: hostCache,
+		plugin:          plugin,
+		hostCache:       hostCache,
+		podEventManager: pem,
 	}
 	d.Register(svc.BuildHostManagerServiceYARPCProcedures(handler))
 	return handler
 }
 
-// AcquireHosts implements HostManagerService.AcquireHosts
+// AcquireHosts implements HostManagerService.AcquireHosts.
 func (h *ServiceHandler) AcquireHosts(
 	ctx context.Context,
 	req *svc.AcquireHostsRequest,
@@ -87,7 +93,7 @@ func (h *ServiceHandler) AcquireHosts(
 	}, nil
 }
 
-// LaunchPods implements HostManagerService.LaunchPods
+// LaunchPods implements HostManagerService.LaunchPods.
 func (h *ServiceHandler) LaunchPods(
 	ctx context.Context,
 	req *svc.LaunchPodsRequest,
@@ -111,13 +117,13 @@ func (h *ServiceHandler) LaunchPods(
 		return nil, err
 	}
 
-	// TODO: handle held pods for in-place updates
+	// TODO: handle held pods for in-place updates.
 
 	// Convert LaunchablePods to a map of podID to scalar resources before
-	// completing the lease
+	// completing the lease.
 	podToResMap := make(map[string]scalar.Resources)
 	for _, pod := range req.GetPods() {
-		// Should we check for repeat podID here?
+		// TODO: Should we check for repeat podID here?
 		podToResMap[pod.GetPodId().GetValue()] = scalar.FromPodSpec(
 			pod.GetSpec(),
 		)
@@ -137,7 +143,7 @@ func (h *ServiceHandler) LaunchPods(
 		"pods":     podToResMap,
 	}).Debug("LaunchPods success")
 
-	// Resource accounting done. Now launch pod
+	// Resource accounting done. Now launch pod.
 	for _, pod := range req.GetPods() {
 		// Should we check for repeat podID here?
 		if err := h.plugin.LaunchPod(
@@ -160,7 +166,7 @@ func (h *ServiceHandler) LaunchPods(
 	return &svc.LaunchPodsResponse{}, nil
 }
 
-// KillPods implements HostManagerService.KillPods
+// KillPods implements HostManagerService.KillPods.
 func (h *ServiceHandler) KillPods(
 	ctx context.Context,
 	req *svc.KillPodsRequest,
@@ -182,7 +188,7 @@ func (h *ServiceHandler) KillPods(
 	return &svc.KillPodsResponse{}, nil
 }
 
-// ClusterCapacity implements HostManagerService.ClusterCapacity
+// ClusterCapacity implements HostManagerService.ClusterCapacity.
 func (h *ServiceHandler) ClusterCapacity(
 	ctx context.Context,
 	req *svc.ClusterCapacityRequest,
@@ -202,12 +208,14 @@ func (h *ServiceHandler) GetEvents(
 	ctx context.Context,
 	req *svc.GetEventsRequest,
 ) (resp *svc.GetEventsResponse, err error) {
-	// TODO: Implement
-
-	return nil, nil
+	events, err := h.podEventManager.GetEvents()
+	if err != nil {
+		return nil, err
+	}
+	return &svc.GetEventsResponse{Events: events}, nil
 }
 
-// TerminateLeases implements HostManagerService.TerminateLeases
+// TerminateLeases implements HostManagerService.TerminateLeases.
 func (h *ServiceHandler) TerminateLeases(
 	ctx context.Context,
 	req *svc.TerminateLeasesRequest,

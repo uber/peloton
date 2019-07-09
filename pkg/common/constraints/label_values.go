@@ -20,12 +20,10 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/pkg/common"
 )
 
 const (
-	// HostNameKey is the special label key for hostname.
-	HostNameKey = "hostname"
-
 	_precision = 6
 	_bitsize   = 64
 )
@@ -44,7 +42,7 @@ func GetHostLabelValues(
 	attributes []*mesos.Attribute) LabelValues {
 
 	result := make(map[string]map[string]uint32)
-	result[HostNameKey] = map[string]uint32{hostname: 1}
+	result[common.HostNameKey] = map[string]uint32{hostname: 1}
 OUTER:
 	for _, attr := range attributes {
 		key := attr.GetName()

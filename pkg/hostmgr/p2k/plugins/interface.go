@@ -15,6 +15,8 @@
 package plugins
 
 import (
+	"context"
+
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 
 	"github.com/uber/peloton/pkg/hostmgr/p2k/plugins/k8s"
@@ -35,6 +37,9 @@ type Plugin interface {
 
 	// KillPod kills a pod on a host.
 	KillPod(podID string) error
+
+	// AckPodEvent is only implemented by mesos plugin. For K8s this is a noop.
+	AckPodEvent(ctx context.Context, event *scalar.PodEvent)
 
 	// ReconcileHosts will return the current state of hosts in the cluster.
 	ReconcileHosts() ([]*scalar.HostInfo, error)

@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/pkg/common"
 )
 
 type LabelValuesTestSuite struct {
@@ -96,7 +97,7 @@ func (suite *LabelValuesTestSuite) TestGetHostLabelValues() {
 	res := GetHostLabelValues(hostname, attributes)
 	// hostname, text, set and scalar.
 	suite.Equal(4, len(res), "result: ", res)
-	suite.Equal(map[string]uint32{hostname: 1}, res[HostNameKey])
+	suite.Equal(map[string]uint32{hostname: 1}, res[common.HostNameKey])
 	suite.Equal(
 		map[string]uint32{
 			"set_value1": 1,
