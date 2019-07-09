@@ -24,6 +24,7 @@ MESOS_AGENTS = [
 JOB_MGRS = ["peloton-jobmgr0"]
 RES_MGRS = ["peloton-resmgr0"]
 HOST_MGRS = ["peloton-hostmgr0"]
+AURORA_BRIDGE = ["peloton-aurorabridge0"]
 PLACEMENT_ENGINES = ["peloton-placement0", "peloton-placement1"]
 
 # job_query related constants.

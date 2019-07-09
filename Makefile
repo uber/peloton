@@ -182,6 +182,7 @@ endef
 
 mockgens: build-mockgen gens $(GOMOCK)
 	$(call local_mockgen,pkg/aurorabridge,RespoolLoader;EventPublisher)
+	$(call local_mockgen,pkg/aurorabridge/cache,JobIDCache)
 	$(call local_mockgen,pkg/aurorabridge/common,Random)
 	$(call local_mockgen,pkg/auth, SecurityManager;SecurityClient;User)
 	$(call local_mockgen,pkg/common/concurrency,Mapper)

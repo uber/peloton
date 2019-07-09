@@ -276,6 +276,12 @@ def hostmgr():
     return Container(util.HOST_MGRS)
 
 
+@pytest.fixture()
+def aurorabridge():
+    # TODO: We need to pick up the count dynamically.
+    return Container(util.AURORA_BRIDGE)
+
+
 @pytest.fixture
 def long_running_job(request):
     job = Job(job_file="long_running_job.yaml")

@@ -26,6 +26,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/jobmgrsvc"
 	"github.com/uber/peloton/.gen/thrift/aurora/api/auroraschedulermanagerserver"
 	"github.com/uber/peloton/.gen/thrift/aurora/api/readonlyschedulerserver"
+	"github.com/uber/peloton/pkg/aurorabridge/cache"
 	auth_impl "github.com/uber/peloton/pkg/auth/impl"
 
 	"github.com/uber/peloton/pkg/aurorabridge"
@@ -327,6 +328,7 @@ func main() {
 		podClient,
 		respoolLoader,
 		bridgecommon.RandomImpl{},
+		cache.NewJobIDCache(),
 	)
 	if err != nil {
 		log.Fatalf("Unable to create service handler: %v", err)

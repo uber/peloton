@@ -31,6 +31,7 @@ import (
 	pbquery "github.com/uber/peloton/.gen/peloton/api/v1alpha/query"
 	"github.com/uber/peloton/.gen/peloton/private/jobmgrsvc"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
+	"github.com/uber/peloton/pkg/aurorabridge/cache"
 	"github.com/uber/peloton/pkg/common/util"
 
 	"github.com/uber/peloton/pkg/aurorabridge/atop"
@@ -66,6 +67,7 @@ type ServiceHandler struct {
 	podClient     podsvc.PodServiceYARPCClient
 	respoolLoader RespoolLoader
 	random        common.Random
+	jobIdCache    cache.JobIDCache
 }
 
 // NewServiceHandler creates a new ServiceHandler.
@@ -77,6 +79,7 @@ func NewServiceHandler(
 	podClient podsvc.PodServiceYARPCClient,
 	respoolLoader RespoolLoader,
 	random common.Random,
+	jobIdCache cache.JobIDCache,
 ) (*ServiceHandler, error) {
 
 	config.normalize()
@@ -92,6 +95,7 @@ func NewServiceHandler(
 		podClient:     podClient,
 		respoolLoader: respoolLoader,
 		random:        random,
+		jobIdCache:    jobIdCache,
 	}, nil
 }
 
@@ -142,15 +146,17 @@ func (h *ServiceHandler) getJobSummary(
 	ctx context.Context,
 	role *string,
 ) (*api.Result, *auroraError) {
+	var jobIDs []*peloton.JobID
+	var err error
 
-	query := &api.TaskQuery{}
 	if role != nil && *role != "" {
-		query.Role = role
+		jobIDs, err = h.getJobIDsFromRoleCache(ctx, *role)
+	} else {
+		jobIDs, err = h.queryJobIDs(ctx, "", "", "")
 	}
 
-	jobIDs, err := h.getJobIDsFromTaskQuery(ctx, query)
 	if err != nil {
-		return nil, auroraErrorf("get job ids from task query: %s", err)
+		return nil, auroraErrorf("get job ids from role: %s", err)
 	}
 
 	var inputs []interface{}
@@ -649,15 +655,17 @@ func (h *ServiceHandler) getJobs(
 	ctx context.Context,
 	ownerRole *string,
 ) (*api.Result, *auroraError) {
+	var jobIDs []*peloton.JobID
+	var err error
 
-	query := &api.TaskQuery{}
 	if ownerRole != nil && *ownerRole != "" {
-		query.Role = ownerRole
+		jobIDs, err = h.getJobIDsFromRoleCache(ctx, *ownerRole)
+	} else {
+		jobIDs, err = h.queryJobIDs(ctx, "", "", "")
 	}
 
-	jobIDs, err := h.getJobIDsFromTaskQuery(ctx, query)
 	if err != nil {
-		return nil, auroraErrorf("get job ids from task query: %s", err)
+		return nil, auroraErrorf("get job ids from role: %s", err)
 	}
 
 	var inputs []interface{}
@@ -2045,6 +2053,30 @@ func (h *ServiceHandler) getJobIDsFromTaskQuery(
 		return nil, errors.Wrapf(err, "get job ids")
 	}
 	return ids, nil
+}
+
+// getJobIDsFromRoleCache queries peloton job ids based on aurora JobKey role.
+// It will first look at the internal job id cache first,
+func (h *ServiceHandler) getJobIDsFromRoleCache(
+	ctx context.Context,
+	role string,
+) ([]*peloton.JobID, error) {
+	if ids := h.jobIdCache.GetJobIDs(role); len(ids) > 0 {
+		return ids, nil
+	}
+
+	jobCache, err := h.queryJobCache(ctx, role, "", "")
+	if err != nil {
+		return nil, err
+	}
+
+	h.jobIdCache.PopulateFromJobCache(role, jobCache)
+
+	jobIDs := make([]*peloton.JobID, 0, len(jobCache))
+	for _, cache := range jobCache {
+		jobIDs = append(jobIDs, cache.GetJobId())
+	}
+	return jobIDs, nil
 }
 
 // matchJobUpdateID matches a jobID workflow against updateID. Returns the entity

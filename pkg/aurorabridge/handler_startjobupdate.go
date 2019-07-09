@@ -92,6 +92,10 @@ func (h *ServiceHandler) startJobUpdate(
 			return nil, auroraErrorf("get job id: %s", err)
 		}
 
+		// Invalidate job_id cache for the particular role after createJob()
+		// returns
+		defer h.jobIdCache.Invalidate(jobKey.GetRole())
+
 		// Job does not exist, create the job.
 		if aerr := h.createJob(ctx, createReq); aerr != nil {
 			return nil, aerr
@@ -106,6 +110,10 @@ func (h *ServiceHandler) startJobUpdate(
 		if !yarpcerrors.IsNotFound(err) {
 			return nil, auroraErrorf("get current job version: %s", err)
 		}
+
+		// Invalidate job_id cache for the particular role after createJob()
+		// returns
+		defer h.jobIdCache.Invalidate(jobKey.GetRole())
 
 		// Job was present in job_name_to_id table, but did not exist,
 		// create the job.

@@ -3,6 +3,7 @@ import time
 
 from tests.integration.aurorabridge_test.client import api
 from tests.integration.aurorabridge_test.util import (
+    assert_keys_equal,
     get_job_update_request,
     get_update_status,
     start_job_update,
@@ -256,4 +257,51 @@ def test__override_rolling_forward_update_with_diff(client):
     assert (
         res.detailsList[1].updateEvents[-1].status
         == api.JobUpdateStatus.ABORTED
+    )
+
+
+def test__start_job_update_with_get_jobs(client, aurorabridge):
+    """
+    Check GetJobs returns the correct results when queried by role, and after
+    a new job is created. This is used to verify that StartJobUpdate would
+    correctly invalidate role to job id cache.
+    Meanwhile, the test will restart aurorabridge container at the end, and
+    verify the cache will be populated correctly as well.
+    """
+
+    labrat0 = start_job_update(
+        client,
+        "test_dc_labrat0.yaml",
+        "start job update test/dc/labrat0",
+    )
+
+    res = client.get_jobs(labrat0.role)
+    assert len(res.configs) == 1
+    assert list(res.configs)[0].taskConfig.job == labrat0
+
+    # Verify that start a new job invalidates the job role to id cache,
+    # and returns the correct result.
+    labrat1 = start_job_update(
+        client,
+        "test_dc_labrat1.yaml",
+        "start job update test/dc/labrat1",
+    )
+
+    res = client.get_jobs(labrat1.role)
+    assert len(res.configs) == 2
+    assert_keys_equal(
+        [c.taskConfig.job for c in res.configs],
+        [labrat0, labrat1],
+    )
+
+    # Verify that after aurorabridge container restart, the cache will still
+    # be populated correctly and return the correct result.
+    aurorabridge.restart()
+    time.sleep(10)
+
+    res = client.get_jobs(labrat1.role)
+    assert len(res.configs) == 2
+    assert_keys_equal(
+        [c.taskConfig.job for c in res.configs],
+        [labrat0, labrat1],
     )
