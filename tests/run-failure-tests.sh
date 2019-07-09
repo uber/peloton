@@ -85,7 +85,7 @@ if [[ ! -d "$ENV" ]]; then
   virtualenv $ENV
   . $ENV/bin/activate
   pip install --upgrade pip
-  pip install -r tests/integration/requirements.txt
+  pip install -r requirements.txt
   pip install -r tools/vcluster/requirements.txt
   deactivate
 fi
