@@ -149,11 +149,8 @@ type TaskMetrics struct {
 	TaskGetFail  tally.Counter
 	TaskNotFound tally.Counter
 
-	TaskGetConfig tally.Counter
-	// This metric is to indicate how many task gets are performed using
-	// legacy task_config table
-	TaskGetConfigLegacy tally.Counter
-	TaskGetConfigFail   tally.Counter
+	TaskGetConfig     tally.Counter
+	TaskGetConfigFail tally.Counter
 
 	TaskGetConfigs     tally.Counter
 	TaskGetConfigsFail tally.Counter
@@ -459,7 +456,6 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		TaskGet:              taskSuccessScope.Counter("get"),
 		TaskGetFail:          taskFailScope.Counter("get"),
 		TaskGetConfig:        taskSuccessScope.Counter("get_config"),
-		TaskGetConfigLegacy:  taskSuccessScope.Counter("get_config_legacy"),
 		TaskGetConfigFail:    taskFailScope.Counter("get_config"),
 		TaskGetConfigs:       taskSuccessScope.Counter("get_configs"),
 		TaskGetConfigsFail:   taskFailScope.Counter("get_configs"),
