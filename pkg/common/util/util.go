@@ -32,8 +32,10 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	pbhostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
 
 	"github.com/uber/peloton/pkg/common"
 )
@@ -375,6 +377,20 @@ func CreatePelotonTaskID(
 	instanceID uint32,
 ) string {
 	return fmt.Sprintf("%s-%d", jobID, instanceID)
+}
+
+// CreatePodIDFromMesosTaskID creates a peloton pod ID from mesos taskID.
+func CreatePodIDFromMesosTaskID(t *mesos.TaskID) *v1alphapeloton.PodID {
+	return &v1alphapeloton.PodID{
+		Value: t.GetValue(),
+	}
+}
+
+// CreateLeaseIDFromHostOfferID creates a LeaseId from host offer ID.
+func CreateLeaseIDFromHostOfferID(id *peloton.HostOfferID) *pbhostmgr.LeaseID {
+	return &pbhostmgr.LeaseID{
+		Value: id.GetValue(),
+	}
 }
 
 // ParseRunID parse the runID from mesosTaskID

@@ -47,7 +47,7 @@ func (s *TaskConfigV2ObjectTestSuite) TestCreateGetPodSpec() {
 	var instance0 int64 = 0
 	var instance1 int64 = 1
 
-	db := NewTaskConfigV2OpsOps(testStore)
+	db := NewTaskConfigV2Ops(testStore)
 	ctx := context.Background()
 
 	taskConfig := &pbtask.TaskConfig{

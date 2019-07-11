@@ -27,7 +27,10 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
+	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	pbhostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	aurora "github.com/uber/peloton/.gen/thrift/aurora/api"
@@ -61,6 +64,8 @@ type LaunchableTask struct {
 	Config *task.TaskConfig
 	// ConfigAddOn is the task config add on
 	ConfigAddOn *models.ConfigAddOn
+	// Spec is the pod spec for the pod to be launched
+	Spec *pbpod.PodSpec
 }
 
 // LaunchableTaskInfo contains the info of a task to be launched
@@ -68,6 +73,8 @@ type LaunchableTaskInfo struct {
 	*task.TaskInfo
 	// ConfigAddOn is the task config add on
 	ConfigAddOn *models.ConfigAddOn
+	// Spec is the pod spec for the pod to be launched
+	Spec *pbpod.PodSpec
 }
 
 // Assignment information used to generate "AssignedTask"
@@ -92,6 +99,12 @@ type Launcher interface {
 		ctx context.Context,
 		tasks []*hostsvc.LaunchableTask,
 		placement *resmgr.Placement) error
+	// Launch tasks on host manager using either mesos or k8s.
+	Launch(
+		ctx context.Context,
+		tasks map[string]*LaunchableTaskInfo,
+		placement *resmgr.Placement,
+	) (map[string]*LaunchableTaskInfo, error)
 	// LaunchStatefulTasks launches stateful task with reserved resource to
 	// hostmgr directly.
 	LaunchStatefulTasks(
@@ -128,13 +141,16 @@ type Launcher interface {
 // launcher implements the Launcher interface
 type launcher struct {
 	sync.Mutex
-	hostMgrClient hostsvc.InternalHostServiceYARPCClient
-	jobFactory    cached.JobFactory
-	taskStore     storage.TaskStore
-	volumeStore   storage.PersistentVolumeStore
-	secretInfoOps ormobjects.SecretInfoOps
-	metrics       *Metrics
-	retryPolicy   backoff.RetryPolicy
+	hostMgrClient        hostsvc.InternalHostServiceYARPCClient
+	hostMgrV1AlphaClient svc.HostManagerServiceYARPCClient
+	jobFactory           cached.JobFactory
+	taskStore            storage.TaskStore
+	taskConfigV2Ops      ormobjects.TaskConfigV2Ops
+	volumeStore          storage.PersistentVolumeStore
+	secretInfoOps        ormobjects.SecretInfoOps
+	metrics              *Metrics
+	retryPolicy          backoff.RetryPolicy
+	useK8S               bool
 }
 
 const (
@@ -162,6 +178,7 @@ func InitTaskLauncher(
 	volumeStore storage.PersistentVolumeStore,
 	ormStore *ormobjects.Store,
 	parent tally.Scope,
+	useK8S bool,
 ) {
 	onceInitTaskLauncher.Do(func() {
 		if taskLauncher != nil {
@@ -170,14 +187,19 @@ func InitTaskLauncher(
 		}
 
 		taskLauncher = &launcher{
-			hostMgrClient: hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(hostMgrClientName)),
-			jobFactory:    jobFactory,
-			taskStore:     taskStore,
-			volumeStore:   volumeStore,
-			secretInfoOps: ormobjects.NewSecretInfoOps(ormStore),
-			metrics:       NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
+			hostMgrClient: hostsvc.NewInternalHostServiceYARPCClient(
+				d.ClientConfig(hostMgrClientName)),
+			hostMgrV1AlphaClient: svc.NewHostManagerServiceYARPCClient(
+				d.ClientConfig(hostMgrClientName)),
+			jobFactory:      jobFactory,
+			taskStore:       taskStore,
+			taskConfigV2Ops: ormobjects.NewTaskConfigV2Ops(ormStore),
+			volumeStore:     volumeStore,
+			secretInfoOps:   ormobjects.NewSecretInfoOps(ormStore),
+			metrics:         NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
 			// TODO: make launch retry policy config.
 			retryPolicy: backoff.NewRetryPolicy(3, 15*time.Second),
+			useK8S:      useK8S,
 		}
 	})
 }
@@ -190,7 +212,65 @@ func GetLauncher() Launcher {
 	return taskLauncher
 }
 
-// ProcessPlacements launches tasks to host manager
+// Launch tasks on host manager using either mesos or k8s.
+func (l *launcher) Launch(
+	ctx context.Context,
+	taskInfos map[string]*LaunchableTaskInfo,
+	placement *resmgr.Placement,
+) (skippedTaskInfos map[string]*LaunchableTaskInfo, err error) {
+	if l.useK8S {
+		err = l.launchOnK8S(ctx, taskInfos, placement)
+		err = errors.Wrap(err, "Launch on k8s failed: ")
+	} else {
+		var launchableTasks []*hostsvc.LaunchableTask
+		launchableTasks, skippedTaskInfos =
+			l.CreateLaunchableTasks(ctx, taskInfos)
+		err = l.ProcessPlacement(ctx, launchableTasks, placement)
+		err = errors.Wrap(err, "Launch on mesos failed: ")
+	}
+	if err != nil {
+		// in case of error, treat all tasks as skipped
+		return taskInfos, err
+	}
+	// just return all skipped tasks
+	return skippedTaskInfos, nil
+}
+
+// launchOnK8S launches tasks on K8S via host manager.
+func (l *launcher) launchOnK8S(
+	ctx context.Context,
+	taskInfos map[string]*LaunchableTaskInfo,
+	placement *resmgr.Placement,
+) error {
+	// convert LaunchableTaskInfo to v1alpha Hostsvc LaunchablePod
+	var launchablePods []*pbhostmgr.LaunchablePod
+	for _, launchableTaskInfo := range taskInfos {
+		launchablePod := pbhostmgr.LaunchablePod{
+			PodId: util.CreatePodIDFromMesosTaskID(
+				launchableTaskInfo.Runtime.GetMesosTaskId()),
+			Spec: launchableTaskInfo.Spec,
+		}
+		launchablePods = append(launchablePods, &launchablePod)
+	}
+
+	// Launch pod on Hostmgr using v1alpha LaunchPod
+	ctx, cancel := context.WithTimeout(ctx, _rpcTimeout)
+	defer cancel()
+	var request = &svc.LaunchPodsRequest{
+		// This is because we do not change resmgr code to talk in terms
+		// of HostLease yet. So OfferID here is the leaseID that resmgr
+		// gets via placement engine.
+		LeaseId: util.CreateLeaseIDFromHostOfferID(
+			placement.GetHostOfferID()),
+		Hostname: placement.GetHostname(),
+		Pods:     launchablePods,
+	}
+
+	_, err := l.hostMgrV1AlphaClient.LaunchPods(ctx, request)
+	return err
+}
+
+// ProcessPlacements launches tasks to host manager.
 func (l *launcher) ProcessPlacement(
 	ctx context.Context,
 	tasks []*hostsvc.LaunchableTask,
@@ -310,6 +390,20 @@ func (l *launcher) GetLaunchableTasks(
 			continue
 		}
 
+		var spec *pbpod.PodSpec
+		if l.useK8S {
+			spec, err = l.taskConfigV2Ops.GetPodSpec(
+				ctx,
+				jobID,
+				uint32(instanceID),
+				cachedRuntime.GetConfigVersion())
+			if err != nil {
+				log.WithError(err).WithField("task_id", ptaskID.GetValue()).
+					Error("not able to get pod spec")
+				continue
+			}
+		}
+
 		runtimeDiff := make(jobmgrcommon.RuntimeDiff)
 
 		// Generate volume ID if not set for stateful task.
@@ -365,6 +459,7 @@ func (l *launcher) GetLaunchableTasks(
 			RuntimeDiff: runtimeDiff,
 			Config:      taskConfig,
 			ConfigAddOn: configAddOn,
+			Spec:        spec,
 		}
 	}
 

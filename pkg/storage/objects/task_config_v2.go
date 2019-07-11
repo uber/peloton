@@ -91,8 +91,8 @@ type taskConfigV2Object struct {
 	store *Store
 }
 
-// NewTaskConfigV2OpsOps constructs a TaskConfigV2Ops object for provided Store.
-func NewTaskConfigV2OpsOps(s *Store) TaskConfigV2Ops {
+// NewTaskConfigV2Ops constructs a TaskConfigV2Ops object for provided Store.
+func NewTaskConfigV2Ops(s *Store) TaskConfigV2Ops {
 	return &taskConfigV2Object{store: s}
 }
 

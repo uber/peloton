@@ -100,7 +100,7 @@ func InitJobFactory(
 		jobRuntimeOps:      ormobjects.NewJobRuntimeOps(ormStore),
 		jobNameToIDOps:     ormobjects.NewJobNameToIDOps(ormStore),
 		jobUpdateEventsOps: ormobjects.NewJobUpdateEventsOps(ormStore),
-		taskConfigV2Ops:    ormobjects.NewTaskConfigV2OpsOps(ormStore),
+		taskConfigV2Ops:    ormobjects.NewTaskConfigV2Ops(ormStore),
 		mtx:                NewMetrics(parentScope.SubScope("cache")),
 		taskMetrics:        NewTaskMetrics(parentScope.SubScope("task")),
 		listeners:          listeners,

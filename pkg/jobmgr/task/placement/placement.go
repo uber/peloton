@@ -193,19 +193,16 @@ func (p *processor) processPlacement(ctx context.Context, placement *resmgr.Plac
 
 	if len(launchableTaskInfos) > 0 {
 
-		// CreateLaunchableTasks returns a list of launchableTasks and taskInfo
-		// map of tasks that could not be launched because of transient error
-		// in getting secrets.
-		launchableTasks, skippedTaskInfos :=
-			p.taskLauncher.CreateLaunchableTasks(ctx, launchableTaskInfos)
-		p.processSkippedLaunches(ctx, skippedTaskInfos)
-
-		if err = p.taskLauncher.ProcessPlacement(ctx,
-			launchableTasks, placement); err != nil {
+		skippedTaskInfos, err := p.taskLauncher.Launch(
+			ctx,
+			launchableTaskInfos,
+			placement,
+		)
+		if err != nil {
 			p.processSkippedLaunches(ctx, launchableTaskInfos)
 			return
 		}
-
+		p.processSkippedLaunches(ctx, skippedTaskInfos)
 		// Finally, enqueue tasks into goalstate
 		p.enqueueTaskToGoalState(launchableTaskInfos)
 	}
@@ -315,6 +312,7 @@ func (p *processor) createTaskInfos(
 						JobId:      jobID,
 					},
 					ConfigAddOn: launchableTask.ConfigAddOn,
+					Spec:        launchableTask.Spec,
 				}
 				break
 			}

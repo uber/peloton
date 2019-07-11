@@ -67,4 +67,7 @@ type Config struct {
 	// check instances counts between MV and configuration,
 	// if the counts mismatch, we will re-calculate job state from cache
 	JobRuntimeCalculationViaCache bool `yaml:"job_runtime_calculation_via_cache"`
+
+	// UseK8s is a flag to enable K8S instead of Mesos
+	UseK8s bool `yaml:"use_k8s"`
 }

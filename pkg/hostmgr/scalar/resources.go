@@ -226,7 +226,6 @@ func FromResourceConfig(rc *task.ResourceConfig) (r Resources) {
 func FromResourceSpec(rc *pbpod.ResourceSpec) (r Resources) {
 	r.CPU = rc.GetCpuLimit()
 	r.Mem = rc.GetMemLimitMb()
-	r.Disk = rc.GetDiskLimitMb()
 	r.GPU = rc.GetGpuLimit()
 	return r
 }

@@ -242,7 +242,7 @@ func NewStore(config *Config, scope tally.Scope) (*Store, error) {
 		jobConfigOps:       ormobjects.NewJobConfigOps(ormStore),
 		jobRuntimeOps:      ormobjects.NewJobRuntimeOps(ormStore),
 		jobUpdateEventsOps: ormobjects.NewJobUpdateEventsOps(ormStore),
-		taskConfigV2Ops:    ormobjects.NewTaskConfigV2OpsOps(ormStore),
+		taskConfigV2Ops:    ormobjects.NewTaskConfigV2Ops(ormStore),
 
 		metrics:     storage.NewMetrics(scope.SubScope("storage")),
 		Conf:        config,

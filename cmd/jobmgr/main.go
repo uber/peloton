@@ -533,6 +533,7 @@ func main() {
 		store, // store implements VolumeStore
 		ormStore,
 		rootScope,
+		cfg.JobManager.UseK8s,
 	)
 
 	goalStateDriver := goalstate.NewDriver(
