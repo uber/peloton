@@ -85,17 +85,6 @@ type TaskStore interface {
 		runtime *task.RuntimeInfo,
 		jobType job.JobType) error
 
-	// CreateTaskConfig creates the task configuration
-	CreateTaskConfig(
-		ctx context.Context,
-		id *peloton.JobID,
-		instanceID int64,
-		taskConfig *task.TaskConfig,
-		configAddOn *models.ConfigAddOn,
-		podSpec *pbpod.PodSpec,
-		version uint64,
-	) error
-
 	// GetTasksForJob gets the task info for all tasks in a job
 	GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint32]*task.TaskInfo, error)
 	// GetTasksForJobAndStates gets the task info for all

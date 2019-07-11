@@ -154,16 +154,6 @@ func (suite *JobHandlerTestSuite) setupMocks(
 			gomock.Any(),
 		).
 		Return(nil).AnyTimes()
-	suite.mockedTaskStore.EXPECT().
-		CreateTaskConfig(
-			context.Background(),
-			gomock.Any(),
-			gomock.Any(),
-			gomock.Any(),
-			gomock.Any(),
-			gomock.Any(),
-			gomock.Any(),
-		).Return(nil).AnyTimes()
 	suite.mockedCachedJob.EXPECT().
 		CreateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil).AnyTimes()

@@ -21,7 +21,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
 
-	storemocks "github.com/uber/peloton/pkg/storage/mocks"
+	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -31,9 +31,10 @@ import (
 
 type TaskTestSuite struct {
 	suite.Suite
-	ctrl      *gomock.Controller
-	taskStore *storemocks.MockTaskStore
-	jobID     *peloton.JobID
+	ctrl            *gomock.Controller
+	taskConfigV2Ops *objectmocks.MockTaskConfigV2Ops
+
+	jobID *peloton.JobID
 }
 
 func TestTask(t *testing.T) {
@@ -42,7 +43,7 @@ func TestTask(t *testing.T) {
 
 func (suite *TaskTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
-	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
+	suite.taskConfigV2Ops = objectmocks.NewMockTaskConfigV2Ops(suite.ctrl)
 	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}
 }
 
@@ -64,7 +65,7 @@ func (suite *TaskTestSuite) TestTasksRunInParallel() {
 	}
 
 	createSingleTaskConfig := func(id uint32) error {
-		return suite.taskStore.CreateTaskConfig(
+		return suite.taskConfigV2Ops.Create(
 			context.Background(),
 			suite.jobID,
 			int64(id),
@@ -76,8 +77,8 @@ func (suite *TaskTestSuite) TestTasksRunInParallel() {
 	}
 
 	for _, i := range instances {
-		suite.taskStore.EXPECT().
-			CreateTaskConfig(
+		suite.taskConfigV2Ops.EXPECT().
+			Create(
 				gomock.Any(),
 				suite.jobID,
 				int64(i),
@@ -105,7 +106,7 @@ func (suite *TaskTestSuite) TestTaskRunInParallelFail() {
 	}
 
 	createSingleTaskConfig := func(id uint32) error {
-		return suite.taskStore.CreateTaskConfig(
+		return suite.taskConfigV2Ops.Create(
 			context.Background(),
 			suite.jobID,
 			int64(id),
@@ -116,8 +117,8 @@ func (suite *TaskTestSuite) TestTaskRunInParallelFail() {
 		)
 	}
 
-	suite.taskStore.EXPECT().
-		CreateTaskConfig(
+	suite.taskConfigV2Ops.EXPECT().
+		Create(
 			gomock.Any(),
 			suite.jobID,
 			gomock.Any(),

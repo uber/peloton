@@ -29,3 +29,8 @@ const (
 func (v Version) IsV1() bool {
 	return v == V1 || v == V1Alpha
 }
+
+// String returns the string representation of the version.
+func (v Version) String() string {
+	return string(v)
+}

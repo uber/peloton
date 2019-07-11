@@ -65,9 +65,11 @@ type jobTestSuite struct {
 	jobConfigOps       *objectmocks.MockJobConfigOps
 	jobRuntimeOps      *objectmocks.MockJobRuntimeOps
 	jobUpdateEventsOps *objectmocks.MockJobUpdateEventsOps
-	jobID              *peloton.JobID
-	job                *job
-	listeners          []*FakeJobListener
+	taskConfigV2Ops    *objectmocks.MockTaskConfigV2Ops
+
+	jobID     *peloton.JobID
+	job       *job
+	listeners []*FakeJobListener
 }
 
 func TestJob(t *testing.T) {
@@ -84,6 +86,7 @@ func (suite *jobTestSuite) SetupTest() {
 	suite.jobConfigOps = objectmocks.NewMockJobConfigOps(suite.ctrl)
 	suite.jobRuntimeOps = objectmocks.NewMockJobRuntimeOps(suite.ctrl)
 	suite.jobUpdateEventsOps = objectmocks.NewMockJobUpdateEventsOps(suite.ctrl)
+	suite.taskConfigV2Ops = objectmocks.NewMockTaskConfigV2Ops(suite.ctrl)
 	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}
 	suite.listeners = append(suite.listeners,
 		new(FakeJobListener),
@@ -97,6 +100,7 @@ func (suite *jobTestSuite) SetupTest() {
 		suite.jobConfigOps,
 		suite.jobRuntimeOps,
 		suite.jobUpdateEventsOps,
+		suite.taskConfigV2Ops,
 		suite.jobID)
 }
 
@@ -114,6 +118,7 @@ func (suite *jobTestSuite) initializeJob(
 	jobConfigOps *objectmocks.MockJobConfigOps,
 	jobRuntimeOps *objectmocks.MockJobRuntimeOps,
 	jobUpdateEventsOps *objectmocks.MockJobUpdateEventsOps,
+	taskConfigV2Ops *objectmocks.MockTaskConfigV2Ops,
 	jobID *peloton.JobID) *job {
 	j := &job{
 		id: jobID,
@@ -127,6 +132,7 @@ func (suite *jobTestSuite) initializeJob(
 			jobConfigOps:       jobConfigOps,
 			jobRuntimeOps:      jobRuntimeOps,
 			jobUpdateEventsOps: jobUpdateEventsOps,
+			taskConfigV2Ops:    taskConfigV2Ops,
 			running:            true,
 			jobs:               map[string]*job{},
 		},
@@ -4465,8 +4471,8 @@ func (suite *jobTestSuite) TestRollbackWorkflowSuccess() {
 		Update(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	suite.taskStore.EXPECT().
-		CreateTaskConfig(
+	suite.taskConfigV2Ops.EXPECT().
+		Create(
 			gomock.Any(),
 			suite.jobID,
 			gomock.Any(),
@@ -4672,8 +4678,8 @@ func (suite *jobTestSuite) TestRollbackWorkflowGetTargetConfigFailure() {
 		Update(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	suite.taskStore.EXPECT().
-		CreateTaskConfig(
+	suite.taskConfigV2Ops.EXPECT().
+		Create(
 			gomock.Any(),
 			suite.jobID,
 			gomock.Any(),
@@ -4763,8 +4769,8 @@ func (suite *jobTestSuite) TestRollbackWorkflowCopyConfigFailure() {
 		Update(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	suite.taskStore.EXPECT().
-		CreateTaskConfig(
+	suite.taskConfigV2Ops.EXPECT().
+		Create(
 			gomock.Any(),
 			suite.jobID,
 			gomock.Any(),
@@ -4875,8 +4881,8 @@ func (suite *jobTestSuite) TestRollbackWorkflowSuccessAfterModifyUpdateFails() {
 		Update(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	suite.taskStore.EXPECT().
-		CreateTaskConfig(
+	suite.taskConfigV2Ops.EXPECT().
+		Create(
 			gomock.Any(),
 			suite.jobID,
 			gomock.Any(),
@@ -4991,8 +4997,8 @@ func (suite *jobTestSuite) TestRollbackWorkflowSuccessAfterModifyUpdateFails() {
 			Update(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 			Return(nil),
 
-		suite.taskStore.EXPECT().
-			CreateTaskConfig(
+		suite.taskConfigV2Ops.EXPECT().
+			Create(
 				gomock.Any(),
 				suite.jobID,
 				gomock.Any(),
@@ -5118,8 +5124,8 @@ func (suite *jobTestSuite) TestRollbackWorkflowSuccessAfterJobRuntimeUpdateDBWri
 		Update(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	suite.taskStore.EXPECT().
-		CreateTaskConfig(
+	suite.taskConfigV2Ops.EXPECT().
+		Create(
 			gomock.Any(),
 			suite.jobID,
 			gomock.Any(),
@@ -5279,8 +5285,8 @@ func (suite *jobTestSuite) TestRollbackWorkflowSuccessAfterJobRuntimeDBWriteSucc
 		Update(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 		Return(nil)
 
-	suite.taskStore.EXPECT().
-		CreateTaskConfig(
+	suite.taskConfigV2Ops.EXPECT().
+		Create(
 			gomock.Any(),
 			suite.jobID,
 			gomock.Any(),
@@ -5394,8 +5400,8 @@ func (suite *jobTestSuite) TestJobCreateTaskConfigsSuccess() {
 		},
 	}
 
-	suite.taskStore.EXPECT().
-		CreateTaskConfig(
+	suite.taskConfigV2Ops.EXPECT().
+		Create(
 			gomock.Any(),
 			suite.jobID,
 			int64(-1),
@@ -5406,8 +5412,8 @@ func (suite *jobTestSuite) TestJobCreateTaskConfigsSuccess() {
 		Return(nil)
 
 	for i, taskConfig := range jobConfig.GetInstanceConfig() {
-		suite.taskStore.EXPECT().
-			CreateTaskConfig(
+		suite.taskConfigV2Ops.EXPECT().
+			Create(
 				gomock.Any(),
 				suite.jobID,
 				int64(i),
@@ -5479,8 +5485,8 @@ func (suite *jobTestSuite) TestJobCreateTaskConfigsWithSpec() {
 		Revision: &v1alphapeloton.Revision{Version: 1},
 	}
 
-	suite.taskStore.EXPECT().
-		CreateTaskConfig(
+	suite.taskConfigV2Ops.EXPECT().
+		Create(
 			gomock.Any(),
 			suite.jobID,
 			int64(-1),
@@ -5491,8 +5497,8 @@ func (suite *jobTestSuite) TestJobCreateTaskConfigsWithSpec() {
 		Return(nil)
 
 	for i, taskConfig := range jobConfig.GetInstanceConfig() {
-		suite.taskStore.EXPECT().
-			CreateTaskConfig(
+		suite.taskConfigV2Ops.EXPECT().
+			Create(
 				gomock.Any(),
 				suite.jobID,
 				int64(i),
@@ -5547,8 +5553,8 @@ func (suite *jobTestSuite) TestJobCreateTaskConfigsNoDefaultConfigSuccess() {
 	}
 
 	for i, taskConfig := range jobConfig.GetInstanceConfig() {
-		suite.taskStore.EXPECT().
-			CreateTaskConfig(
+		suite.taskConfigV2Ops.EXPECT().
+			Create(
 				gomock.Any(),
 				suite.jobID,
 				int64(i),
@@ -5591,8 +5597,8 @@ func (suite *jobTestSuite) TestJobCreateTaskConfigsFailureToCreateDefaultConfig(
 		},
 	}
 
-	suite.taskStore.EXPECT().
-		CreateTaskConfig(
+	suite.taskConfigV2Ops.EXPECT().
+		Create(
 			gomock.Any(),
 			suite.jobID,
 			int64(-1),

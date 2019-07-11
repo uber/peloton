@@ -41,7 +41,6 @@ import (
 )
 
 const (
-	testJobName  = "uber"
 	testJob      = "941ff353-ba82-49fe-8f80-fb5bc649b04d"
 	testUpdateID = "141ff353-ba82-49fe-8f80-fb5bc649b042"
 )
@@ -276,18 +275,6 @@ func (suite *MockDatastoreTestSuite) TestDataStoreFailureActiveJobs() {
 	suite.Error(err)
 
 	err = suite.store.DeleteActiveJob(context.Background(), suite.testJobID)
-	suite.Error(err)
-}
-
-// TestCreateTaskConfigFailures tests failure scenarios for create task configs
-func (suite *MockDatastoreTestSuite) TestCreateTaskConfigFailures() {
-
-	jobID := &peloton.JobID{
-		Value: testJob,
-	}
-
-	err := suite.store.CreateTaskConfig(context.Background(), jobID,
-		0, &task.TaskConfig{Name: "dummy-task"}, nil, nil, 0)
 	suite.Error(err)
 }
 

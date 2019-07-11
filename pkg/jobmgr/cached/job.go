@@ -528,7 +528,7 @@ func (j *job) CreateTaskConfigs(
 ) error {
 	if jobConfig.GetDefaultConfig() != nil {
 		// Create default task config in DB
-		if err := j.jobFactory.taskStore.CreateTaskConfig(
+		if err := j.jobFactory.taskConfigV2Ops.Create(
 			ctx,
 			jobID,
 			common.DefaultTaskConfigID,
@@ -572,7 +572,7 @@ func (j *job) CreateTaskConfigs(
 			)
 		}
 
-		return j.jobFactory.taskStore.CreateTaskConfig(
+		return j.jobFactory.taskConfigV2Ops.Create(
 			ctx,
 			jobID,
 			int64(id),

@@ -215,6 +215,7 @@ type Store struct {
 	jobConfigOps       ormobjects.JobConfigOps
 	jobRuntimeOps      ormobjects.JobRuntimeOps
 	jobUpdateEventsOps ormobjects.JobUpdateEventsOps
+	taskConfigV2Ops    ormobjects.TaskConfigV2Ops
 	metrics            *storage.Metrics
 	Conf               *Config
 	retryPolicy        backoff.RetryPolicy
@@ -242,6 +243,7 @@ func NewStore(config *Config, scope tally.Scope) (*Store, error) {
 		jobConfigOps:       ormobjects.NewJobConfigOps(ormStore),
 		jobRuntimeOps:      ormobjects.NewJobRuntimeOps(ormStore),
 		jobUpdateEventsOps: ormobjects.NewJobUpdateEventsOps(ormStore),
+		taskConfigV2Ops:    ormobjects.NewTaskConfigV2OpsOps(ormStore),
 
 		metrics:     storage.NewMetrics(scope.SubScope("storage")),
 		Conf:        config,
@@ -391,80 +393,6 @@ func uncompress(buffer []byte) ([]byte, error) {
 		return nil, err
 	}
 	return uncompressed, nil
-}
-
-// CreateTaskConfig creates the task configuration
-func (s *Store) CreateTaskConfig(
-	ctx context.Context,
-	id *peloton.JobID,
-	instanceID int64,
-	taskConfig *task.TaskConfig,
-	configAddOn *models.ConfigAddOn,
-	podSpec *pbpod.PodSpec,
-	version uint64,
-) error {
-	configBuffer, err := proto.Marshal(taskConfig)
-	if err != nil {
-		s.metrics.TaskMetrics.TaskCreateConfigFail.Inc(1)
-		log.WithError(err).Error("Failed to marshal taskConfig")
-		return err
-	}
-
-	addOnBuffer, err := proto.Marshal(configAddOn)
-	if err != nil {
-		log.WithError(err).Error("Failed to marshal configAddOn")
-		s.metrics.JobMetrics.JobCreateConfigFail.Inc(1)
-		return err
-	}
-
-	var specBuffer []byte
-	apiVersion := common.V0Api
-	if podSpec != nil {
-		specBuffer, err = proto.Marshal(podSpec)
-		if err != nil {
-			s.metrics.TaskMetrics.TaskCreateConfigFail.Inc(1)
-			log.WithError(err).Error("Failed to marshal podSpec")
-			return err
-		}
-		apiVersion = common.V1AlphaApi
-	}
-
-	queryBuilder := s.DataStore.NewQuery()
-
-	stmt := queryBuilder.Insert(taskConfigV2Table).
-		Columns(
-			"job_id",
-			"version",
-			"instance_id",
-			"creation_time",
-			"config",
-			"config_addon",
-			"spec",
-			"api_version",
-		).
-		Values(
-			id.GetValue(),
-			version,
-			instanceID,
-			time.Now().UTC(),
-			configBuffer,
-			addOnBuffer,
-			specBuffer,
-			apiVersion,
-		)
-
-	err = s.applyStatement(ctx, stmt, id.GetValue())
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", id.GetValue()).
-			Error("createTaskConfigV2 failed")
-		s.metrics.TaskMetrics.TaskCreateConfigFail.Inc(1)
-		return err
-	}
-
-	s.metrics.TaskMetrics.TaskCreateConfig.Inc(1)
-
-	return nil
 }
 
 // GetMaxJobConfigVersion returns the maximum version of configs of a given job

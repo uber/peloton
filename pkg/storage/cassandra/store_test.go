@@ -55,10 +55,6 @@ import (
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
-const (
-	_resPoolOwner = "teamPeloton"
-)
-
 type CassandraStoreTestSuite struct {
 	suite.Suite
 	store *Store
@@ -178,7 +174,7 @@ func (suite *CassandraStoreTestSuite) createJob(
 func createTaskConfigs(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, configAddOn *models.ConfigAddOn) error {
 	version := jobConfig.GetChangeLog().GetVersion()
 	if jobConfig.GetDefaultConfig() != nil {
-		if err := store.CreateTaskConfig(
+		if err := store.taskConfigV2Ops.Create(
 			ctx,
 			id,
 			common.DefaultTaskConfigID,
@@ -194,7 +190,7 @@ func createTaskConfigs(ctx context.Context, id *peloton.JobID, jobConfig *job.Jo
 	for instanceID, cfg := range jobConfig.GetInstanceConfig() {
 		merged := taskconfig.Merge(jobConfig.GetDefaultConfig(), cfg)
 		// TODO set correct version
-		if err := store.CreateTaskConfig(
+		if err := store.taskConfigV2Ops.Create(
 			ctx,
 			id,
 			int64(instanceID),
@@ -1367,7 +1363,7 @@ func (suite *CassandraStoreTestSuite) TestTaskVersionMigration() {
 
 	// Create legacy task with missing version field.
 	suite.NoError(
-		store.CreateTaskConfig(
+		store.taskConfigV2Ops.Create(
 			context.Background(),
 			jobID,
 			0,
@@ -1437,7 +1433,7 @@ func (suite *CassandraStoreTestSuite) TestGetTaskConfigs() {
 	}
 
 	// create default task config
-	store.CreateTaskConfig(
+	store.taskConfigV2Ops.Create(
 		context.Background(),
 		jobID,
 		common.DefaultTaskConfigID,
@@ -1450,7 +1446,7 @@ func (suite *CassandraStoreTestSuite) TestGetTaskConfigs() {
 
 	// create 5 tasks with versions
 	for i := int64(0); i < 5; i++ {
-		suite.NoError(store.CreateTaskConfig(
+		suite.NoError(store.taskConfigV2Ops.Create(
 			context.Background(),
 			jobID,
 			i,
@@ -2440,7 +2436,7 @@ func (suite *CassandraStoreTestSuite) TestGetTaskRuntime() {
 	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
 	configAddOn := &models.ConfigAddOn{}
 	var tID = fmt.Sprintf("%s-%d-%d", jobID.GetValue(), 0, 1)
-	suite.NoError(store.CreateTaskConfig(
+	suite.NoError(store.taskConfigV2Ops.Create(
 		context.Background(),
 		jobID,
 		0,
@@ -3257,7 +3253,7 @@ func (suite *CassandraStoreTestSuite) TestCreateTaskConfigSuccess() {
 		},
 	}
 
-	suite.NoError(store.CreateTaskConfig(
+	suite.NoError(store.taskConfigV2Ops.Create(
 		context.Background(),
 		&peloton.JobID{Value: testJob},
 		0,
@@ -3283,7 +3279,7 @@ func (suite *CassandraStoreTestSuite) TestCreateGetPodSpec() {
 		PodName:    &v1alphapeloton.PodName{Value: "test-pod"},
 		Containers: []*pbpod.ContainerSpec{{}},
 	}
-	suite.NoError(store.CreateTaskConfig(
+	suite.NoError(store.taskConfigV2Ops.Create(
 		context.Background(),
 		&peloton.JobID{Value: testJob},
 		0,
@@ -3313,7 +3309,7 @@ func (suite *CassandraStoreTestSuite) TestCreateGetPodSpec() {
 
 	// Try to create a config with pod spec set to nil for instance id 1
 	// and then try GetPodSpec() call. It should return a not found error.
-	suite.NoError(store.CreateTaskConfig(
+	suite.NoError(store.taskConfigV2Ops.Create(
 		context.Background(),
 		&peloton.JobID{Value: testJob},
 		1,

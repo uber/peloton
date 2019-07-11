@@ -69,6 +69,7 @@ type jobFactory struct {
 	jobRuntimeOps      ormobjects.JobRuntimeOps      // DB ops for job_runtime table
 	jobNameToIDOps     ormobjects.JobNameToIDOps     // DB ops for job_name_to_id table
 	jobUpdateEventsOps ormobjects.JobUpdateEventsOps // DB ops for job_update_events table
+	taskConfigV2Ops    ormobjects.TaskConfigV2Ops    // DB ops for task_config_v2 table
 	mtx                *Metrics                      // cache metrics
 	taskMetrics        *TaskMetrics                  // task metrics
 	// Job/task listeners. This list is immutable after object is created.
@@ -99,6 +100,7 @@ func InitJobFactory(
 		jobRuntimeOps:      ormobjects.NewJobRuntimeOps(ormStore),
 		jobNameToIDOps:     ormobjects.NewJobNameToIDOps(ormStore),
 		jobUpdateEventsOps: ormobjects.NewJobUpdateEventsOps(ormStore),
+		taskConfigV2Ops:    ormobjects.NewTaskConfigV2OpsOps(ormStore),
 		mtx:                NewMetrics(parentScope.SubScope("cache")),
 		taskMetrics:        NewTaskMetrics(parentScope.SubScope("task")),
 		listeners:          listeners,
