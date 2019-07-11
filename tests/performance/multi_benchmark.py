@@ -105,7 +105,6 @@ def main():
         os.makedirs(res_dir)
     base_csv_name = args.output_file_prefix
     output_csv_files_list = output_files_list(res_dir, base_csv_name)
-    print("Output file paths are: " + str(output_csv_files_list))
 
     try:
         cluster_config = json.loads(open(vcluster_config).read())
@@ -227,7 +226,7 @@ def main():
     # (total use 90% of capacity)
     pupdate_df = t.perf_test_stateless_parallel_updates()
     if pupdate_df is not None:
-        pupdate_df.to_csv(output_csv_files_list[5], sep='\t')
+        pupdate_df.to_csv(output_csv_files_list[4], sep='\t')
 
 
 def run_one_test(pf_client, num_tasks, instance_config, sleep_time, agent_num):

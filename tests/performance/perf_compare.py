@@ -256,7 +256,8 @@ def compare_parallel_stateless_update(base_version, current_version, f1, f2):
         base_version,
         current_version,
     )
-    print("compare_parallel_stateless_update has created table" + merge_table)
+    print("compare_parallel_stateless_update has created table")
+    print(merge_table)
     return enriched_table
 
 
