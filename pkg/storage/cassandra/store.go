@@ -28,7 +28,7 @@ import (
 	"strings"
 	"time"
 
-	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/query"
@@ -36,7 +36,6 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/update"
 	pb_volume "github.com/uber/peloton/.gen/peloton/api/v0/volume"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
-	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
 	"github.com/uber/peloton/pkg/common"
@@ -1133,47 +1132,6 @@ func (s *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint
 		resultMap[taskInfo.InstanceId] = taskInfo
 	}
 	return resultMap, nil
-}
-
-// GetPodSpec gets the pod spec for an instance
-func (s *Store) GetPodSpec(
-	ctx context.Context,
-	id *peloton.JobID,
-	instanceID uint32,
-	version uint64,
-) (*pbpod.PodSpec, error) {
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("spec").From(taskConfigV2Table).
-		Where(
-			qb.Eq{
-				"job_id":  id.GetValue(),
-				"version": version,
-				"instance_id": []interface{}{
-					instanceID, common.DefaultTaskConfigID},
-			})
-	allResults, err := s.executeRead(ctx, stmt)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(allResults) == 0 {
-		return nil, yarpcerrors.NotFoundErrorf(
-			"task:%s not found",
-			fmt.Sprintf(taskIDFmt, id.GetValue(), int(instanceID)))
-	}
-
-	var podSpec pbpod.PodSpec
-	value := allResults[len(allResults)-1]
-	if specBuffer, ok := value["spec"].([]byte); ok {
-		if len(specBuffer) > 0 {
-			err := proto.Unmarshal([]byte(specBuffer), &podSpec)
-			if err != nil {
-				return nil, err
-			}
-			return &podSpec, nil
-		}
-	}
-	return nil, nil
 }
 
 // GetTaskConfig returns the task specific config

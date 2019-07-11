@@ -347,9 +347,11 @@ func (c *cassandraConnector) Get(
 	ctx context.Context,
 	e *base.Definition,
 	keyCols []base.Column,
+	colNamesToRead ...string,
 ) ([]base.Column, error) {
-
-	colNamesToRead := e.GetColumnsToRead()
+	if len(colNamesToRead) == 0 {
+		colNamesToRead = e.GetColumnsToRead()
+	}
 
 	q, err := c.buildSelectQuery(ctx, e, keyCols, colNamesToRead)
 	if err != nil {

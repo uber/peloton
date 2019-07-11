@@ -57,6 +57,10 @@ type TaskConfigV2Object struct {
 	APIVersion string `column:"name=api_version"`
 }
 
+const (
+	specColumn = "spec"
+)
+
 // TaskConfigV2Ops provides methods for manipulating task_config_v2 table.
 type TaskConfigV2Ops interface {
 	// Create creates task config with version number for a task
@@ -69,6 +73,14 @@ type TaskConfigV2Ops interface {
 		podSpec *pbpod.PodSpec,
 		version uint64,
 	) error
+
+	// GetPodSpec returns the pod spec of a task config
+	GetPodSpec(
+		ctx context.Context,
+		id *peloton.JobID,
+		instanceID uint32,
+		version uint64,
+	) (*pbpod.PodSpec, error)
 }
 
 // ensure that default implementation (taskConfigV2Object) satisfies the interface
@@ -137,4 +149,43 @@ func (d *taskConfigV2Object) Create(
 	}
 
 	return d.store.oClient.Create(ctx, obj)
+}
+
+// GetPodSpec returns the pod spec of a task config
+func (d *taskConfigV2Object) GetPodSpec(
+	ctx context.Context,
+	id *peloton.JobID,
+	instanceID uint32,
+	version uint64,
+) (result *pbpod.PodSpec, err error) {
+	defer func() {
+		if err != nil {
+			d.store.metrics.OrmTaskMetrics.PodSpecGetFail.Inc(1)
+		} else {
+			d.store.metrics.OrmTaskMetrics.PodSpecGet.Inc(1)
+		}
+	}()
+
+	obj := &TaskConfigV2Object{
+		JobID:      id.GetValue(),
+		InstanceID: int64(instanceID),
+		Version:    version,
+	}
+
+	if err := d.store.oClient.Get(ctx, obj, specColumn); err != nil {
+		return nil, err
+	}
+
+	// no spec set, return nil
+	if len(obj.Spec) == 0 {
+		return nil, nil
+	}
+
+	podSpec := &pbpod.PodSpec{}
+	if err := proto.Unmarshal(obj.Spec, podSpec); err != nil {
+		return nil, errors.Wrap(yarpcerrors.InternalErrorf(err.Error()),
+			"Failed to unmarshal pod spec")
+	}
+
+	return podSpec, nil
 }

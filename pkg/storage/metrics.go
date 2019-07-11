@@ -308,6 +308,9 @@ type OrmTaskMetrics struct {
 
 	TaskConfigV2Create     tally.Counter
 	TaskConfigV2CreateFail tally.Counter
+
+	PodSpecGet     tally.Counter
+	PodSpecGetFail tally.Counter
 }
 
 // OrmHostInfoMetrics tracks counters for host info related table
@@ -624,6 +627,12 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	taskConfigV2FailScope := taskConfigV2Scope.Tagged(
 		map[string]string{"result": "fail"})
 
+	podSpecScope := ormScope.SubScope("task_config_v2")
+	podSpecSuccessScope := podSpecScope.Tagged(
+		map[string]string{"result": "success"})
+	podSpecFailScope := podSpecScope.Tagged(
+		map[string]string{"result": "fail"})
+
 	respoolScope := ormScope.SubScope("respool")
 	respoolSuccessScope := respoolScope.Tagged(
 		map[string]string{"result": "success"})
@@ -704,6 +713,9 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		TaskConfigV2Create:     taskConfigV2SuccessScope.Counter("create"),
 		TaskConfigV2CreateFail: taskConfigV2FailScope.Counter("create"),
+
+		PodSpecGet:     podSpecSuccessScope.Counter("get"),
+		PodSpecGetFail: podSpecFailScope.Counter("get"),
 	}
 
 	ormHostInfoMetrics := &OrmHostInfoMetrics{

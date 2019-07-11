@@ -38,6 +38,7 @@ type Connector interface {
 		ctx context.Context,
 		e *base.Definition,
 		keys []base.Column,
+		colNamesToRead ...string,
 	) ([]base.Column, error)
 
 	// GetAll fetches a list of base objects for the partition key

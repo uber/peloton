@@ -24,7 +24,6 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/update"
 	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
-	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 )
 
@@ -100,13 +99,6 @@ type TaskStore interface {
 	GetTaskForJob(ctx context.Context, jobID string, instanceID uint32) (map[uint32]*task.TaskInfo, error)
 	// GetTaskConfig gets the task config of a given task
 	GetTaskConfig(ctx context.Context, id *peloton.JobID, instanceID uint32, version uint64) (*task.TaskConfig, *models.ConfigAddOn, error)
-	// GetPodSpec gets the pod spec of a given instance
-	GetPodSpec(
-		ctx context.Context,
-		id *peloton.JobID,
-		instanceID uint32,
-		version uint64,
-	) (*pbpod.PodSpec, error)
 	// GetTaskConfigs gets the task config for all tasks in a job
 	// for all the instanceIDs provided in the input
 	GetTaskConfigs(ctx context.Context, id *peloton.JobID, instanceIDs []uint32, version uint64) (map[uint32]*task.TaskConfig, *models.ConfigAddOn, error)

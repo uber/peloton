@@ -31,7 +31,7 @@ type Client interface {
 	// Create creates the storage object in the database
 	Create(ctx context.Context, e base.Object) error
 	// Get gets the storage object from the database
-	Get(ctx context.Context, e base.Object) error
+	Get(ctx context.Context, e base.Object, fieldsToRead ...string) error
 	// GetAll gets all the storage objects for the partition key from the
 	// database
 	GetAll(ctx context.Context, e base.Object) ([]base.Object, error)
@@ -110,7 +110,7 @@ func (c *client) Create(ctx context.Context, e base.Object) error {
 
 // Get fetches an base by primary key, The base provided must contain
 // values for all components of its primary key for the operation to succeed.
-func (c *client) Get(ctx context.Context, e base.Object) error {
+func (c *client) Get(ctx context.Context, e base.Object, fieldsToRead ...string) error {
 
 	// lookup if a table exists for this object, return error if not found
 	table, err := c.getTable(e)
@@ -121,7 +121,7 @@ func (c *client) Get(ctx context.Context, e base.Object) error {
 	// build a primary key row from storage object
 	keyRow := table.GetKeyRowFromObject(e)
 
-	row, err := c.connector.Get(ctx, &table.Definition, keyRow)
+	row, err := c.connector.Get(ctx, &table.Definition, keyRow, fieldsToRead...)
 	if err != nil {
 		return err
 	}

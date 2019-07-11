@@ -32,8 +32,6 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v0/update"
 	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
-	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
-	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
 	"github.com/uber/peloton/pkg/common"
@@ -3262,69 +3260,4 @@ func (suite *CassandraStoreTestSuite) TestCreateTaskConfigSuccess() {
 		nil,
 		1,
 	))
-}
-
-// TestCreateGetPodSpec tests success case of creating and retrieving podSpec.
-func (suite *CassandraStoreTestSuite) TestCreateGetPodSpec() {
-	taskConfig := &task.TaskConfig{
-		Name: testJob,
-		Resource: &task.ResourceConfig{
-			CpuLimit:    0.8,
-			MemLimitMb:  800,
-			DiskLimitMb: 1500,
-		},
-	}
-
-	podSpec := &pbpod.PodSpec{
-		PodName:    &v1alphapeloton.PodName{Value: "test-pod"},
-		Containers: []*pbpod.ContainerSpec{{}},
-	}
-	suite.NoError(store.taskConfigV2Ops.Create(
-		context.Background(),
-		&peloton.JobID{Value: testJob},
-		0,
-		taskConfig,
-		&models.ConfigAddOn{},
-		podSpec,
-		1,
-	))
-
-	spec, err := store.GetPodSpec(
-		context.Background(),
-		&peloton.JobID{Value: testJob},
-		0,
-		1,
-	)
-
-	suite.NoError(err)
-	suite.Equal(podSpec, spec)
-
-	_, err = store.GetPodSpec(
-		context.Background(),
-		&peloton.JobID{Value: uuid.New()},
-		0,
-		1,
-	)
-	suite.Error(err)
-
-	// Try to create a config with pod spec set to nil for instance id 1
-	// and then try GetPodSpec() call. It should return a not found error.
-	suite.NoError(store.taskConfigV2Ops.Create(
-		context.Background(),
-		&peloton.JobID{Value: testJob},
-		1,
-		taskConfig,
-		&models.ConfigAddOn{},
-		nil,
-		1,
-	))
-
-	spec, err = store.GetPodSpec(
-		context.Background(),
-		&peloton.JobID{Value: testJob},
-		1,
-		1,
-	)
-	suite.NoError(err)
-	suite.Nil(spec)
 }

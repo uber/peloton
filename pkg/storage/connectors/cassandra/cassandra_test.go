@@ -190,6 +190,11 @@ func (suite *CassandraConnSuite) TestCreateGetDelete() {
 	suite.NoError(err)
 	suite.Len(row, 3)
 
+	// read the partial row from C* test table for given keys
+	row, err = connector.Get(context.Background(), obj, keyRow, "id", "data")
+	suite.NoError(err)
+	suite.Len(row, 2)
+
 	// delete the test row from C*
 	err = connector.Delete(context.Background(), obj, keyRow)
 	suite.NoError(err)
