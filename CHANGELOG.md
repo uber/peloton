@@ -1,7 +1,75 @@
 # Changelog for Peloton
 
-0.8.9 (unreleased)
+0.9.0 (unreleased)
 ------------------
+
+0.8.9
+------------------
+* 2019-07-11    Fix perftests report `IndexError` issue                                                yuweit@uber.com
+* 2019-07-11    Migrate CreateTaskConfig to ORM                                                        zhixin@uber.com
+* 2019-07-10    Remove task_config table                                                               zhixin@uber.com
+* 2019-07-10    (Part 1)Migrate active_jobs table to ORM                                               yuweit@uber.com
+* 2019-07-09    Fix a failure test in TestMesosAgentFailure                                            zhaokai@uber.com
+* 2019-07-09    Add JobUpdateEventsORM                                                                 zhixin@uber.com
+* 2019-07-09    [P2K merge #3] v1alpha eventstream for p2k and evaluate host label constraints         yiran@uber.com
+* 2019-07-09    Revert "fixed test_in_place_update_with_agent_stop in TestMesosAgentFailure, fix config" amitbose@uber.com
+* 2019-07-09    fixed test_in_place_update_with_agent_stop in TestMesosAgentFailure, fix config        zhaokai@uber.com
+* 2019-07-09    Define SLAInfo and add SLA Awareness to Host Maintenance                               sachins@uber.com
+* 2019-07-09    Migrate GetPodEvents to use ORM and Add OptionalInt custom type                        sishi@uber.com
+* 2019-07-08    Handle placement with stale run-id in resmgr tracker                                   sachins@uber.com
+* 2019-07-08    Upgrade grpc to version v1.22.0                                                        zhixin@uber.com
+* 2019-07-08    Add info log for tasks failed to get placed on desired host                            zhixin@uber.com
+* 2019-07-08    Fix report generation issue                                                            yuweit@uber.com
+* 2019-07-08    ORM: Add HostInfo object representing a host in maintenance                            rcharles@uber.com
+* 2019-07-03    Host Maintenance: add host state validation in handler                                 rcharles@uber.com
+* 2019-07-03    (Part 2) ResPool ORM migration                                                         yuweit@uber.com
+* 2019-07-03    Migration jobStore.GetAllJobsInJobIndex to use ORM                                     yuweit@uber.com
+* 2019-07-03    Fix desired host placement deadline                                                    zhixin@uber.com
+* 2019-07-03    Minicluster: Fixed make bin/kind target.                                               pourchet@uber.com
+* 2019-07-03    Fix error handling in store.deletePodEventsOnDeleteJob                                 sachins@uber.com
+* 2019-07-03    HostManager: HostCache: Setup pod event handling for resource accounting               pourchet@uber.com
+* 2019-07-02    Return YARPC Errors in HostMgr HostMaintenance related handlers                        rcharles@uber.com
+* 2019-07-02    Skip test__abort_auto_rollback_with_pinned_instances_and_update                        kevinxu@uber.com
+* 2019-07-02    Temporary allow deprecated HostMaintenance API request fields                          rcharles@uber.com
+* 2019-07-02    [DB schema and code] Get rid of mv_jobs_by_state from schema                           adityacb@uber.com
+* 2019-07-02    Fix build breakage in hostmgr                                                          adityacb@uber.com
+* 2019-07-02    Placement Engine: Implemented ToMimirGroup for v1alpha lease object                    pourchet@uber.com
+* 2019-07-01    Placement Engine: Implemented PortRange functionality in v1alpha lease object          pourchet@uber.com
+* 2019-07-01    [P2K merge #2] Basic K8s plugin and host cache implementation                          yiran@uber.com
+* 2019-06-30    Placement Engine: Rough implementation of v1alpha offers service                       pourchet@uber.com
+* 2019-06-28    (Part 1)ResourcePool migration for ORM                                                 yuweit@uber.com
+* 2019-06-28    Added the PortRange protobuf for use in placement engine                               pourchet@uber.com
+* 2019-06-28    Drop deprecated fields in resmgr.Placement proto message                               sachins@uber.com
+* 2019-06-27    Host Maintenance APIs: refactor write API calls to a single host instead of a list     rcharles@uber.com
+* 2019-06-27    ORM: Introduce type `OptionalString` for string primary keys                           rcharles@uber.com
+* 2019-06-27    Fix performance report error                                                           yuweit@uber.com
+* 2019-06-27    Host Manager: Added TerminateLeases protobuf definition                                pourchet@uber.com
+* 2019-06-27    [DB schema and code] Add podspec and version to task_config table                      adityacb@uber.com
+* 2019-06-27    Deprecate usage of mv_task_by_state in query                                           sishi@uber.com
+* 2019-06-26    Change queryJobIDs to use QueryJobCache private api                                    kevinxu@uber.com
+* 2019-06-26    Add PARALLEL_STATELESS_UPDATE and STATELESS_CREATE tables in performance tests         yuweit@uber.com
+* 2019-06-26    Deprecate usage of mv_task_by_state in job runtime updater                             sishi@uber.com
+* 2019-06-26    Placement Engine: Config flag to determine v0 or v1alpha hostmanager                   pourchet@uber.com
+* 2019-06-26    All task writes should be done via job in cache                                        sachins@uber.com
+* 2019-06-26    Enable integration tests for spread placement                                          amitbose@uber.com
+* 2019-06-25    Default updateEvents and instanceEvents empty array instead of nil                     kevinxu@uber.com
+* 2019-06-25    Fix version number on db migration script                                              sishi@uber.com
+* 2019-06-25    Add rate limit middleware in aurora bridge                                             zhixin@uber.com
+* 2019-06-25    Placement Engine: Move v0 of offers service to own package                             pourchet@uber.com
+* 2019-06-24    Update secret_info table to use leveled compaction strategy                            sishi@uber.com
+* 2019-06-24    Placement Engine: Remove hostService member from engine struct                         pourchet@uber.com
+* 2019-06-24    [DB schema + code] Start writing JobSpec blob to DB as a new job_config column         adityacb@uber.com
+* 2019-06-24    Placement Engine: Use model interfaces everywhere                                      pourchet@uber.com
+* 2019-06-21    Implement service tag for StartJobUpdate metrics                                       kevinxu@uber.com
+* 2019-06-21    Notify listeners when task runtime is replaced in cache                                sachins@uber.com
+* 2019-06-21    Debug log for browse sandbox response                                                  varung@uber.com
+* 2019-06-21    Do not copy pip.conf to peloton docker image                                           sachins@uber.com
+* 2019-06-21    Add failure test for in-place update                                                   zhixin@uber.com
+* 2019-06-20    DeleteTask should release task lock before notifying listeners                         sachins@uber.com
+* 2019-06-20    Add sleep for aurora bridge failure tests for lucene index to converge                 varung@uber.com
+* 2019-06-20    Remove need to run aurora bridge integration test twice                                varung@uber.com
+* 2019-06-20    Placement Engine: Small cleanup of types and functions                                 pourchet@uber.com
+* 2019-06-19    API: Request on a single host instead of list of hosts for HostMaintenance public APIs rcharles@uber.com
 
 0.8.8
 ------------------
