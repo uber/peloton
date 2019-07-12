@@ -57,8 +57,7 @@ def load_config():
         os.path.dirname(os.path.abspath(__file__)), "config.yaml"
     )
     with open(config_file, "r") as f:
-        #config = yaml.load(f, Loader=yaml.FullLoader)
-        config = yaml.load(f)
+        config = yaml.load(f, Loader=yaml.FullLoader)
     return config
 
 
@@ -168,6 +167,14 @@ USAGE
         description=program_license,
         formatter_class=RawDescriptionHelpFormatter,
     )
+    parser.add_argument(
+        "--num-peloton-instance",
+        dest="num_peloton_instance",
+        type=int,
+        default=1,
+        help="customize number of peloton instance",
+    )
+
     subparsers = parser.add_subparsers(help="command help", dest="command")
     # Subparser for the 'setup' command
     parser_setup = subparsers.add_parser(
@@ -245,14 +252,24 @@ USAGE
         default=False,
         help="disable peloton aurora bridge app",
     )
+
     # Subparser for the 'teardown' command
     subparsers.add_parser("teardown", help="tear down a personal cluster")
+
     # Process arguments
     return parser.parse_args()
 
 
+def customize_config(num_peloton_instance):
+    config['peloton_resmgr_instance_count'] = num_peloton_instance
+    config['peloton_hostmgr_instance_count'] = num_peloton_instance
+    config['peloton_jobmgr_instance_count'] = num_peloton_instance
+
+
 def main():
     args = parse_arguments()
+
+    customize_config(args.num_peloton_instance)
 
     command = args.command
 
