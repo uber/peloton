@@ -17,6 +17,7 @@ package offers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -65,9 +66,19 @@ func (s *service) Acquire(
 ) ([]models.Offer, string) {
 	filter := plugins_v1.PlacementNeedsToHostFilter(needs)
 	req := &hostsvc.AcquireHostsRequest{Filter: filter}
+
+	ctx, cancelFunc := context.WithTimeout(ctx, _timeout)
+	defer cancelFunc()
+
 	resp, err := s.hostManager.AcquireHosts(ctx, req)
 	if err != nil {
-		return nil, _failedToAcquireHosts
+		log.WithFields(log.Fields{
+			"filter":      filter,
+			"task_type":   taskType,
+			"fetch_tasks": fetchTasks,
+		}).WithError(err).Error(_failedToAcquireHosts)
+		s.metrics.OfferGetFail.Inc(1)
+		return nil, fmt.Sprintf("failed to acquire hosts: %s", err)
 	}
 
 	log.WithFields(log.Fields{
@@ -76,6 +87,12 @@ func (s *service) Acquire(
 	}).Debug("acquire host offers returned")
 
 	if len(resp.Hosts) == 0 {
+		log.WithFields(log.Fields{
+			"host_offers": resp.Hosts,
+			"filter":      filter,
+			"task_type":   taskType,
+			"fetch_tasks": fetchTasks,
+		}).Error(_noHostsAcquired)
 		return nil, _noHostsAcquired
 	}
 

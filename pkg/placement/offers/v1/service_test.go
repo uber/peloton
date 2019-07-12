@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -68,7 +69,7 @@ func TestOfferServiceAcquire(t *testing.T) {
 				&hostsvc.AcquireHostsRequest{Filter: filter}).
 			Return(nil, errors.New("acquire hosts failed"))
 		hosts, reason := service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, needs)
-		assert.Equal(t, reason, _failedToAcquireHosts)
+		require.True(t, strings.Contains(reason, _failedToAcquireHosts))
 		require.Len(t, hosts, 0)
 
 		// Acquire Host Offers does not return any offer
@@ -80,7 +81,7 @@ func TestOfferServiceAcquire(t *testing.T) {
 				Hosts: nil,
 			}, nil)
 		hosts, reason = service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, needs)
-		assert.Equal(t, reason, _noHostsAcquired)
+		require.Equal(t, reason, _noHostsAcquired)
 		require.Len(t, hosts, 0)
 	})
 
