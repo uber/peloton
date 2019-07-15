@@ -44,8 +44,7 @@ func (l *FakeJobListener) TaskRuntimeChanged(
 	instanceID uint32,
 	jobType pbjob.JobType,
 	runtime *pbtask.RuntimeInfo,
-	labels []*peloton.Label,
-) {
+	labels []*peloton.Label) {
 }
 
 func (l *FakeJobListener) Reset() {
@@ -76,8 +75,7 @@ func (l *FakeTaskListener) TaskRuntimeChanged(
 	instanceID uint32,
 	jobType pbjob.JobType,
 	runtime *pbtask.RuntimeInfo,
-	labels []*peloton.Label,
-) {
+	labels []*peloton.Label) {
 	l.jobID = jobID
 	l.instanceID = instanceID
 	l.jobType = jobType

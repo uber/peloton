@@ -403,11 +403,8 @@ func (l *launcher) updateTaskRuntime(
 		return fmt.Errorf("jobID %v not found in cache", jobID)
 	}
 	// update the task in DB and cache, and then schedule to goalstate
-	_, _, err = cachedJob.PatchTasks(
-		ctx,
-		map[uint32]jobmgrcommon.RuntimeDiff{uint32(instanceID): runtimeDiff},
-		false,
-	)
+	err = cachedJob.PatchTasks(ctx,
+		map[uint32]jobmgrcommon.RuntimeDiff{uint32(instanceID): runtimeDiff})
 	if err != nil {
 		return err
 	}

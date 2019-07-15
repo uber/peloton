@@ -357,12 +357,11 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		ctx,
 		taskInfo.GetInstanceId(),
 		newRuntime,
-		false,
 	); err != nil {
 		log.WithError(err).
 			WithFields(log.Fields{
 				"task_id": updateEvent.taskID,
-				"state":   updateEvent.state.String()}).
+				"state":   updateEvent.state}).
 			Error("Fail to update runtime for taskID")
 		return err
 	}

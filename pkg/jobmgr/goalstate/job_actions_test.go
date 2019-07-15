@@ -423,9 +423,7 @@ func (suite *jobActionsTestSuite) TestStartJobSuccess() {
 	suite.cachedJob.EXPECT().ID().Return(suite.jobID).AnyTimes()
 	suite.jobFactory.EXPECT().GetJob(suite.jobID).Return(suite.cachedJob)
 	suite.cachedJob.EXPECT().GetAllTasks().Return(taskMap)
-	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any(), false).
-		Return(nil, nil, nil)
+	suite.cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Return(nil)
 	suite.taskGoalStateEngine.EXPECT().Enqueue(gomock.Any(), gomock.Any())
 	suite.cachedJob.EXPECT().GetRuntime(gomock.Any()).Return(jobRuntime, nil)
 	suite.cachedJob.EXPECT().
@@ -455,8 +453,8 @@ func (suite *jobActionsTestSuite) TestStartJobPatchTasksFailure() {
 	suite.jobFactory.EXPECT().GetJob(suite.jobID).Return(cachedJob)
 	cachedJob.EXPECT().GetAllTasks().Return(taskMap)
 	cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any(), false).
-		Return(nil, nil, yarpcerrors.InternalErrorf("test error"))
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Return(yarpcerrors.InternalErrorf("test error"))
 
 	suite.Error(JobStart(context.Background(), suite.jobEnt))
 }
@@ -472,8 +470,7 @@ func (suite *jobActionsTestSuite) TestStartJobGetRuntimeFailure() {
 	cachedJob.EXPECT().ID().Return(suite.jobID).AnyTimes()
 	suite.jobFactory.EXPECT().GetJob(suite.jobID).Return(cachedJob)
 	cachedJob.EXPECT().GetAllTasks().Return(taskMap)
-	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any(), false).
-		Return(nil, nil, nil)
+	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Return(nil)
 	suite.taskGoalStateEngine.EXPECT().Enqueue(gomock.Any(), gomock.Any())
 	cachedJob.EXPECT().
 		GetRuntime(gomock.Any()).
@@ -497,8 +494,7 @@ func (suite *jobActionsTestSuite) TestStartJobRuntimeUpdateFailure() {
 	cachedJob.EXPECT().ID().Return(suite.jobID).AnyTimes()
 	suite.jobFactory.EXPECT().GetJob(suite.jobID).Return(cachedJob)
 	cachedJob.EXPECT().GetAllTasks().Return(taskMap)
-	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any(), false).
-		Return(nil, nil, nil)
+	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Return(nil)
 	suite.taskGoalStateEngine.EXPECT().Enqueue(gomock.Any(), gomock.Any())
 	cachedJob.EXPECT().
 		GetRuntime(gomock.Any()).
@@ -960,8 +956,8 @@ func (suite *jobActionsTestSuite) TestJobKillAndDeleteTerminatedJobWithRunningTa
 	}
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any(), false).
-		Return(nil, nil, nil)
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Return(nil)
 
 	suite.cachedJob.EXPECT().
 		GetJobType().
@@ -1030,8 +1026,8 @@ func (suite *jobActionsTestSuite) TestJobKillAndUntrackTerminatedJobWithNonTermi
 	}
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any(), false).
-		Return(nil, nil, nil)
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Return(nil)
 
 	suite.cachedJob.EXPECT().
 		GetConfig(gomock.Any()).

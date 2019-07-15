@@ -101,13 +101,9 @@ func startStatefulTask(ctx context.Context, taskEnt *taskEntity, taskInfo *task.
 		return nil
 	}
 
-	_, _, err = cachedJob.PatchTasks(
-		ctx,
-		map[uint32]jobmgrcommon.RuntimeDiff{
-			taskEnt.instanceID: launchableTask.RuntimeDiff,
-		},
-		false,
-	)
+	err = cachedJob.PatchTasks(ctx, map[uint32]jobmgrcommon.RuntimeDiff{
+		taskEnt.instanceID: launchableTask.RuntimeDiff,
+	})
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", taskEnt.jobID).
@@ -255,11 +251,8 @@ func TaskStart(ctx context.Context, entity goalstate.Entity) error {
 			jobmgrcommon.StateField:   task.TaskState_PENDING,
 			jobmgrcommon.MessageField: "Task sent for placement",
 		}
-		_, _, err = cachedJob.PatchTasks(
-			ctx,
-			map[uint32]jobmgrcommon.RuntimeDiff{taskEnt.instanceID: runtimeDiff},
-			false,
-		)
+		err = cachedJob.PatchTasks(ctx,
+			map[uint32]jobmgrcommon.RuntimeDiff{taskEnt.instanceID: runtimeDiff})
 	}
 	return err
 }

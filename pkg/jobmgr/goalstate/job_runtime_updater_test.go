@@ -215,12 +215,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobCompletionTimeNotEmpty() {
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH).
-		Times(int(instanceCount))
-
-	suite.cachedJob.EXPECT().
-		RepopulateInstanceAvailabilityInfo(gomock.Any()).
-		Return(nil)
+		Return(pbjob.JobType_BATCH).Times(int(instanceCount))
 
 	suite.cachedJob.EXPECT().
 		GetFirstTaskUpdateTime().
@@ -325,12 +320,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_RUNNING() {
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH).
-		Times(int(instanceCount))
-
-	suite.cachedJob.EXPECT().
-		RepopulateInstanceAvailabilityInfo(gomock.Any()).
-		Return(nil)
+		Return(pbjob.JobType_BATCH).Times(int(instanceCount))
 
 	suite.cachedJob.EXPECT().
 		GetFirstTaskUpdateTime().
@@ -418,10 +408,6 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_SUCCEED() {
 	suite.cachedConfig.EXPECT().
 		GetType().
 		Return(pbjob.JobType_BATCH).Times(int(instanceCount))
-
-	suite.cachedJob.EXPECT().
-		RepopulateInstanceAvailabilityInfo(gomock.Any()).
-		Return(nil)
 
 	suite.cachedConfig.EXPECT().
 		GetInstanceCount().
@@ -525,12 +511,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_PENDING() {
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH).
-		Times(int(instanceCount))
-
-	suite.cachedJob.EXPECT().
-		RepopulateInstanceAvailabilityInfo(gomock.Any()).
-		Return(nil)
+		Return(pbjob.JobType_BATCH).Times(int(instanceCount))
 
 	suite.cachedJob.EXPECT().
 		GetFirstTaskUpdateTime().
@@ -616,12 +597,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_FAILED() {
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH).
-		Times(int(instanceCount))
-
-	suite.cachedJob.EXPECT().
-		RepopulateInstanceAvailabilityInfo(gomock.Any()).
-		Return(nil)
+		Return(pbjob.JobType_BATCH).Times(int(instanceCount))
 
 	suite.cachedJob.EXPECT().
 		GetFirstTaskUpdateTime().
@@ -715,12 +691,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_LOST() {
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH).
-		Times(int(instanceCount))
-
-	suite.cachedJob.EXPECT().
-		RepopulateInstanceAvailabilityInfo(gomock.Any()).
-		Return(nil)
+		Return(pbjob.JobType_BATCH).Times(int(instanceCount))
 
 	suite.cachedJob.EXPECT().
 		GetFirstTaskUpdateTime().
@@ -822,12 +793,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_KILLING() {
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH).
-		Times(int(instanceCount))
-
-	suite.cachedJob.EXPECT().
-		RepopulateInstanceAvailabilityInfo(gomock.Any()).
-		Return(nil)
+		Return(pbjob.JobType_BATCH).Times(int(instanceCount))
 
 	suite.cachedJob.EXPECT().
 		GetFirstTaskUpdateTime().
@@ -927,12 +893,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_Batch_KILLED() {
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH).
-		Times(int(instanceCount))
-
-	suite.cachedJob.EXPECT().
-		RepopulateInstanceAvailabilityInfo(gomock.Any()).
-		Return(nil)
+		Return(pbjob.JobType_BATCH).Times(int(instanceCount))
 
 	suite.cachedJob.EXPECT().
 		GetFirstTaskUpdateTime().
@@ -1025,10 +986,6 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_DBError() {
 		GetType().
 		Return(pbjob.JobType_BATCH).Times(int(instanceCount))
 
-	suite.cachedJob.EXPECT().
-		RepopulateInstanceAvailabilityInfo(gomock.Any()).
-		Return(nil)
-
 	suite.cachedConfig.EXPECT().
 		HasControllerTask().
 		Return(false)
@@ -1108,12 +1065,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_IncorrectState() 
 
 	suite.cachedConfig.EXPECT().
 		GetType().
-		Return(pbjob.JobType_BATCH).
-		Times(100)
-
-	suite.cachedJob.EXPECT().
-		RepopulateInstanceAvailabilityInfo(gomock.Any()).
-		Return(nil)
+		Return(pbjob.JobType_BATCH).Times(100)
 
 	suite.cachedJob.EXPECT().
 		GetFirstTaskUpdateTime().
@@ -1181,11 +1133,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_KILLEDWithNoTask(
 
 	suite.cachedJob.EXPECT().
 		GetAllTasks().
-		Return(cachedTasks)
-
-	suite.cachedJob.EXPECT().
-		RepopulateInstanceAvailabilityInfo(gomock.Any()).
-		Return(nil)
+		Return(cachedTasks).Times(1)
 
 	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)
 	suite.NoError(err)
@@ -1247,10 +1195,6 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_PartiallyCreatedJ
 	suite.cachedConfig.EXPECT().GetType().Return(pbjob.JobType_BATCH).Times(
 		int(instanceCount - 2))
 	suite.cachedJob.EXPECT().GetJobType().Return(pbjob.JobType_BATCH).AnyTimes()
-
-	suite.cachedJob.EXPECT().
-		RepopulateInstanceAvailabilityInfo(gomock.Any()).
-		Return(nil)
 
 	suite.cachedJob.EXPECT().
 		IsPartiallyCreated(gomock.Any()).
@@ -1348,10 +1292,6 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_InitializedJobWit
 		AnyTimes()
 
 	suite.cachedJob.EXPECT().
-		RepopulateInstanceAvailabilityInfo(gomock.Any()).
-		Return(nil)
-
-	suite.cachedJob.EXPECT().
 		IsPartiallyCreated(gomock.Any()).
 		Return(true).
 		AnyTimes()
@@ -1446,10 +1386,6 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_PendingJobWithMor
 		AnyTimes()
 
 	suite.cachedJob.EXPECT().
-		RepopulateInstanceAvailabilityInfo(gomock.Any()).
-		Return(nil)
-
-	suite.cachedJob.EXPECT().
 		IsPartiallyCreated(gomock.Any()).
 		Return(true).
 		AnyTimes()
@@ -1538,10 +1474,6 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskSuc
 	suite.cachedConfig.EXPECT().
 		HasControllerTask().
 		Return(true)
-
-	suite.cachedJob.EXPECT().
-		RepopulateInstanceAvailabilityInfo(gomock.Any()).
-		Return(nil)
 
 	suite.cachedJob.EXPECT().
 		IsPartiallyCreated(gomock.Any()).
@@ -1648,10 +1580,6 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdaterControllerTaskFail
 		Return(true)
 
 	suite.cachedJob.EXPECT().
-		RepopulateInstanceAvailabilityInfo(gomock.Any()).
-		Return(nil)
-
-	suite.cachedJob.EXPECT().
 		IsPartiallyCreated(gomock.Any()).
 		Return(false).
 		AnyTimes()
@@ -1721,10 +1649,6 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdaterControllerTaskFail
 	suite.cachedConfig.EXPECT().
 		HasControllerTask().
 		Return(true)
-
-	suite.cachedJob.EXPECT().
-		RepopulateInstanceAvailabilityInfo(gomock.Any()).
-		Return(nil)
 
 	suite.cachedJob.EXPECT().
 		IsPartiallyCreated(gomock.Any()).
@@ -1800,10 +1724,6 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskFai
 	suite.cachedConfig.EXPECT().
 		HasControllerTask().
 		Return(true)
-
-	suite.cachedJob.EXPECT().
-		RepopulateInstanceAvailabilityInfo(gomock.Any()).
-		Return(nil)
 
 	suite.cachedJob.EXPECT().
 		IsPartiallyCreated(gomock.Any()).
@@ -1909,10 +1829,6 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskLos
 	suite.cachedConfig.EXPECT().
 		HasControllerTask().
 		Return(true)
-
-	suite.cachedJob.EXPECT().
-		RepopulateInstanceAvailabilityInfo(gomock.Any()).
-		Return(nil)
 
 	suite.cachedJob.EXPECT().
 		IsPartiallyCreated(gomock.Any()).
@@ -2022,10 +1938,6 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_ControllerTaskRun
 		Return(true)
 
 	suite.cachedJob.EXPECT().
-		RepopulateInstanceAvailabilityInfo(gomock.Any()).
-		Return(nil)
-
-	suite.cachedJob.EXPECT().
 		IsPartiallyCreated(gomock.Any()).
 		Return(false).
 		AnyTimes()
@@ -2120,10 +2032,6 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_UpdateAddingInsta
 		IsPartiallyCreated(gomock.Any()).
 		Return(true).
 		AnyTimes()
-
-	suite.cachedJob.EXPECT().
-		RepopulateInstanceAvailabilityInfo(gomock.Any()).
-		Return(nil)
 
 	suite.cachedJob.EXPECT().
 		GetFirstTaskUpdateTime().
@@ -2695,13 +2603,14 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any(), false).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff, _ bool) {
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 			suite.Equal(uint32(len(runtimeDiffs)), jobConfig.SLA.MaximumRunningInstances)
 			for _, runtimeDiff := range runtimeDiffs {
 				suite.Equal(runtimeDiff[jobmgrcommon.StateField], pbtask.TaskState_PENDING)
 			}
-		}).Return(nil, nil, nil)
+		}).
+		Return(nil)
 
 	err := JobEvaluateMaxRunningInstancesSLA(context.Background(), suite.jobEnt)
 	suite.NoError(err)

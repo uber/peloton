@@ -19,7 +19,7 @@ import (
 	"errors"
 	"testing"
 
-	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/mesos/v1"
 	pb_job "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
@@ -159,10 +159,8 @@ func (suite *TestTaskInitializeSuite) TestTaskInitialize() {
 			gomock.Any(), suite.jobID, suite.instanceID, suite.newConfigVersion).
 			Return(tt.taskConfig, &models.ConfigAddOn{}, nil)
 
-		suite.cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any(), false).Do(
-			func(_ context.Context,
-				runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
-				_ bool) {
+		suite.cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Do(
+			func(_ context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 				for _, runtimeDiff := range runtimeDiffs {
 					suite.Equal(
 						pbtask.TaskState_INITIALIZED,
@@ -178,7 +176,7 @@ func (suite *TestTaskInitializeSuite) TestTaskInitialize() {
 					)
 
 				}
-			}).Return(nil, nil, nil)
+			}).Return(nil)
 
 		suite.cachedConfig.EXPECT().
 			GetType().Return(pb_job.JobType_BATCH)

@@ -164,15 +164,13 @@ func (suite *TaskStartTestSuite) TestTaskStartStateless() {
 		Return(nil, nil)
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any(), false).
-		Do(func(ctx context.Context,
-			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
-			_ bool) {
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 			suite.Equal(runtimeDiffs[suite.instanceID], jobmgrcommon.RuntimeDiff{
 				jobmgrcommon.StateField:   pbtask.TaskState_PENDING,
 				jobmgrcommon.MessageField: "Task sent for placement",
 			})
-		}).Return(nil, nil, nil)
+		}).Return(nil)
 
 	err := TaskStart(context.Background(), suite.taskEnt)
 	suite.NoError(err)
@@ -330,12 +328,10 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolume() {
 		Return(suite.cachedTask)
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any(), false).
-		Do(func(ctx context.Context,
-			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
-			_ bool) {
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 			suite.Equal(runtimeDiffs[suite.instanceID], jobmgrcommon.RuntimeDiff{})
-		}).Return(nil, nil, nil)
+		}).Return(nil)
 
 	suite.cachedTask.EXPECT().
 		GetRuntime(gomock.Any()).
@@ -516,13 +512,11 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolumeDBError() {
 		Return(suite.cachedTask)
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any(), false).
-		Do(func(ctx context.Context,
-			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
-			_ bool) {
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 			suite.Equal(runtimeDiffs[suite.instanceID], jobmgrcommon.RuntimeDiff{})
 		}).
-		Return(nil, nil, fmt.Errorf("fake db write error"))
+		Return(fmt.Errorf("fake db write error"))
 
 	err := TaskStart(context.Background(), suite.taskEnt)
 	suite.Error(err)
@@ -596,16 +590,14 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithoutVolume() {
 		Return(nil, nil)
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any(), false).
-		Do(func(ctx context.Context,
-			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
-			_ bool) {
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 			suite.Equal(runtimeDiffs[suite.instanceID], jobmgrcommon.RuntimeDiff{
 				jobmgrcommon.StateField:   pbtask.TaskState_PENDING,
 				jobmgrcommon.MessageField: "Task sent for placement",
 			})
 		}).
-		Return(nil, nil, nil)
+		Return(nil)
 
 	err := TaskStart(context.Background(), suite.taskEnt)
 	suite.NoError(err)
@@ -699,15 +691,13 @@ func (suite *TaskStartTestSuite) TestTaskStartEnqueueExist() {
 			suite.Error(err)
 		case "already_exists":
 			suite.cachedJob.EXPECT().
-				PatchTasks(gomock.Any(), gomock.Any(), false).
-				Do(func(ctx context.Context,
-					runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
-					_ bool) {
+				PatchTasks(gomock.Any(), gomock.Any()).
+				Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 					suite.Equal(runtimeDiffs[suite.instanceID], jobmgrcommon.RuntimeDiff{
 						jobmgrcommon.StateField:   pbtask.TaskState_PENDING,
 						jobmgrcommon.MessageField: "Task sent for placement",
 					})
-				}).Return(nil, nil, nil)
+				}).Return(nil)
 
 			err := TaskStart(context.Background(), suite.taskEnt)
 			suite.NoError(err)

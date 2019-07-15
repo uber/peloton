@@ -459,12 +459,8 @@ func (suite *podHandlerTestSuite) TestStartPodSuccess() {
 			}, nil, nil),
 
 		suite.cachedJob.EXPECT().
-			CompareAndSetTask(
-				gomock.Any(),
-				uint32(testInstanceID),
-				gomock.Any(),
-				false,
-			).Return(nil, nil),
+			CompareAndSetTask(gomock.Any(), uint32(testInstanceID), gomock.Any()).
+			Return(nil, nil),
 
 		suite.goalStateDriver.EXPECT().
 			EnqueueTask(&peloton.JobID{Value: testJobID}, uint32(testInstanceID), gomock.Any()).
@@ -584,12 +580,8 @@ func (suite *podHandlerTestSuite) TestStartPodSuccessWithJobRuntimeUnexpectedVer
 			}, nil, nil),
 
 		suite.cachedJob.EXPECT().
-			CompareAndSetTask(
-				gomock.Any(),
-				uint32(testInstanceID),
-				gomock.Any(),
-				false,
-			).Return(nil, nil),
+			CompareAndSetTask(gomock.Any(), uint32(testInstanceID), gomock.Any()).
+			Return(nil, nil),
 
 		suite.goalStateDriver.EXPECT().
 			EnqueueTask(&peloton.JobID{Value: testJobID}, uint32(testInstanceID), gomock.Any()).
@@ -685,12 +677,8 @@ func (suite *podHandlerTestSuite) TestStartPodSuccessWithPodRuntimeUnexpectedVer
 			}, nil, nil),
 
 		suite.cachedJob.EXPECT().
-			CompareAndSetTask(
-				gomock.Any(),
-				uint32(testInstanceID),
-				gomock.Any(),
-				false,
-			).Return(nil, jobmgrcommon.UnexpectedVersionError),
+			CompareAndSetTask(gomock.Any(), uint32(testInstanceID), gomock.Any()).
+			Return(nil, jobmgrcommon.UnexpectedVersionError),
 
 		suite.cachedTask.EXPECT().
 			GetRuntime(gomock.Any()).
@@ -713,12 +701,8 @@ func (suite *podHandlerTestSuite) TestStartPodSuccessWithPodRuntimeUnexpectedVer
 			}, nil, nil),
 
 		suite.cachedJob.EXPECT().
-			CompareAndSetTask(
-				gomock.Any(),
-				uint32(testInstanceID),
-				gomock.Any(),
-				false,
-			).Return(nil, nil),
+			CompareAndSetTask(gomock.Any(), uint32(testInstanceID), gomock.Any()).
+			Return(nil, nil),
 
 		suite.goalStateDriver.EXPECT().
 			EnqueueTask(&peloton.JobID{Value: testJobID}, uint32(testInstanceID), gomock.Any()).
@@ -845,8 +829,8 @@ func (suite *podHandlerTestSuite) TestStopPodSuccess() {
 			Return(taskRuntimeInfo, nil),
 
 		suite.cachedJob.EXPECT().
-			PatchTasks(gomock.Any(), runtimeDiff, false).
-			Return(nil, nil, nil),
+			PatchTasks(gomock.Any(), runtimeDiff).
+			Return(nil),
 
 		suite.goalStateDriver.EXPECT().
 			EnqueueTask(jobID, uint32(testInstanceID), gomock.Any()),
@@ -1018,8 +1002,8 @@ func (suite *podHandlerTestSuite) TestStopPodPatchTasksFailure() {
 			Return(taskRuntimeInfo, nil),
 
 		suite.cachedJob.EXPECT().
-			PatchTasks(gomock.Any(), runtimeDiff, false).
-			Return(nil, nil, yarpcerrors.InternalErrorf("test error")),
+			PatchTasks(gomock.Any(), runtimeDiff).
+			Return(yarpcerrors.InternalErrorf("test error")),
 
 		suite.goalStateDriver.EXPECT().
 			EnqueueTask(jobID, uint32(testInstanceID), gomock.Any()),
@@ -1067,8 +1051,8 @@ func (suite *podHandlerTestSuite) TestRestartPodSuccess() {
 			Return(taskRuntimeInfo, nil),
 
 		suite.cachedJob.EXPECT().
-			PatchTasks(gomock.Any(), runtimeDiff, false).
-			Return(nil, nil, nil),
+			PatchTasks(gomock.Any(), runtimeDiff).
+			Return(nil),
 
 		suite.goalStateDriver.EXPECT().
 			EnqueueTask(jobID, uint32(testInstanceID), gomock.Any()),
@@ -1190,8 +1174,8 @@ func (suite *podHandlerTestSuite) TestRestartPodPatchTasksFailure() {
 			Return(taskRuntimeInfo, nil),
 
 		suite.cachedJob.EXPECT().
-			PatchTasks(gomock.Any(), runtimeDiff, false).
-			Return(nil, nil, yarpcerrors.InternalErrorf("test error")),
+			PatchTasks(gomock.Any(), runtimeDiff).
+			Return(yarpcerrors.InternalErrorf("test error")),
 
 		suite.goalStateDriver.EXPECT().
 			EnqueueTask(jobID, uint32(testInstanceID), gomock.Any()),

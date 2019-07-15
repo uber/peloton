@@ -825,11 +825,12 @@ func (suite *LauncherTestSuite) TestCreateLaunchableTasks() {
 	}
 	suite.jobFactory.EXPECT().GetJob(tmp.JobId).Return(suite.cachedJob)
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any(), false).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff, slaAware bool) {
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 			suite.Equal(task.TaskState_KILLED, runtimeDiffs[0][jobmgrcommon.GoalStateField])
 			suite.Equal("REASON_SECRET_NOT_FOUND", runtimeDiffs[0][jobmgrcommon.ReasonField])
-		}).Return(nil, nil, nil)
+		}).
+		Return(nil)
 	suite.secretInfoOps.EXPECT().
 		GetSecret(gomock.Any(), idStr).
 		Return(nil, yarpcerrors.NotFoundErrorf(

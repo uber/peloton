@@ -163,8 +163,8 @@ func (suite *JobCreateTestSuite) TestJobCreateTasks() {
 		Times(2)
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any(), false).
-		Return(nil, nil, nil)
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Return(nil)
 
 	err := JobCreateTasks(context.Background(), suite.jobEnt)
 	suite.NoError(err)
@@ -326,8 +326,8 @@ func (suite *JobCreateTestSuite) TestJobCreateUpdateFailure() {
 		Times(2)
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any(), false).
-		Return(nil, nil, nil)
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Return(nil)
 
 	err := JobCreateTasks(context.Background(), suite.jobEnt)
 	suite.Error(err)
@@ -413,8 +413,8 @@ func (suite *JobCreateTestSuite) TestJobRecover() {
 		Times(2)
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any(), false).
-		Return(nil, nil, nil)
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Return(nil)
 
 	err := JobCreateTasks(context.Background(), suite.jobEnt)
 	suite.NoError(err)
@@ -464,15 +464,14 @@ func (suite *JobCreateTestSuite) TestJobMaxRunningInstances() {
 		Times(2)
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any(), false).
-		Do(func(ctx context.Context,
-			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
-			_ bool) {
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 			suite.Equal(uint32(len(runtimeDiffs)), suite.jobConfig.SLA.MaximumRunningInstances)
 			for _, runtimeDiff := range runtimeDiffs {
 				suite.Equal(runtimeDiff[jobmgrcommon.StateField], pbtask.TaskState_PENDING)
 			}
-		}).Return(nil, nil, nil)
+		}).
+		Return(nil)
 
 	suite.cachedJob.EXPECT().
 		Update(
@@ -699,10 +698,8 @@ func (suite *JobCreateTestSuite) TestJobCreateExistTasks() {
 		Return(resmgrResponse, nil)
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any(), false).
-		Do(func(ctx context.Context,
-			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
-			_ bool) {
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 			instIDs := []uint32{}
 			suite.Equal(len(runtimeDiffs), 2)
 			for i, runtimeDiff := range runtimeDiffs {
@@ -710,7 +707,8 @@ func (suite *JobCreateTestSuite) TestJobCreateExistTasks() {
 				instIDs = append(instIDs, i)
 			}
 			suite.ElementsMatch(instIDs, []uint32{uint32(1), uint32(3)})
-		}).Return(nil, nil, nil)
+		}).
+		Return(nil)
 
 	err := JobCreateTasks(context.Background(), suite.jobEnt)
 	suite.Error(err)

@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/mesos/v1"
 	pb_job "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pb_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
@@ -131,16 +131,14 @@ func (suite *TestTaskLaunchRetrySuite) TestTaskLaunchTimeout() {
 
 		suite.jobConfig.EXPECT().GetType().Return(pb_job.JobType_BATCH)
 
-		suite.cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any(), false).Do(
-			func(_ context.Context,
-				runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
-				_ bool) {
+		suite.cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Do(
+			func(_ context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 				for _, runtimeDiff := range runtimeDiffs {
 					suite.Equal(oldMesosTaskID, runtimeDiff[jobmgrcommon.PrevMesosTaskIDField])
 					suite.NotEqual(oldMesosTaskID, runtimeDiff[jobmgrcommon.MesosTaskIDField])
 					suite.Equal(pb_task.TaskState_INITIALIZED, runtimeDiff[jobmgrcommon.StateField])
 				}
-			}).Return(nil, nil, nil)
+			}).Return(nil)
 
 		suite.cachedJob.EXPECT().
 			GetJobType().Return(pb_job.JobType_BATCH)
@@ -270,16 +268,14 @@ func (suite *TestTaskLaunchRetrySuite) TestTaskStartTimeoutForBatchJob() {
 
 	suite.jobConfig.EXPECT().GetType().Return(pb_job.JobType_BATCH)
 
-	suite.cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any(), false).Do(
-		func(_ context.Context,
-			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
-			_ bool) {
+	suite.cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Do(
+		func(_ context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 			for _, runtimeDiff := range runtimeDiffs {
 				suite.Equal(oldMesosTaskID, runtimeDiff[jobmgrcommon.PrevMesosTaskIDField])
 				suite.NotEqual(oldMesosTaskID, runtimeDiff[jobmgrcommon.MesosTaskIDField])
 				suite.Equal(pb_task.TaskState_INITIALIZED, runtimeDiff[jobmgrcommon.StateField])
 			}
-		}).Return(nil, nil, nil)
+		}).Return(nil)
 
 	suite.cachedJob.EXPECT().
 		GetJobType().Return(pb_job.JobType_BATCH)
