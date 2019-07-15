@@ -332,9 +332,9 @@ else
 	@./tools/packaging/docker-push.sh $(REGISTRY) $(IMAGE)
 endif
 
-failure-test-minicluster:
+failure-test-minicluster: $(GOKIND)
 	IMAGE=uber/peloton $(MAKE) -f $(THIS_FILE) docker
-	@./tests/run-failure-tests.sh minicluster
+	PATH="$(PATH):$(shell pwd)/bin" ./tests/run-failure-tests.sh minicluster
 
 failure-test-vcluster:
 	IMAGE= $(MAKE) -f $(THIS_FILE) docker docker-push
