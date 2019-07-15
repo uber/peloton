@@ -158,14 +158,13 @@ func (d *Drainer) drainHosts() error {
 	tasksByHost := d.rmTracker.TasksByHosts(drainingHosts, resmgr.TaskType_UNKNOWN)
 	var drainedHosts []string
 	for _, host := range drainingHosts {
-		tasks, ok := tasksByHost[host]
-		if !ok {
+		if _, ok := tasksByHost[host]; !ok {
 			drainedHosts = append(drainedHosts, host)
 			continue
 		}
 
 		err := d.preemptionQueue.EnqueueTasks(
-			tasks,
+			tasksByHost[host],
 			resmgr.PreemptionReason_PREEMPTION_REASON_HOST_MAINTENANCE)
 		if err != nil {
 			log.WithField("host", host).

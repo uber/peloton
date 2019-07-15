@@ -523,15 +523,6 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	err = cachedJob.RepopulateInstanceAvailabilityInfo(ctx)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", id).
-			Error("Failed to repopulate SLA info")
-		goalStateDriver.mtx.jobMetrics.JobRuntimeUpdateFailed.Inc(1)
-		return err
-	}
-
 	stateCounts, configVersionStateStats,
 		err := getTaskStateSummaryForJobInCache(ctx, cachedJob, config)
 

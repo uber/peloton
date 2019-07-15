@@ -411,7 +411,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 		suite.mockedTaskStore.EXPECT().
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
 		suite.mockedCachedJob.EXPECT().
-			PatchTasks(gomock.Any(), runtimeDiffs, false).Return(nil, nil, nil),
+			PatchTasks(gomock.Any(), runtimeDiffs).Return(nil),
 		suite.mockedGoalStateDrive.EXPECT().
 			EnqueueTask(suite.testJobID, uint32(1), gomock.Any()).Return(),
 		suite.mockedCachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
@@ -452,14 +452,11 @@ func (suite *TaskHandlerTestSuite) TestStopTasksSkipKillNotRunningTask() {
 		suite.mockedJobFactory.EXPECT().
 			AddJob(suite.testJobID).Return(suite.mockedCachedJob),
 		suite.mockedCachedJob.EXPECT().
-			GetConfig(gomock.Any()).
-			Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil),
+			GetConfig(gomock.Any()).Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil),
 		suite.mockedTaskStore.EXPECT().
-			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).
-			Return(taskInfos, nil),
+			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(taskInfos, nil),
 		suite.mockedCachedJob.EXPECT().
-			PatchTasks(gomock.Any(), gomock.Any(), false).
-			Return(nil, nil, nil),
+			PatchTasks(gomock.Any(), gomock.Any()).Return(nil),
 	)
 
 	suite.mockedGoalStateDrive.EXPECT().
@@ -626,11 +623,9 @@ func (suite *TaskHandlerTestSuite) TestStopTasks_PatchFailure() {
 			GetConfig(gomock.Any()).
 			Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil),
 		suite.mockedTaskStore.EXPECT().
-			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).
-			Return(singleTaskInfo, nil),
+			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
 		suite.mockedCachedJob.EXPECT().
-			PatchTasks(gomock.Any(), gomock.Any(), false).
-			Return(nil, nil, errors.New("test error")),
+			PatchTasks(gomock.Any(), gomock.Any()).Return(errors.New("test error")),
 		suite.mockedCachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
 		suite.mockedGoalStateDrive.EXPECT().
 			JobRuntimeDuration(job.JobType_BATCH).
@@ -701,8 +696,8 @@ func (suite *TaskHandlerTestSuite) TestStartAllTasks() {
 			Return(taskInfos[i].Runtime, nil)
 		if i != runningInstanceID {
 			suite.mockedCachedJob.EXPECT().
-				CompareAndSetTask(gomock.Any(), gomock.Any(), gomock.Any(), false).
-				Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo, _ bool) {
+				CompareAndSetTask(gomock.Any(), gomock.Any(), gomock.Any()).
+				Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo) {
 					suite.Equal(runtime.State, task.TaskState_INITIALIZED)
 					suite.Equal(runtime.Healthy, task.HealthState_DISABLED)
 					suite.Equal(runtime.GoalState, task.TaskState_SUCCEEDED)
@@ -1076,7 +1071,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksCompareAndSetFailure() {
 				}, nil)
 
 			suite.mockedCachedJob.EXPECT().
-				CompareAndSetTask(gomock.Any(), gomock.Any(), gomock.Any(), false).
+				CompareAndSetTask(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(nil, jobmgrcommon.UnexpectedVersionError)
 		}
 	}
@@ -1149,8 +1144,8 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 		GetRuntime(gomock.Any()).
 		Return(singleTaskInfo[1].Runtime, nil)
 	suite.mockedCachedJob.EXPECT().
-		CompareAndSetTask(gomock.Any(), gomock.Any(), gomock.Any(), false).
-		Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo, _ bool) {
+		CompareAndSetTask(gomock.Any(), gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo) {
 			suite.Equal(runtime.State, task.TaskState_INITIALIZED)
 			suite.Equal(runtime.Healthy, task.HealthState_DISABLED)
 			suite.Equal(runtime.GoalState, task.TaskState_SUCCEEDED)
@@ -2399,12 +2394,8 @@ func (suite *TaskHandlerTestSuite) TestRestartAllTasks() {
 		suite.mockedCachedJob.EXPECT().
 			ID().Return(suite.testJobID).Times(len(taskInfos)),
 		suite.mockedCachedJob.EXPECT().
-			PatchTasks(gomock.Any(), gomock.Any(), false).
-			Do(func(
-				ctx context.Context,
-				runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
-				_ bool,
-			) {
+			PatchTasks(gomock.Any(), gomock.Any()).
+			Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
 				for instanceID, runtimeDiff := range runtimeDiffs {
 					mesosTaskID := runtimeDiff[jobmgrcommon.DesiredMesosTaskIDField].(*mesos.TaskID)
 					runID, err := util.ParseRunID(mesosTaskID.GetValue())
@@ -2416,7 +2407,8 @@ func (suite *TaskHandlerTestSuite) TestRestartAllTasks() {
 
 					suite.Equal(prevRunID+1, runID)
 				}
-			}).Return(nil, nil, nil),
+			}).
+			Return(nil),
 		suite.mockedGoalStateDrive.EXPECT().
 			EnqueueTask(suite.testJobID, gomock.Any(), gomock.Any()).Return().AnyTimes(),
 	)
