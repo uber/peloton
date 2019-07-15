@@ -30,13 +30,11 @@ import (
 	hpb "github.com/uber/peloton/.gen/peloton/api/v0/host"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
-	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	hostsvcmocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"github.com/uber/peloton/pkg/common/queue"
-	"github.com/uber/peloton/pkg/common/reservation"
 	"github.com/uber/peloton/pkg/common/util"
 	bin_packing "github.com/uber/peloton/pkg/hostmgr/binpacking"
 	"github.com/uber/peloton/pkg/hostmgr/config"
@@ -53,7 +51,6 @@ import (
 	task_state_mocks "github.com/uber/peloton/pkg/hostmgr/task/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/watchevent"
 	watchmocks "github.com/uber/peloton/pkg/hostmgr/watchevent/mocks"
-	storage_mocks "github.com/uber/peloton/pkg/storage/mocks"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/mock/gomock"
@@ -184,16 +181,6 @@ func generateLaunchableTasks(numTasks int) []*hostsvc.LaunchableTask {
 					Value: &tmpCmd,
 				},
 			},
-			Volume: &hostsvc.Volume{
-				Resource: util.NewMesosResourceBuilder().
-					WithName("disk").
-					WithValue(1.0).
-					Build(),
-				ContainerPath: "test",
-				Id: &peloton.VolumeID{
-					Value: "volumeid",
-				},
-			},
 		})
 	}
 	return tasks
@@ -208,7 +195,6 @@ type HostMgrHandlerTestSuite struct {
 	schedulerClient        *mpb_mocks.MockSchedulerClient
 	masterOperatorClient   *mpb_mocks.MockMasterOperatorClient
 	provider               *hostmgr_mesos_mocks.MockFrameworkInfoProvider
-	volumeStore            *storage_mocks.MockPersistentVolumeStore
 	pool                   offerpool.Pool
 	handler                *ServiceHandler
 	frameworkID            *mesos.FrameworkID
@@ -249,7 +235,6 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 	suite.schedulerClient = mpb_mocks.NewMockSchedulerClient(suite.ctrl)
 	suite.masterOperatorClient = mpb_mocks.NewMockMasterOperatorClient(suite.ctrl)
 	suite.provider = hostmgr_mesos_mocks.NewMockFrameworkInfoProvider(suite.ctrl)
-	suite.volumeStore = storage_mocks.NewMockPersistentVolumeStore(suite.ctrl)
 	suite.mesosDetector = hostmgr_mesos_mocks.NewMockMasterDetector(suite.ctrl)
 	suite.taskStateManager = task_state_mocks.NewMockStateManager(suite.ctrl)
 
@@ -264,10 +249,9 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 		_offerHoldTime,
 		suite.schedulerClient,
 		offerpool.NewMetrics(suite.testScope.SubScope("offer")),
-		nil,               /* frameworkInfoProvider */
-		suite.volumeStore, /* volumeStore */
-		[]string{},        /*scarce_resource_types*/
-		[]string{},        /*slack_resource_types*/
+		nil,        /* frameworkInfoProvider */
+		[]string{}, /*scarce_resource_types*/
+		[]string{}, /*slack_resource_types*/
 		bin_packing.GetRankerByName("FIRST_FIT"),
 		time.Duration(30*time.Second),
 	)
@@ -282,7 +266,6 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 		metrics:                metrics.NewMetrics(suite.testScope),
 		offerPool:              suite.pool,
 		frameworkInfoProvider:  suite.provider,
-		volumeStore:            suite.volumeStore,
 		mesosDetector:          suite.mesosDetector,
 		maintenanceQueue:       suite.maintenanceQueue,
 		maintenanceHostInfoMap: suite.maintenanceHostInfoMap,
@@ -869,110 +852,6 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunchOnNonHeldTask() {
 	suite.Nil(launchResp.GetError().GetInvalidArgument())
 	// the host should go back to ready state
 	suite.Equal(hs1.GetHostStatus(), summary.ReadyHost)
-}
-
-// This checks the happy case of acquire -> launch sequence using offer operations.
-func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunchOperation() {
-	defer suite.ctrl.Finish()
-
-	// only create one host offer in this test.
-	numHosts := 1
-	acquiredResp, err := suite.acquireHostOffers(numHosts)
-
-	suite.NoError(err)
-	suite.Nil(acquiredResp.GetError())
-	acquiredHostOffers := acquiredResp.GetHostOffers()
-	suite.Equal(1, len(acquiredHostOffers))
-
-	suite.Equal(
-		int64(1),
-		suite.testScope.Snapshot().Counters()["acquire_host_offers+"].Value())
-
-	// TODO: Add check for number of HostOffers in placing state.
-	suite.checkResourcesGauges(0, "ready")
-	suite.checkResourcesGauges(numHosts, "placing")
-
-	launchOperation := &hostsvc.OfferOperation{
-		Type: hostsvc.OfferOperation_LAUNCH,
-		Launch: &hostsvc.OfferOperation_Launch{
-			Tasks: []*hostsvc.LaunchableTask{},
-		},
-	}
-	// An empty launch request will trigger an error.
-	operationReq := &hostsvc.OfferOperationsRequest{
-		Hostname: acquiredHostOffers[0].GetHostname(),
-		Operations: []*hostsvc.OfferOperation{
-			launchOperation,
-		},
-		Id: acquiredHostOffers[0].GetId(),
-	}
-
-	operationResp, err := suite.handler.OfferOperations(
-		rootCtx,
-		operationReq,
-	)
-
-	suite.NoError(err)
-	suite.NotNil(operationResp.GetError().GetInvalidArgument())
-
-	suite.Equal(
-		int64(1),
-		suite.testScope.Snapshot().Counters()["offer_operations_invalid+"].Value())
-
-	// Generate some launchable tasks.
-	operationReq.Operations[0].Launch.Tasks = generateLaunchableTasks(1)
-
-	gomock.InOrder(
-		// Set expectations on provider
-		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
-			suite.frameworkID),
-		// Set expectations on provider
-		suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(_streamID),
-		// Set expectations on scheduler schedulerClient
-		suite.schedulerClient.EXPECT().
-			Call(
-				gomock.Eq(_streamID),
-				gomock.Any(),
-			).
-			Do(func(_ string, msg proto.Message) {
-				// Verify clientCall message.
-				call := msg.(*sched.Call)
-				suite.Equal(sched.Call_ACCEPT, call.GetType())
-				suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
-
-				accept := call.GetAccept()
-				suite.NotNil(accept)
-				suite.Equal(1, len(accept.GetOfferIds()))
-				suite.Equal("offer-0", accept.GetOfferIds()[0].GetValue())
-				suite.Equal(1, len(accept.GetOperations()))
-				operation := accept.GetOperations()[0]
-				suite.Equal(
-					mesos.Offer_Operation_LAUNCH,
-					operation.GetType())
-				launch := operation.GetLaunch()
-				suite.NotNil(launch)
-				suite.Equal(1, len(launch.GetTaskInfos()))
-				suite.Equal(
-					fmt.Sprintf(_taskIDFmt, 0),
-					launch.GetTaskInfos()[0].GetTaskId().GetValue())
-			}).
-			Return(nil),
-	)
-
-	operationResp, err = suite.handler.OfferOperations(
-		rootCtx,
-		operationReq,
-	)
-
-	suite.NoError(err)
-	suite.Nil(operationResp.GetError())
-	suite.Equal(
-		int64(1),
-		suite.testScope.Snapshot().Counters()["offer_operations+"].Value())
-
-	// TODO: Add check for number of HostOffers in placing state.
-	suite.checkResourcesGauges(0, "ready")
-	suite.checkResourcesGauges(0, "placing")
 }
 
 // Test happy case of shutdown executor
@@ -1732,344 +1611,6 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacityWithQuota
 	}
 }
 
-func (suite *HostMgrHandlerTestSuite) TestLaunchOperationWithReservedOffers() {
-	defer suite.ctrl.Finish()
-
-	volumeInfo := &volume.PersistentVolumeInfo{}
-
-	suite.volumeStore.EXPECT().
-		GetPersistentVolume(context.Background(), gomock.Any()).
-		AnyTimes().
-		Return(volumeInfo, nil)
-	suite.volumeStore.EXPECT().
-		UpdatePersistentVolume(context.Background(), volumeInfo).
-		AnyTimes().
-		Return(nil)
-
-	gomock.InOrder(
-		// Set expectations on provider
-		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
-			suite.frameworkID),
-		// Set expectations on provider
-		suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(_streamID),
-		// Set expectations on scheduler schedulerClient
-		suite.schedulerClient.EXPECT().
-			Call(
-				gomock.Eq(_streamID),
-				gomock.Any(),
-			).
-			Do(func(_ string, msg proto.Message) {
-				// Verify clientCall message.
-				call := msg.(*sched.Call)
-				suite.Equal(sched.Call_ACCEPT, call.GetType())
-				suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
-
-				accept := call.GetAccept()
-				suite.NotNil(accept)
-				suite.Equal(1, len(accept.GetOfferIds()))
-				suite.Equal("offer-0", accept.GetOfferIds()[0].GetValue())
-				suite.Equal(1, len(accept.GetOperations()))
-				launchOp := accept.GetOperations()[0]
-				suite.Equal(
-					mesos.Offer_Operation_LAUNCH,
-					launchOp.GetType())
-				launch := launchOp.GetLaunch()
-				suite.NotNil(launch)
-				suite.Equal(1, len(launch.GetTaskInfos()))
-				suite.Equal(
-					fmt.Sprintf(_taskIDFmt, 0),
-					launch.GetTaskInfos()[0].GetTaskId().GetValue())
-			}).
-			Return(nil),
-	)
-
-	launchOperation := createHostLaunchOperation()
-
-	operationReq := &hostsvc.OfferOperationsRequest{
-		Hostname: "hostname-0",
-		Operations: []*hostsvc.OfferOperation{
-			launchOperation,
-		},
-	}
-
-	reservedOffers := generateOffers(1)
-	reservedOffer := reservedOffers[0]
-	reservation := &mesos.Resource_ReservationInfo{
-		Labels: createReservationLabels(),
-	}
-	diskInfo := &mesos.Resource_DiskInfo{
-		Persistence: &mesos.Resource_DiskInfo_Persistence{
-			Id: &_testKey,
-		},
-	}
-	reservedResources := []*mesos.Resource{
-		util.NewMesosResourceBuilder().
-			WithName("cpus").
-			WithValue(_perHostCPU).
-			WithRole(_pelotonRole).
-			WithReservation(reservation).
-			Build(),
-		util.NewMesosResourceBuilder().
-			WithName("mem").
-			WithValue(_perHostMem).
-			WithReservation(reservation).
-			WithRole(_pelotonRole).
-			Build(),
-		util.NewMesosResourceBuilder().
-			WithName("disk").
-			WithValue(_perHostDisk).
-			WithRole(_pelotonRole).
-			WithReservation(reservation).
-			WithDisk(diskInfo).
-			Build(),
-	}
-	reservedOffer.Resources = append(reservedOffer.Resources, reservedResources...)
-	suite.pool.AddOffers(context.Background(), reservedOffers)
-
-	operationResp, err := suite.handler.OfferOperations(
-		rootCtx,
-		operationReq,
-	)
-
-	suite.NoError(err)
-	suite.Nil(operationResp.GetError())
-	suite.Equal(
-		int64(1),
-		suite.testScope.Snapshot().Counters()["offer_operations+"].Value())
-}
-
-func (suite *HostMgrHandlerTestSuite) TestReserveCreateLaunchOperation() {
-	defer suite.ctrl.Finish()
-
-	// only create one host offer in this test.
-	numHosts := 1
-	suite.pool.AddOffers(context.Background(), generateOffers(numHosts))
-
-	// TODO: Add check for number of HostOffers in placing state.
-	suite.checkResourcesGauges(numHosts, "ready")
-	suite.checkResourcesGauges(0, "placing")
-
-	// Matching constraint.
-	acquireReq := getAcquireHostOffersRequest()
-	acquiredResp, err := suite.handler.AcquireHostOffers(
-		rootCtx,
-		acquireReq,
-	)
-
-	suite.NoError(err)
-	suite.Nil(acquiredResp.GetError())
-	acquiredHostOffers := acquiredResp.GetHostOffers()
-	suite.Equal(1, len(acquiredHostOffers))
-
-	suite.Equal(
-		int64(1),
-		suite.testScope.Snapshot().Counters()["acquire_host_offers+"].Value())
-
-	// TODO: Add check for number of HostOffers in placing state.
-	suite.checkResourcesGauges(0, "ready")
-	suite.checkResourcesGauges(numHosts, "placing")
-
-	reserveOperation := createHostReserveOperation()
-	createOperation := createHostCreateOperation()
-	launchOperation := createHostLaunchOperation()
-
-	// launch operation before reserve/create will trigger an error.
-	operationReq := &hostsvc.OfferOperationsRequest{
-		Hostname: acquiredHostOffers[0].GetHostname(),
-		Operations: []*hostsvc.OfferOperation{
-			reserveOperation,
-			launchOperation,
-			createOperation,
-		},
-		Id: acquiredHostOffers[0].GetId(),
-	}
-
-	operationResp, err := suite.handler.OfferOperations(
-		rootCtx,
-		operationReq,
-	)
-
-	suite.NoError(err)
-	suite.NotNil(operationResp.GetError().GetInvalidArgument())
-
-	suite.Equal(
-		int64(1),
-		suite.testScope.Snapshot().Counters()["offer_operations_invalid+"].Value())
-
-	gomock.InOrder(
-		suite.volumeStore.EXPECT().
-			GetPersistentVolume(gomock.Any(), gomock.Any()).
-			Return(nil, nil),
-
-		suite.volumeStore.EXPECT().
-			CreatePersistentVolume(gomock.Any(), gomock.Any()).
-			Return(nil),
-
-		// Set expectations on provider
-		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
-			suite.frameworkID),
-		// Set expectations on provider
-		suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(_streamID),
-		// Set expectations on scheduler schedulerClient
-		suite.schedulerClient.EXPECT().
-			Call(
-				gomock.Eq(_streamID),
-				gomock.Any(),
-			).
-			Do(func(_ string, msg proto.Message) {
-				// Verify clientCall message.
-				call := msg.(*sched.Call)
-				suite.Equal(sched.Call_ACCEPT, call.GetType())
-				suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
-
-				accept := call.GetAccept()
-				suite.NotNil(accept)
-				suite.Equal(1, len(accept.GetOfferIds()))
-				suite.Equal("offer-0", accept.GetOfferIds()[0].GetValue())
-				suite.Equal(3, len(accept.GetOperations()))
-				reserveOp := accept.GetOperations()[0]
-				createOp := accept.GetOperations()[1]
-				launchOp := accept.GetOperations()[2]
-				suite.Equal(
-					mesos.Offer_Operation_RESERVE,
-					reserveOp.GetType())
-				suite.Equal(
-					mesos.Offer_Operation_CREATE,
-					createOp.GetType())
-				suite.Equal(
-					mesos.Offer_Operation_LAUNCH,
-					launchOp.GetType())
-				launch := launchOp.GetLaunch()
-				suite.NotNil(launch)
-				suite.Equal(1, len(launch.GetTaskInfos()))
-				suite.Equal(
-					fmt.Sprintf(_taskIDFmt, 0),
-					launch.GetTaskInfos()[0].GetTaskId().GetValue())
-			}).
-			Return(nil),
-	)
-
-	operationReq = &hostsvc.OfferOperationsRequest{
-		Hostname: acquiredHostOffers[0].GetHostname(),
-		Operations: []*hostsvc.OfferOperation{
-			reserveOperation,
-			createOperation,
-			launchOperation,
-		},
-		Id: acquiredHostOffers[0].GetId(),
-	}
-
-	operationResp, err = suite.handler.OfferOperations(
-		rootCtx,
-		operationReq,
-	)
-
-	suite.NoError(err)
-	suite.Nil(operationResp.GetError())
-	suite.Equal(
-		int64(1),
-		suite.testScope.Snapshot().Counters()["offer_operations+"].Value())
-
-	// TODO: Add check for number of HostOffers in placing state.
-	suite.checkResourcesGauges(0, "ready")
-	suite.checkResourcesGauges(0, "placing")
-}
-
-func (suite *HostMgrHandlerTestSuite) TestReserveCreateLaunchOperationWithCreatedVolume() {
-	defer suite.ctrl.Finish()
-
-	// only create one host offer in this test.
-	numHosts := 1
-	suite.pool.AddOffers(context.Background(), generateOffers(numHosts))
-
-	// Matching constraint.
-	acquireReq := getAcquireHostOffersRequest()
-	acquiredResp, err := suite.handler.AcquireHostOffers(
-		rootCtx,
-		acquireReq,
-	)
-
-	suite.NoError(err)
-	suite.Nil(acquiredResp.GetError())
-	acquiredHostOffers := acquiredResp.GetHostOffers()
-
-	reserveOperation := createHostReserveOperation()
-	createOperation := createHostCreateOperation()
-	launchOperation := createHostLaunchOperation()
-
-	volumeInfo := &volume.PersistentVolumeInfo{}
-
-	gomock.InOrder(
-		suite.volumeStore.EXPECT().
-			GetPersistentVolume(gomock.Any(), gomock.Any()).
-			Return(volumeInfo, nil),
-
-		// Set expectations on provider
-		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
-			suite.frameworkID),
-		// Set expectations on provider
-		suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(_streamID),
-		// Set expectations on scheduler schedulerClient
-		suite.schedulerClient.EXPECT().
-			Call(
-				gomock.Eq(_streamID),
-				gomock.Any(),
-			).
-			Do(func(_ string, msg proto.Message) {
-				// Verify clientCall message.
-				call := msg.(*sched.Call)
-				suite.Equal(sched.Call_ACCEPT, call.GetType())
-				suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
-
-				accept := call.GetAccept()
-				suite.NotNil(accept)
-				suite.Equal(1, len(accept.GetOfferIds()))
-				suite.Equal("offer-0", accept.GetOfferIds()[0].GetValue())
-				suite.Equal(3, len(accept.GetOperations()))
-				reserveOp := accept.GetOperations()[0]
-				createOp := accept.GetOperations()[1]
-				launchOp := accept.GetOperations()[2]
-				suite.Equal(
-					mesos.Offer_Operation_RESERVE,
-					reserveOp.GetType())
-				suite.Equal(
-					mesos.Offer_Operation_CREATE,
-					createOp.GetType())
-				suite.Equal(
-					mesos.Offer_Operation_LAUNCH,
-					launchOp.GetType())
-				launch := launchOp.GetLaunch()
-				suite.NotNil(launch)
-				suite.Equal(1, len(launch.GetTaskInfos()))
-				suite.Equal(
-					fmt.Sprintf(_taskIDFmt, 0),
-					launch.GetTaskInfos()[0].GetTaskId().GetValue())
-			}).
-			Return(nil),
-	)
-
-	operationReq := &hostsvc.OfferOperationsRequest{
-		Hostname: acquiredHostOffers[0].GetHostname(),
-		Operations: []*hostsvc.OfferOperation{
-			reserveOperation,
-			createOperation,
-			launchOperation,
-		},
-		Id: acquiredHostOffers[0].GetId(),
-	}
-
-	operationResp, err := suite.handler.OfferOperations(
-		rootCtx,
-		operationReq,
-	)
-
-	suite.NoError(err)
-	suite.Nil(operationResp.GetError())
-	suite.Equal(
-		int64(1),
-		suite.testScope.Snapshot().Counters()["offer_operations+"].Value())
-}
-
 func (suite *HostMgrHandlerTestSuite) TestGetMesosMasterHostPort() {
 	defer suite.ctrl.Finish()
 
@@ -2221,65 +1762,6 @@ func getAcquireHostOffersRequest() *hostsvc.AcquireHostOffersRequest {
 			},
 		},
 	}
-}
-
-func createHostReserveOperation() *hostsvc.OfferOperation {
-	reserveOperation := &hostsvc.OfferOperation{
-		Type: hostsvc.OfferOperation_RESERVE,
-		Reserve: &hostsvc.OfferOperation_Reserve{
-			Resources: []*mesos.Resource{
-				util.NewMesosResourceBuilder().
-					WithName("cpus").
-					WithValue(_perHostCPU).
-					Build(),
-				util.NewMesosResourceBuilder().
-					WithName("mem").
-					WithValue(11.0).
-					Build(),
-				util.NewMesosResourceBuilder().
-					WithName("disk").
-					WithValue(12.0).
-					Build(),
-			},
-		},
-		ReservationLabels: createReservationLabels(),
-	}
-	return reserveOperation
-}
-
-func createHostCreateOperation() *hostsvc.OfferOperation {
-	createOperation := &hostsvc.OfferOperation{
-		Type: hostsvc.OfferOperation_CREATE,
-		Create: &hostsvc.OfferOperation_Create{
-			Volume: &hostsvc.Volume{
-				Resource: util.NewMesosResourceBuilder().
-					WithName("disk").
-					WithValue(1.0).
-					Build(),
-				ContainerPath: "test",
-				Id: &peloton.VolumeID{
-					Value: "volumeid",
-				},
-			},
-		},
-		ReservationLabels: createReservationLabels(),
-	}
-	return createOperation
-}
-
-func createHostLaunchOperation() *hostsvc.OfferOperation {
-	launchOperation := &hostsvc.OfferOperation{
-		Type: hostsvc.OfferOperation_LAUNCH,
-		Launch: &hostsvc.OfferOperation_Launch{
-			Tasks: generateLaunchableTasks(1),
-		},
-		ReservationLabels: createReservationLabels(),
-	}
-	return launchOperation
-}
-
-func createReservationLabels() *mesos.Labels {
-	return reservation.CreateReservationLabels(_testJobID, 0, "hostname-0")
 }
 
 func makeAgentsResponse(numAgents int) *mesos_master.Response_GetAgents {
@@ -2555,81 +2037,6 @@ func (suite *HostMgrHandlerTestSuite) TestGetCompletedReservationsError() {
 	suite.NoError(err)
 	suite.Nil(reservations.CompletedReservations)
 	suite.Equal(reservations.GetError().GetNotFound().Message, "error")
-}
-
-// Test OfferOperations errors
-func (suite *HostMgrHandlerTestSuite) TestOfferOperationsError() {
-	launchOperation := &hostsvc.OfferOperation{
-		Type: hostsvc.OfferOperation_LAUNCH,
-		Launch: &hostsvc.OfferOperation_Launch{
-			Tasks: generateLaunchableTasks(1),
-		},
-	}
-
-	// Test offer pool ClaimForLaunch error
-	hostname := "test-host"
-	operationReq := &hostsvc.OfferOperationsRequest{
-		Hostname: hostname,
-		Operations: []*hostsvc.OfferOperation{
-			launchOperation,
-		},
-	}
-
-	operationResp, err := suite.handler.OfferOperations(
-		rootCtx,
-		operationReq,
-	)
-	suite.NotNil(operationResp.GetError().GetInvalidOffers())
-	suite.Equal(
-		operationResp.GetError().GetInvalidOffers().GetMessage(),
-		"cannot find input hostname test-host")
-	suite.Nil(err)
-
-	// Test scheduler Call error
-	numHosts := 1
-	acquiredResp, err := suite.acquireHostOffers(numHosts)
-
-	suite.NoError(err)
-	suite.Nil(acquiredResp.GetError())
-	acquiredHostOffers := acquiredResp.GetHostOffers()
-	suite.Equal(1, len(acquiredHostOffers))
-
-	suite.Equal(
-		int64(1),
-		suite.testScope.Snapshot().Counters()["acquire_host_offers+"].Value())
-
-	suite.checkResourcesGauges(0, "ready")
-	suite.checkResourcesGauges(numHosts, "placing")
-
-	operationReq.Hostname = acquiredHostOffers[0].GetHostname()
-	errString := "Fake scheduler call error"
-	gomock.InOrder(
-		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
-			suite.frameworkID),
-		suite.provider.EXPECT().GetMesosStreamID(context.Background()).
-			Return(_streamID),
-		suite.schedulerClient.EXPECT().
-			Call(
-				gomock.Eq(_streamID),
-				gomock.Any(),
-			).Return(fmt.Errorf(errString)),
-	)
-
-	operationReq = &hostsvc.OfferOperationsRequest{
-		Hostname: acquiredHostOffers[0].GetHostname(),
-		Operations: []*hostsvc.OfferOperation{
-			launchOperation,
-		},
-		Id: acquiredHostOffers[0].GetId(),
-	}
-
-	operationResp, err = suite.handler.OfferOperations(
-		rootCtx,
-		operationReq,
-	)
-	suite.NoError(err)
-	suite.NotNil(operationResp.GetError().GetFailure())
-	suite.Equal(errString, operationResp.GetError().GetFailure().GetMessage())
 }
 
 func (suite *HostMgrHandlerTestSuite) withHostOffers(numHosts int) []*hostsvc.

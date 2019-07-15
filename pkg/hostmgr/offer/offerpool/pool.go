@@ -37,7 +37,6 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 	"github.com/uber/peloton/pkg/hostmgr/summary"
-	"github.com/uber/peloton/pkg/storage"
 )
 
 // Pool caches a set of offers received from Mesos master. It is
@@ -80,7 +79,6 @@ type Pool interface {
 	// the tasks
 	ClaimForLaunch(
 		hostname string,
-		useReservedOffers bool,
 		hostOfferID string,
 		taskIDs ...*peloton.TaskID) (map[string]*mesos.Offer, error)
 
@@ -102,12 +100,9 @@ type Pool interface {
 	// expired and returns the hostnames which got reset
 	ResetExpiredHeldHostSummaries(now time.Time) []string
 
-	// GetOffers returns hostOffers : map[hostname] -> map(offerid -> offers
+	// GetAllOffers returns hostOffers : map[hostname] -> map(offerid -> offers
 	// & #offers for reserved, unreserved or all offer type.
-	GetOffers(offerType summary.OfferType) (map[string]map[string]*mesos.Offer, int)
-
-	// RemoveReservedOffers removes given offerID from given host.
-	RemoveReservedOffer(hostname string, offerID string)
+	GetAllOffers() (map[string]map[string]*mesos.Offer, int)
 
 	// RefreshGaugeMaps refreshes ready/placing metrics from all hosts.
 	RefreshGaugeMaps()
@@ -159,7 +154,6 @@ func NewOfferPool(
 	schedulerClient mpb.SchedulerClient,
 	metrics *Metrics,
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider,
-	volumeStore storage.PersistentVolumeStore,
 	scarceResourceTypes []string,
 	slackResourceTypes []string,
 	binPackingRanker binpacking.Ranker,
@@ -195,7 +189,6 @@ func NewOfferPool(
 
 		metrics: metrics,
 
-		volumeStore:      volumeStore,
 		binPackingRanker: binPackingRanker,
 	}
 
@@ -236,7 +229,6 @@ type offerPool struct {
 
 	metrics *Metrics
 
-	volumeStore storage.PersistentVolumeStore
 	// The default ranker for hosts during filtering
 	binPackingRanker binpacking.Ranker
 
@@ -332,7 +324,6 @@ func (p *offerPool) getRankedHostSummaryList(
 // ClaimForLaunch takes offers from pool (removes from hostsummary) for launch.
 func (p *offerPool) ClaimForLaunch(
 	hostname string,
-	useReservedOffers bool,
 	hostOfferID string,
 	taskIDs ...*peloton.TaskID,
 ) (map[string]*mesos.Offer, error) {
@@ -347,11 +338,7 @@ func (p *offerPool) ClaimForLaunch(
 		return nil, errors.New("cannot find input hostname " + hostname)
 	}
 
-	if useReservedOffers {
-		offerMap, err = hs.ClaimReservedOffersForLaunch()
-	} else {
-		offerMap, err = hs.ClaimForLaunch(hostOfferID, taskIDs...)
-	}
+	offerMap, err = hs.ClaimForLaunch(hostOfferID, taskIDs...)
 
 	if err != nil {
 		return nil, err
@@ -438,7 +425,6 @@ func (p *offerPool) AddOffers(
 		_, ok := p.hostOfferIndex[hostname]
 		if !ok {
 			hs := summary.New(
-				p.volumeStore,
 				p.scarceResourceTypes,
 				hostname,
 				p.slackResourceTypes,
@@ -654,55 +640,21 @@ func (p *offerPool) ResetExpiredHeldHostSummaries(now time.Time) []string {
 	return resetHostnames
 }
 
-// RemoveReservedOffer removes an reserved offer from hostsummary.
-func (p *offerPool) RemoveReservedOffer(hostname string, offerID string) {
+// GetAllOffers returns all hostOffers in the pool as:
+// map[hostname] -> map(offerid -> offers
+// and #offers for reserved, unreserved or all offer types.
+func (p *offerPool) GetAllOffers() (map[string]map[string]*mesos.Offer, int) {
 	p.RLock()
 	defer p.RUnlock()
 
-	log.WithFields(log.Fields{
-		"offer_id": offerID,
-		"hostname": hostname}).Info("Remove reserved offer.")
-	p.removeOffer(offerID, "Reserved Offer is removed from the pool.")
-}
-
-// getOffersByType is a helper method to get hostoffers by offer type
-// hostOffers : map[hostname] -> map(offerid -> offers
-func (p *offerPool) getOffersByType(
-	offerType summary.OfferType) (map[string]map[string]*mesos.Offer, int) {
 	hostOffers := make(map[string]map[string]*mesos.Offer)
 	var offersCount int
-	for hostname, summary := range p.hostOfferIndex {
-		offers := summary.GetOffers(offerType)
+	for hostname, s := range p.hostOfferIndex {
+		offers := s.GetOffers(summary.All)
 		hostOffers[hostname] = offers
 		offersCount += len(offers)
 	}
 
-	return hostOffers, offersCount
-}
-
-// GetOffers returns hostOffers : map[hostname] -> map(offerid -> offers
-// and #offers for reserved, unreserved or all offer types.
-func (p *offerPool) GetOffers(
-	offerType summary.OfferType) (map[string]map[string]*mesos.Offer, int) {
-	p.RLock()
-	defer p.RUnlock()
-
-	var hostOffers map[string]map[string]*mesos.Offer
-	var offersCount int
-
-	switch offerType {
-	case summary.Reserved:
-		hostOffers, offersCount = p.getOffersByType(summary.Reserved)
-		break
-	case summary.Unreserved:
-		hostOffers, offersCount = p.getOffersByType(summary.Unreserved)
-		break
-	case summary.All:
-		fallthrough
-	default:
-		hostOffers, offersCount = p.getOffersByType(summary.All)
-		break
-	}
 	return hostOffers, offersCount
 }
 

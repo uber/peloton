@@ -197,12 +197,11 @@ func (tb *Builder) pickPorts(
 // Build is used to build a `mesos.TaskInfo` from cached resources.
 // Caller can keep calling this function to build more tasks.
 // This returns error if the current
-// instance does not have enough resources leftover (scalar, port or
-// even volume in future), or the taskConfig is not correct.
+// instance does not have enough resources leftover (scalar, port in future),
+// or the taskConfig is not correct.
 func (tb *Builder) Build(
 	task *hostsvc.LaunchableTask,
-	reservationLabels *mesos.Labels,
-	volume *hostsvc.Volume) (*mesos.TaskInfo, error) {
+) (*mesos.TaskInfo, error) {
 
 	// Validation of input.
 	taskConfig := task.GetConfig()
@@ -247,13 +246,6 @@ func (tb *Builder) Build(
 		lres = append(lres, pick.portResources...)
 	}
 
-	if reservationLabels != nil {
-		lres, err = populateReservationVolumeInfo(lres, reservationLabels, volume)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	mesosTask := &mesos.TaskInfo{
 		Name:      &jobID,
 		TaskId:    taskID,
@@ -280,47 +272,6 @@ func (tb *Builder) Build(
 	tb.populateHealthCheck(mesosTask, taskConfig.GetHealthCheck())
 
 	return mesosTask, nil
-}
-
-// populateReservationVolumeInfo sets up the reservation and volume fields on
-// mesos resources.
-func populateReservationVolumeInfo(
-	resources []*mesos.Resource,
-	labels *mesos.Labels,
-	volume *hostsvc.Volume) ([]*mesos.Resource, error) {
-
-	if labels == nil || volume == nil || volume.GetResource() == nil {
-		return resources, errors.Errorf(
-			"volume is required to populate volume info: %v and %v", labels, volume)
-	}
-
-	// Populate the disk volume field for persistent disk resource.
-	volumeID := volume.GetId().GetValue()
-	containerPath := volume.GetContainerPath()
-	volumeRWMode := mesos.Volume_RW
-	persistentDiskResource := proto.Clone(volume.GetResource()).(*mesos.Resource)
-	persistentDiskResource.Disk = &mesos.Resource_DiskInfo{
-		Persistence: &mesos.Resource_DiskInfo_Persistence{
-			Id:        &volumeID,
-			Principal: &_pelotonPrinciple,
-		},
-		Volume: &mesos.Volume{
-			ContainerPath: &containerPath,
-			Mode:          &volumeRWMode,
-		},
-	}
-
-	// Populate reservation and Role info for all the resources.
-	resources = append(resources, persistentDiskResource)
-	for _, res := range resources {
-		res.Role = &_pelotonRole
-		res.Reservation = &mesos.Resource_ReservationInfo{
-			Principal: &_pelotonPrinciple,
-			Labels:    proto.Clone(labels).(*mesos.Labels),
-		}
-	}
-
-	return resources, nil
 }
 
 // populateExecutorInfo sets up the ExecutorInfo of a Mesos task and copys

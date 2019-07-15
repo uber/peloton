@@ -26,18 +26,15 @@ import (
 	hpb "github.com/uber/peloton/.gen/peloton/api/v0/host"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pb_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
-	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/constraints"
 	"github.com/uber/peloton/pkg/common/queue"
-	"github.com/uber/peloton/pkg/common/reservation"
 	"github.com/uber/peloton/pkg/common/util"
 	yarpcutil "github.com/uber/peloton/pkg/common/util/yarpc"
 	"github.com/uber/peloton/pkg/hostmgr/config"
-	"github.com/uber/peloton/pkg/hostmgr/factory/operation"
 	"github.com/uber/peloton/pkg/hostmgr/factory/task"
 	"github.com/uber/peloton/pkg/hostmgr/host"
 	hostmgr_mesos "github.com/uber/peloton/pkg/hostmgr/mesos"
@@ -52,7 +49,6 @@ import (
 	taskStateManager "github.com/uber/peloton/pkg/hostmgr/task"
 	hmutil "github.com/uber/peloton/pkg/hostmgr/util"
 	"github.com/uber/peloton/pkg/hostmgr/watchevent"
-	"github.com/uber/peloton/pkg/storage"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -80,8 +76,6 @@ var (
 	errEmptyHostOfferID                  = errors.New("empty host offer")
 	errNilReservation                    = errors.New("reservation is nil")
 	errLaunchOperationIsNotLastOperation = errors.New("launch operation is not the last operation")
-	errOfferOperationNotSupported        = errors.New("offer operation not supported")
-	errInvalidOfferOperation             = errors.New("invalid offer operation")
 	errReservationNotFound               = errors.New("reservation could not be made")
 )
 
@@ -92,7 +86,6 @@ type ServiceHandler struct {
 	metrics                *metrics.Metrics
 	offerPool              offerpool.Pool
 	frameworkInfoProvider  hostmgr_mesos.FrameworkInfoProvider
-	volumeStore            storage.PersistentVolumeStore
 	roleName               string
 	mesosDetector          hostmgr_mesos.MasterDetector
 	reserver               reserver.Reserver
@@ -112,7 +105,6 @@ func NewServiceHandler(
 	schedulerClient mpb.SchedulerClient,
 	masterOperatorClient mpb.MasterOperatorClient,
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider,
-	volumeStore storage.PersistentVolumeStore,
 	mesosConfig hostmgr_mesos.Config,
 	mesosDetector hostmgr_mesos.MasterDetector,
 	hmConfig *config.Config,
@@ -127,7 +119,6 @@ func NewServiceHandler(
 		metrics:                metrics,
 		offerPool:              offer.GetEventHandler().GetOfferPool(),
 		frameworkInfoProvider:  frameworkInfoProvider,
-		volumeStore:            volumeStore,
 		roleName:               mesosConfig.Framework.Role,
 		mesosDetector:          mesosDetector,
 		maintenanceQueue:       maintenanceQueue,
@@ -183,7 +174,7 @@ func (h *ServiceHandler) GetOutstandingOffers(
 	body *hostsvc.GetOutstandingOffersRequest,
 ) (*hostsvc.GetOutstandingOffersResponse, error) {
 
-	hostOffers, count := h.offerPool.GetOffers(summary.All)
+	hostOffers, count := h.offerPool.GetAllOffers()
 	if count == 0 {
 		return &hostsvc.GetOutstandingOffersResponse{
 			Error: &hostsvc.GetOutstandingOffersResponse_Error{
@@ -563,252 +554,13 @@ func (h *ServiceHandler) ReleaseHostOffers(
 	return &hostsvc.ReleaseHostOffersResponse{}, nil
 }
 
-// validateOfferOperation ensures offer operations sequences are valid.
-func validateOfferOperationsRequest(
-	request *hostsvc.OfferOperationsRequest) error {
-
-	operations := request.GetOperations()
-	if len(operations) == 0 {
-		return errEmptyOfferOperations
-	}
-
-	for index, op := range operations {
-		if op.GetType() == hostsvc.OfferOperation_LAUNCH {
-			if index != len(operations)-1 {
-				return errLaunchOperationIsNotLastOperation
-			} else if len(op.GetLaunch().GetTasks()) == 0 {
-				return errEmptyTaskList
-			}
-		} else if op.GetType() != hostsvc.OfferOperation_CREATE &&
-			op.GetType() != hostsvc.OfferOperation_RESERVE {
-			return errOfferOperationNotSupported
-		} else {
-			// Reservation label must be specified for RESERVE/CREATE operation.
-			if op.GetReservationLabels() == nil {
-				return errInvalidOfferOperation
-			}
-		}
-	}
-
-	if len(request.GetHostname()) == 0 {
-		return errEmptyHostName
-	}
-
-	return nil
-}
-
-// extractReservationLabels checks if operations on reserved offers, if yes,
-// returns reservation labels, otherwise nil.
-func (h *ServiceHandler) extractReservationLabels(
-	req *hostsvc.OfferOperationsRequest,
-) *mesos.Labels {
-	reqOps := req.GetOperations()
-	if len(reqOps) == 1 &&
-		reqOps[0].GetType() == hostsvc.OfferOperation_LAUNCH {
-		return reqOps[0].GetReservationLabels()
-	}
-
-	if len(reqOps) == 2 &&
-		reqOps[0].GetType() == hostsvc.OfferOperation_CREATE &&
-		reqOps[1].GetType() == hostsvc.OfferOperation_LAUNCH {
-		return reqOps[0].GetReservationLabels()
-	}
-
-	return nil
-}
-
 // OfferOperations implements InternalHostService.OfferOperations.
 func (h *ServiceHandler) OfferOperations(
 	ctx context.Context,
 	req *hostsvc.OfferOperationsRequest) (
 	*hostsvc.OfferOperationsResponse,
 	error) {
-	log.WithField("request", req).Debug("Offer operations called.")
-
-	if err := validateOfferOperationsRequest(req); err != nil {
-		h.metrics.OfferOperationsInvalid.Inc(1)
-		return &hostsvc.OfferOperationsResponse{
-			Error: &hostsvc.OfferOperationsResponse_Error{
-				InvalidArgument: &hostsvc.InvalidArgument{
-					Message: err.Error(),
-				},
-			},
-		}, nil
-	}
-
-	reservedOfferLabels := h.extractReservationLabels(req)
-	offers, err := h.offerPool.ClaimForLaunch(
-		req.GetHostname(),
-		reservedOfferLabels != nil, /* useReservedOffers */
-		req.GetId().GetValue(),
-	)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"hostname":        req.GetHostname(),
-			"host_offer_id":   req.GetId(),
-			"offer_resources": scalar.FromOfferMap(offers),
-		}).WithError(err).Error("claim offer for operations failed")
-		h.metrics.OfferOperationsInvalidOffers.Inc(1)
-		return &hostsvc.OfferOperationsResponse{
-			Error: &hostsvc.OfferOperationsResponse_Error{
-				InvalidOffers: &hostsvc.InvalidOffers{
-					Message: err.Error(),
-				},
-			},
-		}, nil
-	}
-
-	// TODO: Use `offers` so we can support reservation, port picking, etc.
-	log.WithField("offers", offers).Debug("Offers found for launch")
-
-	var offerIds []*mesos.OfferID
-	var mesosResources []*mesos.Resource
-	var agentID *mesos.AgentID
-	for _, offer := range offers {
-		offerIds = append(offerIds, offer.GetId())
-		agentID = offer.GetAgentId()
-		for _, res := range offer.GetResources() {
-			if reservedOfferLabels == nil ||
-				reservedOfferLabels.String() == res.GetReservation().GetLabels().String() {
-				mesosResources = append(mesosResources, res)
-			}
-		}
-	}
-
-	factory := operation.NewOfferOperationsFactory(
-		req.GetOperations(),
-		mesosResources,
-		req.GetHostname(),
-		agentID,
-	)
-	offerOperations, err := factory.GetOfferOperations()
-	if err == nil {
-		// write the volume info into db if no error.
-		err = h.persistVolumeInfo(ctx, offerOperations, req.GetHostname())
-	}
-	if err != nil {
-		log.WithError(err).WithFields(log.Fields{
-			"request": req,
-			"offers":  offers,
-		}).Error("get offer operations failed.")
-		// For now, decline all offers to Mesos in the hope that next
-		// call to pool will select some different host.
-		// An alternative is to mark offers on the host as ready.
-		if reservedOfferLabels == nil {
-			if err := h.offerPool.DeclineOffers(ctx, offerIds); err != nil {
-				log.WithError(err).
-					WithField("offers", offerIds).
-					Warn("Cannot decline offers task building error")
-			}
-		}
-
-		h.metrics.OfferOperationsInvalid.Inc(1)
-		return &hostsvc.OfferOperationsResponse{
-			Error: &hostsvc.OfferOperationsResponse_Error{
-				InvalidArgument: &hostsvc.InvalidArgument{
-					Message: "Cannot get offer operations: " + err.Error(),
-				},
-			},
-		}, nil
-	}
-
-	callType := sched.Call_ACCEPT
-	msg := &sched.Call{
-		FrameworkId: h.frameworkInfoProvider.GetFrameworkID(ctx),
-		Type:        &callType,
-		Accept: &sched.Call_Accept{
-			OfferIds:   offerIds,
-			Operations: offerOperations,
-		},
-	}
-
-	log.WithFields(log.Fields{
-		"call": msg,
-	}).Debug("Accepting offer with operations.")
-
-	// TODO: add retry / put back offer and tasks in failure scenarios
-	msid := h.frameworkInfoProvider.GetMesosStreamID(ctx)
-	err = h.schedulerClient.Call(msid, msg)
-	if err != nil {
-		h.metrics.OfferOperationsFail.Inc(1)
-		log.WithError(err).WithFields(log.Fields{
-			"operations": offerOperations,
-			"offers":     offerIds,
-			"error":      err,
-		}).Warn("Offer operations failure")
-
-		return &hostsvc.OfferOperationsResponse{
-			Error: &hostsvc.OfferOperationsResponse_Error{
-				Failure: &hostsvc.OperationsFailure{
-					Message: err.Error(),
-				},
-			},
-		}, nil
-	}
-
-	h.metrics.OfferOperations.Inc(1)
-	return &hostsvc.OfferOperationsResponse{}, nil
-}
-
-// persistVolumeInfo write volume information into db.
-func (h *ServiceHandler) persistVolumeInfo(
-	ctx context.Context,
-	offerOperations []*mesos.Offer_Operation,
-	hostname string) error {
-	createOperation := operation.GetOfferCreateOperation(offerOperations)
-	// Skip creating volume if no create operation.
-	if createOperation == nil {
-		return nil
-	}
-
-	volumeRes := createOperation.GetCreate().GetVolumes()[0]
-	volumeID := &peloton.VolumeID{
-		Value: volumeRes.GetDisk().GetPersistence().GetId(),
-	}
-
-	pv, err := h.volumeStore.GetPersistentVolume(ctx, volumeID)
-	if err != nil {
-		_, ok := err.(*storage.VolumeNotFoundError)
-		if !ok {
-			// volume store db read error.
-			return err
-		}
-	}
-
-	if pv != nil {
-		switch pv.GetState() {
-		case volume.VolumeState_CREATED, volume.VolumeState_DELETED:
-			log.WithFields(log.Fields{
-				"volume":           pv,
-				"offer_operations": offerOperations,
-				"hostname":         hostname,
-			}).Error("try create to create volume that already exists")
-		}
-		// TODO(mu): Volume info already exist in db and check if we need to update hostname
-		return nil
-	}
-
-	jobID, instanceID, err := reservation.ParseReservationLabels(
-		volumeRes.GetReservation().GetLabels())
-	if err != nil {
-		return err
-	}
-
-	volumeInfo := &volume.PersistentVolumeInfo{
-		Id: volumeID,
-		JobId: &peloton.JobID{
-			Value: jobID,
-		},
-		InstanceId:    instanceID,
-		Hostname:      hostname,
-		State:         volume.VolumeState_INITIALIZED,
-		GoalState:     volume.VolumeState_CREATED,
-		SizeMB:        uint32(volumeRes.GetScalar().GetValue()),
-		ContainerPath: volumeRes.GetDisk().GetVolume().GetContainerPath(),
-	}
-
-	err = h.volumeStore.CreatePersistentVolume(ctx, volumeInfo)
-	return err
+	return nil, fmt.Errorf("Unimplemented")
 }
 
 // LaunchTasks implements InternalHostService.LaunchTasks.
@@ -872,7 +624,6 @@ func (h *ServiceHandler) LaunchTasks(
 
 	offers, err := h.offerPool.ClaimForLaunch(
 		req.GetHostname(),
-		false,
 		req.GetId().GetValue(),
 		hostToTaskIDs[req.GetHostname()]...,
 	)
@@ -909,7 +660,7 @@ func (h *ServiceHandler) LaunchTasks(
 
 	builder := task.NewBuilder(mesosResources)
 	for _, t := range req.GetTasks() {
-		mesosTask, err := builder.Build(t, nil, nil)
+		mesosTask, err := builder.Build(t)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"tasks_total":    len(req.GetTasks()),

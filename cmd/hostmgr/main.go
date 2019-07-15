@@ -560,7 +560,6 @@ func main() {
 		time.Duration(cfg.HostManager.OfferHoldTimeSec)*time.Second,
 		time.Duration(cfg.HostManager.OfferPruningPeriodSec)*time.Second,
 		schedulerClient,
-		store, // store implements VolumeStore
 		backgroundManager,
 		cfg.HostManager.HostPruningPeriodSec,
 		cfg.HostManager.HeldHostPruningPeriodSec,
@@ -643,7 +642,6 @@ func main() {
 		schedulerClient,
 		masterOperatorClient,
 		driver,
-		store, // store implements VolumeStore
 		cfg.Mesos,
 		mesosMasterDetector,
 		&cfg.HostManager,

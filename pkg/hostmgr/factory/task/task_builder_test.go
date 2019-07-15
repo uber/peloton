@@ -172,9 +172,8 @@ func (suite *BuilderTestSuite) TestNoPortTasks() {
 			TaskId: tids[i],
 			Config: configs[i],
 			Ports:  nil,
-			Volume: nil,
 		}
-		info, err := builder.Build(task, nil, nil)
+		info, err := builder.Build(task)
 		suite.NoError(err)
 		suite.Equal(tids[i], info.GetTaskId())
 		sc := scalar.FromMesosResources(info.GetResources())
@@ -192,9 +191,8 @@ func (suite *BuilderTestSuite) TestNoPortTasks() {
 		TaskId: tids[0],
 		Config: configs[0],
 		Ports:  nil,
-		Volume: nil,
 	}
-	info, err := builder.Build(task, nil, nil)
+	info, err := builder.Build(task)
 	suite.Nil(info)
 	suite.Equal(err, ErrNotEnoughResource)
 }
@@ -273,9 +271,8 @@ func (suite *BuilderTestSuite) TestPortTasks() {
 			TaskId: tid[i],
 			Config: taskConfig,
 			Ports:  selectedDynamicPorts[i],
-			Volume: nil,
 		}
-		info, err := builder.Build(task, nil, nil)
+		info, err := builder.Build(task)
 		suite.NoError(err)
 		suite.Equal(tid[i], info.GetTaskId())
 		sc := scalar.FromMesosResources(info.GetResources())
@@ -428,9 +425,8 @@ func (suite *BuilderTestSuite) TestCommandHealthCheck() {
 		TaskId: tid,
 		Config: c,
 		Ports:  nil,
-		Volume: nil,
 	}
-	info, err := builder.Build(task, nil, nil)
+	info, err := builder.Build(task)
 	suite.NoError(err)
 	suite.Equal(tid, info.GetTaskId())
 	hc := info.GetHealthCheck().GetCommand()
@@ -464,9 +460,8 @@ func (suite *BuilderTestSuite) TestHTTPHealthCheck() {
 		TaskId: tid,
 		Config: c,
 		Ports:  nil,
-		Volume: nil,
 	}
-	info, err := builder.Build(task, nil, nil)
+	info, err := builder.Build(task)
 	suite.NoError(err)
 	suite.Equal(tid, info.GetTaskId())
 	hc := info.GetHealthCheck().GetHttp()
@@ -496,9 +491,8 @@ func (suite *BuilderTestSuite) TestRevocableTask() {
 		TaskId: tid,
 		Config: c,
 		Ports:  nil,
-		Volume: nil,
 	}
-	info, err := builder.Build(task, nil, nil)
+	info, err := builder.Build(task)
 	suite.NoError(err)
 	suite.Equal(tid, info.GetTaskId())
 	hc := info.GetHealthCheck().GetCommand()
@@ -509,23 +503,23 @@ func (suite *BuilderTestSuite) TestRevocableTask() {
 
 	// Revocable resources are not sufficient
 	builder = NewBuilder(nil)
-	_, err = builder.Build(task, nil, nil)
+	_, err = builder.Build(task)
 	suite.Error(err)
 
 	task.Config.Command = nil
-	_, err = builder.Build(task, nil, nil)
+	_, err = builder.Build(task)
 	suite.Error(err)
 
 	task.Config.Resource = nil
-	_, err = builder.Build(task, nil, nil)
+	_, err = builder.Build(task)
 	suite.Error(err)
 
 	task.TaskId = nil
-	_, err = builder.Build(task, nil, nil)
+	_, err = builder.Build(task)
 	suite.Error(err)
 
 	task.Config = nil
-	_, err = builder.Build(task, nil, nil)
+	_, err = builder.Build(task)
 	suite.Error(err)
 }
 
@@ -641,73 +635,6 @@ func (suite *BuilderTestSuite) TestPopulateHealthCheck() {
 		builder.populateHealthCheck(taskInfo, tt.input)
 		suite.Equal(tt.output, taskInfo.GetHealthCheck())
 	}
-}
-
-// TestPopulateReservationVolumeInfo tests populateReservationInfo.
-func (suite *BuilderTestSuite) TestPopulateReservationVolumeInfo() {
-	numTasks := 1
-	resources := suite.getResources(numTasks)
-	labels := &mesos.Labels{
-		Labels: []*mesos.Label{
-			{
-				Key:   &_tmpLabelKey,
-				Value: &_tmpLabelValue,
-			},
-		},
-	}
-
-	testContainerPath := "testContainerPath"
-	testVolumeID := "testVolumeID"
-	volumeInfo := &hostsvc.Volume{
-		Id: &peloton.VolumeID{
-			Value: testVolumeID,
-		},
-		ContainerPath: testContainerPath,
-		Resource: util.NewMesosResourceBuilder().
-			WithName("disk").
-			WithValue(float64(3 * numTasks * _disk)).
-			Build(),
-	}
-	var err error
-	resources, err = populateReservationVolumeInfo(resources, labels, volumeInfo)
-	suite.NoError(err)
-
-	var sandboxDiskRes, persistentDiskRes *mesos.Resource
-	for _, res := range resources {
-		suite.Equal(res.GetRole(), _pelotonRole)
-		suite.Equal(res.GetReservation().GetLabels(), labels)
-		if res.GetName() == "disk" && res.GetDisk() != nil {
-			persistentDiskRes = res
-
-		} else if res.GetName() == "disk" {
-			sandboxDiskRes = res
-		}
-	}
-
-	suite.NotNil(persistentDiskRes)
-	suite.Equal(persistentDiskRes.GetScalar().GetValue(), float64(3*numTasks*_disk))
-	suite.Equal(persistentDiskRes.GetDisk().GetVolume().GetContainerPath(), testContainerPath)
-	suite.Equal(persistentDiskRes.GetDisk().GetPersistence().GetId(), testVolumeID)
-
-	suite.NotNil(sandboxDiskRes)
-	suite.Equal(sandboxDiskRes.GetScalar().GetValue(), float64(numTasks*_disk))
-}
-
-// TestPopulateReservationVolumeInfo tests populateReservationInfo.
-func (suite *BuilderTestSuite) TestPopulateReservationVolumeInfoNoVolume() {
-	numTasks := 1
-	resources := suite.getResources(numTasks)
-	labels := &mesos.Labels{
-		Labels: []*mesos.Label{
-			{
-				Key:   &_tmpLabelKey,
-				Value: &_tmpLabelValue,
-			},
-		},
-	}
-	var err error
-	resources, err = populateReservationVolumeInfo(resources, labels, nil)
-	suite.Error(err)
 }
 
 // TestPopulateLabels tests populateLabels.

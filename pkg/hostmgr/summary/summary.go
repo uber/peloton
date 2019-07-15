@@ -27,16 +27,18 @@ import (
 	"github.com/uber/peloton/pkg/common/constraints"
 	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/hostmgr/host"
-	"github.com/uber/peloton/pkg/hostmgr/reservation"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 	hmutil "github.com/uber/peloton/pkg/hostmgr/util"
-	"github.com/uber/peloton/pkg/storage"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/atomic"
+)
+
+const (
+	unreservedRole = "*"
 )
 
 // Offer represents an offer sent from the host summary when the host is
@@ -130,9 +132,6 @@ type HostSummary interface {
 	// the tasks
 	ClaimForLaunch(hostOfferID string, taskIDs ...*peloton.TaskID) (map[string]*mesos.Offer, error)
 
-	// ClaimReservedOffersForLaunch releases reserved offers for task launch.
-	ClaimReservedOffersForLaunch() (map[string]*mesos.Offer, error)
-
 	// CasStatus atomically sets the status to new value if current value is old,
 	// otherwise returns error.
 	CasStatus(old, new HostStatus) error
@@ -225,9 +224,6 @@ type hostSummary struct {
 
 	readyCount atomic.Int32
 
-	// TODO: pass volumeStore in updatePersistentVolume function.
-	volumeStore storage.PersistentVolumeStore
-
 	// a map to present for which tasks the host is held,
 	// key is the task id, value is the expiration time
 	// of the hold
@@ -236,7 +232,6 @@ type hostSummary struct {
 
 // New returns a zero initialized hostSummary
 func New(
-	volumeStore storage.PersistentVolumeStore,
 	scarceResourceTypes []string,
 	hostname string,
 	slackResourceTypes []string,
@@ -252,8 +247,6 @@ func New(
 		hostPlacingOfferStatusTimeout: hostPlacingOfferStatusTimeout,
 
 		status: ReadyHost,
-
-		volumeStore: volumeStore,
 
 		hostname: hostname,
 
@@ -273,7 +266,7 @@ func (a *hostSummary) HasOffer() bool {
 func (a *hostSummary) HasAnyOffer() bool {
 	a.Lock()
 	defer a.Unlock()
-	return len(a.unreservedOffers) > 0 || len(a.reservedOffers) > 0
+	return len(a.unreservedOffers) > 0
 }
 
 // Match represents the result of a match
@@ -482,6 +475,19 @@ func (a *hostSummary) TryMatch(
 	}
 }
 
+// hasLabeledReservedResources returns if given offer has labeled
+// reserved resources.
+func hasLabeledReservedResources(offer *mesos.Offer) bool {
+	for _, res := range offer.GetResources() {
+		if res.GetRole() != "" &&
+			res.GetRole() != unreservedRole &&
+			res.GetReservation().GetLabels() != nil {
+			return true
+		}
+	}
+	return false
+}
+
 // AddMesosOffers adds a Mesos offers to the current hostSummary and returns
 // its status for tracking purpose.
 func (a *hostSummary) AddMesosOffers(
@@ -501,8 +507,7 @@ func (a *hostSummary) AddMesosOffers(
 				}
 				return hmutil.IsSlackResourceType(r.GetName(), a.slackResourceTypes)
 			})
-
-		if !reservation.HasLabeledReservedResources(offer) {
+		if !hasLabeledReservedResources(offer) {
 			a.unreservedOffers[offerID] = offer
 		} else {
 			a.reservedOffers[offerID] = offer
@@ -554,18 +559,6 @@ func (a *hostSummary) ClaimForLaunch(hostOfferID string, taskIDs ...*peloton.Tas
 		return nil, errors.Wrap(err,
 			"failed to move host to Ready state")
 	}
-	return result, nil
-}
-
-// ClaimReservedOffersForLaunch atomically releases and returns reserved offers
-// on current host.
-func (a *hostSummary) ClaimReservedOffersForLaunch() (map[string]*mesos.Offer, error) {
-	a.Lock()
-	defer a.Unlock()
-
-	result := make(map[string]*mesos.Offer)
-	result, a.reservedOffers = a.reservedOffers, result
-
 	return result, nil
 }
 
