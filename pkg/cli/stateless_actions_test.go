@@ -34,8 +34,8 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/jobmgrsvc"
 	jobmgrsvcmocks "github.com/uber/peloton/.gen/peloton/private/jobmgrsvc/mocks"
 
+	"github.com/uber/peloton/pkg/common/api"
 	jobmgrtask "github.com/uber/peloton/pkg/jobmgr/task"
-	"github.com/uber/peloton/pkg/jobmgr/util/handler"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -532,7 +532,7 @@ func (suite *statelessActionsTestSuite) TestStatelessCreateJobActionSuccess() {
 				&svc.CreateJobRequest{
 					JobId: &v1alphapeloton.JobID{Value: testJobID},
 					Spec:  suite.getSpec(),
-					Secrets: handler.ConvertV0SecretsToV1Secrets([]*peloton.Secret{
+					Secrets: api.ConvertV0SecretsToV1Secrets([]*peloton.Secret{
 						jobmgrtask.CreateSecretProto(
 							"", testSecretPath, []byte(testSecretStr),
 						),

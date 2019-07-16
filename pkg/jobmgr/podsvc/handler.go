@@ -27,6 +27,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
+	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/common/leader"
 	"github.com/uber/peloton/pkg/common/util"
 	versionutil "github.com/uber/peloton/pkg/common/util/entityversion"
@@ -37,7 +38,6 @@ import (
 	"github.com/uber/peloton/pkg/jobmgr/logmanager"
 	jobmgrtask "github.com/uber/peloton/pkg/jobmgr/task"
 	goalstateutil "github.com/uber/peloton/pkg/jobmgr/util/goalstate"
-	handlerutil "github.com/uber/peloton/pkg/jobmgr/util/handler"
 	taskutil "github.com/uber/peloton/pkg/jobmgr/util/task"
 	"github.com/uber/peloton/pkg/storage"
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
@@ -426,7 +426,7 @@ func (h *serviceHandler) GetPod(
 		return nil, errors.Wrap(err, "failed to get task runtime")
 	}
 
-	podStatus := handlerutil.ConvertTaskRuntimeToPodStatus(taskRuntime)
+	podStatus := api.ConvertTaskRuntimeToPodStatus(taskRuntime)
 
 	var podSpec *pbpod.PodSpec
 	if !req.GetStatusOnly() {
@@ -440,7 +440,7 @@ func (h *serviceHandler) GetPod(
 			return nil, errors.Wrap(err, "failed to get task config")
 		}
 
-		podSpec = handlerutil.ConvertTaskConfigToPodSpec(
+		podSpec = api.ConvertTaskConfigToPodSpec(
 			taskConfig,
 			jobID,
 			instanceID,
@@ -508,7 +508,7 @@ func (h *serviceHandler) GetPodEvents(
 	}
 
 	return &svc.GetPodEventsResponse{
-		Events: handlerutil.ConvertTaskEventsToPodEvents(taskEvents),
+		Events: api.ConvertTaskEventsToPodEvents(taskEvents),
 	}, nil
 }
 
@@ -702,8 +702,8 @@ func (h *serviceHandler) GetPodCache(
 	}
 
 	return &svc.GetPodCacheResponse{
-		Status: handlerutil.ConvertTaskRuntimeToPodStatus(runtime),
-		Labels: handlerutil.ConvertLabels(labels),
+		Status: api.ConvertTaskRuntimeToPodStatus(runtime),
+		Labels: api.ConvertLabels(labels),
 	}, nil
 }
 
@@ -856,7 +856,7 @@ func (h *serviceHandler) getPodInfoForAllPodRuns(
 			return nil, err
 		}
 
-		podEvents := handlerutil.ConvertTaskEventsToPodEvents(taskEvents)
+		podEvents := api.ConvertTaskEventsToPodEvents(taskEvents)
 
 		if len(podEvents) == 0 {
 			break
@@ -927,7 +927,7 @@ func (h *serviceHandler) getPodInfoForAllPodRuns(
 				return nil, errors.Wrap(err, "failed to get task config")
 			}
 
-			spec := handlerutil.ConvertTaskConfigToPodSpec(
+			spec := api.ConvertTaskConfigToPodSpec(
 				taskConfig,
 				jobID,
 				instanceID,

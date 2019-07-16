@@ -25,8 +25,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/watch"
-
-	handlerutil "github.com/uber/peloton/pkg/jobmgr/util/handler"
+	"github.com/uber/peloton/pkg/common/api"
 
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
@@ -248,7 +247,7 @@ func (suite *WatchProcessorTestSuite) TestTaskClientPodLabelFilter() {
 	}
 
 	filter := &watch.PodFilter{
-		Labels: handlerutil.ConvertLabels([]*v0peloton.Label{label1}),
+		Labels: api.ConvertLabels([]*v0peloton.Label{label1}),
 	}
 
 	var mutex = &sync.Mutex{}

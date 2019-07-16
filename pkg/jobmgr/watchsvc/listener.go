@@ -22,8 +22,8 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/common/util"
-	handlerutil "github.com/uber/peloton/pkg/jobmgr/util/handler"
 )
 
 const _listenerName = "WatchListener"
@@ -85,7 +85,7 @@ func (l WatchListener) TaskRuntimeChanged(
 		PodName: &v1peloton.PodName{
 			Value: util.CreatePelotonTaskID(jobID.GetValue(), instanceID),
 		},
-		Status: handlerutil.ConvertTaskRuntimeToPodStatus(runtime),
+		Status: api.ConvertTaskRuntimeToPodStatus(runtime),
 	}
 	l.processor.NotifyTaskChange(p, labels)
 }

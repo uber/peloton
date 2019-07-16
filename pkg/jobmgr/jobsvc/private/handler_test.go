@@ -16,7 +16,6 @@ package private
 
 import (
 	"context"
-	"github.com/uber/peloton/pkg/jobmgr/util/handler"
 	"strconv"
 	"testing"
 
@@ -32,6 +31,7 @@ import (
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 
+	"github.com/uber/peloton/pkg/common/api"
 	leadermocks "github.com/uber/peloton/pkg/common/leader/mocks"
 	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
 	goalstatemocks "github.com/uber/peloton/pkg/jobmgr/goalstate/mocks"
@@ -501,7 +501,7 @@ func (suite *privateHandlerTestSuite) TestQueryJobCacheSuccess() {
 		context.Background(),
 		&jobmgrsvc.QueryJobCacheRequest{
 			Spec: &jobmgrsvc.QueryJobCacheRequest_CacheQuerySpec{
-				Labels: handler.ConvertLabels(labels1),
+				Labels: api.ConvertLabels(labels1),
 			},
 		})
 	suite.NoError(err)
@@ -511,7 +511,7 @@ func (suite *privateHandlerTestSuite) TestQueryJobCacheSuccess() {
 		context.Background(),
 		&jobmgrsvc.QueryJobCacheRequest{
 			Spec: &jobmgrsvc.QueryJobCacheRequest_CacheQuerySpec{
-				Labels: handler.ConvertLabels(labels2),
+				Labels: api.ConvertLabels(labels2),
 			},
 		})
 	suite.NoError(err)
@@ -548,7 +548,7 @@ func (suite *privateHandlerTestSuite) TestQueryJobCacheSuccess() {
 		context.Background(),
 		&jobmgrsvc.QueryJobCacheRequest{
 			Spec: &jobmgrsvc.QueryJobCacheRequest_CacheQuerySpec{
-				Labels: handler.ConvertLabels(labels1),
+				Labels: api.ConvertLabels(labels1),
 				Name:   jobName1,
 			},
 		})

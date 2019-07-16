@@ -32,6 +32,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	v1alphaquery "github.com/uber/peloton/.gen/peloton/api/v1alpha/query"
 	"github.com/uber/peloton/.gen/peloton/private/models"
+	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/common/concurrency"
 
 	"github.com/uber/peloton/pkg/common"
@@ -46,7 +47,6 @@ import (
 	"github.com/uber/peloton/pkg/jobmgr/jobsvc"
 	jobmgrtask "github.com/uber/peloton/pkg/jobmgr/task"
 	"github.com/uber/peloton/pkg/jobmgr/task/activermtask"
-	handlerutil "github.com/uber/peloton/pkg/jobmgr/util/handler"
 	jobutil "github.com/uber/peloton/pkg/jobmgr/util/job"
 	"github.com/uber/peloton/pkg/storage"
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
@@ -179,7 +179,7 @@ func (h *serviceHandler) CreateJob(
 		return nil, errors.Wrap(err, "failed to validate resource pool")
 	}
 
-	jobConfig, err := handlerutil.ConvertJobSpecToJobConfig(jobSpec)
+	jobConfig, err := api.ConvertJobSpecToJobConfig(jobSpec)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to convert job spec")
 	}
@@ -224,7 +224,7 @@ func (h *serviceHandler) CreateJob(
 		jobConfig,
 		configAddOn,
 		jobSpec,
-		handlerutil.ConvertCreateSpecToUpdateConfig(req.GetCreateSpec()),
+		api.ConvertCreateSpecToUpdateConfig(req.GetCreateSpec()),
 		opaqueData,
 	)
 
@@ -294,7 +294,7 @@ func (h *serviceHandler) ReplaceJob(
 			"JobID must be of UUID format")
 	}
 
-	jobConfig, err := handlerutil.ConvertJobSpecToJobConfig(req.GetSpec())
+	jobConfig, err := api.ConvertJobSpecToJobConfig(req.GetSpec())
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to convert job spec")
 	}
@@ -354,7 +354,7 @@ func (h *serviceHandler) ReplaceJob(
 	updateID, newEntityVersion, err := cachedJob.CreateWorkflow(
 		ctx,
 		models.WorkflowType_UPDATE,
-		handlerutil.ConvertUpdateSpecToUpdateConfig(req.GetUpdateSpec()),
+		api.ConvertUpdateSpecToUpdateConfig(req.GetUpdateSpec()),
 		req.GetVersion(),
 		cached.WithConfig(
 			jobConfig,
@@ -904,7 +904,7 @@ func (h *serviceHandler) getJobSummary(
 	}
 
 	return &svc.GetJobResponse{
-		Summary: handlerutil.ConvertJobSummary(jobSummary, updateInfo),
+		Summary: api.ConvertJobSummary(jobSummary, updateInfo),
 	}, nil
 }
 
@@ -929,7 +929,7 @@ func (h *serviceHandler) getJobConfigurationWithVersion(
 	return &svc.GetJobResponse{
 		JobInfo: &stateless.JobInfo{
 			JobId: jobID,
-			Spec:  handlerutil.ConvertJobConfigToJobSpec(jobConfig),
+			Spec:  api.ConvertJobConfigToJobSpec(jobConfig),
 		},
 	}, nil
 }
@@ -1011,12 +1011,12 @@ func (h *serviceHandler) GetJob(
 	return &svc.GetJobResponse{
 		JobInfo: &stateless.JobInfo{
 			JobId:  req.GetJobId(),
-			Spec:   handlerutil.ConvertJobConfigToJobSpec(jobConfig),
-			Status: handlerutil.ConvertRuntimeInfoToJobStatus(jobRuntime, updateInfo),
+			Spec:   api.ConvertJobConfigToJobSpec(jobConfig),
+			Status: api.ConvertRuntimeInfoToJobStatus(jobRuntime, updateInfo),
 		},
-		Secrets: handlerutil.ConvertV0SecretsToV1Secrets(
+		Secrets: api.ConvertV0SecretsToV1Secrets(
 			jobmgrtask.CreateSecretsFromVolumes(secretVolumes)),
-		WorkflowInfo: handlerutil.ConvertUpdateModelToWorkflowInfo(
+		WorkflowInfo: api.ConvertUpdateModelToWorkflowInfo(
 			jobRuntime,
 			updateInfo,
 			workflowEvents,
@@ -1165,7 +1165,7 @@ func (h *serviceHandler) ListPods(
 					PodName: &v1alphapeloton.PodName{
 						Value: util.CreatePelotonTaskID(req.GetJobId().GetValue(), instID),
 					},
-					Status: handlerutil.ConvertTaskRuntimeToPodStatus(taskRuntime),
+					Status: api.ConvertTaskRuntimeToPodStatus(taskRuntime),
 				},
 			},
 		}
@@ -1214,7 +1214,7 @@ func (h *serviceHandler) QueryPods(
 		return nil, errors.Wrap(err, "failed to find job")
 	}
 
-	taskQuerySpec := handlerutil.ConvertPodQuerySpecToTaskQuerySpec(
+	taskQuerySpec := api.ConvertPodQuerySpecToTaskQuerySpec(
 		req.GetSpec(),
 	)
 	taskInfos, total, err := h.taskStore.QueryTasks(ctx, pelotonJobID, taskQuerySpec)
@@ -1229,7 +1229,7 @@ func (h *serviceHandler) QueryPods(
 	)
 
 	return &svc.QueryPodsResponse{
-		Pods: handlerutil.ConvertTaskInfosToPodInfos(taskInfos),
+		Pods: api.ConvertTaskInfosToPodInfos(taskInfos),
 		Pagination: &v1alphaquery.Pagination{
 			Offset: req.GetPagination().GetOffset(),
 			Limit:  req.GetPagination().GetLimit(),
@@ -1269,7 +1269,7 @@ func (h *serviceHandler) QueryJobs(
 		respoolID = respoolResp.GetId()
 	}
 
-	querySpec := handlerutil.ConvertStatelessQuerySpecToJobQuerySpec(req.GetSpec())
+	querySpec := api.ConvertStatelessQuerySpecToJobQuerySpec(req.GetSpec())
 	log.WithField("spec", querySpec).Debug("converted spec")
 
 	_, jobSummaries, total, err := h.jobStore.QueryJobs(
@@ -1299,7 +1299,7 @@ func (h *serviceHandler) QueryJobs(
 			}
 		}
 
-		statelessJobSummary := handlerutil.ConvertJobSummary(jobSummary, updateModel)
+		statelessJobSummary := api.ConvertJobSummary(jobSummary, updateModel)
 		statelessJobSummaries = append(statelessJobSummaries, statelessJobSummary)
 	}
 
@@ -1358,7 +1358,7 @@ func (h *serviceHandler) ListJobs(
 
 		resp := &svc.ListJobsResponse{
 			Jobs: []*stateless.JobSummary{
-				handlerutil.ConvertJobSummary(jobSummary, updateInfo),
+				api.ConvertJobSummary(jobSummary, updateInfo),
 			},
 		}
 
@@ -1436,7 +1436,7 @@ func (h *serviceHandler) ListJobWorkflows(
 		}
 
 		updateInfos = append(updateInfos,
-			handlerutil.ConvertUpdateModelToWorkflowInfo(
+			api.ConvertUpdateModelToWorkflowInfo(
 				jobRuntime,
 				updateModel,
 				workflowEvents,
@@ -1546,7 +1546,7 @@ func (h *serviceHandler) GetReplaceJobDiff(
 		return nil, err
 	}
 
-	jobConfig, err := handlerutil.ConvertJobSpecToJobConfig(req.GetSpec())
+	jobConfig, err := api.ConvertJobSpecToJobConfig(req.GetSpec())
 	if err != nil {
 		return nil, err
 	}
@@ -1746,7 +1746,7 @@ func convertCacheToJobStatus(
 	}
 	result.State = stateless.JobState(runtime.GetState())
 	result.CreationTime = runtime.GetCreationTime()
-	result.PodStats = handlerutil.ConvertTaskStatsToPodStats(runtime.TaskStats)
+	result.PodStats = api.ConvertTaskStatsToPodStats(runtime.TaskStats)
 	result.DesiredState = stateless.JobState(runtime.GetGoalState())
 	result.Version = versionutil.GetJobEntityVersion(
 		runtime.GetConfigurationVersion(),
@@ -1821,7 +1821,7 @@ func (h *serviceHandler) validateSecretsAndConfig(
 		return nil
 	}
 
-	config, err := handlerutil.ConvertJobSpecToJobConfig(spec)
+	config, err := api.ConvertJobSpecToJobConfig(spec)
 	if err != nil {
 		return err
 	}
@@ -1898,7 +1898,7 @@ func (h *serviceHandler) addSecretsToDBAndConfig(
 	ctx context.Context, jobID string, jobSpec *stateless.JobSpec,
 	secrets []*v1alphapeloton.Secret, update bool) error {
 	// for each secret, store it in DB and add a secret volume to defaultconfig
-	for _, secret := range handlerutil.ConvertV1SecretsToV0Secrets(secrets) {
+	for _, secret := range api.ConvertV1SecretsToV0Secrets(secrets) {
 		if secret.GetId().GetValue() == "" {
 			secret.Id = &peloton.SecretID{
 				Value: uuid.New(),

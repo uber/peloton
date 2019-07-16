@@ -32,13 +32,13 @@ import (
 	hostmocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
+	"github.com/uber/peloton/pkg/common/api"
 	leadermocks "github.com/uber/peloton/pkg/common/leader/mocks"
 	"github.com/uber/peloton/pkg/common/util"
 	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 	goalstatemocks "github.com/uber/peloton/pkg/jobmgr/goalstate/mocks"
 	logmanagermocks "github.com/uber/peloton/pkg/jobmgr/logmanager/mocks"
-	handlerutil "github.com/uber/peloton/pkg/jobmgr/util/handler"
 	storemocks "github.com/uber/peloton/pkg/storage/mocks"
 	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
@@ -1637,7 +1637,7 @@ func (suite *podHandlerTestSuite) TestGetPodEvents() {
 		Return(events, nil)
 	response, err := suite.handler.GetPodEvents(context.Background(), request)
 	suite.NoError(err)
-	suite.Equal(handlerutil.ConvertTaskEventsToPodEvents(events), response.GetEvents())
+	suite.Equal(api.ConvertTaskEventsToPodEvents(events), response.GetEvents())
 }
 
 // TestGetPodEventsPodNameParseError tests PodName parse error

@@ -24,6 +24,7 @@ import (
 	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/private/jobmgrsvc"
 
+	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/common/leader"
 	"github.com/uber/peloton/pkg/common/util"
 	versionutil "github.com/uber/peloton/pkg/common/util/entityversion"
@@ -31,7 +32,6 @@ import (
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 	"github.com/uber/peloton/pkg/jobmgr/goalstate"
-	handlerutil "github.com/uber/peloton/pkg/jobmgr/util/handler"
 	"github.com/uber/peloton/pkg/storage"
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 
@@ -291,7 +291,7 @@ func (h *serviceHandler) QueryJobCache(
 		}
 
 		if nameMatch(cachedConfig.GetName(), req.GetSpec().GetName()) &&
-			labelMatch(handlerutil.ConvertLabels(cachedConfig.GetLabels()), req.GetSpec().GetLabels()) {
+			labelMatch(api.ConvertLabels(cachedConfig.GetLabels()), req.GetSpec().GetLabels()) {
 			result = append(result, &jobmgrsvc.QueryJobCacheResponse_JobCache{
 				JobId: &v1alphapeloton.JobID{Value: job.ID().GetValue()},
 				Name:  cachedConfig.GetName(),
@@ -350,7 +350,7 @@ func convertCacheToJobStatus(
 	}
 	result.State = stateless.JobState(runtime.GetState())
 	result.CreationTime = runtime.GetCreationTime()
-	result.PodStats = handlerutil.ConvertTaskStatsToPodStats(runtime.TaskStats)
+	result.PodStats = api.ConvertTaskStatsToPodStats(runtime.TaskStats)
 	result.DesiredState = stateless.JobState(runtime.GetGoalState())
 	result.Version = versionutil.GetJobEntityVersion(
 		runtime.GetConfigurationVersion(),

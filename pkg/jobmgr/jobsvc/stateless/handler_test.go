@@ -39,12 +39,12 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
 	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/common/util"
 	versionutil "github.com/uber/peloton/pkg/common/util/entityversion"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 	"github.com/uber/peloton/pkg/jobmgr/jobsvc"
-	handlerutil "github.com/uber/peloton/pkg/jobmgr/util/handler"
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 
 	respoolmocks "github.com/uber/peloton/.gen/peloton/api/v0/respool/mocks"
@@ -1987,7 +1987,7 @@ func (suite *statelessHandlerTestSuite) TestCreateJobSuccess() {
 		},
 	}
 
-	jobConfig, err := handlerutil.ConvertJobSpecToJobConfig(jobSpec)
+	jobConfig, err := api.ConvertJobSpecToJobConfig(jobSpec)
 	suite.NoError(err)
 
 	gomock.InOrder(
@@ -2313,7 +2313,7 @@ func (suite *statelessHandlerTestSuite) TestCreateJobWithSecretsSuccess() {
 	jobSpec.InstanceSpec[10].Containers[0].Container =
 		&mesos.ContainerInfo{Type: &dockerContainerizer}
 
-	jobConfig, err := handlerutil.ConvertJobSpecToJobConfig(jobSpec)
+	jobConfig, err := api.ConvertJobSpecToJobConfig(jobSpec)
 	suite.NoError(err)
 
 	secret := &v1alphapeloton.Secret{
@@ -2441,7 +2441,7 @@ func (suite *statelessHandlerTestSuite) TestCreateJobWithSecretsFailureSecretsAd
 	request := &statelesssvc.CreateJobRequest{
 		JobId:   &v1alphapeloton.JobID{Value: testJobID},
 		Spec:    jobSpec,
-		Secrets: handlerutil.ConvertV0SecretsToV1Secrets([]*peloton.Secret{secret}),
+		Secrets: api.ConvertV0SecretsToV1Secrets([]*peloton.Secret{secret}),
 	}
 
 	response, err := suite.handler.CreateJob(context.Background(), request)
@@ -2743,7 +2743,7 @@ func (suite *statelessHandlerTestSuite) TestCreateJobFailureJobCacheCreateError(
 		RespoolId: respoolID,
 	}
 
-	jobConfig, err := handlerutil.ConvertJobSpecToJobConfig(jobSpec)
+	jobConfig, err := api.ConvertJobSpecToJobConfig(jobSpec)
 	suite.NoError(err)
 
 	gomock.InOrder(
@@ -2803,7 +2803,7 @@ func (suite *statelessHandlerTestSuite) TestCreateJobFailureGetJobRuntimeError()
 		RespoolId: respoolID,
 	}
 
-	jobConfig, err := handlerutil.ConvertJobSpecToJobConfig(jobSpec)
+	jobConfig, err := api.ConvertJobSpecToJobConfig(jobSpec)
 	suite.NoError(err)
 
 	gomock.InOrder(
@@ -4100,7 +4100,7 @@ func (suite *statelessHandlerTestSuite) TestQueryPodsSuccess() {
 			QueryTasks(
 				gomock.Any(),
 				pelotonJobID,
-				handlerutil.ConvertPodQuerySpecToTaskQuerySpec(request.GetSpec()),
+				api.ConvertPodQuerySpecToTaskQuerySpec(request.GetSpec()),
 			).Return(taskInfos, uint32(len(taskInfos)), nil),
 
 		suite.activeRMTasks.EXPECT().
@@ -4124,7 +4124,7 @@ func (suite *statelessHandlerTestSuite) TestQueryPodsSuccess() {
 			taskInfos[i].GetRuntime().Reason = podInfo.GetStatus().GetReason()
 		}
 	}
-	suite.Equal(handlerutil.ConvertTaskInfosToPodInfos(taskInfos), response.GetPods())
+	suite.Equal(api.ConvertTaskInfosToPodInfos(taskInfos), response.GetPods())
 	suite.Equal(pagination, response.GetPagination())
 }
 
@@ -4184,7 +4184,7 @@ func (suite *statelessHandlerTestSuite) TestQueryPodsFailureQueryTasksError() {
 			QueryTasks(
 				gomock.Any(),
 				pelotonJobID,
-				handlerutil.ConvertPodQuerySpecToTaskQuerySpec(request.GetSpec()),
+				api.ConvertPodQuerySpecToTaskQuerySpec(request.GetSpec()),
 			).Return(nil, uint32(0), yarpcerrors.InternalErrorf("test error")),
 	)
 
