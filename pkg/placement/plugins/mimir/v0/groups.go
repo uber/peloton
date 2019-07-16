@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package v0_mimir
+package mimir_v0
 
 import (
 	"fmt"

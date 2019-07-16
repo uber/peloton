@@ -23,7 +23,7 @@ import (
 func (a *Assignment) ToMimirEntity() *placement.Entity {
 	data := a.GetTask().Data()
 	if data == nil {
-		entity := v0_mimir.TaskToEntity(a.GetTask().GetTask(), false)
+		entity := mimir_v0.TaskToEntity(a.GetTask().GetTask(), false)
 		a.GetTask().SetData(entity)
 		data = entity
 	}
@@ -35,10 +35,10 @@ func (a *Assignment) ToMimirEntity() *placement.Entity {
 func (o *HostOffers) ToMimirGroup() *placement.Group {
 	data := o.Data()
 	if data == nil {
-		group := v0_mimir.OfferToGroup(o.GetOffer())
+		group := mimir_v0.OfferToGroup(o.GetOffer())
 		entities := placement.Entities{}
 		for _, task := range o.GetTasks() {
-			entity := v0_mimir.TaskToEntity(task, true)
+			entity := mimir_v0.TaskToEntity(task, true)
 			entities.Add(entity)
 		}
 		group.Entities = entities

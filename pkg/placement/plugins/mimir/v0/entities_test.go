@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package v0_mimir_test
+package mimir_v0_test
 
 import (
 	"testing"
@@ -29,7 +29,7 @@ import (
 
 func TestEntityMapper_Convert(t *testing.T) {
 	task := v0_testutil.SetupRMTask()
-	entity := v0_mimir.TaskToEntity(task, false)
+	entity := mimir_v0.TaskToEntity(task, false)
 	assert.Equal(t, task.GetId().GetValue(), entity.Name)
 	assert.Equal(t, 1, entity.Relations.Count(labels.NewLabel("relationKey", "relationValue")))
 	assert.NotNil(t, entity.Ordering)

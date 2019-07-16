@@ -20,6 +20,7 @@ import (
 	host "github.com/uber/peloton/.gen/peloton/api/v1alpha/host"
 	peloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 
 	"github.com/stretchr/testify/require"
 )
@@ -35,7 +36,7 @@ func TestLease(t *testing.T) {
 				Resources: &peloton.Resources{},
 			},
 		}
-		lease := NewOffer(hl)
+		lease := NewOffer(hl, nil)
 		_, ports := lease.GetAvailableResources()
 		require.Equal(t, uint64(0), ports)
 	})
@@ -52,7 +53,26 @@ func TestLease(t *testing.T) {
 				},
 			},
 		}
-		lease := NewOffer(hl)
+		lease := NewOffer(hl, nil)
+		_, ports := lease.GetAvailableResources()
+		require.Equal(t, uint64(3), ports)
+	})
+
+	t.Run("non-nil tasks", func(t *testing.T) {
+		hl := &hostmgr.HostLease{
+			LeaseId: &hostmgr.LeaseID{Value: "l1"},
+			HostSummary: &host.HostSummary{
+				Hostname:  "h1",
+				Resources: &peloton.Resources{},
+				AvailablePorts: []*host.PortRange{
+					{Begin: 1, End: 2},
+					{Begin: 4, End: 4},
+				},
+			},
+		}
+		lease := NewOffer(hl, []*resmgr.Task{
+			{Name: "t1"},
+		})
 		_, ports := lease.GetAvailableResources()
 		require.Equal(t, uint64(3), ports)
 	})

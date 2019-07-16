@@ -16,10 +16,12 @@ package models_v1
 
 import (
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 	"github.com/uber/peloton/pkg/placement/models"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/model/placement"
+	"github.com/uber/peloton/pkg/placement/plugins/mimir/v0"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/v1"
 )
 
@@ -28,14 +30,18 @@ import (
 type lease struct {
 	// hostLease is the lease object that we received from the hostmanager API.
 	hostLease *hostmgr.HostLease
+
+	// The tasks running on this host.
+	tasks []*resmgr.Task
 }
 
 var _ models.Offer = lease{}
 
 // NewOffer returns a new models.Offer from the HostLease of v1alpha API.
-func NewOffer(hostLease *hostmgr.HostLease) models.Offer {
+func NewOffer(hostLease *hostmgr.HostLease, tasks []*resmgr.Task) models.Offer {
 	return lease{
 		hostLease: hostLease,
+		tasks:     tasks,
 	}
 }
 
@@ -74,7 +80,13 @@ func (l lease) ToMimirGroup() *placement.Group {
 	for _, label := range l.hostLease.GetHostSummary().GetLabels() {
 		labels[label.Key] = label.Value
 	}
-	return mimir_v1.CreateGroup(l.Hostname(), res, ports, labels)
+	group := mimir_v1.CreateGroup(l.Hostname(), res, ports, labels)
+	for _, task := range l.tasks {
+		entity := mimir_v0.TaskToEntity(task, true)
+		group.Entities.Add(entity)
+	}
+	group.Update()
+	return group
 }
 
 // AvailablePortRanges returns the list of available port ranges in this lease.

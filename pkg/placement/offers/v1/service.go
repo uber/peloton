@@ -25,6 +25,7 @@ import (
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
 	hostsvc "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
+	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
 	"github.com/uber/peloton/pkg/placement/metrics"
 	"github.com/uber/peloton/pkg/placement/models"
@@ -35,25 +36,29 @@ import (
 )
 
 const (
-	_failedToAcquireHosts = "failed to acquire hosts"
-	_noHostsAcquired      = "no hosts acquired"
-	_timeout              = 10 * time.Second
+	_failedToAcquireHosts      = "failed to acquire hosts"
+	_failedToFetchTasksOnHosts = "failed to fetch tasks on hosts"
+	_noHostsAcquired           = "no hosts acquired"
+	_timeout                   = 10 * time.Second
 )
 
 type service struct {
-	hostManager hostsvc.HostManagerServiceYARPCClient
-	metrics     *metrics.Metrics
+	hostManager     hostsvc.HostManagerServiceYARPCClient
+	resourceManager resmgrsvc.ResourceManagerServiceYARPCClient
+	metrics         *metrics.Metrics
 }
 
 // NewService returns a new offer service that calls
 // out to the v1 api of hostmanager.
 func NewService(
 	hostManager hostsvc.HostManagerServiceYARPCClient,
+	resourceManager resmgrsvc.ResourceManagerServiceYARPCClient,
 	metrics *metrics.Metrics,
 ) offers.Service {
 	return &service{
-		hostManager: hostManager,
-		metrics:     metrics,
+		hostManager:     hostManager,
+		resourceManager: resourceManager,
+		metrics:         metrics,
 	}
 }
 
@@ -98,6 +103,28 @@ func (s *service) Acquire(
 
 	// Ignore error. It literally will never happen.
 	jsonFilterRes, _ := json.Marshal(resp.FilterResultCounts)
+
+	hostnames := []string{}
+	for _, host := range resp.Hosts {
+		hostnames = append(hostnames, host.GetHostSummary().GetHostname())
+	}
+
+	tasksLists := map[string][]*resmgr.Task{}
+	if fetchTasks {
+		tasksLists, err = s.fetchTaskLists(ctx, taskType, hostnames)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"host_offers":    resp.Hosts,
+				"filter_results": jsonFilterRes,
+				"filter":         filter,
+				"task_type":      taskType,
+				"fetch_tasks":    fetchTasks,
+			}).WithError(err).Error(_failedToFetchTasksOnHosts)
+			s.metrics.OfferGetFail.Inc(1)
+			return nil, fmt.Sprintf("failed to fetch tasks on hosts: %v", err)
+		}
+	}
+
 	log.WithFields(log.Fields{
 		"hosts_acquired":      resp.Hosts,
 		"filter_results":      resp.FilterResultCounts,
@@ -109,7 +136,8 @@ func (s *service) Acquire(
 
 	offers := make([]models.Offer, len(resp.Hosts))
 	for i, host := range resp.Hosts {
-		offers[i] = models_v1.NewOffer(host)
+		hostname := host.GetHostSummary().GetHostname()
+		offers[i] = models_v1.NewOffer(host, tasksLists[hostname])
 	}
 	return offers, string(jsonFilterRes)
 }
@@ -147,4 +175,30 @@ func (s *service) Release(
 	log.WithFields(log.Fields{
 		"terminate_host_leases_request": req,
 	}).Debug("terminate host leases request returned with no error")
+}
+
+// fetchTaskLists asks the resource manager for a list of all the tasks
+// that are running on a given set of hostnames.
+func (s *service) fetchTaskLists(
+	ctx context.Context,
+	taskType resmgr.TaskType,
+	hostnames []string,
+) (map[string][]*resmgr.Task, error) {
+	ctx, cancelFunc := context.WithTimeout(ctx, _timeout)
+	defer cancelFunc()
+
+	tasksRequest := &resmgrsvc.GetTasksByHostsRequest{
+		Type:      taskType,
+		Hostnames: hostnames,
+	}
+	tasksResponse, err := s.resourceManager.GetTasksByHosts(ctx, tasksRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	result := map[string][]*resmgr.Task{}
+	for name, list := range tasksResponse.HostTasksMap {
+		result[name] = list.Tasks
+	}
+	return result, nil
 }

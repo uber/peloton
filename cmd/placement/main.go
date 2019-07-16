@@ -381,17 +381,18 @@ func main() {
 		dispatcher.ClientConfig(common.PelotonHostManager))
 
 	var offerService offers.Service
-	if cfg.Placement.HostManagerAPIVersion == api.V0 {
-		offerService = offers_v0.NewService(
-			hostManager,
-			resourceManager,
-			tallyMetrics,
-		)
-	} else if cfg.Placement.HostManagerAPIVersion.IsV1() {
+	if cfg.Placement.HostManagerAPIVersion.IsV1() {
 		hostManagerV1 := hostsvc_v1.NewHostManagerServiceYARPCClient(
 			dispatcher.ClientConfig(common.PelotonHostManager))
 		offerService = offers_v1.NewService(
 			hostManagerV1,
+			resourceManager,
+			tallyMetrics,
+		)
+	} else {
+		offerService = offers_v0.NewService(
+			hostManager,
+			resourceManager,
 			tallyMetrics,
 		)
 	}

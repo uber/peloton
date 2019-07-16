@@ -31,6 +31,8 @@ import (
 	hostsvc "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc"
 	host_mocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc/mocks"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
+	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
+	resource_mocks "github.com/uber/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
 	"github.com/uber/peloton/pkg/placement/metrics"
 	"github.com/uber/peloton/pkg/placement/models"
@@ -43,20 +45,22 @@ import (
 func setupHostManager(t *testing.T) (
 	*gomock.Controller,
 	*host_mocks.MockHostManagerServiceYARPCClient,
+	*resource_mocks.MockResourceManagerServiceYARPCClient,
 	offers.Service,
 	context.Context,
 ) {
 	ctrl := gomock.NewController(t)
 	mockHostManager := host_mocks.NewMockHostManagerServiceYARPCClient(ctrl)
+	mockResourceManager := resource_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	metrics := metrics.NewMetrics(tally.NoopScope)
-	service := NewService(mockHostManager, metrics)
-	return ctrl, mockHostManager, service, context.Background()
+	service := NewService(mockHostManager, mockResourceManager, metrics)
+	return ctrl, mockHostManager, mockResourceManager, service, context.Background()
 }
 
 // TestOfferServiceAcquire tests the Acquire call of offer.Service.
 func TestOfferServiceAcquire(t *testing.T) {
 	t.Run("acquire failures", func(t *testing.T) {
-		ctrl, mockHostManager, service, ctx := setupHostManager(t)
+		ctrl, mockHostManager, _, service, ctx := setupHostManager(t)
 		defer ctrl.Finish()
 
 		needs := plugins.PlacementNeeds{}
@@ -86,7 +90,7 @@ func TestOfferServiceAcquire(t *testing.T) {
 	})
 
 	t.Run("acquire success", func(t *testing.T) {
-		ctrl, mockHostManager, service, ctx := setupHostManager(t)
+		ctrl, mockHostManager, mockResManager, service, ctx := setupHostManager(t)
 		defer ctrl.Finish()
 
 		needs := plugins.PlacementNeeds{}
@@ -112,14 +116,24 @@ func TestOfferServiceAcquire(t *testing.T) {
 			FilterResultCounts: filterResult,
 		}
 
+		mockResManager.EXPECT().
+			GetTasksByHosts(
+				gomock.Any(),
+				&resmgrsvc.GetTasksByHostsRequest{
+					Type:      resmgr.TaskType_UNKNOWN,
+					Hostnames: []string{"hostname"},
+				},
+			).
+			Return(&resmgrsvc.GetTasksByHostsResponse{}, nil)
+
 		// Acquire Host Offers successful call
 		mockHostManager.EXPECT().
 			AcquireHosts(
 				gomock.Any(),
 				&hostsvc.AcquireHostsRequest{Filter: filter}).
 			Return(hostOffers, nil)
-		hosts, reason := service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, needs)
 
+		hosts, reason := service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, needs)
 		assert.Equal(t, string(filterResultStr), reason)
 		require.Equal(t, 1, len(hosts))
 		assert.Equal(t, "hostname", hosts[0].Hostname())
@@ -129,7 +143,7 @@ func TestOfferServiceAcquire(t *testing.T) {
 // TestOfferServiceRelease tests the Release call of offer.Service.
 func TestOfferServiceRelease(t *testing.T) {
 	t.Run("release no hosts", func(t *testing.T) {
-		ctrl, _, service, ctx := setupHostManager(t)
+		ctrl, _, _, service, ctx := setupHostManager(t)
 		defer ctrl.Finish()
 
 		leases := []models.Offer{}
@@ -137,7 +151,7 @@ func TestOfferServiceRelease(t *testing.T) {
 	})
 
 	t.Run("terminate lease success", func(t *testing.T) {
-		ctrl, mockHostManager, service, ctx := setupHostManager(t)
+		ctrl, mockHostManager, _, service, ctx := setupHostManager(t)
 		defer ctrl.Finish()
 
 		lease := models_mocks.NewMockOffer(ctrl)
