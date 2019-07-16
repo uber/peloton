@@ -197,6 +197,11 @@ func (j *jobEntity) GetActionList(
 		})
 	}
 
+	actions = append(actions, goalstate.Action{
+		Name:    string(DeleteFromActiveJobsAction),
+		Execute: DeleteJobFromActiveJobs,
+	})
+
 	if actionStr == DeleteJobAction ||
 		actionStr == KillAndDeleteJobAction {
 		return context.Background(), nil, actions
@@ -208,11 +213,6 @@ func (j *jobEntity) GetActionList(
 			Name:    "EnqueueJobUpdate",
 			Execute: EnqueueJobUpdate,
 		})
-
-	actions = append(actions, goalstate.Action{
-		Name:    string(DeleteFromActiveJobsAction),
-		Execute: DeleteJobFromActiveJobs,
-	})
 
 	if actionStr != UntrackAction &&
 		actionStr != KillAndUntrackAction &&

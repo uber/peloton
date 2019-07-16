@@ -669,6 +669,18 @@ def kill_jobs(jobs):
         j.delete()
 
 
+def get_active_jobs():
+    """
+    Gets all jobs from the active_jobs table
+    """
+    client.Client()
+    request = job.GetActiveJobsRequest()
+    resp = client.job_svc.GetActiveJobs(
+        request, metadata=client.jobmgr_metadata, timeout=10
+    )
+    return resp.ids
+
+
 def format_stats(stats):
     return " ".join(
         (

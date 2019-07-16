@@ -4,6 +4,7 @@ import time
 
 from tests.integration.stateless_job import StatelessJob
 from tests.integration.common import IntegrationTestConfig
+from tests.integration.job import get_active_jobs
 from tests.integration.stateless_job import (
     INVALID_ENTITY_VERSION_ERR_MESSAGE,
     list_jobs,
@@ -223,6 +224,7 @@ def test__delete_killed_job():
     job = StatelessJob()
     job.create()
     job.wait_for_state(goal_state="RUNNING")
+    job_id = job.get_job_id()
 
     job.stop()
     job.wait_for_state(goal_state="KILLED")
@@ -236,6 +238,10 @@ def test__delete_killed_job():
         assert e.code() == grpc.StatusCode.NOT_FOUND
         return
     raise Exception("job not found error not received")
+
+    # try to find the job from active_jobs
+    ids = get_active_jobs()
+    assert job_id not in ids
 
 
 # test__delete_running_job_with_force_flag tests force deleting a running job
