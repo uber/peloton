@@ -20,20 +20,21 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
-	uat "github.com/uber-go/atomic"
-	"github.com/uber-go/tally"
-
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pb_res "github.com/uber/peloton/.gen/peloton/api/v0/respool"
-	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/common/util"
 	res_common "github.com/uber/peloton/pkg/resmgr/common"
 	"github.com/uber/peloton/pkg/resmgr/respool"
 	"github.com/uber/peloton/pkg/resmgr/scalar"
+
+	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
+	uat "github.com/uber-go/atomic"
+	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
 )
 
 // Calculator is responsible for calculating the entitlements for all the
@@ -49,8 +50,9 @@ type Calculator struct {
 	calculationPeriod time.Duration
 	// chan to stop the calculation
 	stopChan chan struct{}
-	// client to get the cluster capacity
-	hostMgrClient hostsvc.InternalHostServiceYARPCClient
+	// capMgr will fetch total and slack capacity from the mesos
+	// or k8s cluster that Peloton is configured with.
+	capMgr CapacityManager
 	// map of cluster capacity keyed by the resource type
 	clusterCapacity map[string]float64
 	// map of cluster slack capacity keyed by the resource type
@@ -65,15 +67,16 @@ type Calculator struct {
 func NewCalculator(
 	calculationPeriod time.Duration,
 	parent tally.Scope,
-	hostMgrClient hostsvc.InternalHostServiceYARPCClient,
-	tree respool.Tree) *Calculator {
-
+	dispatcher *yarpc.Dispatcher,
+	tree respool.Tree,
+	hmApiVersion api.Version,
+) *Calculator {
 	return &Calculator{
 		resPoolTree:          tree,
 		runningState:         res_common.RunningStateNotStarted,
 		calculationPeriod:    calculationPeriod,
 		stopChan:             make(chan struct{}, 1),
-		hostMgrClient:        hostMgrClient,
+		capMgr:               getCapacityManager(hmApiVersion, dispatcher),
 		clusterCapacity:      make(map[string]float64),
 		clusterSlackCapacity: make(map[string]float64),
 		metrics:              newMetrics(parent.SubScope("Calculator")),
@@ -198,28 +201,17 @@ func (c *Calculator) demandExist(
 func (c *Calculator) updateClusterCapacity(
 	ctx context.Context,
 	rootResPool respool.ResPool) error {
-	// Calling the hostmgr for getting total capacity of the cluster
-	totalResources, slackTotalResources, err := c.getTotalCapacity(ctx)
+
+	var err error
+	c.clusterCapacity, c.clusterSlackCapacity, err = c.capMgr.GetCapacity(ctx)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get total cluster capacity")
+		return err
 	}
 
 	rootResourcePoolConfig := rootResPool.ResourcePoolConfig()
 	if rootResourcePoolConfig == nil {
 		log.Error("root resource pool have invalid config")
 		return errors.New("root resource pool have invalid config")
-	}
-
-	for _, res := range totalResources {
-		// Setting the root resource information for
-		// rootResourcePool
-		c.clusterCapacity[res.Kind] = res.Capacity
-	}
-
-	for _, res := range slackTotalResources {
-		// Setting the root resource information for
-		// rootResourcePool
-		c.clusterSlackCapacity[res.Kind] = res.Capacity
 	}
 
 	rootres := rootResourcePoolConfig.Resources
@@ -274,36 +266,6 @@ func (c *Calculator) updateClusterCapacity(
 		})
 	log.WithField("root resource ", rootres).Info("Updating root resources")
 	return nil
-}
-
-// getTotalCapacity returns the total capacity for physical and slack resources
-// of the cluster
-func (c *Calculator) getTotalCapacity(
-	ctx context.Context) ([]*hostsvc.Resource, []*hostsvc.Resource, error) {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	request := &hostsvc.ClusterCapacityRequest{}
-
-	response, err := c.hostMgrClient.ClusterCapacity(ctx, request)
-	if err != nil {
-		log.
-			WithField("error", err).
-			Error("ClusterCapacity failed")
-		return nil, nil, err
-	}
-
-	log.
-		WithField("response", response).
-		Debug("ClusterCapacity returned")
-
-	if respErr := response.GetError(); respErr != nil {
-		log.
-			WithField("error", respErr).
-			Error("ClusterCapacity error")
-		return nil, nil, errors.New(respErr.String())
-	}
-	return response.PhysicalResources, response.PhysicalSlackResources, nil
 }
 
 // Stop stops Entitlement process

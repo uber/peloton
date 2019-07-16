@@ -22,6 +22,7 @@ import (
 	"github.com/uber/peloton/pkg/auth"
 	auth_impl "github.com/uber/peloton/pkg/auth/impl"
 	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/common/buildversion"
 	"github.com/uber/peloton/pkg/common/config"
 	"github.com/uber/peloton/pkg/common/health"
@@ -260,6 +261,10 @@ func main() {
 	log.WithField("config", cfg).
 		Info("Completed Resource Manager config")
 
+	if cfg.ResManager.HostManagerAPIVersion == "" {
+		cfg.ResManager.HostManagerAPIVersion = api.V0
+	}
+
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(
 		&cfg.Metrics,
 		common.PelotonResourceManager,
@@ -392,8 +397,9 @@ func main() {
 	calculator := entitlement.NewCalculator(
 		cfg.ResManager.EntitlementCaculationPeriod,
 		rootScope,
-		hostmgrClient,
+		dispatcher,
 		tree,
+		cfg.ResManager.HostManagerAPIVersion,
 	)
 
 	// Initializing the task reconciler

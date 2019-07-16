@@ -22,23 +22,28 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
-	log "github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/suite"
-	"github.com/uber-go/tally"
-
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pb_respool "github.com/uber/peloton/.gen/peloton/api/v0/respool"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	host_mocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
+	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
 
 	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/common/api"
+	"github.com/uber/peloton/pkg/common/rpc"
 	res_common "github.com/uber/peloton/pkg/resmgr/common"
 	"github.com/uber/peloton/pkg/resmgr/respool"
 	"github.com/uber/peloton/pkg/resmgr/scalar"
 	"github.com/uber/peloton/pkg/resmgr/tasktestutil"
 	store_mocks "github.com/uber/peloton/pkg/storage/mocks"
 	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
+
+	"github.com/golang/mock/gomock"
+	log "github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/api/transport"
 )
 
 type EntitlementCalculatorTestSuite struct {
@@ -106,13 +111,16 @@ func (s *EntitlementCalculatorTestSuite) TestPeriodicCalculationWhenStarted() {
 		MinTimes(5)
 
 	calculator := &Calculator{
-		resPoolTree:       s.resTree,
-		runningState:      res_common.RunningStateNotStarted,
-		calculationPeriod: 10 * time.Millisecond,
-		stopChan:          make(chan struct{}, 1),
-		clusterCapacity:   make(map[string]float64),
-		metrics:           newMetrics(tally.NoopScope),
-		hostMgrClient:     mockHostMgr,
+		resPoolTree:          s.resTree,
+		runningState:         res_common.RunningStateNotStarted,
+		calculationPeriod:    10 * time.Millisecond,
+		stopChan:             make(chan struct{}, 1),
+		clusterCapacity:      make(map[string]float64),
+		clusterSlackCapacity: make(map[string]float64),
+		metrics:              newMetrics(tally.NoopScope),
+		capMgr: &v0CapacityManager{
+			hostManagerV0: mockHostMgr,
+		},
 	}
 	s.NoError(calculator.Start())
 
@@ -321,7 +329,9 @@ func (s *EntitlementCalculatorTestSuite) TestEntitlement() {
 			}, nil).
 			AnyTimes(),
 	)
-	s.calculator.hostMgrClient = mockHostMgr
+	s.calculator.capMgr = &v0CapacityManager{
+		hostManagerV0: mockHostMgr,
+	}
 	resPool, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool11"})
 	s.NoError(err)
 	demand := &scalar.Resources{
@@ -420,7 +430,9 @@ func (s *EntitlementCalculatorTestSuite) TestEntitlementForSlackResources() {
 			}, nil).
 			AnyTimes(),
 	)
-	s.calculator.hostMgrClient = mockHostMgr
+	s.calculator.capMgr = &v0CapacityManager{
+		hostManagerV0: mockHostMgr,
+	}
 	resPool11, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool11"})
 	s.NoError(err)
 	demand := &scalar.Resources{
@@ -556,7 +568,9 @@ func (s *EntitlementCalculatorTestSuite) TestZeroSlackEntitlement() {
 			}, nil).
 			AnyTimes(),
 	)
-	s.calculator.hostMgrClient = mockHostMgr
+	s.calculator.capMgr = &v0CapacityManager{
+		hostManagerV0: mockHostMgr,
+	}
 
 	// resource type: reservation, limit
 	// CPU: 100, 1000 MEMORY: 100, 1000 DISK: 1000, 1000, GPU: 2, 4
@@ -608,7 +622,9 @@ func (s *EntitlementCalculatorTestSuite) TestSlackEntitlementReduces() {
 			}, nil).
 			AnyTimes(),
 	)
-	s.calculator.hostMgrClient = mockHostMgr
+	s.calculator.capMgr = &v0CapacityManager{
+		hostManagerV0: mockHostMgr,
+	}
 
 	// resource type: reservation, limit
 	// CPU: 100, 1000 MEMORY: 100, 1000 DISK: 1000, 1000, GPU: 2, 4
@@ -722,7 +738,9 @@ func (s *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
 			}, nil).
 			Times(1),
 	)
-	s.calculator.hostMgrClient = mockHostMgr
+	s.calculator.capMgr = &v0CapacityManager{
+		hostManagerV0: mockHostMgr,
+	}
 
 	rootres, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "root"})
 	s.NoError(err)
@@ -772,7 +790,9 @@ func (s *EntitlementCalculatorTestSuite) TestEntitlementWithMoreDemand() {
 			}, nil).
 			AnyTimes(),
 	)
-	s.calculator.hostMgrClient = mockHostMgr
+	s.calculator.capMgr = &v0CapacityManager{
+		hostManagerV0: mockHostMgr,
+	}
 
 	ResPoolRoot, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "root"})
 	s.NoError(err)
@@ -842,12 +862,35 @@ func (s *EntitlementCalculatorTestSuite) TestEntitlementWithMoreDemand() {
 func (s *EntitlementCalculatorTestSuite) TestNewCalculator() {
 	// This test initializes the entitlement calculation
 	// and check if Calculator is not nil
-	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(s.mockCtrl)
+	t := rpc.NewTransport()
+	outbound := t.NewOutbound(nil)
+	dispatcher := yarpc.NewDispatcher(yarpc.Config{
+		Name:     common.PelotonResourceManager,
+		Inbounds: nil,
+		Outbounds: yarpc.Outbounds{
+			common.PelotonHostManager: transport.Outbounds{
+				Unary: outbound,
+			},
+		},
+		Metrics: yarpc.MetricsConfig{
+			Tally: tally.NoopScope,
+		},
+	})
+
 	calc := NewCalculator(
 		10*time.Millisecond,
 		tally.NoopScope,
-		mockHostMgr,
+		dispatcher,
 		s.resTree,
+		api.V0,
+	)
+	s.NotNil(calc)
+	calc = NewCalculator(
+		10*time.Millisecond,
+		tally.NoopScope,
+		dispatcher,
+		s.resTree,
+		api.V1Alpha,
 	)
 	s.NotNil(calc)
 }
@@ -863,7 +906,9 @@ func (s *EntitlementCalculatorTestSuite) TestStartCalculatorMultipleTimes() {
 			gomock.Any()).
 		Return(&hostsvc.ClusterCapacityResponse{}, nil).
 		AnyTimes()
-	s.calculator.hostMgrClient = mockHostMgr
+	s.calculator.capMgr = &v0CapacityManager{
+		hostManagerV0: mockHostMgr,
+	}
 
 	s.NoError(s.calculator.Start())
 	s.NoError(s.calculator.Start())
@@ -879,7 +924,9 @@ func (s *EntitlementCalculatorTestSuite) TestUpdateCapacityError() {
 			PhysicalResources: nil,
 		}, errors.New("Capacity Unavailable")).
 		Times(1)
-	s.calculator.hostMgrClient = mockHostMgr
+	s.calculator.capMgr = &v0CapacityManager{
+		hostManagerV0: mockHostMgr,
+	}
 	err := s.calculator.calculateEntitlement(context.Background())
 	s.Error(err)
 }
@@ -908,8 +955,10 @@ func (s *EntitlementCalculatorTestSuite) TestStaticRespoolsEntitlement() {
 		stopChan:             make(chan struct{}, 1),
 		clusterCapacity:      make(map[string]float64),
 		clusterSlackCapacity: make(map[string]float64),
-		hostMgrClient:        mockHostMgr,
-		metrics:              newMetrics(tally.NoopScope),
+		capMgr: &v0CapacityManager{
+			hostManagerV0: mockHostMgr,
+		},
+		metrics: newMetrics(tally.NoopScope),
 	}
 
 	resTree.Start()
@@ -926,7 +975,9 @@ func (s *EntitlementCalculatorTestSuite) TestStaticRespoolsEntitlement() {
 			}, nil).
 			AnyTimes(),
 	)
-	s.calculator.hostMgrClient = mockHostMgr
+	s.calculator.capMgr = &v0CapacityManager{
+		hostManagerV0: mockHostMgr,
+	}
 
 	resPool, err := resTree.Get(&peloton.ResourcePoolID{Value: "respool11s"})
 	s.NoError(err)
@@ -1006,4 +1057,18 @@ func (s *EntitlementCalculatorTestSuite) createSlackClusterCapacity() []*hostsvc
 			Capacity: 0,
 		},
 	}
+}
+
+// convertV0ToV1HostResource converts v0 hostsvc Resource to v1 Resource
+func convertV0ToV1HostResource(
+	v0Res []*hostsvc.Resource,
+) []*hostmgr.Resource {
+	var v1Res []*hostmgr.Resource
+	for _, r := range v0Res {
+		v1Res = append(v1Res, &hostmgr.Resource{
+			Kind:     r.GetKind(),
+			Capacity: r.GetCapacity(),
+		})
+	}
+	return v1Res
 }
