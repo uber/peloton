@@ -106,14 +106,15 @@ func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle() {
 	suite.mockJob.EXPECT().GetAllTasks().Return(suite.mockTasks)
 	suite.mockTask.EXPECT().GetRuntime(gomock.Any()).Return(taskInfo.Runtime, nil)
 	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(suite.mockJob)
-	suite.mockJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+	suite.mockJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any(), false).
+		Do(func(ctx context.Context,
+			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
+			_ bool) {
 			suite.Equal(peloton_task.TaskState_KILLED, runtimeDiffs[1][jobmgrcommon.GoalStateField])
 			suite.Equal(
 				peloton_task.TerminationStatus_TERMINATION_STATUS_REASON_DEADLINE_TIMEOUT_EXCEEDED,
 				runtimeDiffs[1][jobmgrcommon.TerminationStatusField].(*peloton_task.TerminationStatus).GetReason())
-		}).
-		Return(nil)
+		}).Return(nil, nil, nil)
 	suite.goalStateDriver.EXPECT().EnqueueTask(gomock.Any(), gomock.Any(), gomock.Any()).Return()
 	suite.mockJob.EXPECT().
 		GetJobType().Return(peloton_job.JobType_BATCH)
@@ -171,7 +172,9 @@ func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle_PatchTasksErr()
 	suite.mockJob.EXPECT().GetAllTasks().Return(suite.mockTasks)
 	suite.mockTask.EXPECT().GetRuntime(gomock.Any()).Return(taskInfo.Runtime, nil)
 	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(suite.mockJob)
-	suite.mockJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Return(fmt.Errorf("Fake PatchTasks error"))
+	suite.mockJob.EXPECT().
+		PatchTasks(gomock.Any(), gomock.Any(), false).
+		Return(nil, nil, fmt.Errorf("Fake PatchTasks error"))
 	suite.tracker.trackDeadline()
 }
 
@@ -267,11 +270,12 @@ func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackStopFailed() {
 		}).Times(3)
 	suite.mockTask.EXPECT().GetRuntime(gomock.Any()).Return(taskInfo.Runtime, nil)
 	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(suite.mockJob)
-	suite.mockJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+	suite.mockJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any(), false).
+		Do(func(ctx context.Context,
+			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
+			_ bool) {
 			suite.Equal(peloton_task.TaskState_KILLED, runtimeDiffs[1][jobmgrcommon.GoalStateField])
-		}).
-		Return(errors.New(""))
+		}).Return(nil, nil, errors.New(""))
 	suite.tracker.trackDeadline()
 }
 

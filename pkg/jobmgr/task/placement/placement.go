@@ -295,10 +295,13 @@ func (p *processor) createTaskInfos(
 		}
 		retry := 0
 		for retry < maxRetryCount {
-			err = cachedJob.PatchTasks(ctx,
+			_, _, err = cachedJob.PatchTasks(
+				ctx,
 				map[uint32]jobmgrcommon.RuntimeDiff{
 					uint32(instanceID): launchableTask.RuntimeDiff,
-				})
+				},
+				false,
+			)
 			if err == nil {
 				runtime, _ := cachedTask.GetRuntime(ctx)
 				taskInfos[taskID] = &launcher.LaunchableTaskInfo{
@@ -399,9 +402,10 @@ func (p *processor) enqueueTasksToResMgr(ctx context.Context, tasks map[string]*
 		retry := 0
 		for retry < maxRetryCount {
 			cachedJob := p.jobFactory.AddJob(t.JobId)
-			err = cachedJob.PatchTasks(
+			_, _, err = cachedJob.PatchTasks(
 				ctx,
 				map[uint32]jobmgrcommon.RuntimeDiff{uint32(t.InstanceId): runtimeDiff},
+				false,
 			)
 			if err == nil {
 				p.goalStateDriver.EnqueueTask(t.JobId, t.InstanceId, time.Now())

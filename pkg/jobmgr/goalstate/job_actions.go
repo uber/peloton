@@ -234,7 +234,7 @@ func JobStart(
 		}
 	}
 
-	err := cachedJob.PatchTasks(ctx, runtimeDiff)
+	_, _, err := cachedJob.PatchTasks(ctx, runtimeDiff, false)
 	if err != nil {
 		return err
 	}

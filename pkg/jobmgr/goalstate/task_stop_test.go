@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/uber/peloton/.gen/mesos/v1"
+	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
 	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
@@ -98,9 +98,11 @@ func TestTaskStop(t *testing.T) {
 		jobmgrcommon.MessageField: "Killing the task",
 		jobmgrcommon.ReasonField:  "",
 	}
-	cachedJob.EXPECT().PatchTasks(gomock.Any(), map[uint32]jobmgrcommon.RuntimeDiff{
-		instanceID: expectedRuntimeDiff,
-	})
+	cachedJob.EXPECT().
+		PatchTasks(gomock.Any(), map[uint32]jobmgrcommon.RuntimeDiff{
+			instanceID: expectedRuntimeDiff,
+		}, false,
+		)
 
 	hostMock.EXPECT().KillTasks(gomock.Any(), &hostsvc.KillTasksRequest{
 		TaskIds: []*mesos_v1.TaskID{taskID},
@@ -195,9 +197,11 @@ func TestTaskStopForInPlaceUpdate(t *testing.T) {
 		jobmgrcommon.MessageField: "Killing the task",
 		jobmgrcommon.ReasonField:  "",
 	}
-	cachedJob.EXPECT().PatchTasks(gomock.Any(), map[uint32]jobmgrcommon.RuntimeDiff{
-		instanceID: expectedRuntimeDiff,
-	})
+	cachedJob.EXPECT().
+		PatchTasks(gomock.Any(), map[uint32]jobmgrcommon.RuntimeDiff{
+			instanceID: expectedRuntimeDiff,
+		}, false,
+		)
 
 	hostMock.EXPECT().KillAndReserveTasks(gomock.Any(), gomock.Any()).Return(nil, nil)
 
@@ -297,8 +301,8 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 		GetRuntime(gomock.Any()).Return(runtime, nil)
 
 	cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any()).
-		Return(nil)
+		PatchTasks(gomock.Any(), gomock.Any(), false).
+		Return(nil, nil, nil)
 
 	cachedJob.EXPECT().
 		GetJobType().Return(pbjob.JobType_BATCH)
@@ -391,8 +395,8 @@ func TestTaskStopIfPendingCallsKillOnResmgr(t *testing.T) {
 		GetRuntime(gomock.Any()).Return(runtime, nil)
 
 	cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any()).
-		Return(nil)
+		PatchTasks(gomock.Any(), gomock.Any(), false).
+		Return(nil, nil, nil)
 
 	cachedJob.EXPECT().
 		GetJobType().Return(pbjob.JobType_BATCH)

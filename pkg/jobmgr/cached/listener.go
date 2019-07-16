@@ -44,7 +44,8 @@ type JobTaskListener interface {
 	JobRuntimeChanged(
 		jobID *peloton.JobID,
 		jobType pbjob.JobType,
-		runtime *pbjob.RuntimeInfo)
+		runtime *pbjob.RuntimeInfo,
+	)
 
 	// TaskRuntimeChanged is invoked when the runtime for a task is updated
 	// in cache and persistent store.
@@ -53,5 +54,6 @@ type JobTaskListener interface {
 		instanceID uint32,
 		jobType pbjob.JobType,
 		runtime *pbtask.RuntimeInfo,
-		labels []*peloton.Label)
+		labels []*peloton.Label,
+	)
 }

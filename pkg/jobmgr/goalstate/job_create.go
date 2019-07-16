@@ -386,7 +386,7 @@ func transitTasksToPending(
 		return nil
 	}
 
-	err := cachedJob.PatchTasks(ctx, runtimeDiffs)
+	_, _, err := cachedJob.PatchTasks(ctx, runtimeDiffs, false)
 	if err != nil {
 		return errors.Wrap(err, "failed to update task runtime to pending")
 	}

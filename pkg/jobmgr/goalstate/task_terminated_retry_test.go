@@ -214,8 +214,10 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoUpdate() {
 		ID().Return(suite.jobID)
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+		PatchTasks(gomock.Any(), gomock.Any(), false).
+		Do(func(ctx context.Context,
+			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
+			_ bool) {
 			runtimeDiff := runtimeDiffs[suite.instanceID]
 			suite.True(
 				runtimeDiff[jobmgrcommon.MesosTaskIDField].(*mesosv1.TaskID).GetValue() != suite.mesosTaskID)
@@ -223,8 +225,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoUpdate() {
 				runtimeDiff[jobmgrcommon.PrevMesosTaskIDField].(*mesosv1.TaskID).GetValue() == suite.mesosTaskID)
 			suite.True(
 				runtimeDiff[jobmgrcommon.StateField].(pbtask.TaskState) == pbtask.TaskState_INITIALIZED)
-		}).
-		Return(nil)
+		}).Return(nil, nil, nil)
 
 	suite.cachedJob.EXPECT().
 		GetJobType().Return(pbjob.JobType_BATCH)
@@ -267,8 +268,10 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoFailure() {
 		ID().Return(suite.jobID)
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+		PatchTasks(gomock.Any(), gomock.Any(), false).
+		Do(func(ctx context.Context,
+			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
+			_ bool) {
 			runtimeDiff := runtimeDiffs[suite.instanceID]
 			suite.True(
 				runtimeDiff[jobmgrcommon.MesosTaskIDField].(*mesosv1.TaskID).GetValue() != suite.mesosTaskID)
@@ -276,8 +279,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoFailure() {
 				runtimeDiff[jobmgrcommon.PrevMesosTaskIDField].(*mesosv1.TaskID).GetValue() == suite.mesosTaskID)
 			suite.True(
 				runtimeDiff[jobmgrcommon.StateField].(pbtask.TaskState) == pbtask.TaskState_INITIALIZED)
-		}).
-		Return(nil)
+		}).Return(nil, nil, nil)
 
 	suite.cachedJob.EXPECT().
 		GetJobType().Return(pbjob.JobType_BATCH)
@@ -320,8 +322,10 @@ func (suite *TaskTerminatedRetryTestSuite) TestLostTaskRetry() {
 		ID().Return(suite.jobID)
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+		PatchTasks(gomock.Any(), gomock.Any(), false).
+		Do(func(ctx context.Context,
+			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
+			_ bool) {
 			runtimeDiff := runtimeDiffs[suite.instanceID]
 			suite.True(
 				runtimeDiff[jobmgrcommon.MesosTaskIDField].(*mesosv1.TaskID).GetValue() != suite.mesosTaskID)
@@ -329,8 +333,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestLostTaskRetry() {
 				runtimeDiff[jobmgrcommon.PrevMesosTaskIDField].(*mesosv1.TaskID).GetValue() == suite.mesosTaskID)
 			suite.True(
 				runtimeDiff[jobmgrcommon.StateField].(pbtask.TaskState) == pbtask.TaskState_INITIALIZED)
-		}).
-		Return(nil)
+		}).Return(nil, nil, nil)
 
 	suite.cachedJob.EXPECT().
 		GetJobType().Return(pbjob.JobType_BATCH)

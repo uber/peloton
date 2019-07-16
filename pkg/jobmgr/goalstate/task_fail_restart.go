@@ -84,8 +84,10 @@ func rescheduleTask(
 	}
 
 	if len(runtimeDiff) != 0 {
-		err := cachedJob.PatchTasks(ctx,
-			map[uint32]jobmgrcommon.RuntimeDiff{instanceID: runtimeDiff})
+		_, _, err := cachedJob.PatchTasks(ctx,
+			map[uint32]jobmgrcommon.RuntimeDiff{instanceID: runtimeDiff},
+			false,
+		)
 		if err != nil {
 			return err
 		}

@@ -219,7 +219,7 @@ func stopTasks(
 		return nil, err
 	}
 
-	err = cachedJob.PatchTasks(ctx, runtimeDiffAll)
+	_, _, err = cachedJob.PatchTasks(ctx, runtimeDiffAll, false)
 
 	// Schedule non terminated tasks in goal state engine.
 	// This should happen even if PatchTasks fail, so if part of

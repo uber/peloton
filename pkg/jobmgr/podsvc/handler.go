@@ -254,6 +254,7 @@ func (h *serviceHandler) startPod(
 			ctx,
 			cachedTask.ID(),
 			taskRuntime,
+			false,
 		); err == nil {
 			return nil
 		}
@@ -321,7 +322,7 @@ func (h *serviceHandler) StopPod(
 		},
 		jobmgrcommon.DesiredHostField: "",
 	}
-	err = cachedJob.PatchTasks(ctx, runtimeDiff)
+	_, _, err = cachedJob.PatchTasks(ctx, runtimeDiff, false)
 
 	// We should enqueue the tasks even if PatchTasks fail,
 	// because some tasks may get updated successfully in db.
@@ -379,7 +380,7 @@ func (h *serviceHandler) RestartPod(
 	runtimeDiff[instanceID] = jobmgrcommon.RuntimeDiff{
 		jobmgrcommon.DesiredMesosTaskIDField: newPodID,
 	}
-	err = cachedJob.PatchTasks(ctx, runtimeDiff)
+	_, _, err = cachedJob.PatchTasks(ctx, runtimeDiff, false)
 
 	// We should enqueue the tasks even if PatchTasks fail,
 	// because some tasks may get updated successfully in db.

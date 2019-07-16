@@ -75,8 +75,10 @@ func TaskInitialize(ctx context.Context, entity goalstate.Entity) error {
 			runtime.GetDesiredConfigVersion()
 	}
 
-	err = cachedJob.PatchTasks(ctx,
-		map[uint32]jobmgrcommon.RuntimeDiff{taskEnt.instanceID: runtimeDiff})
+	_, _, err = cachedJob.PatchTasks(ctx,
+		map[uint32]jobmgrcommon.RuntimeDiff{taskEnt.instanceID: runtimeDiff},
+		false,
+	)
 	if err == nil {
 		goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now())
 		EnqueueJobWithDefaultDelay(taskEnt.jobID, goalStateDriver, cachedJob)

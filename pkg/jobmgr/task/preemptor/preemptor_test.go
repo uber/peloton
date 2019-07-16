@@ -220,13 +220,13 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 		nil,
 	)
 
-	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).
+	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any(), false).
 		Do(func(ctx context.Context,
-			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
+			_ bool) {
 			suite.EqualValues(util.CreateMesosTaskID(jobID, runningTaskInfo.InstanceId, 1),
 				runtimeDiffs[runningTaskInfo.InstanceId][jobmgrcommon.DesiredMesosTaskIDField])
-		}).
-		Return(nil)
+		}).Return(nil, nil, nil)
 
 	termStatusResource := &peloton_task.TerminationStatus{
 		Reason: peloton_task.TerminationStatus_TERMINATION_STATUS_REASON_PREEMPTED_RESOURCES,
@@ -248,20 +248,20 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 
 		jobmgrcommon.TerminationStatusField: termStatusMaint,
 	}
-	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).
+	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any(), false).
 		Do(func(ctx context.Context,
-			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
+			_ bool) {
 			suite.EqualValues(runtimeDiffsNoRestartTask,
 				runtimeDiffs[noRestartTaskInfo.InstanceId])
-		}).
-		Return(nil)
-	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).
+		}).Return(nil, nil, nil)
+	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any(), false).
 		Do(func(ctx context.Context,
-			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
+			_ bool) {
 			suite.EqualValues(runtimeDiffsNoRestartMaintTask,
 				runtimeDiffs[noRestartMaintTaskInfo.InstanceId])
-		}).
-		Return(nil)
+		}).Return(nil, nil, nil)
 
 	suite.goalStateDriver.EXPECT().
 		EnqueueTask(gomock.Any(), gomock.Any(), gomock.Any()).

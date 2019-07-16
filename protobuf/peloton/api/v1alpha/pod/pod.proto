@@ -468,7 +468,7 @@ message TerminationStatus {
      // Task was killed to put the host in to maintenance.
      TERMINATION_STATUS_REASON_KILLED_HOST_MAINTENANCE = 3;
 
-     // Tasked was killed to reclaim resources allocated to it.
+     // Task was killed to reclaim resources allocated to it.
      TERMINATION_STATUS_REASON_PREEMPTED_RESOURCES = 4;
 
      // Task was killed due to deadline tracker exceeding task timeout
