@@ -663,6 +663,7 @@ func (m *serviceHandler) Start(
 				ctx,
 				taskInfo.GetInstanceId(),
 				taskRuntime,
+				false,
 			)
 
 			if err == jobmgrcommon.UnexpectedVersionError {
@@ -877,7 +878,7 @@ func (m *serviceHandler) Stop(
 		instanceIds = append(instanceIds, taskInfo.InstanceId)
 	}
 
-	err = cachedJob.PatchTasks(ctx, runtimeDiffs)
+	_, _, err = cachedJob.PatchTasks(ctx, runtimeDiffs, false)
 	if err != nil {
 		log.WithError(err).
 			WithField("instance_ids", instanceIds).
@@ -964,7 +965,7 @@ func (m *serviceHandler) Restart(
 		m.metrics.TaskRestartFail.Inc(1)
 		return nil, err
 	}
-	if err := cachedJob.PatchTasks(ctx, runtimeDiffs); err != nil {
+	if _, _, err := cachedJob.PatchTasks(ctx, runtimeDiffs, false); err != nil {
 		m.metrics.TaskRestartFail.Inc(1)
 		return nil, err
 	}

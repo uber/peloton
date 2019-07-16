@@ -250,8 +250,14 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 			Return(taskInfo, nil),
 		suite.jobFactory.EXPECT().AddJob(_pelotonJobID).Return(cachedJob),
 		cachedJob.EXPECT().SetTaskUpdateTime(event.MesosTaskStatus.Timestamp).Return(),
-		cachedJob.EXPECT().CompareAndSetTask(context.Background(), _instanceID, gomock.Any()).Return(nil, nil).
-			Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo) {
+		cachedJob.EXPECT().
+			CompareAndSetTask(
+				context.Background(),
+				_instanceID,
+				gomock.Any(),
+				false,
+			).Return(nil, nil).
+			Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo, _ bool) {
 				suite.Equal(runtime.GetMessage(), "testFailure")
 				suite.Empty(runtime.GetCompletionTime())
 				suite.Equal(runtime.GetState(), task.TaskState_RUNNING)
@@ -298,16 +304,20 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateInPlaceUpdateTask() {
 			Return(taskInfo, nil),
 		suite.jobFactory.EXPECT().AddJob(_pelotonJobID).Return(cachedJob),
 		cachedJob.EXPECT().SetTaskUpdateTime(event.MesosTaskStatus.Timestamp).Return(),
-		cachedJob.EXPECT().CompareAndSetTask(context.Background(), _instanceID, gomock.Any()).
-			Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo) {
-				suite.Equal("testFailure", runtime.GetMessage())
-				suite.Empty(runtime.GetCompletionTime())
-				suite.Equal(task.TaskState_RUNNING, runtime.GetState())
-				suite.Equal(_currentTime, runtime.GetStartTime())
-				suite.Empty(runtime.GetReason())
-				suite.Empty(runtime.GetDesiredHost())
-			}).
-			Return(nil, nil),
+		cachedJob.EXPECT().
+			CompareAndSetTask(
+				context.Background(),
+				_instanceID,
+				gomock.Any(),
+				false,
+			).Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo, _ bool) {
+			suite.Equal("testFailure", runtime.GetMessage())
+			suite.Empty(runtime.GetCompletionTime())
+			suite.Equal(task.TaskState_RUNNING, runtime.GetState())
+			suite.Equal(_currentTime, runtime.GetStartTime())
+			suite.Empty(runtime.GetReason())
+			suite.Empty(runtime.GetDesiredHost())
+		}).Return(nil, nil),
 		suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return(),
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_SERVICE),
 		suite.goalStateDriver.EXPECT().
@@ -340,15 +350,20 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateInPlaceUpdateTask() {
 			Return(taskInfo, nil),
 		suite.jobFactory.EXPECT().AddJob(_pelotonJobID).Return(cachedJob),
 		cachedJob.EXPECT().SetTaskUpdateTime(event.MesosTaskStatus.Timestamp).Return(),
-		cachedJob.EXPECT().CompareAndSetTask(context.Background(), _instanceID, gomock.Any()).
-			Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo) {
-				suite.Equal(runtime.GetMessage(), "testFailure")
-				suite.Empty(runtime.GetCompletionTime())
-				suite.Equal(runtime.GetState(), task.TaskState_RUNNING)
-				suite.Equal(runtime.GetStartTime(), _currentTime)
-				suite.Empty(runtime.GetReason())
-				suite.Empty(runtime.GetDesiredHost())
-			}).
+		cachedJob.EXPECT().
+			CompareAndSetTask(
+				context.Background(),
+				_instanceID,
+				gomock.Any(),
+				false,
+			).Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo, _ bool) {
+			suite.Equal(runtime.GetMessage(), "testFailure")
+			suite.Empty(runtime.GetCompletionTime())
+			suite.Equal(runtime.GetState(), task.TaskState_RUNNING)
+			suite.Equal(runtime.GetStartTime(), _currentTime)
+			suite.Empty(runtime.GetReason())
+			suite.Empty(runtime.GetDesiredHost())
+		}).
 			Return(nil, nil),
 		suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return(),
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_SERVICE),
@@ -477,13 +492,17 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateHealthy() {
 			suite.jobFactory.EXPECT().AddJob(_pelotonJobID).Return(cachedJob),
 			cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH).MaxTimes(2),
 			cachedJob.EXPECT().SetTaskUpdateTime(event.MesosTaskStatus.Timestamp).Return(),
-			cachedJob.EXPECT().CompareAndSetTask(gomock.Any(), _instanceID, gomock.Any()).
-				Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo) {
-					if t.newHealthState {
-						suite.Equal(runtime.GetHealthy(), task.HealthState_HEALTHY)
-					}
-				}).Return(nil, nil),
-
+			cachedJob.EXPECT().
+				CompareAndSetTask(
+					context.Background(),
+					_instanceID,
+					gomock.Any(),
+					false,
+				).Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo, _ bool) {
+				if t.newHealthState {
+					suite.Equal(runtime.GetHealthy(), task.HealthState_HEALTHY)
+				}
+			}).Return(nil, nil),
 			suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return(),
 			cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
 			suite.goalStateDriver.EXPECT().
@@ -683,13 +702,18 @@ func (suite *TaskUpdaterTestSuite) doTestProcessTaskFailedStatusUpdate(
 	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
 	cachedJob.EXPECT().
 		SetTaskUpdateTime(gomock.Any()).Return()
-	cachedJob.EXPECT().CompareAndSetTask(context.Background(), _instanceID, gomock.Any()).
-		Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo) {
-			suite.Equal(runtime.GetState(), task.TaskState_FAILED)
-			suite.Equal(runtime.GetReason(), _mesosReason.String())
-			suite.Equal(runtime.GetMessage(), failureMsg)
-			suite.Equal(runtime.GetTerminationStatus(), expectedTermStatus)
-		}).Return(nil, nil)
+	cachedJob.EXPECT().
+		CompareAndSetTask(
+			context.Background(),
+			_instanceID,
+			gomock.Any(),
+			false,
+		).Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo, _ bool) {
+		suite.Equal(runtime.GetState(), task.TaskState_FAILED)
+		suite.Equal(runtime.GetReason(), _mesosReason.String())
+		suite.Equal(runtime.GetMessage(), failureMsg)
+		suite.Equal(runtime.GetTerminationStatus(), expectedTermStatus)
+	}).Return(nil, nil)
 	suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return()
 	cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return()
 	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
@@ -722,11 +746,16 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateWithRetry() {
 	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
 	cachedJob.EXPECT().
 		SetTaskUpdateTime(gomock.Any()).Return()
-	cachedJob.EXPECT().CompareAndSetTask(context.Background(), _instanceID, gomock.Any()).
-		Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo) {
-			suite.Equal(runtime.GetState(), task.TaskState_LOST)
-			suite.Equal(runtime.GetMessage(), rescheduleMsg)
-		}).Return(nil, nil)
+	cachedJob.EXPECT().
+		CompareAndSetTask(
+			context.Background(),
+			_instanceID,
+			gomock.Any(),
+			false,
+		).Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo, _ bool) {
+		suite.Equal(runtime.GetState(), task.TaskState_LOST)
+		suite.Equal(runtime.GetMessage(), rescheduleMsg)
+	}).Return(nil, nil)
 	suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return()
 	cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return()
 	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
@@ -828,12 +857,16 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailureCountUpdate() {
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
 		cachedJob.EXPECT().
 			SetTaskUpdateTime(gomock.Any()).Return()
-		cachedJob.EXPECT().CompareAndSetTask(context.Background(), _instanceID, gomock.Any()).
-			Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo) {
-				suite.Equal(runtime.GetState(), t.pelotnState)
-				suite.Equal(runtime.GetHealthy(), task.HealthState_INVALID)
-				suite.Equal(runtime.GetFailureCount(), t.desiredFailureCount)
-			}).Return(nil, nil)
+		cachedJob.EXPECT().CompareAndSetTask(
+			context.Background(),
+			_instanceID,
+			gomock.Any(),
+			false,
+		).Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo, _ bool) {
+			suite.Equal(runtime.GetState(), t.pelotnState)
+			suite.Equal(runtime.GetHealthy(), task.HealthState_INVALID)
+			suite.Equal(runtime.GetFailureCount(), t.desiredFailureCount)
+		}).Return(nil, nil)
 		suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return()
 		cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return()
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
@@ -867,11 +900,16 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateNoRetryForStat
 	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
 	cachedJob.EXPECT().
 		SetTaskUpdateTime(gomock.Any()).Return()
-	cachedJob.EXPECT().CompareAndSetTask(context.Background(), _instanceID, gomock.Any()).
-		Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo) {
-			suite.Equal(runtime.GetState(), task.TaskState_LOST)
-			suite.Equal(runtime.GetMessage(), _failureMsg)
-		}).Return(nil, nil)
+	cachedJob.EXPECT().
+		CompareAndSetTask(
+			context.Background(),
+			_instanceID,
+			gomock.Any(),
+			false,
+		).Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo, _ bool) {
+		suite.Equal(runtime.GetState(), task.TaskState_LOST)
+		suite.Equal(runtime.GetMessage(), _failureMsg)
+	}).Return(nil, nil)
 	suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return()
 	cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return()
 	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
@@ -907,15 +945,20 @@ func (suite *TaskUpdaterTestSuite) TestProcessStoppedTaskLostStatusUpdate() {
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
 		cachedJob.EXPECT().
 			SetTaskUpdateTime(gomock.Any()).Return(),
-		cachedJob.EXPECT().CompareAndSetTask(context.Background(), _instanceID, gomock.Any()).
-			Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo) {
-				suite.Equal(runtime.GetState(), task.TaskState_KILLED)
-				suite.Equal(runtime.GetReason(), failureReason.String())
-				suite.Equal(runtime.GetMessage(), "Stopped task LOST event: "+_failureMsg)
-				suite.Equal(runtime.GetCompletionTime(), _currentTime)
-				suite.Equal(runtime.GetResourceUsage(), jobmgrtask.CreateEmptyResourceUsageMap())
-				suite.Equal(runtime.GetHealthy(), task.HealthState_INVALID)
-			}).Return(nil, nil),
+		cachedJob.EXPECT().
+			CompareAndSetTask(
+				context.Background(),
+				_instanceID,
+				gomock.Any(),
+				false,
+			).Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo, _ bool) {
+			suite.Equal(runtime.GetState(), task.TaskState_KILLED)
+			suite.Equal(runtime.GetReason(), failureReason.String())
+			suite.Equal(runtime.GetMessage(), "Stopped task LOST event: "+_failureMsg)
+			suite.Equal(runtime.GetCompletionTime(), _currentTime)
+			suite.Equal(runtime.GetResourceUsage(), jobmgrtask.CreateEmptyResourceUsageMap())
+			suite.Equal(runtime.GetHealthy(), task.HealthState_INVALID)
+		}).Return(nil, nil),
 		suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return(),
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
 		suite.goalStateDriver.EXPECT().
@@ -960,6 +1003,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateResourceUsageError() {
 				context.Background(),
 				_instanceID,
 				gomock.Any(),
+				false,
 			).Return(nil, nil),
 			suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return(),
 			cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
@@ -1001,6 +1045,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateWithTerminalStateEvent
 			context.Background(),
 			_instanceID,
 			gomock.Any(),
+			false,
 		).Return(nil, nil),
 		suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return(),
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_SERVICE),
@@ -1037,7 +1082,13 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateResourceUsageNil() {
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
 		cachedJob.EXPECT().
 			SetTaskUpdateTime(gomock.Any()).Return(),
-		cachedJob.EXPECT().CompareAndSetTask(context.Background(), _instanceID, gomock.Any()).Return(nil, nil),
+		cachedJob.EXPECT().
+			CompareAndSetTask(
+				context.Background(),
+				_instanceID,
+				gomock.Any(),
+				false,
+			).Return(nil, nil),
 		suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return(),
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
 		suite.goalStateDriver.EXPECT().
@@ -1177,14 +1228,19 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateVolumeUponRunning() {
 			AddJob(_pelotonJobID).Return(cachedJob),
 		cachedJob.EXPECT().
 			SetTaskUpdateTime(gomock.Any()).Return(),
-		cachedJob.EXPECT().CompareAndSetTask(context.Background(), _instanceID, gomock.Any()).
-			Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo) {
-				suite.Equal(runtime.GetState(), task.TaskState_RUNNING)
-				suite.Equal(runtime.GetStartTime(), _currentTime)
-				suite.Equal(runtime.GetMessage(), "testFailure")
-				suite.Empty(runtime.GetReason())
-				suite.Empty(runtime.GetDesiredHost())
-			}).Return(nil, nil),
+		cachedJob.EXPECT().
+			CompareAndSetTask(
+				context.Background(),
+				_instanceID,
+				gomock.Any(),
+				false,
+			).Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo, _ bool) {
+			suite.Equal(runtime.GetState(), task.TaskState_RUNNING)
+			suite.Equal(runtime.GetStartTime(), _currentTime)
+			suite.Equal(runtime.GetMessage(), "testFailure")
+			suite.Empty(runtime.GetReason())
+			suite.Empty(runtime.GetDesiredHost())
+		}).Return(nil, nil),
 		suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return(),
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
 		suite.goalStateDriver.EXPECT().
@@ -1227,15 +1283,20 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipVolumeUponRunningI
 			AddJob(_pelotonJobID).Return(cachedJob),
 		cachedJob.EXPECT().
 			SetTaskUpdateTime(gomock.Any()).Return(),
-		cachedJob.EXPECT().CompareAndSetTask(context.Background(), _instanceID, gomock.Any()).
-			Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo) {
-				suite.Equal(runtime.GetState(), task.TaskState_RUNNING)
-				suite.Equal(runtime.GetStartTime(), _currentTime)
-				suite.Equal(runtime.GetMessage(), "testFailure")
-				suite.Empty(runtime.GetCompletionTime())
-				suite.Empty(runtime.GetReason())
-				suite.Empty(runtime.GetDesiredHost())
-			}).Return(nil, nil),
+		cachedJob.EXPECT().
+			CompareAndSetTask(
+				context.Background(),
+				_instanceID,
+				gomock.Any(),
+				false,
+			).Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo, _ bool) {
+			suite.Equal(runtime.GetState(), task.TaskState_RUNNING)
+			suite.Equal(runtime.GetStartTime(), _currentTime)
+			suite.Equal(runtime.GetMessage(), "testFailure")
+			suite.Empty(runtime.GetCompletionTime())
+			suite.Empty(runtime.GetReason())
+			suite.Empty(runtime.GetDesiredHost())
+		}).Return(nil, nil),
 		suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return(),
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
 		suite.goalStateDriver.EXPECT().
@@ -1266,12 +1327,15 @@ func (suite *TaskUpdaterTestSuite) TestProcessFailedTaskRunningStatusUpdate() {
 	cachedJob.EXPECT().
 		SetTaskUpdateTime(gomock.Any()).Return()
 	cachedJob.EXPECT().
-		CompareAndSetTask(context.Background(), _instanceID, gomock.Any()).
-		Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo) {
-			suite.Equal(runtime.GetState(), task.TaskState_RUNNING)
-			suite.Empty(runtime.GetCompletionTime())
-		}).
-		Return(nil, nil)
+		CompareAndSetTask(
+			context.Background(),
+			_instanceID,
+			gomock.Any(),
+			false,
+		).Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo, _ bool) {
+		suite.Equal(runtime.GetState(), task.TaskState_RUNNING)
+		suite.Empty(runtime.GetCompletionTime())
+	}).Return(nil, nil)
 	suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return()
 	cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return()
 	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
@@ -1299,8 +1363,14 @@ func (suite *TaskUpdaterTestSuite) TestProcessLostEventStatusUpdate() {
 		suite.jobFactory.EXPECT().AddJob(_pelotonJobID).Return(cachedJob),
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
 		cachedJob.EXPECT().SetTaskUpdateTime(event.MesosTaskStatus.Timestamp).Return(),
-		cachedJob.EXPECT().CompareAndSetTask(context.Background(), _instanceID, gomock.Any()).Return(nil, nil).
-			Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo) {
+		cachedJob.EXPECT().
+			CompareAndSetTask(
+				context.Background(),
+				_instanceID,
+				gomock.Any(),
+				false,
+			).Return(nil, nil).
+			Do(func(_ context.Context, _ uint32, runtime *task.RuntimeInfo, _ bool) {
 				suite.NotEmpty(runtime.GetCompletionTime())
 			}),
 		suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return(),

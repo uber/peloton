@@ -175,8 +175,10 @@ func (suite *TaskFailRetryTestSuite) TestTaskFailRetry() {
 		Return(&taskConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+		PatchTasks(gomock.Any(), gomock.Any(), false).
+		Do(func(ctx context.Context,
+			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
+			_ bool) {
 			runtimeDiff := runtimeDiffs[suite.instanceID]
 			suite.True(
 				runtimeDiff[jobmgrcommon.MesosTaskIDField].(*mesosv1.TaskID).GetValue() != suite.mesosTaskID)
@@ -184,8 +186,7 @@ func (suite *TaskFailRetryTestSuite) TestTaskFailRetry() {
 				runtimeDiff[jobmgrcommon.PrevMesosTaskIDField].(*mesosv1.TaskID).GetValue() == suite.mesosTaskID)
 			suite.True(
 				runtimeDiff[jobmgrcommon.StateField].(pbtask.TaskState) == pbtask.TaskState_INITIALIZED)
-		}).
-		Return(nil)
+		}).Return(nil, nil, nil)
 
 	suite.cachedJob.EXPECT().
 		GetJobType().Return(pbjob.JobType_BATCH)
@@ -232,8 +233,10 @@ func (suite *TaskFailRetryTestSuite) TestLostTaskRetry() {
 		Return(&taskConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+		PatchTasks(gomock.Any(), gomock.Any(), false).
+		Do(func(ctx context.Context,
+			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
+			_ bool) {
 			runtimeDiff := runtimeDiffs[suite.instanceID]
 			suite.True(
 				runtimeDiff[jobmgrcommon.MesosTaskIDField].(*mesosv1.TaskID).GetValue() != suite.mesosTaskID)
@@ -241,8 +244,7 @@ func (suite *TaskFailRetryTestSuite) TestLostTaskRetry() {
 				runtimeDiff[jobmgrcommon.PrevMesosTaskIDField].(*mesosv1.TaskID).GetValue() == suite.mesosTaskID)
 			suite.True(
 				runtimeDiff[jobmgrcommon.StateField].(pbtask.TaskState) == pbtask.TaskState_INITIALIZED)
-		}).
-		Return(nil)
+		}).Return(nil, nil, nil)
 
 	suite.cachedJob.EXPECT().
 		GetJobType().Return(pbjob.JobType_BATCH)
@@ -336,8 +338,10 @@ func (suite *TaskFailRetryTestSuite) TestTaskFailSystemFailure() {
 			Return(&taskConfig, &models.ConfigAddOn{}, nil)
 
 		suite.cachedJob.EXPECT().
-			PatchTasks(gomock.Any(), gomock.Any()).
-			Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff) {
+			PatchTasks(gomock.Any(), gomock.Any(), false).
+			Do(func(ctx context.Context,
+				runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
+				_ bool) {
 				runtimeDiff := runtimeDiffs[suite.instanceID]
 				suite.True(
 					runtimeDiff[jobmgrcommon.MesosTaskIDField].(*mesosv1.TaskID).GetValue() != suite.mesosTaskID)
@@ -345,8 +349,7 @@ func (suite *TaskFailRetryTestSuite) TestTaskFailSystemFailure() {
 					runtimeDiff[jobmgrcommon.PrevMesosTaskIDField].(*mesosv1.TaskID).GetValue() == suite.mesosTaskID)
 				suite.True(
 					runtimeDiff[jobmgrcommon.StateField].(pbtask.TaskState) == pbtask.TaskState_INITIALIZED)
-			}).
-			Return(nil)
+			}).Return(nil, nil, nil)
 
 		suite.cachedJob.EXPECT().
 			GetJobType().Return(pbjob.JobType_BATCH)
@@ -450,7 +453,8 @@ func (suite *TaskFailRetryTestSuite) TestTaskFailRetryFailedPatch() {
 		Return(&taskConfig, &models.ConfigAddOn{}, nil)
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any()).Return(fmt.Errorf("patch error"))
+		PatchTasks(gomock.Any(), gomock.Any(), false).
+		Return(nil, nil, fmt.Errorf("patch error"))
 
 	err := TaskFailRetry(context.Background(), suite.taskEnt)
 	suite.Error(err)

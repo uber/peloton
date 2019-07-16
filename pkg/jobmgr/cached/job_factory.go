@@ -86,7 +86,8 @@ func InitJobFactory(
 	volumeStore storage.PersistentVolumeStore,
 	ormStore *ormobjects.Store,
 	parentScope tally.Scope,
-	listeners []JobTaskListener) JobFactory {
+	listeners []JobTaskListener,
+) JobFactory {
 	return &jobFactory{
 		jobs:               map[string]*job{},
 		jobStore:           jobStore,
@@ -326,7 +327,8 @@ func (f *jobFactory) publishMetrics() map[pbtask.TaskState]map[pbtask.TaskState]
 func (f *jobFactory) notifyJobRuntimeChanged(
 	jobID *peloton.JobID,
 	jobType pbjob.JobType,
-	runtime *pbjob.RuntimeInfo) {
+	runtime *pbjob.RuntimeInfo,
+) {
 
 	if runtime != nil {
 		for _, l := range f.listeners {
@@ -341,7 +343,8 @@ func (f *jobFactory) notifyTaskRuntimeChanged(
 	instanceID uint32,
 	jobType pbjob.JobType,
 	runtime *pbtask.RuntimeInfo,
-	labels []*peloton.Label) {
+	labels []*peloton.Label,
+) {
 
 	if runtime != nil {
 		for _, l := range f.listeners {

@@ -105,7 +105,7 @@ func handleUnchangedInstancesInUpdate(
 	if len(runtimes) > 0 {
 		// Just update the runtime of the tasks with the
 		// new version and move on.
-		if err := cachedJob.PatchTasks(ctx, runtimes); err != nil {
+		if _, _, err := cachedJob.PatchTasks(ctx, runtimes, false); err != nil {
 			return err
 		}
 	}

@@ -1062,22 +1062,24 @@ func (h *ServiceHandler) GetPreemptibleTasks(
 			break
 		}
 
-		// Transit task state machine to PREEMPTING
-		if rmTask := h.rmTracker.GetTask(preemptionCandidate.Id); rmTask != nil {
-			err = rmTask.TransitTo(
-				t.TaskState_PREEMPTING.String(), statemachine.WithReason("preemption triggered"))
-			if err != nil {
-				// the task could have moved from RUNNING state
+		if preemptionCandidate.GetReason() == resmgr.PreemptionReason_PREEMPTION_REASON_REVOKE_RESOURCES {
+			// Transit task state machine to PREEMPTING
+			if rmTask := h.rmTracker.GetTask(preemptionCandidate.Id); rmTask != nil {
+				err = rmTask.TransitTo(
+					t.TaskState_PREEMPTING.String(), statemachine.WithReason("preemption triggered"))
+				if err != nil {
+					// the task could have moved from RUNNING state
+					log.WithError(err).
+						WithField("task_id", preemptionCandidate.Id.Value).
+						Error("failed to transit state for task")
+					continue
+				}
+			} else {
 				log.WithError(err).
 					WithField("task_id", preemptionCandidate.Id.Value).
-					Error("failed to transit state for task")
+					Error("failed to find task in the tracker")
 				continue
 			}
-		} else {
-			log.WithError(err).
-				WithField("task_id", preemptionCandidate.Id.Value).
-				Error("failed to find task in the tracker")
-			continue
 		}
 		preemptionCandidates = append(preemptionCandidates, preemptionCandidate)
 	}

@@ -1,0 +1,35 @@
+name: TestSpec
+owner: testUser
+owningteam: testTeam
+ldapgroups:
+- team6
+- otto
+description: "A dummy test stateless job spec for peloton"
+labels:
+- key: testKey0
+  value: testVal0
+- key: testKey1
+  value: testVal1
+- key: testKey2
+  value: testVal2
+sla:
+  maximumunavailableinstances: 2
+instancecount: 4
+defaultspec:
+  containers:
+  - resource:
+      cpulimit: 0.1
+      memlimitmb: 2.0
+      disklimitmb: 10
+    livenesscheck:
+      type: 1
+      enabled: true
+      initialintervalsecs: 1
+      intervalsecs: 3
+      timeoutsecs: 5
+      maxconsecutivefailures: 3
+      commandcheck:
+        command: 'ls'
+    command:
+      shell: true
+      value: 'while :; do echo running 3; sleep 10; done'

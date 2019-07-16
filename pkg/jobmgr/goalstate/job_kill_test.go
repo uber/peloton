@@ -209,8 +209,8 @@ func (suite JobKillTestSuite) TestJobKill() {
 	}
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), runtimeDiffs).
-		Return(nil)
+		PatchTasks(gomock.Any(), runtimeDiffs, false).
+		Return(nil, nil, nil)
 
 	suite.cachedJob.EXPECT().
 		GetJobType().
@@ -312,8 +312,8 @@ func (suite JobKillTestSuite) TestJobKillPatchFailed() {
 		Return()
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any()).
-		Return(errors.New(""))
+		PatchTasks(gomock.Any(), gomock.Any(), false).
+		Return(nil, nil, errors.New(""))
 
 	err := JobKill(context.Background(), suite.jobEnt)
 	suite.Error(err)
@@ -449,8 +449,8 @@ func (suite JobKillTestSuite) TestJobKillUpdateRuntimeFails() {
 	}
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), runtimeDiffs).
-		Return(nil)
+		PatchTasks(gomock.Any(), runtimeDiffs, false).
+		Return(nil, nil, nil)
 
 	suite.taskGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
@@ -547,8 +547,8 @@ func (suite JobKillTestSuite) TestJobKillPartiallyCreated_StatelessJob() {
 	}
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any()).
-		Return(nil)
+		PatchTasks(gomock.Any(), gomock.Any(), false).
+		Return(nil, nil, nil)
 
 	err := JobKill(context.Background(), suite.jobEnt)
 	suite.NoError(err)
@@ -625,8 +625,8 @@ func (suite JobKillTestSuite) TestJobKillPartiallyCreatedJob() {
 	}
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any()).
-		Return(nil)
+		PatchTasks(gomock.Any(), gomock.Any(), false).
+		Return(nil, nil, nil)
 
 	err := JobKill(context.Background(), suite.jobEnt)
 	suite.NoError(err)
@@ -668,8 +668,8 @@ func (suite JobKillTestSuite) TestJobKillPartiallyCreatedJob() {
 	}
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any()).
-		Return(nil)
+		PatchTasks(gomock.Any(), gomock.Any(), false).
+		Return(nil, nil, nil)
 
 	err = JobKill(context.Background(), suite.jobEnt)
 	suite.NoError(err)
@@ -752,8 +752,8 @@ func (suite JobKillTestSuite) TestJobKillPartiallyCreatedJob_AllTerminated() {
 	}
 
 	suite.cachedJob.EXPECT().
-		PatchTasks(gomock.Any(), gomock.Any()).
-		Return(nil)
+		PatchTasks(gomock.Any(), gomock.Any(), false).
+		Return(nil, nil, nil)
 
 	err := JobKill(context.Background(), suite.jobEnt)
 	suite.NoError(err)

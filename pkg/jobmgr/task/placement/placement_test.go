@@ -250,7 +250,8 @@ func (suite *PlacementTestSuite) TestTaskPlacementNoError() {
 		suite.cachedTask.EXPECT().
 			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.cachedJob.EXPECT().
-			PatchTasks(gomock.Any(), gomock.Any()).Return(nil),
+			PatchTasks(gomock.Any(), gomock.Any(), false).
+			Return(nil, nil, nil),
 		suite.cachedTask.EXPECT().
 			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.taskLauncher.EXPECT().
@@ -341,7 +342,8 @@ func (suite *PlacementTestSuite) TestTaskPlacementKillSkippedTasksError() {
 		suite.cachedTask.EXPECT().
 			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.cachedJob.EXPECT().
-			PatchTasks(gomock.Any(), gomock.Any()).Return(nil),
+			PatchTasks(gomock.Any(), gomock.Any(), false).
+			Return(nil, nil, nil),
 		suite.cachedTask.EXPECT().
 			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.taskLauncher.EXPECT().
@@ -565,7 +567,8 @@ func (suite *PlacementTestSuite) TestTaskPlacementDBError() {
 		suite.cachedTask.EXPECT().
 			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.cachedJob.EXPECT().
-			PatchTasks(gomock.Any(), gomock.Any()).Return(fmt.Errorf("fake db error")),
+			PatchTasks(gomock.Any(), gomock.Any(), false).
+			Return(nil, nil, fmt.Errorf("fake db error")),
 	)
 
 	suite.pp.processPlacement(context.Background(), p)
@@ -611,7 +614,8 @@ func (suite *PlacementTestSuite) TestTaskPlacementError() {
 		suite.cachedTask.EXPECT().
 			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.cachedJob.EXPECT().
-			PatchTasks(gomock.Any(), gomock.Any()).Return(nil),
+			PatchTasks(gomock.Any(), gomock.Any(), false).
+			Return(nil, nil, nil),
 		suite.cachedTask.EXPECT().
 			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.taskLauncher.EXPECT().
@@ -627,7 +631,8 @@ func (suite *PlacementTestSuite) TestTaskPlacementError() {
 		suite.jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(suite.cachedJob),
 		suite.cachedJob.EXPECT().
-			PatchTasks(gomock.Any(), gomock.Any()).Return(nil),
+			PatchTasks(gomock.Any(), gomock.Any(), false).
+			Return(nil, nil, nil),
 		suite.goalStateDriver.EXPECT().
 			EnqueueTask(testTask.JobId, testTask.InstanceId, gomock.Any()).Return(),
 		suite.cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
@@ -680,7 +685,8 @@ func (suite *PlacementTestSuite) TestTaskPlacementPlacementResMgrError() {
 		suite.cachedTask.EXPECT().
 			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.cachedJob.EXPECT().
-			PatchTasks(gomock.Any(), gomock.Any()).Return(nil),
+			PatchTasks(gomock.Any(), gomock.Any(), false).
+			Return(nil, nil, nil),
 		suite.cachedTask.EXPECT().
 			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
 		suite.taskLauncher.EXPECT().
@@ -696,7 +702,8 @@ func (suite *PlacementTestSuite) TestTaskPlacementPlacementResMgrError() {
 		suite.jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(suite.cachedJob),
 		suite.cachedJob.EXPECT().
-			PatchTasks(gomock.Any(), gomock.Any()).Return(fmt.Errorf("fake db error")),
+			PatchTasks(gomock.Any(), gomock.Any(), false).
+			Return(nil, nil, fmt.Errorf("fake db error")),
 	)
 
 	suite.pp.processPlacement(context.Background(), p)

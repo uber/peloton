@@ -102,7 +102,14 @@ func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_MesosEvents
 		suite.jobFactory.EXPECT().AddJob(jobID).Return(suite.cachedJob).Times(3)
 		suite.cachedJob.EXPECT().SetTaskUpdateTime(gomock.Any()).Return().Times(3)
 		suite.cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH).Times(5)
-		suite.cachedJob.EXPECT().CompareAndSetTask(context.Background(), i, gomock.Any()).Return(nil, nil).Times(3)
+		suite.cachedJob.EXPECT().
+			CompareAndSetTask(
+				context.Background(),
+				i,
+				gomock.Any(),
+				false,
+			).Return(nil, nil).
+			Times(3)
 		suite.goalStateDriver.EXPECT().EnqueueTask(jobID, i, gomock.Any()).Return().Times(3)
 		suite.cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return().Times(3)
 		suite.goalStateDriver.EXPECT().
