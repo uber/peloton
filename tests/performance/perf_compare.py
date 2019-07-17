@@ -290,7 +290,8 @@ def compare_stateless_create(base_version, current_version, f1, f2):
         base_version,
         current_version,
     )
-    print("compare_stateless_create has created table" + merge_table)
+    print("compare_stateless_create has created table")
+    print(merge_table)
     return enriched_table
 
 
