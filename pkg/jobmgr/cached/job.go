@@ -478,11 +478,7 @@ func (j *job) AddTask(
 	}
 
 	defer func() {
-		if err != nil {
-			j.invalidateInstanceAvailabilityInfo()
-			return
-		}
-		j.updateInstanceAvailabilityInfoForInstances(ctx, []uint32{id})
+		j.updateInstanceAvailabilityInfoForInstances(ctx, []uint32{id}, err != nil)
 	}()
 
 	j.Lock()
@@ -628,11 +624,7 @@ func (j *job) PatchTasks(
 	force bool,
 ) (instancesSucceeded []uint32, instancesToBeRetried []uint32, err error) {
 	defer func() {
-		if err != nil {
-			j.invalidateInstanceAvailabilityInfo()
-			return
-		}
-		j.updateInstanceAvailabilityInfoForInstances(ctx, instancesSucceeded)
+		j.updateInstanceAvailabilityInfoForInstances(ctx, instancesSucceeded, err != nil)
 	}()
 
 	runtimesToPatch := runtimeDiffs
@@ -669,14 +661,10 @@ func (j *job) ReplaceTasks(
 	var instancesReplaced []uint32
 
 	defer func() {
-		if err != nil {
-			j.invalidateInstanceAvailabilityInfo()
-			return
-		}
 		ctx, cancel := context.WithTimeout(context.Background(), _defaultTimeout)
 		defer cancel()
 
-		j.updateInstanceAvailabilityInfoForInstances(ctx, instancesReplaced)
+		j.updateInstanceAvailabilityInfoForInstances(ctx, instancesReplaced, err != nil)
 	}()
 
 	replaceSingleTask := func(id uint32) error {
@@ -709,28 +697,6 @@ func (j *job) GetTask(id uint32) Task {
 }
 
 func (j *job) RemoveTask(id uint32) {
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), _defaultTimeout)
-		defer cancel()
-
-		currentState := &TaskStateVector{
-			State: pbtask.TaskState_DELETED,
-		}
-
-		goalState := &TaskStateVector{
-			State: pbtask.TaskState_DELETED,
-		}
-
-		j.updateInstanceAvailabilityInfo(
-			ctx,
-			id,
-			currentState,
-			goalState,
-			pbtask.HealthState_INVALID,
-			nil,
-		)
-	}()
-
 	j.Lock()
 	defer j.Unlock()
 
@@ -1131,11 +1097,7 @@ func (j *job) CompareAndSetTask(
 	force bool,
 ) (runtimeCopy *pbtask.RuntimeInfo, err error) {
 	defer func() {
-		if err != nil {
-			j.invalidateInstanceAvailabilityInfo()
-			return
-		}
-		j.updateInstanceAvailabilityInfoForInstances(ctx, []uint32{id})
+		j.updateInstanceAvailabilityInfoForInstances(ctx, []uint32{id}, err != nil)
 	}()
 
 	t, err := j.AddTask(ctx, id)
@@ -1143,10 +1105,10 @@ func (j *job) CompareAndSetTask(
 		return nil, err
 	}
 
-	j.Lock()
-	defer j.Unlock()
-
 	if j.jobType == pbjob.JobType_SERVICE && !force {
+		j.Lock()
+		defer j.Unlock()
+
 		instanceAvailabilityInfo, err := j.getInstanceAvailabilityInfo(ctx)
 		if err != nil {
 			return nil, err
@@ -1376,9 +1338,19 @@ func (j *job) Update(
 func (j *job) updateInstanceAvailabilityInfoForInstances(
 	ctx context.Context,
 	instances []uint32,
+	invalidateInstanceAvailabilityInfo bool,
 ) {
+	if j.jobType != pbjob.JobType_SERVICE {
+		return
+	}
+
 	j.Lock()
 	defer j.Unlock()
+
+	if invalidateInstanceAvailabilityInfo {
+		j.invalidateInstanceAvailabilityInfo()
+		return
+	}
 
 	for _, id := range instances {
 		t := j.tasks[id]
