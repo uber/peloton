@@ -80,7 +80,6 @@ type LauncherTestSuite struct {
 	ctrl            *gomock.Controller
 	mockHostMgr     *host_mocks.MockInternalHostServiceYARPCClient
 	mockV1HostMgr   *v1host_mocks.MockHostManagerServiceYARPCClient
-	mockTaskStore   *store_mocks.MockTaskStore
 	jobFactory      *cachedmocks.MockJobFactory
 	cachedJob       *cachedmocks.MockJob
 	cachedTask      *cachedmocks.MockTask
@@ -102,13 +101,14 @@ func (suite *LauncherTestSuite) SetupTest() {
 	suite.mockHostMgr = host_mocks.NewMockInternalHostServiceYARPCClient(suite.ctrl)
 	suite.mockV1HostMgr =
 		v1host_mocks.NewMockHostManagerServiceYARPCClient(suite.ctrl)
-	suite.mockTaskStore = store_mocks.NewMockTaskStore(suite.ctrl)
 	suite.taskConfigV2Ops = objectmocks.NewMockTaskConfigV2Ops(suite.ctrl)
+
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
 	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
 	suite.cachedTask = cachedmocks.NewMockTask(suite.ctrl)
 	suite.mockVolumeStore = store_mocks.NewMockPersistentVolumeStore(suite.ctrl)
 	suite.secretInfoOps = objectmocks.NewMockSecretInfoOps(suite.ctrl)
+	suite.taskConfigV2Ops = objectmocks.NewMockTaskConfigV2Ops(suite.ctrl)
 
 	suite.testScope = tally.NewTestScope("", map[string]string{})
 	suite.metrics = NewMetrics(suite.testScope)
@@ -117,7 +117,6 @@ func (suite *LauncherTestSuite) SetupTest() {
 		hostMgrV1AlphaClient: suite.mockV1HostMgr,
 		jobFactory:           suite.jobFactory,
 		volumeStore:          suite.mockVolumeStore,
-		taskStore:            suite.mockTaskStore,
 		taskConfigV2Ops:      suite.taskConfigV2Ops,
 		secretInfoOps:        suite.secretInfoOps,
 		metrics:              suite.metrics,
@@ -246,7 +245,7 @@ func (suite *LauncherTestSuite) TestGetLaunchableTasks() {
 		suite.cachedJob.EXPECT().
 			AddTask(gomock.Any(), uint32(instanceID)).
 			Return(suite.cachedTask, nil)
-		suite.mockTaskStore.EXPECT().
+		suite.taskConfigV2Ops.EXPECT().
 			GetTaskConfig(gomock.Any(), &peloton.JobID{Value: jobID}, uint32(instanceID), gomock.Any()).
 			Return(taskInfos[ptaskID].GetConfig(), &models.ConfigAddOn{}, nil)
 		suite.cachedTask.EXPECT().
@@ -348,7 +347,7 @@ func (suite *LauncherTestSuite) TestGetLaunchableTasksStateful() {
 		suite.cachedJob.EXPECT().
 			AddTask(gomock.Any(), uint32(instanceID)).
 			Return(suite.cachedTask, nil)
-		suite.mockTaskStore.EXPECT().
+		suite.taskConfigV2Ops.EXPECT().
 			GetTaskConfig(gomock.Any(), &peloton.JobID{Value: jobID}, uint32(instanceID), gomock.Any()).
 			Return(taskInfos[ptaskID].GetConfig(), &models.ConfigAddOn{}, nil)
 		suite.cachedTask.EXPECT().

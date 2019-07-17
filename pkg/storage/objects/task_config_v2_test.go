@@ -23,6 +23,7 @@ import (
 	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/private/models"
+	"github.com/uber/peloton/pkg/common"
 
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
@@ -113,4 +114,73 @@ func (s *TaskConfigV2ObjectTestSuite) TestCreateGetPodSpec() {
 	)
 	s.NoError(err)
 	s.Nil(spec)
+}
+
+func (s *TaskConfigV2ObjectTestSuite) TestCreateGetTaskConfig() {
+	var configVersion uint64 = 1
+	var instance0 int64 = 0
+	var instance1 int64 = 1
+
+	db := NewTaskConfigV2Ops(testStore)
+	ctx := context.Background()
+
+	configAddOn := &models.ConfigAddOn{
+		SystemLabels: []*peloton.Label{{Key: "k1", Value: "v1"}},
+	}
+
+	defaultConfig := &pbtask.TaskConfig{
+		Name: "default",
+		Resource: &pbtask.ResourceConfig{
+			CpuLimit:    0.8,
+			MemLimitMb:  800,
+			DiskLimitMb: 1500,
+		},
+	}
+
+	podSpec := &pbpod.PodSpec{
+		PodName:    &v1alphapeloton.PodName{Value: "test-pod"},
+		Containers: []*pbpod.ContainerSpec{{}},
+	}
+
+	// create default config
+	s.NoError(db.Create(
+		ctx,
+		s.jobID,
+		common.DefaultTaskConfigID,
+		defaultConfig,
+		configAddOn,
+		podSpec,
+		configVersion,
+	))
+
+	// create task specific config for instance 0
+	instance0Config := &pbtask.TaskConfig{
+		Name: "instance0",
+		Resource: &pbtask.ResourceConfig{
+			CpuLimit:    1.0,
+			MemLimitMb:  80,
+			DiskLimitMb: 150,
+		},
+	}
+	s.NoError(db.Create(
+		ctx,
+		s.jobID,
+		instance0,
+		instance0Config,
+		configAddOn,
+		podSpec,
+		configVersion,
+	))
+
+	// instance0 should have specific config
+	config, addOn, err := db.GetTaskConfig(ctx, s.jobID, uint32(instance0), configVersion)
+	s.NoError(err)
+	s.Equal(config, instance0Config)
+	s.Equal(addOn, configAddOn)
+
+	// instance1 should have default config
+	config, addOn, err = db.GetTaskConfig(ctx, s.jobID, uint32(instance1), configVersion)
+	s.NoError(err)
+	s.Equal(config, defaultConfig)
+	s.Equal(addOn, configAddOn)
 }

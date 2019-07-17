@@ -1134,51 +1134,6 @@ func (s *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint
 	return resultMap, nil
 }
 
-// GetTaskConfig returns the task specific config
-func (s *Store) GetTaskConfig(ctx context.Context, id *peloton.JobID,
-	instanceID uint32, version uint64) (*task.TaskConfig, *models.ConfigAddOn, error) {
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("*").From(taskConfigV2Table).
-		Where(
-			qb.Eq{
-				"job_id":  id.GetValue(),
-				"version": version,
-				"instance_id": []interface{}{
-					instanceID, common.DefaultTaskConfigID},
-			})
-	allResults, err := s.executeRead(ctx, stmt)
-	if err != nil {
-		log.WithField("job_id", id.GetValue()).
-			WithField("instance_id", instanceID).
-			WithField("version", version).
-			WithError(err).
-			Error("Fail to get task config v2")
-		s.metrics.TaskMetrics.TaskGetConfigFail.Inc(1)
-		return nil, nil, err
-	}
-	taskID := fmt.Sprintf(taskIDFmt, id.GetValue(), int(instanceID))
-
-	// Use last result (the most specific).
-	value := allResults[len(allResults)-1]
-	var record TaskConfigRecord
-	if err := FillObject(value, &record, reflect.TypeOf(record)); err != nil {
-		log.WithField("task_id", taskID).
-			WithError(err).
-			Error("Failed to Fill into TaskRecord")
-		s.metrics.TaskMetrics.TaskGetConfigFail.Inc(1)
-		return nil, nil, err
-	}
-
-	s.metrics.TaskMetrics.TaskGetConfig.Inc(1)
-	config, err := record.GetTaskConfig()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	configAddOn, err := record.GetConfigAddOn()
-	return config, configAddOn, err
-}
-
 // GetTaskConfigs returns the task configs for a list of instance IDs,
 // job ID and config version.
 func (s *Store) GetTaskConfigs(ctx context.Context, id *peloton.JobID,
@@ -1272,7 +1227,7 @@ func (s *Store) getTaskInfoFromRuntimeRecord(ctx context.Context, id *peloton.Jo
 		return nil, err
 	}
 
-	config, _, err := s.GetTaskConfig(ctx, id, uint32(record.InstanceID),
+	config, _, err := s.taskConfigV2Ops.GetTaskConfig(ctx, id, uint32(record.InstanceID),
 		runtime.ConfigVersion)
 	if err != nil {
 		return nil, err

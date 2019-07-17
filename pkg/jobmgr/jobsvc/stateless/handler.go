@@ -69,6 +69,7 @@ type serviceHandler struct {
 	jobNameToIDOps     ormobjects.JobNameToIDOps
 	jobUpdateEventsOps ormobjects.JobUpdateEventsOps
 	secretInfoOps      ormobjects.SecretInfoOps
+	taskConfigV2Ops    ormobjects.TaskConfigV2Ops
 	respoolClient      respool.ResourceManagerYARPCClient
 	jobFactory         cached.JobFactory
 	goalStateDriver    goalstate.Driver
@@ -113,6 +114,7 @@ func InitV1AlphaJobServiceHandler(
 		jobNameToIDOps:     ormobjects.NewJobNameToIDOps(ormStore),
 		secretInfoOps:      ormobjects.NewSecretInfoOps(ormStore),
 		jobUpdateEventsOps: ormobjects.NewJobUpdateEventsOps(ormStore),
+		taskConfigV2Ops:    ormobjects.NewTaskConfigV2Ops(ormStore),
 		respoolClient: respool.NewResourceManagerYARPCClient(
 			d.ClientConfig(common.PelotonResourceManager),
 		),
@@ -1568,6 +1570,7 @@ func (h *serviceHandler) GetReplaceJobDiff(
 			prevJobConfig,
 			jobConfig,
 			h.taskStore,
+			h.taskConfigV2Ops,
 		)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get configuration difference")

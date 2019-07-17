@@ -189,6 +189,7 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 			prevJobConfig,
 			jobConfig,
 			goalStateDriver.taskStore,
+			goalStateDriver.taskConfigV2Ops,
 		)
 		if err != nil {
 			goalStateDriver.mtx.updateMetrics.UpdateStartFail.Inc(1)

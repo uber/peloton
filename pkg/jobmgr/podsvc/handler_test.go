@@ -61,18 +61,19 @@ type podHandlerTestSuite struct {
 
 	handler *serviceHandler
 
-	ctrl               *gomock.Controller
-	cachedJob          *cachedmocks.MockJob
-	cachedTask         *cachedmocks.MockTask
-	jobFactory         *cachedmocks.MockJobFactory
-	candidate          *leadermocks.MockCandidate
-	podStore           *storemocks.MockTaskStore
-	mockedPodEventsOps *objectmocks.MockPodEventsOps
-	goalStateDriver    *goalstatemocks.MockDriver
-	frameworkInfoStore *storemocks.MockFrameworkInfoStore
-	hostmgrClient      *hostmocks.MockInternalHostServiceYARPCClient
-	logmanager         *logmanagermocks.MockLogManager
-	mesosAgentWorkDir  string
+	ctrl                *gomock.Controller
+	cachedJob           *cachedmocks.MockJob
+	cachedTask          *cachedmocks.MockTask
+	jobFactory          *cachedmocks.MockJobFactory
+	candidate           *leadermocks.MockCandidate
+	podStore            *storemocks.MockTaskStore
+	mockedPodEventsOps  *objectmocks.MockPodEventsOps
+	mockTaskConfigV2Ops *objectmocks.MockTaskConfigV2Ops
+	goalStateDriver     *goalstatemocks.MockDriver
+	frameworkInfoStore  *storemocks.MockFrameworkInfoStore
+	hostmgrClient       *hostmocks.MockInternalHostServiceYARPCClient
+	logmanager          *logmanagermocks.MockLogManager
+	mesosAgentWorkDir   string
 }
 
 func (suite *podHandlerTestSuite) SetupTest() {
@@ -88,11 +89,13 @@ func (suite *podHandlerTestSuite) SetupTest() {
 	suite.logmanager = logmanagermocks.NewMockLogManager(suite.ctrl)
 	suite.mesosAgentWorkDir = "test"
 	suite.mockedPodEventsOps = objectmocks.NewMockPodEventsOps(suite.ctrl)
+	suite.mockTaskConfigV2Ops = objectmocks.NewMockTaskConfigV2Ops(suite.ctrl)
 	suite.handler = &serviceHandler{
 		jobFactory:         suite.jobFactory,
 		candidate:          suite.candidate,
 		podStore:           suite.podStore,
 		podEventsOps:       suite.mockedPodEventsOps,
+		taskConfigV2Ops:    suite.mockTaskConfigV2Ops,
 		goalStateDriver:    suite.goalStateDriver,
 		frameworkInfoStore: suite.frameworkInfoStore,
 		hostMgrClient:      suite.hostmgrClient,
@@ -446,7 +449,7 @@ func (suite *podHandlerTestSuite) TestStartPodSuccess() {
 				ConfigVersion: 1,
 			}, nil),
 
-		suite.podStore.EXPECT().
+		suite.mockTaskConfigV2Ops.EXPECT().
 			GetTaskConfig(
 				gomock.Any(),
 				&peloton.JobID{Value: testJobID},
@@ -567,7 +570,7 @@ func (suite *podHandlerTestSuite) TestStartPodSuccessWithJobRuntimeUnexpectedVer
 				ConfigVersion: 1,
 			}, nil),
 
-		suite.podStore.EXPECT().
+		suite.mockTaskConfigV2Ops.EXPECT().
 			GetTaskConfig(
 				gomock.Any(),
 				&peloton.JobID{Value: testJobID},
@@ -664,7 +667,7 @@ func (suite *podHandlerTestSuite) TestStartPodSuccessWithPodRuntimeUnexpectedVer
 				ConfigVersion: 1,
 			}, nil),
 
-		suite.podStore.EXPECT().
+		suite.mockTaskConfigV2Ops.EXPECT().
 			GetTaskConfig(
 				gomock.Any(),
 				&peloton.JobID{Value: testJobID},
@@ -688,7 +691,7 @@ func (suite *podHandlerTestSuite) TestStartPodSuccessWithPodRuntimeUnexpectedVer
 				ConfigVersion: 1,
 			}, nil),
 
-		suite.podStore.EXPECT().
+		suite.mockTaskConfigV2Ops.EXPECT().
 			GetTaskConfig(
 				gomock.Any(),
 				&peloton.JobID{Value: testJobID},
@@ -1245,7 +1248,7 @@ func (suite *podHandlerTestSuite) TestGetPodSuccess() {
 					},
 				}, nil),
 
-		suite.podStore.EXPECT().
+		suite.mockTaskConfigV2Ops.EXPECT().
 			GetTaskConfig(
 				gomock.Any(),
 				pelotonJob,
@@ -1269,7 +1272,7 @@ func (suite *podHandlerTestSuite) TestGetPodSuccess() {
 				testPrevPodID,
 			).Return(events, nil),
 
-		suite.podStore.EXPECT().
+		suite.mockTaskConfigV2Ops.EXPECT().
 			GetTaskConfig(
 				gomock.Any(),
 				pelotonJob,
@@ -1336,7 +1339,7 @@ func (suite *podHandlerTestSuite) TestGetPodCurrentOnly() {
 					ConfigVersion: configVersion,
 				}, nil),
 
-		suite.podStore.EXPECT().
+		suite.mockTaskConfigV2Ops.EXPECT().
 			GetTaskConfig(
 				gomock.Any(),
 				pelotonJob,
@@ -1428,7 +1431,7 @@ func (suite *podHandlerTestSuite) TestGetPodSuccessLimit() {
 					},
 				}, nil),
 
-		suite.podStore.EXPECT().
+		suite.mockTaskConfigV2Ops.EXPECT().
 			GetTaskConfig(
 				gomock.Any(),
 				pelotonJob,
@@ -1452,7 +1455,7 @@ func (suite *podHandlerTestSuite) TestGetPodSuccessLimit() {
 				testPrevPodID,
 			).Return(events, nil),
 
-		suite.podStore.EXPECT().
+		suite.mockTaskConfigV2Ops.EXPECT().
 			GetTaskConfig(
 				gomock.Any(),
 				pelotonJob,
@@ -1526,7 +1529,7 @@ func (suite *podHandlerTestSuite) TestGetPodTaskConfigFailure() {
 					ConfigVersion: configVersion,
 				}, nil),
 
-		suite.podStore.EXPECT().
+		suite.mockTaskConfigV2Ops.EXPECT().
 			GetTaskConfig(
 				gomock.Any(),
 				pelotonJob,
@@ -1564,7 +1567,7 @@ func (suite *podHandlerTestSuite) TestGetPodFailureToGetPreviousPodEvents() {
 					},
 				}, nil),
 
-		suite.podStore.EXPECT().
+		suite.mockTaskConfigV2Ops.EXPECT().
 			GetTaskConfig(
 				gomock.Any(),
 				pelotonJob,

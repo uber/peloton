@@ -529,7 +529,6 @@ func main() {
 		dispatcher,
 		common.PelotonHostManager,
 		jobFactory,
-		store, // store implements TaskStore
 		store, // store implements VolumeStore
 		ormStore,
 		rootScope,
@@ -566,7 +565,7 @@ func main() {
 	taskPreemptor := preemptor.New(
 		dispatcher,
 		common.PelotonResourceManager,
-		store, // store implements TaskStore
+		ormStore, // store implements TaskStore
 		jobFactory,
 		goalStateDriver,
 		&cfg.JobManager.Preemptor,

@@ -274,7 +274,7 @@ func (t *task) updateConfig(ctx context.Context, configVersion uint64) error {
 		return nil
 	}
 
-	taskConfig, _, err := t.jobFactory.taskStore.GetTaskConfig(
+	taskConfig, _, err := t.jobFactory.taskConfigV2Ops.GetTaskConfig(
 		ctx, t.jobID, t.id, configVersion)
 	if err != nil {
 		return err

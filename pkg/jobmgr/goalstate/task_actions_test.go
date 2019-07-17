@@ -28,6 +28,7 @@ import (
 	goalstatemocks "github.com/uber/peloton/pkg/common/goalstate/mocks"
 	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
 	storemocks "github.com/uber/peloton/pkg/storage/mocks"
+	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -47,6 +48,7 @@ type TaskActionTestSuite struct {
 	jobFactory          *cachedmocks.MockJobFactory
 	cachedJob           *cachedmocks.MockJob
 	cachedTask          *cachedmocks.MockTask
+	taskConfigV2Ops     *objectmocks.MockTaskConfigV2Ops
 	goalStateDriver     *driver
 	taskEnt             *taskEntity
 	jobID               *peloton.JobID
@@ -65,14 +67,16 @@ func (suite *TaskActionTestSuite) SetupTest() {
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
 	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
 	suite.cachedTask = cachedmocks.NewMockTask(suite.ctrl)
+	suite.taskConfigV2Ops = objectmocks.NewMockTaskConfigV2Ops(suite.ctrl)
 
 	suite.goalStateDriver = &driver{
-		taskStore:  suite.taskStore,
-		jobEngine:  suite.jobGoalStateEngine,
-		taskEngine: suite.taskGoalStateEngine,
-		jobFactory: suite.jobFactory,
-		mtx:        NewMetrics(tally.NoopScope),
-		cfg:        &Config{},
+		taskStore:       suite.taskStore,
+		jobEngine:       suite.jobGoalStateEngine,
+		taskEngine:      suite.taskGoalStateEngine,
+		jobFactory:      suite.jobFactory,
+		mtx:             NewMetrics(tally.NoopScope),
+		cfg:             &Config{},
+		taskConfigV2Ops: suite.taskConfigV2Ops,
 	}
 	suite.goalStateDriver.cfg.normalize()
 
@@ -96,7 +100,7 @@ func (suite *TaskActionTestSuite) TestTaskReloadRuntime() {
 	suite.taskStore.EXPECT().
 		GetTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID).
 		Return(&pbtask.RuntimeInfo{}, nil)
-	suite.taskStore.EXPECT().
+	suite.taskConfigV2Ops.EXPECT().
 		GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
 		Return(&pbtask.TaskConfig{}, nil, nil)
 	suite.cachedJob.EXPECT().
@@ -138,7 +142,7 @@ func (suite *TaskActionTestSuite) TestTaskReloadRuntimeGetConfigError() {
 	suite.taskStore.EXPECT().
 		GetTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID).
 		Return(&pbtask.RuntimeInfo{}, nil)
-	suite.taskStore.EXPECT().
+	suite.taskConfigV2Ops.EXPECT().
 		GetTaskConfig(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
 		Return(nil, nil, fmt.Errorf("fake db error"))
 	err := TaskReloadRuntime(context.Background(), suite.taskEnt)

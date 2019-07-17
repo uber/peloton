@@ -22,6 +22,7 @@ import (
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/private/models"
+	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/storage/objects/base"
 
@@ -58,7 +59,9 @@ type TaskConfigV2Object struct {
 }
 
 const (
-	specColumn = "spec"
+	specColumn        = "spec"
+	configColumn      = "config"
+	configAddOnColumn = "config_addon"
 )
 
 // TaskConfigV2Ops provides methods for manipulating task_config_v2 table.
@@ -81,6 +84,14 @@ type TaskConfigV2Ops interface {
 		instanceID uint32,
 		version uint64,
 	) (*pbpod.PodSpec, error)
+
+	// GetTaskConfig returns the task specific config
+	GetTaskConfig(
+		ctx context.Context,
+		id *peloton.JobID,
+		instanceID uint32,
+		version uint64,
+	) (*pbtask.TaskConfig, *models.ConfigAddOn, error)
 }
 
 // ensure that default implementation (taskConfigV2Object) satisfies the interface
@@ -188,4 +199,70 @@ func (d *taskConfigV2Object) GetPodSpec(
 	}
 
 	return podSpec, nil
+}
+
+// GetTaskConfig returns the task specific config
+func (d *taskConfigV2Object) GetTaskConfig(
+	ctx context.Context,
+	id *peloton.JobID,
+	instanceID uint32,
+	version uint64,
+) (taskConfig *pbtask.TaskConfig, configAddOn *models.ConfigAddOn, err error) {
+	defer func() {
+		if err != nil {
+			d.store.metrics.OrmTaskMetrics.TaskConfigV2GetFail.Inc(1)
+		} else {
+			d.store.metrics.OrmTaskMetrics.TaskConfigV2Get.Inc(1)
+		}
+	}()
+
+	taskConfig, configAddOn, err = d.getTaskConfig(ctx, id, int64(instanceID), version)
+
+	// no instance config, return default config
+	if yarpcerrors.IsNotFound(err) {
+		return d.getTaskConfig(ctx, id, common.DefaultTaskConfigID, version)
+	}
+
+	// either an error occurs or there is instance config
+	return taskConfig, configAddOn, err
+}
+
+// getTaskConfig returns config of specific version,
+// different from GetTaskConfig it does not which version
+// number is default config version and which is instance
+// specific config version
+func (d *taskConfigV2Object) getTaskConfig(
+	ctx context.Context,
+	id *peloton.JobID,
+	instanceID int64,
+	version uint64,
+) (*pbtask.TaskConfig, *models.ConfigAddOn, error) {
+	obj := &TaskConfigV2Object{
+		JobID:      id.GetValue(),
+		InstanceID: int64(instanceID),
+		Version:    version,
+	}
+
+	if err := d.store.oClient.Get(ctx, obj, configColumn, configAddOnColumn); err != nil {
+		return nil, nil, err
+	}
+
+	// no config set, return nil
+	if len(obj.Config) == 0 {
+		return nil, nil, nil
+	}
+
+	taskConfig := &pbtask.TaskConfig{}
+	if err := proto.Unmarshal(obj.Config, taskConfig); err != nil {
+		return nil, nil, errors.Wrap(yarpcerrors.InternalErrorf(err.Error()),
+			"Failed to unmarshal task config")
+	}
+
+	configAddOn := &models.ConfigAddOn{}
+	if err := proto.Unmarshal(obj.ConfigAddOn, configAddOn); err != nil {
+		return nil, nil, errors.Wrap(yarpcerrors.InternalErrorf(err.Error()),
+			"Failed to unmarshal config addOn")
+	}
+
+	return taskConfig, configAddOn, nil
 }

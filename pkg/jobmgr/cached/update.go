@@ -30,6 +30,7 @@ import (
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 	taskutil "github.com/uber/peloton/pkg/jobmgr/util/task"
 	"github.com/uber/peloton/pkg/storage"
+	"github.com/uber/peloton/pkg/storage/objects"
 
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc/yarpcerrors"
@@ -685,6 +686,7 @@ func (u *update) Rollback(
 		currentConfig,
 		targetConfig,
 		u.jobFactory.taskStore,
+		u.jobFactory.taskConfigV2Ops,
 	)
 	if err != nil {
 		return err
@@ -977,13 +979,13 @@ func hasInstanceConfigChanged(
 	instID uint32,
 	configVersion uint64,
 	newJobConfig *pbjob.JobConfig,
-	taskStore storage.TaskStore,
+	taskConfigV2Ops objects.TaskConfigV2Ops,
 ) (bool, error) {
 	// Get the current task configuration. Cannot use prevTaskConfig to do
 	// so because the task may be still be on an older configuration
 	// version because the previous update may not have succeeded.
 	// So, fetch the task configuration of the task from the DB.
-	prevTaskConfig, _, err := taskStore.GetTaskConfig(
+	prevTaskConfig, _, err := taskConfigV2Ops.GetTaskConfig(
 		ctx, jobID, instID, configVersion)
 	if err != nil {
 		if yarpcerrors.IsNotFound(err) {
@@ -1009,6 +1011,7 @@ func GetInstancesToProcessForUpdate(
 	prevJobConfig *pbjob.JobConfig,
 	newJobConfig *pbjob.JobConfig,
 	taskStore storage.TaskStore,
+	taskConfigV2Ops objects.TaskConfigV2Ops,
 ) (
 	instancesAdded []uint32,
 	instancesUpdated []uint32,
@@ -1046,7 +1049,7 @@ func GetInstancesToProcessForUpdate(
 					instID,
 					runtime.GetConfigVersion(),
 					newJobConfig,
-					taskStore,
+					taskConfigV2Ops,
 				)
 				if err != nil {
 					return

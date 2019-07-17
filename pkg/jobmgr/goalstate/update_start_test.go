@@ -48,10 +48,11 @@ type UpdateStartTestSuite struct {
 	suite.Suite
 	ctrl *gomock.Controller
 
-	taskStore    *storemocks.MockTaskStore
-	jobFactory   *cachedmocks.MockJobFactory
-	jobConfigOps *objectmocks.MockJobConfigOps
-	resmgrClient *resmocks.MockResourceManagerServiceYARPCClient
+	taskStore       *storemocks.MockTaskStore
+	jobFactory      *cachedmocks.MockJobFactory
+	jobConfigOps    *objectmocks.MockJobConfigOps
+	taskConfigV2Ops *objectmocks.MockTaskConfigV2Ops
+	resmgrClient    *resmocks.MockResourceManagerServiceYARPCClient
 
 	updateGoalStateEngine *goalstatemocks.MockEngine
 	jobGoalStateEngine    *goalstatemocks.MockEngine
@@ -79,6 +80,7 @@ func (suite *UpdateStartTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.jobConfigOps = objectmocks.NewMockJobConfigOps(suite.ctrl)
+	suite.taskConfigV2Ops = objectmocks.NewMockTaskConfigV2Ops(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
 	suite.updateGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 	suite.jobGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
@@ -87,15 +89,16 @@ func (suite *UpdateStartTestSuite) SetupTest() {
 		resmocks.NewMockResourceManagerServiceYARPCClient(suite.ctrl)
 
 	suite.goalStateDriver = &driver{
-		taskStore:    suite.taskStore,
-		jobConfigOps: suite.jobConfigOps,
-		jobFactory:   suite.jobFactory,
-		resmgrClient: suite.resmgrClient,
-		updateEngine: suite.updateGoalStateEngine,
-		taskEngine:   suite.taskGoalStateEngine,
-		jobEngine:    suite.jobGoalStateEngine,
-		mtx:          NewMetrics(tally.NoopScope),
-		cfg:          &Config{},
+		taskStore:       suite.taskStore,
+		jobConfigOps:    suite.jobConfigOps,
+		taskConfigV2Ops: suite.taskConfigV2Ops,
+		jobFactory:      suite.jobFactory,
+		resmgrClient:    suite.resmgrClient,
+		updateEngine:    suite.updateGoalStateEngine,
+		taskEngine:      suite.taskGoalStateEngine,
+		jobEngine:       suite.jobGoalStateEngine,
+		mtx:             NewMetrics(tally.NoopScope),
+		cfg:             &Config{},
 	}
 	suite.goalStateDriver.cfg.normalize()
 
@@ -690,7 +693,7 @@ func (suite *UpdateStartTestSuite) TestUpdateWorkflowUpdate() {
 		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, nil).
 		Return(taskRuntimes, nil)
 
-	suite.taskStore.EXPECT().
+	suite.taskConfigV2Ops.EXPECT().
 		GetTaskConfig(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(suite.prevJobConfig.DefaultConfig, nil, nil).
 		Times(int(suite.prevJobConfig.InstanceCount))
@@ -949,7 +952,7 @@ func (suite *UpdateStartTestSuite) TestUpdateWorkflowUpdateModifyError() {
 		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, nil).
 		Return(taskRuntimes, nil)
 
-	suite.taskStore.EXPECT().
+	suite.taskConfigV2Ops.EXPECT().
 		GetTaskConfig(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(suite.prevJobConfig.DefaultConfig, nil, nil).
 		Times(int(suite.prevJobConfig.InstanceCount))

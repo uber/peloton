@@ -29,6 +29,7 @@ import (
 	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 	store_mocks "github.com/uber/peloton/pkg/storage/mocks"
+	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -48,6 +49,7 @@ type TestTaskInitializeSuite struct {
 	cachedTask          *cachedmocks.MockTask
 	jobConfig           *cachedmocks.MockJobConfigCache
 	cachedConfig        *cachedmocks.MockJobConfigCache
+	taskConfigV2Ops     *objectmocks.MockTaskConfigV2Ops
 	goalStateDriver     *driver
 	jobID               *peloton.JobID
 	instanceID          uint32
@@ -74,15 +76,17 @@ func (suite *TestTaskInitializeSuite) SetupTest() {
 	suite.cachedTask = cachedmocks.NewMockTask(suite.mockCtrl)
 	suite.jobConfig = cachedmocks.NewMockJobConfigCache(suite.mockCtrl)
 	suite.cachedConfig = cachedmocks.NewMockJobConfigCache(suite.mockCtrl)
+	suite.taskConfigV2Ops = objectmocks.NewMockTaskConfigV2Ops(suite.mockCtrl)
 
 	suite.goalStateDriver = &driver{
-		jobEngine:  suite.jobGoalStateEngine,
-		taskEngine: suite.taskGoalStateEngine,
-		jobStore:   suite.jobStore,
-		taskStore:  suite.taskStore,
-		jobFactory: suite.jobFactory,
-		mtx:        NewMetrics(tally.NoopScope),
-		cfg:        &Config{},
+		jobEngine:       suite.jobGoalStateEngine,
+		taskEngine:      suite.taskGoalStateEngine,
+		jobStore:        suite.jobStore,
+		taskStore:       suite.taskStore,
+		jobFactory:      suite.jobFactory,
+		taskConfigV2Ops: suite.taskConfigV2Ops,
+		mtx:             NewMetrics(tally.NoopScope),
+		cfg:             &Config{},
 	}
 	suite.goalStateDriver.cfg.normalize()
 	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}
@@ -155,7 +159,7 @@ func (suite *TestTaskInitializeSuite) TestTaskInitialize() {
 		suite.cachedTask.EXPECT().
 			GetRuntime(gomock.Any()).Return(suite.runtime, nil)
 
-		suite.taskStore.EXPECT().GetTaskConfig(
+		suite.taskConfigV2Ops.EXPECT().GetTaskConfig(
 			gomock.Any(), suite.jobID, suite.instanceID, suite.newConfigVersion).
 			Return(tt.taskConfig, &models.ConfigAddOn{}, nil)
 
@@ -245,7 +249,7 @@ func (suite *TestTaskInitializeSuite) TestTaskInitializeNoTaskConfig() {
 	suite.cachedTask.EXPECT().
 		GetRuntime(gomock.Any()).Return(suite.runtime, nil)
 
-	suite.taskStore.EXPECT().GetTaskConfig(
+	suite.taskConfigV2Ops.EXPECT().GetTaskConfig(
 		gomock.Any(), suite.jobID, suite.instanceID, suite.newConfigVersion).Return(nil, nil, errors.New(""))
 
 	err := TaskInitialize(context.Background(), suite.taskEnt)

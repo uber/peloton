@@ -29,7 +29,7 @@ import (
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 	"github.com/uber/peloton/pkg/jobmgr/goalstate"
-	"github.com/uber/peloton/pkg/storage"
+	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 
 	multierror "github.com/hashicorp/go-multierror"
 	"github.com/pkg/errors"
@@ -69,12 +69,12 @@ type Preemptor interface {
 // preemptor implements the Preemptor interface
 type preemptor struct {
 	resMgrClient    resmgrsvc.ResourceManagerServiceYARPCClient
-	taskStore       storage.TaskStore
 	jobFactory      cached.JobFactory
 	goalStateDriver goalstate.Driver
 	config          *Config
 	metrics         *Metrics
 	lifeCycle       lifecycle.LifeCycle // lifecycle manager
+	taskConfigV2Ops ormobjects.TaskConfigV2Ops
 }
 
 var _timeoutFunctionCall = 120 * time.Second
@@ -83,7 +83,7 @@ var _timeoutFunctionCall = 120 * time.Second
 func New(
 	d *yarpc.Dispatcher,
 	resMgrClientName string,
-	taskStore storage.TaskStore,
+	ormStore *ormobjects.Store,
 	jobFactory cached.JobFactory,
 	goalStateDriver goalstate.Driver,
 	config *Config,
@@ -92,12 +92,12 @@ func New(
 
 	return &preemptor{
 		resMgrClient:    resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(resMgrClientName)),
-		taskStore:       taskStore,
 		jobFactory:      jobFactory,
 		goalStateDriver: goalStateDriver,
 		config:          config,
 		metrics:         NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
 		lifeCycle:       lifecycle.NewLifeCycle(),
+		taskConfigV2Ops: ormobjects.NewTaskConfigV2Ops(ormStore),
 	}
 }
 
@@ -276,7 +276,7 @@ func (p *preemptor) getTaskPreemptionPolicy(
 	jobID *peloton.JobID,
 	instanceID uint32,
 	configVersion uint64) (*pbtask.PreemptionPolicy, error) {
-	config, _, err := p.taskStore.GetTaskConfig(
+	config, _, err := p.taskConfigV2Ops.GetTaskConfig(
 		ctx,
 		jobID,
 		instanceID,

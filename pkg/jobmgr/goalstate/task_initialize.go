@@ -51,7 +51,7 @@ func TaskInitialize(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	taskConfig, _, err := goalStateDriver.taskStore.GetTaskConfig(
+	taskConfig, _, err := goalStateDriver.taskConfigV2Ops.GetTaskConfig(
 		ctx,
 		taskEnt.jobID,
 		taskEnt.instanceID,

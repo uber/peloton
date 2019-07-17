@@ -30,6 +30,7 @@ import (
 	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 	storemocks "github.com/uber/peloton/pkg/storage/mocks"
+	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -53,10 +54,11 @@ type TaskTerminatedRetryTestSuite struct {
 	instanceID uint32
 	updateID   *peloton.UpdateID
 
-	taskEnt      *taskEntity
-	cachedJob    *cachedmocks.MockJob
-	cachedUpdate *cachedmocks.MockUpdate
-	cachedTask   *cachedmocks.MockTask
+	taskEnt         *taskEntity
+	cachedJob       *cachedmocks.MockJob
+	cachedUpdate    *cachedmocks.MockUpdate
+	cachedTask      *cachedmocks.MockTask
+	taskConfigV2Ops *objectmocks.MockTaskConfigV2Ops
 
 	jobRuntime      *pbjob.RuntimeInfo
 	taskConfig      *pbtask.TaskConfig
@@ -84,13 +86,15 @@ func (suite *TaskTerminatedRetryTestSuite) SetupTest() {
 	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
 	suite.cachedTask = cachedmocks.NewMockTask(suite.ctrl)
 	suite.cachedUpdate = cachedmocks.NewMockUpdate(suite.ctrl)
+	suite.taskConfigV2Ops = objectmocks.NewMockTaskConfigV2Ops(suite.ctrl)
 	suite.goalStateDriver = &driver{
-		jobEngine:    suite.jobGoalStateEngine,
-		taskEngine:   suite.taskGoalStateEngine,
-		updateEngine: suite.updateGoalStateEngine,
-		taskStore:    suite.taskStore,
-		jobFactory:   suite.jobFactory,
-		mtx:          NewMetrics(tally.NoopScope),
+		jobEngine:       suite.jobGoalStateEngine,
+		taskEngine:      suite.taskGoalStateEngine,
+		updateEngine:    suite.updateGoalStateEngine,
+		taskStore:       suite.taskStore,
+		jobFactory:      suite.jobFactory,
+		taskConfigV2Ops: suite.taskConfigV2Ops,
+		mtx:             NewMetrics(tally.NoopScope),
 		cfg: &Config{
 			InitialTaskBackoff: 30 * time.Second,
 			MaxTaskBackoff:     60 * time.Minute,
@@ -168,7 +172,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoTaskConfig()
 		AddTask(gomock.Any(), suite.instanceID).Return(suite.cachedTask, nil)
 	suite.cachedTask.EXPECT().
 		GetRuntime(gomock.Any()).Return(suite.taskRuntime, nil)
-	suite.taskStore.EXPECT().GetTaskConfig(
+	suite.taskConfigV2Ops.EXPECT().GetTaskConfig(
 		gomock.Any(),
 		suite.jobID,
 		suite.instanceID,
@@ -200,7 +204,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoUpdate() {
 			MaxFailures: 3,
 		},
 	}
-	suite.taskStore.EXPECT().GetTaskConfig(
+	suite.taskConfigV2Ops.EXPECT().GetTaskConfig(
 		gomock.Any(),
 		suite.jobID,
 		suite.instanceID,
@@ -254,7 +258,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestTaskTerminatedRetryNoFailure() {
 	suite.taskRuntime.Revision = &peloton.ChangeLog{UpdatedAt: uint64(time.Now().UnixNano())}
 	suite.cachedTask.EXPECT().
 		GetRuntime(gomock.Any()).Return(suite.taskRuntime, nil)
-	suite.taskStore.EXPECT().GetTaskConfig(
+	suite.taskConfigV2Ops.EXPECT().GetTaskConfig(
 		gomock.Any(),
 		suite.jobID,
 		suite.instanceID,
@@ -306,7 +310,7 @@ func (suite *TaskTerminatedRetryTestSuite) TestLostTaskRetry() {
 	suite.lostTaskRuntime.Revision = &peloton.ChangeLog{UpdatedAt: uint64(time.Now().UnixNano())}
 	suite.cachedTask.EXPECT().
 		GetRuntime(gomock.Any()).Return(suite.lostTaskRuntime, nil)
-	suite.taskStore.EXPECT().GetTaskConfig(
+	suite.taskConfigV2Ops.EXPECT().GetTaskConfig(
 		gomock.Any(),
 		suite.jobID,
 		suite.instanceID,

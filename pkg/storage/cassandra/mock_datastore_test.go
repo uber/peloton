@@ -169,11 +169,7 @@ func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetTasks() {
 
 // TestDataStoreFailureGetTaskConfig tests datastore failures in getting task cfg
 func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetTaskConfig() {
-	_, _, err := suite.store.GetTaskConfig(
-		context.Background(), suite.testJobID, 0, 0)
-	suite.Error(err)
-
-	_, _, err = suite.store.GetTaskConfigs(
+	_, _, err := suite.store.GetTaskConfigs(
 		context.Background(), suite.testJobID, []uint32{0}, 0)
 	suite.Error(err)
 }
@@ -305,19 +301,10 @@ func (suite *MockDatastoreTestSuite) TestDataStoreFailureGetTaskConfigs() {
 	ctx := context.Background()
 	var result datastore.ResultSet
 
-	// Setup mocks for this context
-	// Simulate success for the first query and failure for the second query
 	suite.mockedDataStore.EXPECT().Execute(ctx, gomock.Any()).
 		Return(result, nil)
 	suite.mockedDataStore.EXPECT().Execute(ctx, gomock.Any()).
 		Return(result, errors.New("my-error"))
-	_, _, err := suite.store.GetTaskConfig(ctx, suite.testJobID, uint32(0), 0)
-	suite.Error(err)
-
-	suite.mockedDataStore.EXPECT().Execute(ctx, gomock.Any()).
-		Return(result, nil)
-	suite.mockedDataStore.EXPECT().Execute(ctx, gomock.Any()).
-		Return(result, errors.New("my-error"))
-	_, _, err = suite.store.GetTaskConfigs(ctx, suite.testJobID, []uint32{0}, 0)
+	_, _, err := suite.store.GetTaskConfigs(ctx, suite.testJobID, []uint32{0}, 0)
 	suite.Error(err)
 }

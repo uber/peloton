@@ -1727,7 +1727,7 @@ func (suite *jobTestSuite) TestJobCreateTaskRuntimes() {
 				suite.Equal(uint64(1), runtime.GetRevision().GetVersion())
 			}).Return(nil)
 
-		suite.taskStore.EXPECT().
+		suite.taskConfigV2Ops.EXPECT().
 			GetTaskConfig(
 				gomock.Any(),
 				suite.jobID,
@@ -1865,7 +1865,7 @@ func (suite *jobTestSuite) TestPatchTasks_SetGetTasksSingle() {
 			Revision: &peloton.ChangeLog{Version: 1},
 			State:    pbtask.TaskState_INITIALIZED,
 		}, nil).Times(int(instanceCount))
-	suite.taskStore.EXPECT().
+	suite.taskConfigV2Ops.EXPECT().
 		GetTaskConfig(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 		Return(nil, nil, nil).
 		Times(int(instanceCount))
@@ -1923,7 +1923,7 @@ func (suite *jobTestSuite) TestPatchTasksSetGetTasksMultiple() {
 				i,
 				gomock.Any(),
 				gomock.Any()).Return(nil)
-		suite.taskStore.EXPECT().
+		suite.taskConfigV2Ops.EXPECT().
 			GetTaskConfig(gomock.Any(), suite.jobID, i, gomock.Any()).
 			Return(nil, nil, nil)
 	}
@@ -2189,11 +2189,12 @@ func (suite *jobTestSuite) TestCompareAndSetTaskSuccess() {
 		jobID:   suite.jobID,
 		runtime: runtime,
 		jobFactory: &jobFactory{
-			mtx:         NewMetrics(tally.NoopScope),
-			taskMetrics: NewTaskMetrics(tally.NoopScope),
-			taskStore:   suite.taskStore,
-			running:     true,
-			jobs:        map[string]*job{},
+			mtx:             NewMetrics(tally.NoopScope),
+			taskMetrics:     NewTaskMetrics(tally.NoopScope),
+			taskStore:       suite.taskStore,
+			taskConfigV2Ops: suite.taskConfigV2Ops,
+			running:         true,
+			jobs:            map[string]*job{},
 		},
 		jobType: pbjob.JobType_BATCH,
 	}
@@ -2231,7 +2232,7 @@ func (suite *jobTestSuite) TestCompareAndSetTaskSuccess() {
 		}).
 		Return(nil)
 
-	suite.taskStore.EXPECT().
+	suite.taskConfigV2Ops.EXPECT().
 		GetTaskConfig(
 			gomock.Any(),
 			suite.jobID,
@@ -3772,7 +3773,7 @@ func (suite *jobTestSuite) TestRollbackWorkflowSuccess() {
 		Return(taskRuntimes, nil)
 
 	for i := uint32(0); i < jobPrevConfig.GetInstanceCount(); i++ {
-		suite.taskStore.EXPECT().
+		suite.taskConfigV2Ops.EXPECT().
 			GetTaskConfig(gomock.Any(), suite.jobID, i, jobPrevVersion).
 			Return(&pbtask.TaskConfig{}, nil, nil)
 	}
@@ -4182,7 +4183,7 @@ func (suite *jobTestSuite) TestRollbackWorkflowSuccessAfterModifyUpdateFails() {
 		Return(taskRuntimes, nil)
 
 	for i := uint32(0); i < jobPrevConfig.GetInstanceCount(); i++ {
-		suite.taskStore.EXPECT().
+		suite.taskConfigV2Ops.EXPECT().
 			GetTaskConfig(gomock.Any(), suite.jobID, i, jobPrevVersion).
 			Return(&pbtask.TaskConfig{}, nil, nil)
 	}
@@ -4426,7 +4427,7 @@ func (suite *jobTestSuite) TestRollbackWorkflowSuccessAfterJobRuntimeUpdateDBWri
 		Return(taskRuntimes, nil)
 
 	for i := uint32(0); i < jobPrevConfig.GetInstanceCount(); i++ {
-		suite.taskStore.EXPECT().
+		suite.taskConfigV2Ops.EXPECT().
 			GetTaskConfig(gomock.Any(), suite.jobID, i, jobPrevVersion).
 			Return(&pbtask.TaskConfig{}, nil, nil)
 	}
@@ -4587,7 +4588,7 @@ func (suite *jobTestSuite) TestRollbackWorkflowSuccessAfterJobRuntimeDBWriteSucc
 		Return(taskRuntimes, nil)
 
 	for i := uint32(0); i < jobPrevConfig.GetInstanceCount(); i++ {
-		suite.taskStore.EXPECT().
+		suite.taskConfigV2Ops.EXPECT().
 			GetTaskConfig(gomock.Any(), suite.jobID, i, jobPrevVersion).
 			Return(&pbtask.TaskConfig{}, nil, nil)
 	}

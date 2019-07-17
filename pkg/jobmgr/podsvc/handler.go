@@ -57,6 +57,7 @@ type serviceHandler struct {
 	podStore           storage.TaskStore
 	frameworkInfoStore storage.FrameworkInfoStore
 	podEventsOps       ormobjects.PodEventsOps
+	taskConfigV2Ops    ormobjects.TaskConfigV2Ops
 	jobFactory         cached.JobFactory
 	goalStateDriver    goalstate.Driver
 	candidate          leader.Candidate
@@ -84,6 +85,7 @@ func InitV1AlphaPodServiceHandler(
 		podStore:           podStore,
 		frameworkInfoStore: frameworkInfoStore,
 		podEventsOps:       ormobjects.NewPodEventsOps(ormStore),
+		taskConfigV2Ops:    ormobjects.NewTaskConfigV2Ops(ormStore),
 		jobFactory:         jobFactory,
 		goalStateDriver:    goalStateDriver,
 		candidate:          candidate,
@@ -227,7 +229,7 @@ func (h *serviceHandler) startPod(
 				"cannot start a pod going to be deleted")
 		}
 
-		taskConfig, _, err := h.podStore.GetTaskConfig(
+		taskConfig, _, err := h.taskConfigV2Ops.GetTaskConfig(
 			ctx,
 			cachedJob.ID(),
 			cachedTask.ID(),
@@ -427,7 +429,7 @@ func (h *serviceHandler) GetPod(
 
 	var podSpec *pbpod.PodSpec
 	if !req.GetStatusOnly() {
-		taskConfig, _, err := h.podStore.GetTaskConfig(
+		taskConfig, _, err := h.taskConfigV2Ops.GetTaskConfig(
 			ctx,
 			pelotonJobID,
 			instanceID,
@@ -902,7 +904,7 @@ func (h *serviceHandler) getPodInfoForAllPodRuns(
 					errors.Wrap(err, "failed to get config version for pod run")
 			}
 
-			taskConfig, _, err := h.podStore.GetTaskConfig(
+			taskConfig, _, err := h.taskConfigV2Ops.GetTaskConfig(
 				ctx,
 				&v0peloton.JobID{Value: jobID},
 				instanceID,

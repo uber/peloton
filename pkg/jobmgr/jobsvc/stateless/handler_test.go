@@ -113,6 +113,7 @@ type statelessHandlerTestSuite struct {
 	jobRuntimeOps      *objectmocks.MockJobRuntimeOps
 	secretInfoOps      *objectmocks.MockSecretInfoOps
 	jobUpdateEventsOps *objectmocks.MockJobUpdateEventsOps
+	taskConfigV2Ops    *objectmocks.MockTaskConfigV2Ops
 	activeRMTasks      *activermtaskmocks.MockActiveRMTasks
 }
 
@@ -132,6 +133,7 @@ func (suite *statelessHandlerTestSuite) SetupTest() {
 	suite.jobNameToIDOps = objectmocks.NewMockJobNameToIDOps(suite.ctrl)
 	suite.secretInfoOps = objectmocks.NewMockSecretInfoOps(suite.ctrl)
 	suite.jobUpdateEventsOps = objectmocks.NewMockJobUpdateEventsOps(suite.ctrl)
+	suite.taskConfigV2Ops = objectmocks.NewMockTaskConfigV2Ops(suite.ctrl)
 	suite.respoolClient = respoolmocks.NewMockResourceManagerYARPCClient(suite.ctrl)
 	suite.listJobsServer = statelesssvcmocks.NewMockJobServiceServiceListJobsYARPCServer(suite.ctrl)
 	suite.listPodsServer = statelesssvcmocks.NewMockJobServiceServiceListPodsYARPCServer(suite.ctrl)
@@ -150,6 +152,7 @@ func (suite *statelessHandlerTestSuite) SetupTest() {
 		jobRuntimeOps:      suite.jobRuntimeOps,
 		jobNameToIDOps:     suite.jobNameToIDOps,
 		jobUpdateEventsOps: suite.jobUpdateEventsOps,
+		taskConfigV2Ops:    suite.taskConfigV2Ops,
 		secretInfoOps:      suite.secretInfoOps,
 		respoolClient:      suite.respoolClient,
 		rootCtx:            context.Background(),
@@ -1348,7 +1351,7 @@ func (suite *statelessHandlerTestSuite) TestGetReplaceJobDiffSuccess() {
 		GetTaskRuntimesForJobByRange(gomock.Any(), gomock.Any(), nil).
 		Return(taskRuntimes, nil)
 
-	suite.taskStore.EXPECT().
+	suite.taskConfigV2Ops.EXPECT().
 		GetTaskConfig(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil, nil, nil).
 		Times(int(instanceCount))

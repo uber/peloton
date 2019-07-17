@@ -309,6 +309,9 @@ type OrmTaskMetrics struct {
 	TaskConfigV2Create     tally.Counter
 	TaskConfigV2CreateFail tally.Counter
 
+	TaskConfigV2Get     tally.Counter
+	TaskConfigV2GetFail tally.Counter
+
 	PodSpecGet     tally.Counter
 	PodSpecGetFail tally.Counter
 }
@@ -713,6 +716,9 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		TaskConfigV2Create:     taskConfigV2SuccessScope.Counter("create"),
 		TaskConfigV2CreateFail: taskConfigV2FailScope.Counter("create"),
+
+		TaskConfigV2Get:     taskConfigV2SuccessScope.Counter("get"),
+		TaskConfigV2GetFail: taskConfigV2FailScope.Counter("get"),
 
 		PodSpecGet:     podSpecSuccessScope.Counter("get"),
 		PodSpecGetFail: podSpecFailScope.Counter("get"),

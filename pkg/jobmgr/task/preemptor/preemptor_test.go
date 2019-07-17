@@ -34,7 +34,7 @@ import (
 	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 	goalstatemocks "github.com/uber/peloton/pkg/jobmgr/goalstate/mocks"
-	storage_mocks "github.com/uber/peloton/pkg/storage/mocks"
+	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -47,20 +47,20 @@ type PreemptorTestSuite struct {
 	mockCtrl        *gomock.Controller
 	preemptor       *preemptor
 	mockResmgr      *mocks.MockResourceManagerServiceYARPCClient
-	mockTaskStore   *storage_mocks.MockTaskStore
 	jobFactory      *cachedmocks.MockJobFactory
 	goalStateDriver *goalstatemocks.MockDriver
+	taskConfigV2Ops *objectmocks.MockTaskConfigV2Ops
 }
 
 func (suite *PreemptorTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
 	suite.mockResmgr = mocks.NewMockResourceManagerServiceYARPCClient(suite.mockCtrl)
-	suite.mockTaskStore = storage_mocks.NewMockTaskStore(suite.mockCtrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.mockCtrl)
 	suite.goalStateDriver = goalstatemocks.NewMockDriver(suite.mockCtrl)
+	suite.taskConfigV2Ops = objectmocks.NewMockTaskConfigV2Ops(suite.mockCtrl)
+
 	suite.preemptor = &preemptor{
 		resMgrClient:    suite.mockResmgr,
-		taskStore:       suite.mockTaskStore,
 		jobFactory:      suite.jobFactory,
 		goalStateDriver: suite.goalStateDriver,
 		config: &Config{
@@ -68,8 +68,9 @@ func (suite *PreemptorTestSuite) SetupSuite() {
 			PreemptionDequeueLimit:   10,
 			DequeuePreemptionTimeout: 100,
 		},
-		metrics:   NewMetrics(tally.NoopScope),
-		lifeCycle: lifecycle.NewLifeCycle(),
+		metrics:         NewMetrics(tally.NoopScope),
+		lifeCycle:       lifecycle.NewLifeCycle(),
+		taskConfigV2Ops: suite.taskConfigV2Ops,
 	}
 }
 
@@ -178,13 +179,13 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 	cachedJob.EXPECT().
 		AddTask(gomock.Any(), noRestartMaintTaskInfo.InstanceId).
 		Return(noRestartMaintCachedTask, nil)
-	suite.mockTaskStore.EXPECT().GetTaskConfig(
+	suite.taskConfigV2Ops.EXPECT().GetTaskConfig(
 		gomock.Any(),
 		jobID,
 		runningTaskInfo.InstanceId,
 		runningTaskInfo.Runtime.ConfigVersion).
 		Return(nil, nil, nil)
-	suite.mockTaskStore.EXPECT().GetTaskConfig(
+	suite.taskConfigV2Ops.EXPECT().GetTaskConfig(
 		gomock.Any(), jobID,
 		noRestartTaskInfo.InstanceId, noRestartTaskInfo.Runtime.ConfigVersion).
 		Return(
@@ -193,7 +194,7 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 					KillOnPreempt: true,
 				},
 			}, &models.ConfigAddOn{}, nil)
-	suite.mockTaskStore.EXPECT().GetTaskConfig(
+	suite.taskConfigV2Ops.EXPECT().GetTaskConfig(
 		gomock.Any(), jobID,
 		noRestartMaintTaskInfo.InstanceId,
 		noRestartMaintTaskInfo.Runtime.ConfigVersion).

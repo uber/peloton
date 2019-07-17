@@ -144,7 +144,6 @@ type launcher struct {
 	hostMgrClient        hostsvc.InternalHostServiceYARPCClient
 	hostMgrV1AlphaClient svc.HostManagerServiceYARPCClient
 	jobFactory           cached.JobFactory
-	taskStore            storage.TaskStore
 	taskConfigV2Ops      ormobjects.TaskConfigV2Ops
 	volumeStore          storage.PersistentVolumeStore
 	secretInfoOps        ormobjects.SecretInfoOps
@@ -174,7 +173,6 @@ func InitTaskLauncher(
 	d *yarpc.Dispatcher,
 	hostMgrClientName string,
 	jobFactory cached.JobFactory,
-	taskStore storage.TaskStore,
 	volumeStore storage.PersistentVolumeStore,
 	ormStore *ormobjects.Store,
 	parent tally.Scope,
@@ -192,7 +190,6 @@ func InitTaskLauncher(
 			hostMgrV1AlphaClient: svc.NewHostManagerServiceYARPCClient(
 				d.ClientConfig(hostMgrClientName)),
 			jobFactory:      jobFactory,
-			taskStore:       taskStore,
 			taskConfigV2Ops: ormobjects.NewTaskConfigV2Ops(ormStore),
 			volumeStore:     volumeStore,
 			secretInfoOps:   ormobjects.NewSecretInfoOps(ormStore),
@@ -383,7 +380,11 @@ func (l *launcher) GetLaunchableTasks(
 		}
 
 		// TODO: We need to add batch api's for getting all tasks in one shot
-		taskConfig, configAddOn, err := l.taskStore.GetTaskConfig(ctx, jobID, uint32(instanceID), cachedRuntime.GetConfigVersion())
+		taskConfig, configAddOn, err := l.taskConfigV2Ops.GetTaskConfig(
+			ctx,
+			jobID,
+			uint32(instanceID),
+			cachedRuntime.GetConfigVersion())
 		if err != nil {
 			log.WithError(err).WithField("task_id", ptaskID.GetValue()).
 				Error("not able to get task configuration")
