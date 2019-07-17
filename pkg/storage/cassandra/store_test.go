@@ -2320,6 +2320,32 @@ func (suite *CassandraStoreTestSuite) TestModifyUpdate() {
 		}
 	}
 
+	var jobConfig = job.JobConfig{
+		Name:          "TestJob",
+		InstanceCount: instancesTotal,
+		Type:          job.JobType_BATCH,
+		Description:   fmt.Sprintf("TestDeleteTaskConfigSuccess"),
+	}
+
+	jobConfig.ChangeLog = &peloton.ChangeLog{
+		CreatedAt: uint64(time.Now().UnixNano()),
+		UpdatedAt: uint64(time.Now().UnixNano()),
+		Version:   1,
+	}
+
+	initialJobRuntime := job.RuntimeInfo{
+		State:        job.JobState_INITIALIZED,
+		CreationTime: time.Now().Format(time.RFC3339Nano),
+		TaskStats:    make(map[string]uint32),
+		GoalState:    job.JobState_SUCCEEDED,
+		Revision: &peloton.ChangeLog{
+			CreatedAt: uint64(time.Now().UnixNano()),
+			UpdatedAt: uint64(time.Now().UnixNano()),
+			Version:   1,
+		},
+		ConfigurationVersion: jobConfig.GetChangeLog().GetVersion(),
+	}
+	err := jobRuntimeOps.Upsert(context.Background(), jobID, &initialJobRuntime)
 	// create a new update
 	suite.NoError(store.CreateUpdate(
 		context.Background(),
@@ -3260,4 +3286,59 @@ func (suite *CassandraStoreTestSuite) TestCreateTaskConfigSuccess() {
 		nil,
 		1,
 	))
+}
+
+// TestDeleteTaskConfigSuccess test deletion on taskconfig v2 table
+func (suite *CassandraStoreTestSuite) TestDeleteTaskConfig() {
+	now := time.Now()
+	instanceCount := uint32(10)
+	jobID := peloton.JobID{Value: uuid.New()}
+	var jobConfig = job.JobConfig{
+		Name:          "TestJob",
+		InstanceCount: instanceCount,
+		Type:          job.JobType_BATCH,
+		Description:   fmt.Sprintf("TestDeleteTaskConfigSuccess"),
+	}
+
+	jobConfig.ChangeLog = &peloton.ChangeLog{
+		CreatedAt: uint64(now.UnixNano()),
+		UpdatedAt: uint64(now.UnixNano()),
+		Version:   1,
+	}
+	err := suite.createJob(context.Background(), &jobID, &jobConfig, &models.ConfigAddOn{}, "uber")
+	suite.NoError(err)
+
+	for i := int64(0); i < int64(instanceCount); i++ {
+		err = store.taskConfigV2Ops.Create(
+			context.Background(),
+			&jobID,
+			i,
+			&task.TaskConfig{Name: "testTask"},
+			&models.ConfigAddOn{},
+			nil,
+			1,
+		)
+		suite.NoError(err)
+	}
+
+	for i := uint32(0); i < instanceCount; i++ {
+		taskConfigV2Row, _, err := store.taskConfigV2Ops.GetTaskConfig(
+			context.Background(),
+			&jobID,
+			i,
+			1)
+		suite.NoError(err)
+		suite.NotNil(taskConfigV2Row)
+	}
+
+	store.deleteTaskConfigV2OnDeleteJob(context.Background(), jobID.GetValue())
+
+	for i := uint32(0); i < instanceCount; i++ {
+		_, _, err := store.taskConfigV2Ops.GetTaskConfig(
+			context.Background(),
+			&jobID,
+			i,
+			1)
+		suite.Error(err)
+	}
 }

@@ -1670,8 +1670,15 @@ func (s *Store) deletePodEventsOnDeleteJob(
 // DeleteJob deletes a job and associated tasks, by job id.
 // TODO: This implementation is not perfect, as if it's getting an transient
 // error, the job or some tasks may not be fully deleted.
-func (s *Store) DeleteJob(ctx context.Context, jobID string) error {
+func (s *Store) DeleteJob(
+	ctx context.Context,
+	jobID string) error {
 	if err := s.deletePodEventsOnDeleteJob(ctx, jobID); err != nil {
+		return err
+	}
+
+	if err := s.deleteTaskConfigV2OnDeleteJob(ctx, jobID); err != nil {
+		s.metrics.JobMetrics.JobDeleteFail.Inc(1)
 		return err
 	}
 
@@ -1709,6 +1716,46 @@ func (s *Store) DeleteJob(ctx context.Context, jobID string) error {
 		s.metrics.JobMetrics.JobDelete.Inc(1)
 	}
 	return err
+}
+
+// task_config_v2 has partition key of jobID, version, instance_id
+// so we need to delete this table per job, per version, per instance
+func (s *Store) deleteTaskConfigV2OnDeleteJob(
+	ctx context.Context,
+	jobID string) error {
+	queryBuilder := s.DataStore.NewQuery()
+	jobConfig, _, err := s.jobConfigOps.GetCurrentVersion(ctx,
+		&peloton.JobID{Value: jobID})
+	if err != nil {
+		// if the config is not found, then the job has already been deleted.
+		if yarpcerrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	// loop through all the job config versions
+	for i := uint64(1); i <= jobConfig.GetChangeLog().GetVersion(); i++ {
+		// get the job config for this version
+		jobConfigWithVersoin, _, err := s.jobConfigOps.Get(ctx,
+			&peloton.JobID{Value: jobID}, i)
+		if err != nil {
+			return err
+		}
+		// get the instance count for this version
+		instanceCountWithVersion := uint32(jobConfigWithVersoin.
+			GetInstanceCount())
+		for j := uint32(0); j < instanceCountWithVersion; j++ {
+			stmt := queryBuilder.Delete(taskConfigV2Table).
+				Where(qb.Eq{"job_id": jobID}).
+				Where(qb.Eq{"instance_id": j}).
+				Where(qb.Eq{"version": i})
+
+			if err := s.applyStatement(ctx, stmt, jobID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // GetTaskByID returns the tasks (tasks.TaskInfo) for a peloton job
