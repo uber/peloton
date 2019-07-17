@@ -224,6 +224,14 @@ func (h *ServiceHandler) TerminateLeases(
 		"TerminateLeases not implemented")
 }
 
+func (h *ServiceHandler) ChangeHostPool(
+	ctx context.Context,
+	req *svc.ChangeHostPoolRequest,
+) (resp *svc.ChangeHostPoolResponse, err error) {
+	return nil, yarpcerrors.UnimplementedErrorf(
+		"ChangeHostPool not implemented")
+}
+
 // validateLaunchPodsRequest does some sanity checks on launch pods request.
 func validateLaunchPodsRequest(req *svc.LaunchPodsRequest) error {
 	if len(req.Pods) <= 0 {
