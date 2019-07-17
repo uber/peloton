@@ -16,12 +16,16 @@ package hostcache
 
 import (
 	"fmt"
+	"runtime"
+	"sync"
 	"testing"
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
+	"go.uber.org/atomic"
 
+	p2kscalar "github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 
 	"github.com/pborman/uuid"
@@ -81,6 +85,75 @@ func generatePodToResMap(
 		podMap[uuid.New()] = createResource(cpu, mem)
 	}
 	return podMap
+}
+
+// TestHandlePodEvent makes sure that we release the pod resources when we
+// get a pod deleted event.
+// In this test we acquire the host that has room for 1 pod, handle a delete
+// event, and make sure we can re-acquire that host for another pod.
+// This test is run with 100 goroutines trying to acquire the host, and once
+// one of the thread succeeds, we send a DeletePod event to notify that the
+// pod ran to completion and was deleted.
+// Then we expect another thread to acquire that host successfully.
+// We should count 2 total successful matches.
+func (suite *HostCacheTestSuite) TestHandlePodEvent() {
+	s := newHostSummary(_hostname, _capacity, _version).(*hostSummary)
+	s.status = ReadyHost
+	s.allocated = createResource(0, 0)
+
+	filter := &hostmgr.HostFilter{
+		ResourceConstraint: &hostmgr.ResourceConstraint{
+			Minimum: &pod.ResourceSpec{
+				CpuLimit:   9.0,
+				MemLimitMb: 90.0,
+			},
+		},
+	}
+
+	resMap := map[string]scalar.Resources{
+		"podid1": createResource(9, 90),
+	}
+
+	matches, failures := atomic.NewInt32(0), atomic.NewInt32(0)
+	eventHandled := atomic.NewBool(false)
+
+	wg := sync.WaitGroup{}
+	wg.Add(100)
+	for i := 0; i < 100; i++ {
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 10; j++ {
+				match := s.TryMatch(filter)
+				if match.Result != hostmgr.HostFilterResult_HOST_FILTER_MATCH {
+					failures.Inc()
+					runtime.Gosched()
+					continue
+				}
+				matches.Inc()
+				err := s.CompleteLease(s.leaseID, resMap)
+				suite.NoError(err)
+
+				if old := eventHandled.Swap(true); old {
+					continue
+				}
+
+				evt := &p2kscalar.PodEvent{
+					EventType: p2kscalar.DeletePod,
+					Event: &pod.PodEvent{
+						PodId: &peloton.PodID{
+							Value: "podid1",
+						},
+					},
+				}
+				err = s.HandlePodEvent(evt)
+				suite.NoError(err)
+			}
+		}()
+	}
+
+	wg.Wait()
+	suite.Equal(int32(2), matches.Load())
+	suite.Equal(int32(998), failures.Load())
 }
 
 // TestTryMatchReadyHost tests various combinations of trying to match host

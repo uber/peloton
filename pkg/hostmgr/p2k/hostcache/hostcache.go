@@ -232,12 +232,12 @@ func (c *hostCache) handlePodEvent(event *scalar.PodEvent) {
 	summary, found := c.hostIndex[hostname]
 	if !found {
 		// TODO(pourchet): Figure out how to handle this.
-		// This should never happen, it means that we receive a pod
-		// event on a host that we have no data for.
+		// This could happen if reconciliation was not done before
+		// we start processing pod events.
 		log.WithFields(log.Fields{
 			"hostname": hostname,
 			"pod_id":   event.Event.GetPodId().GetValue(),
-		}).Errorf("delete pod event ignored: host summary not found")
+		}).Error("delete pod event ignored: host summary not found")
 		return
 	}
 
@@ -246,7 +246,7 @@ func (c *hostCache) handlePodEvent(event *scalar.PodEvent) {
 		log.WithFields(log.Fields{
 			"hostname": hostname,
 			"pod_id":   event.Event.GetPodId().GetValue(),
-		}).Errorf("handle pod event: %v", err)
+		}).WithError(err).Error("handle pod event")
 	}
 }
 
