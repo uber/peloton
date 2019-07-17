@@ -235,14 +235,15 @@ func (f *jobFactory) publishMetrics() map[pbtask.TaskState]map[pbtask.TaskState]
 	// Iterate through jobs, tasks and count
 	jobs := f.GetAllJobs()
 	var (
-		totalThrottledTasks  int
-		spreadQuotientSum    float64
-		spreadQuotientCount  int64
-		slaViolatedJobIDs    []string
-		unavailableInstances uint32
-		unknownInstances     uint32
+		totalThrottledTasks int
+		spreadQuotientSum   float64
+		spreadQuotientCount int64
+		slaViolatedJobIDs   []string
 	)
 	for _, j := range jobs {
+		unavailableInstances := uint32(0)
+		unknownInstances := uint32(0)
+
 		taskStateCount, throttledTasks, spread := j.GetTaskStateCount()
 		for stateSummary, count := range taskStateCount {
 			currentState := stateSummary.CurrentState

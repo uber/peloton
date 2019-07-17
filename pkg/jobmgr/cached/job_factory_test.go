@@ -90,12 +90,12 @@ func TestStartStop(t *testing.T) {
 
 // TestPublishMetrics tests publishing metrics from the job factory.
 func TestPublishMetrics(t *testing.T) {
-	testTaskScope := tally.NewTestScope("", nil)
+	testScope := tally.NewTestScope("", nil)
 	f := &jobFactory{
 		jobs:        map[string]*job{},
-		mtx:         NewMetrics(tally.NoopScope),
+		mtx:         NewMetrics(testScope),
 		running:     true,
-		taskMetrics: NewTaskMetrics(testTaskScope),
+		taskMetrics: NewTaskMetrics(testScope),
 	}
 
 	jobID := &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f5222"}
@@ -202,9 +202,62 @@ func TestPublishMetrics(t *testing.T) {
 		stateCount[pbtask.TaskState_PENDING][pbtask.TaskState_SUCCEEDED],
 		1)
 
-	sm, ok := testTaskScope.Snapshot().Gauges()["mean_spread_quotient+"]
+	sm, ok := testScope.Snapshot().Gauges()["mean_spread_quotient+"]
 	assert.True(t, ok)
 	assert.Equal(t, 1.5, sm.Value())
+
+	jobID = &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f112"}
+	taskInfos = make(map[uint32]*pbtask.TaskInfo, 1)
+	taskInfos[0] = &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:     pbtask.TaskState_PENDING,
+			GoalState: pbtask.TaskState_RUNNING,
+			Revision:  &peloton.ChangeLog{Version: 1},
+			Healthy:   pbtask.HealthState_HEALTH_UNKNOWN,
+		},
+	}
+	j = f.AddJob(jobID)
+	cachedJob = j.(*job)
+	cachedJob.config = &cachedConfig{
+		jobType: pbjob.JobType_SERVICE,
+		sla: &pbjob.SlaConfig{
+			MaximumUnavailableInstances: 0,
+		},
+	}
+	cachedJob.jobType = pbjob.JobType_SERVICE
+	cachedJob.runtime = &pbjob.RuntimeInfo{}
+	j.ReplaceTasks(taskInfos, true)
+
+	f.publishMetrics()
+	svm, ok := testScope.Snapshot().Gauges()["sla_violated_jobs+"]
+	assert.True(t, ok)
+	assert.Equal(t, 1.0, svm.Value())
+
+	jobID = &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f115"}
+	taskInfos[0] = &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:     pbtask.TaskState_RUNNING,
+			GoalState: pbtask.TaskState_RUNNING,
+			Revision:  &peloton.ChangeLog{Version: 1},
+			Healthy:   pbtask.HealthState_HEALTHY,
+		},
+	}
+	j = f.AddJob(jobID)
+	cachedJob = j.(*job)
+	cachedJob.config = &cachedConfig{
+		jobType: pbjob.JobType_SERVICE,
+		sla: &pbjob.SlaConfig{
+			MaximumUnavailableInstances: 0,
+		},
+	}
+	cachedJob.jobType = pbjob.JobType_SERVICE
+	cachedJob.runtime = &pbjob.RuntimeInfo{}
+	j.ReplaceTasks(taskInfos, true)
+
+	f.publishMetrics()
+	svm, ok = testScope.Snapshot().Gauges()["sla_violated_jobs+"]
+	assert.True(t, ok)
+	assert.Equal(t, 1.0, svm.Value())
 }
 
 // BenchmarkPublishMetrics benchmarks the time needed to call publishMetrics
@@ -259,9 +312,9 @@ func BenchmarkPublishMetrics(b *testing.B) {
 	finishWg.Wait()
 }
 
-// BenchmarkAddJobWhichPublishingMetrics benchmarks jobFactory.AddJob
+// BenchmarkAddJobWhilePublishingMetrics benchmarks jobFactory.AddJob
 // while publishMetrics is going on
-func BenchmarkAddJobWhichPublishingMetrics(b *testing.B) {
+func BenchmarkAddJobWhilePublishingMetrics(b *testing.B) {
 	b.StopTimer()
 
 	numberOfJob := 600
