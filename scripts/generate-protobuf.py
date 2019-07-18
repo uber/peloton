@@ -46,6 +46,10 @@ def mflags(files, go_loc):
         ",Mpeloton/api/v1alpha/peloton.proto="
         "%speloton/api/v1alpha/peloton" % go_loc
     )
+    m += (
+        ",Mqos/v1alpha1/qos.proto="
+        "%sqos/v1alpha1/qos" % go_loc
+    )
     return m
 
 

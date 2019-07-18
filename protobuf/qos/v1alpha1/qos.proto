@@ -1,0 +1,68 @@
+// This file defines the QoS advisor to Peloton interfaces.
+// QoS IDL needs to be checked in to the Peloton repo because Peloton will
+// need client-side bindings for the API. For external users of Peloton,
+// QoS is an optional component that; if not present then certain advanced
+// functionality (such as load-aware placement) will not work. Basic use case
+// will continue to work. External users can provide their own implementations
+// of QoS, and as long as those adhere to this IDL, Peloton should be able to
+// utilize that external QoS.
+
+syntax = "proto3";
+package qos.v1alpha1.qos;
+
+message GetHostMetricsRequest {}
+
+message GetHostMetricsResponse {
+  // Map from host name to metric(s) that serve as an abstraction for load
+  map<string, Metrics> hosts = 1;
+}
+
+message GetServicesImpactedRequest{}
+
+message GetServicesImpactedResponse {
+  // Map from host name to list of service instances along with resource requirements
+  map<string, ServiceInstances> instances = 1;
+}
+
+// List of impacted service instances on a host
+message ServiceInstances {
+  // List of service instances
+  repeated ServiceInstance instances = 1;
+  // Resources that need to be freed up on the host
+  ResourcesNeeded resources = 2;
+}
+
+// Abstraction for representing service instances
+message ServiceInstance {
+  // Service identifier - this will be the Peloton job UUID
+  string service_id = 1;
+  // Instance identifier (can be Mesos task id or pod name or pod id)
+  string instance_id = 2;
+  // Tags will contain information about some QoS specific metadata.
+  // These are not the labels in the pod.
+  map<string, string> tags = 3;
+}
+
+// Resources that need to be freed up on the host
+message ResourcesNeeded {
+  // Number of CPUs that need to be freed up on the host
+  uint64 cpu = 1;
+  // Amount of memory (bytes) that needs to be freed up on the host
+  uint64 memory = 2;
+}
+
+// Flexible representation of load
+message Metrics {
+  // Score ranges from 0 (least loaded/utilized) to 100 (most loaded/utilized)
+  sint32 score = 1;
+}
+
+// gRPC service for the interface between Peloton and QoS advisor
+service QoSAdvisorService {
+  // Get the metrics of all hosts in the cluster
+  rpc GetHostMetrics (GetHostMetricsRequest) returns (GetHostMetricsResponse);
+  // Get all impacted service instances in the cluster along with associated CPU and memory metrics.
+  // Impacted services are the ones that are either noisy neighbors themselves (strong eviction candidates)
+  // or victims of noisy neighbors. The tags will indicate which ones are which.
+  rpc GetServicesImpacted(GetServicesImpactedRequest) returns (GetServicesImpactedResponse);
+}
