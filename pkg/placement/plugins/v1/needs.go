@@ -15,10 +15,12 @@
 package plugins_v1
 
 import (
+	peloton_api_v0_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	v1alpha "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	pod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
 
+	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/placement/plugins"
 )
 
@@ -35,9 +37,8 @@ func PlacementNeedsToHostFilter(needs plugins.PlacementNeeds) *hostmgr.HostFilte
 				GpuLimit:    needs.Resources.GPU,
 			},
 		},
-		MaxHosts:             needs.MaxHosts,
-		Hint:                 &hostmgr.FilterHint{},
-		SchedulingConstraint: nil, // TODO
+		MaxHosts: needs.MaxHosts,
+		Hint:     &hostmgr.FilterHint{},
 	}
 
 	for podID, hostname := range needs.HostHints {
@@ -47,5 +48,12 @@ func PlacementNeedsToHostFilter(needs plugins.PlacementNeeds) *hostmgr.HostFilte
 		}
 		filter.Hint.HostHint = append(filter.Hint.HostHint, hint)
 	}
+
+	if cast, ok := needs.Constraint.(*peloton_api_v0_task.Constraint); ok && cast != nil {
+		filter.SchedulingConstraint = api.ConvertTaskConstraintsToPodConstraints(
+			[]*peloton_api_v0_task.Constraint{cast},
+		)[0]
+	}
+
 	return filter
 }
