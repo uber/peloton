@@ -60,6 +60,7 @@ type jobTestSuite struct {
 	jobStore           *storemocks.MockJobStore
 	taskStore          *storemocks.MockTaskStore
 	updateStore        *storemocks.MockUpdateStore
+	activeJobsOps      *objectmocks.MockActiveJobsOps
 	jobIndexOps        *objectmocks.MockJobIndexOps
 	jobNameToIDOps     *objectmocks.MockJobNameToIDOps
 	jobConfigOps       *objectmocks.MockJobConfigOps
@@ -81,6 +82,7 @@ func (suite *jobTestSuite) SetupTest() {
 	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
 	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
 	suite.updateStore = storemocks.NewMockUpdateStore(suite.ctrl)
+	suite.activeJobsOps = objectmocks.NewMockActiveJobsOps(suite.ctrl)
 	suite.jobIndexOps = objectmocks.NewMockJobIndexOps(suite.ctrl)
 	suite.jobNameToIDOps = objectmocks.NewMockJobNameToIDOps(suite.ctrl)
 	suite.jobConfigOps = objectmocks.NewMockJobConfigOps(suite.ctrl)
@@ -95,6 +97,7 @@ func (suite *jobTestSuite) SetupTest() {
 		suite.jobStore,
 		suite.taskStore,
 		suite.updateStore,
+		suite.activeJobsOps,
 		suite.jobIndexOps,
 		suite.jobNameToIDOps,
 		suite.jobConfigOps,
@@ -113,6 +116,7 @@ func (suite *jobTestSuite) initializeJob(
 	jobStore *storemocks.MockJobStore,
 	taskStore *storemocks.MockTaskStore,
 	updateStore *storemocks.MockUpdateStore,
+	activeJobsOps *objectmocks.MockActiveJobsOps,
 	jobIndexOps *objectmocks.MockJobIndexOps,
 	jobNameToIDOps *objectmocks.MockJobNameToIDOps,
 	jobConfigOps *objectmocks.MockJobConfigOps,
@@ -127,6 +131,7 @@ func (suite *jobTestSuite) initializeJob(
 			jobStore:           jobStore,
 			taskStore:          taskStore,
 			updateStore:        updateStore,
+			activeJobsOps:      activeJobsOps,
 			jobIndexOps:        jobIndexOps,
 			jobNameToIDOps:     jobNameToIDOps,
 			jobConfigOps:       jobConfigOps,
@@ -1538,8 +1543,8 @@ func (suite *jobTestSuite) TestJobCreate() {
 		}).
 		Return(nil)
 
-	suite.jobStore.EXPECT().
-		AddActiveJob(gomock.Any(), suite.jobID).Return(nil)
+	suite.activeJobsOps.EXPECT().
+		Create(gomock.Any(), suite.jobID).Return(nil)
 
 	suite.jobRuntimeOps.EXPECT().
 		Upsert(gomock.Any(), suite.jobID, gomock.Any()).
@@ -2686,8 +2691,8 @@ func (suite *jobTestSuite) TestDelete() {
 	suite.jobIndexOps.EXPECT().
 		Delete(gomock.Any(), suite.jobID).
 		Return(nil)
-	suite.jobStore.EXPECT().
-		DeleteActiveJob(gomock.Any(), suite.jobID).
+	suite.activeJobsOps.EXPECT().
+		Delete(gomock.Any(), suite.jobID).
 		Return(nil)
 
 	suite.job.Delete(context.Background())
@@ -2714,19 +2719,19 @@ func (suite *jobTestSuite) TestDeleteFailure() {
 	suite.Error(err)
 	suite.Equal("jobIndexOps error", yarpcerrors.ErrorMessage(err))
 
-	// DeleteActiveJob error
+	// Delete active job error.
 	suite.jobStore.EXPECT().
 		DeleteJob(gomock.Any(), suite.jobID.GetValue()).
 		Return(nil)
 	suite.jobIndexOps.EXPECT().
 		Delete(gomock.Any(), suite.jobID).
 		Return(nil)
-	suite.jobStore.EXPECT().
-		DeleteActiveJob(gomock.Any(), suite.jobID).
-		Return(yarpcerrors.InternalErrorf("DeleteActiveJob error"))
+	suite.activeJobsOps.EXPECT().
+		Delete(gomock.Any(), suite.jobID).
+		Return(yarpcerrors.InternalErrorf("Delete active jobs error"))
 	err = suite.job.Delete(context.Background())
 	suite.Error(err)
-	suite.Equal("DeleteActiveJob error", yarpcerrors.ErrorMessage(err))
+	suite.Equal("Delete active jobs error", yarpcerrors.ErrorMessage(err))
 }
 
 // TestRecalculateResourceUsage tests recalculating the resource usage for job
@@ -5714,8 +5719,8 @@ func (suite *jobTestSuite) TestJobRollingCreateSuccess() {
 		},
 	}
 
-	suite.jobStore.EXPECT().
-		AddActiveJob(gomock.Any(), suite.jobID).Return(nil)
+	suite.activeJobsOps.EXPECT().
+		Create(gomock.Any(), suite.jobID).Return(nil)
 
 	suite.jobRuntimeOps.EXPECT().
 		Upsert(gomock.Any(), suite.jobID, gomock.Any()).
@@ -5868,7 +5873,7 @@ func (suite *jobTestSuite) TestJobRollingCreateNilConfigFailure() {
 
 // TestJobRollingCreateAddActiveJobFailure tests job
 // rolling create in cache and db fails due to call
-// to AddActiveJob fails
+// to Create fails
 func (suite *jobTestSuite) TestJobRollingCreateAddActiveJobFailure() {
 	jobConfig := &pbjob.JobConfig{
 		InstanceCount: 10,
@@ -5896,8 +5901,8 @@ func (suite *jobTestSuite) TestJobRollingCreateAddActiveJobFailure() {
 		},
 	}
 
-	suite.jobStore.EXPECT().
-		AddActiveJob(gomock.Any(), suite.jobID).
+	suite.activeJobsOps.EXPECT().
+		Create(gomock.Any(), suite.jobID).
 		Return(yarpcerrors.InternalErrorf("test error"))
 
 	err := suite.job.RollingCreate(
@@ -5941,8 +5946,8 @@ func (suite *jobTestSuite) TestJobRollingCreateJobRuntimeFailure() {
 		},
 	}
 
-	suite.jobStore.EXPECT().
-		AddActiveJob(gomock.Any(), suite.jobID).Return(nil)
+	suite.activeJobsOps.EXPECT().
+		Create(gomock.Any(), suite.jobID).Return(nil)
 
 	suite.jobRuntimeOps.EXPECT().
 		Upsert(gomock.Any(), suite.jobID, gomock.Any()).

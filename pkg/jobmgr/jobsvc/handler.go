@@ -99,6 +99,7 @@ func InitServiceHandler(
 type serviceHandler struct {
 	jobStore        storage.JobStore
 	taskStore       storage.TaskStore
+	activeJobsOps   ormobjects.ActiveJobsOps
 	jobIndexOps     ormobjects.JobIndexOps
 	jobConfigOps    ormobjects.JobConfigOps
 	jobRuntimeOps   ormobjects.JobRuntimeOps
@@ -998,7 +999,7 @@ func (h *serviceHandler) GetActiveJobs(
 			Debug("JobManager.GetActiveJobs succeeded")
 	}()
 
-	jobIDs, err := h.jobStore.GetActiveJobs(ctx)
+	jobIDs, err := h.activeJobsOps.GetAll(ctx)
 	if err != nil {
 		return nil, err
 	}

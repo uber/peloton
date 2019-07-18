@@ -59,6 +59,7 @@ type recoveryTestSuite struct {
 	mockCtrl          *gomock.Controller
 	mockJobStore      *store_mocks.MockJobStore
 	mockTaskStore     *store_mocks.MockTaskStore
+	activeJobsOps     *objectmocks.MockActiveJobsOps
 	jobConfigOps      *objectmocks.MockJobConfigOps
 	jobRuntimeOps     *objectmocks.MockJobRuntimeOps
 	mockResPoolOps    *objectmocks.MockResPoolOps
@@ -72,6 +73,7 @@ func (suite *recoveryTestSuite) SetupSuite() {
 		Return(suite.getResPools(), nil).AnyTimes()
 	suite.mockJobStore = store_mocks.NewMockJobStore(suite.mockCtrl)
 	suite.mockTaskStore = store_mocks.NewMockTaskStore(suite.mockCtrl)
+	suite.activeJobsOps = objectmocks.NewMockActiveJobsOps(suite.mockCtrl)
 	suite.jobConfigOps = objectmocks.NewMockJobConfigOps(suite.mockCtrl)
 	suite.jobRuntimeOps = objectmocks.NewMockJobRuntimeOps(suite.mockCtrl)
 	suite.mockHostmgrClient = host_mocks.NewMockInternalHostServiceYARPCClient(suite.mockCtrl)
@@ -125,8 +127,8 @@ func (suite *recoveryTestSuite) SetupSuite() {
 func (suite *recoveryTestSuite) SetupTest() {
 	suite.recovery = NewRecovery(
 		tally.NoopScope,
-		suite.mockJobStore,
 		suite.mockTaskStore,
+		suite.activeJobsOps,
 		suite.jobConfigOps,
 		suite.jobRuntimeOps,
 		suite.handler,
@@ -356,16 +358,16 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 		jobs[i] = &peloton.JobID{Value: fmt.Sprintf("TestJob_%d", i)}
 	}
 
-	suite.mockJobStore.EXPECT().
-		GetActiveJobs(gomock.Any()).
-		Return(jobs, nil)
-
 	suite.jobRuntimeOps.EXPECT().
 		Get(context.Background(), jobs[0]).
 		Return(&job.RuntimeInfo{
 			State:     job.JobState_RUNNING,
 			GoalState: job.JobState_SUCCEEDED,
 		}, nil)
+
+	suite.activeJobsOps.EXPECT().
+		GetAll(gomock.Any()).
+		Return(jobs, nil)
 
 	suite.jobConfigOps.EXPECT().
 		Get(context.Background(), jobs[0], gomock.Any()).
@@ -462,9 +464,7 @@ func (suite *recoveryTestSuite) TestNonRunningJobError() {
 		jobs[i] = &peloton.JobID{Value: fmt.Sprintf("TestJob_%d", i)}
 	}
 
-	suite.mockJobStore.EXPECT().
-		GetActiveJobs(gomock.Any()).
-		Return(jobs, nil)
+	suite.activeJobsOps.EXPECT().GetAll(gomock.Any()).Return(jobs, nil)
 
 	suite.jobRuntimeOps.EXPECT().
 		Get(context.Background(), jobs[0]).

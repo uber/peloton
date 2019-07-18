@@ -27,8 +27,6 @@ import (
 	pb_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
-	"github.com/uber/peloton/pkg/storage/cassandra"
-	store_mocks "github.com/uber/peloton/pkg/storage/mocks"
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
@@ -41,7 +39,7 @@ import (
 )
 
 var (
-	csStore        *cassandra.Store
+	activeJobsOps  ormobjects.ActiveJobsOps
 	jobConfigOps   ormobjects.JobConfigOps
 	jobRuntimeOps  ormobjects.JobRuntimeOps
 	receivedJobIDs []string
@@ -56,9 +54,6 @@ func init() {
 	ormobjects.MigrateSchema(conf)
 
 	var err error
-	csStore, err = cassandra.NewStore(
-		cassandra.GenerateTestCassandraConfig(),
-		scope)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -71,6 +66,7 @@ func init() {
 		log.Fatal(ormErr)
 	}
 
+	activeJobsOps = ormobjects.NewActiveJobsOps(ormStore)
 	jobConfigOps = ormobjects.NewJobConfigOps(ormStore)
 	jobRuntimeOps = ormobjects.NewJobRuntimeOps(ormStore)
 }
@@ -147,7 +143,7 @@ func createJob(
 		return nil, err
 	}
 
-	if err := csStore.AddActiveJob(ctx, jobID); err != nil {
+	if err := activeJobsOps.Create(ctx, jobID); err != nil {
 		return nil, err
 	}
 
@@ -220,7 +216,7 @@ func TestJobRecoveryWithStore(t *testing.T) {
 	err = RecoverActiveJobs(
 		ctx,
 		scope,
-		csStore,
+		activeJobsOps,
 		jobConfigOps,
 		jobRuntimeOps,
 		recoverAllTask)
@@ -229,9 +225,9 @@ func TestJobRecoveryWithStore(t *testing.T) {
 
 	// Delete these jobIDs from active jobs table to clear the state for
 	// next tests
-	err = csStore.DeleteActiveJob(ctx, pendingJobID)
+	err = activeJobsOps.Delete(ctx, pendingJobID)
 	assert.NoError(t, err)
-	err = csStore.DeleteActiveJob(ctx, runningJobID)
+	err = activeJobsOps.Delete(ctx, runningJobID)
 	assert.NoError(t, err)
 }
 
@@ -251,13 +247,13 @@ func TestJobRecoveryMissingJobsWithStore(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Add both jobs to active_jobs
-	err = csStore.AddActiveJob(ctx, missingConfigID)
+	err = activeJobsOps.Create(ctx, missingConfigID)
 	assert.NoError(t, err)
-	err = csStore.AddActiveJob(ctx, missingRuntimeID)
+	err = activeJobsOps.Create(ctx, missingRuntimeID)
 	assert.NoError(t, err)
 
 	// Make sure active jobs contains these entries
-	jobs, err := csStore.GetActiveJobs(ctx)
+	jobs, err := activeJobsOps.GetAll(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(jobs))
 
@@ -265,7 +261,7 @@ func TestJobRecoveryMissingJobsWithStore(t *testing.T) {
 	err = RecoverActiveJobs(
 		ctx,
 		scope,
-		csStore,
+		activeJobsOps,
 		jobConfigOps,
 		jobRuntimeOps,
 		recoverAllTask)
@@ -273,7 +269,7 @@ func TestJobRecoveryMissingJobsWithStore(t *testing.T) {
 	assert.Equal(t, 0, len(receivedJobIDs))
 
 	// Make sure both jobs have been removed from active_jobs
-	jobs, err = csStore.GetActiveJobs(ctx)
+	jobs, err = activeJobsOps.GetAll(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(jobs))
 }
@@ -296,15 +292,9 @@ func TestRecoveryMissingJobRuntime(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	ctx := context.Background()
-	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	mockActiveJobsOps := objectmocks.NewMockActiveJobsOps(ctrl)
 	mockJobConfigOps := objectmocks.NewMockJobConfigOps(ctrl)
 	mockJobRuntimeOps := objectmocks.NewMockJobRuntimeOps(ctrl)
-
-	// recoverJobsBatch should pass even if there is no job_id present in
-	// job_runtime. It should just skip over to a new job.
-	mockJobStore.EXPECT().
-		GetActiveJobs(ctx).
-		Return([]*peloton.JobID{missingJobID}, nil)
 
 	// missingJobID doesn't have job_runtime
 	mockJobRuntimeOps.EXPECT().
@@ -318,16 +308,22 @@ func TestRecoveryMissingJobRuntime(t *testing.T) {
 		Get(ctx, pendingJobID).
 		Return(&jobRuntime, nil)
 
+	mockActiveJobsOps.EXPECT().
+		GetAll(ctx).
+		Return([]*peloton.JobID{missingJobID}, nil)
+
+	mockActiveJobsOps.EXPECT().
+		Delete(ctx, missingJobID).
+		Return(nil)
+
 	mockJobConfigOps.EXPECT().
 		Get(ctx, pendingJobID, gomock.Any()).
 		Return(&jobConfig, &models.ConfigAddOn{}, nil).AnyTimes()
 
-	mockJobStore.EXPECT().DeleteActiveJob(ctx, missingJobID).Return(nil)
-
 	err := RecoverActiveJobs(
 		ctx,
 		scope,
-		mockJobStore,
+		mockActiveJobsOps,
 		mockJobConfigOps,
 		mockJobRuntimeOps,
 		recoverAllTask,
@@ -354,15 +350,9 @@ func TestRecoveryMissingJobConfig(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	ctx := context.Background()
-	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	mockActiveJobsOps := objectmocks.NewMockActiveJobsOps(ctrl)
 	mockJobConfigOps := objectmocks.NewMockJobConfigOps(ctrl)
 	mockJobRuntimeOps := objectmocks.NewMockJobRuntimeOps(ctrl)
-
-	// recoverJobsBatch should pass even if there is no job_id present in
-	// job_config. It should just skip over to a new job.
-	mockJobStore.EXPECT().
-		GetActiveJobs(ctx).
-		Return([]*peloton.JobID{missingJobID, pendingJobID}, nil)
 
 	mockJobRuntimeOps.EXPECT().
 		Get(ctx, missingJobID).
@@ -371,6 +361,12 @@ func TestRecoveryMissingJobConfig(t *testing.T) {
 	mockJobRuntimeOps.EXPECT().
 		Get(ctx, pendingJobID).
 		Return(&jobRuntime, nil)
+
+	// recoverJobsBatch should pass even if there is no job_id present in
+	// job_config. It should just skip over to a new job.
+	mockActiveJobsOps.EXPECT().
+		GetAll(ctx).
+		Return([]*peloton.JobID{missingJobID, pendingJobID}, nil)
 
 	// missingJobID doesn't have job_config
 	mockJobConfigOps.EXPECT().
@@ -386,12 +382,12 @@ func TestRecoveryMissingJobConfig(t *testing.T) {
 		Get(ctx, pendingJobID, gomock.Any()).
 		Return(&jobConfig, &models.ConfigAddOn{}, nil).AnyTimes()
 
-	mockJobStore.EXPECT().DeleteActiveJob(ctx, missingJobID).Return(nil)
+	mockActiveJobsOps.EXPECT().Delete(ctx, missingJobID).Return(nil)
 
 	err = RecoverActiveJobs(
 		ctx,
 		scope,
-		mockJobStore,
+		mockActiveJobsOps,
 		mockJobConfigOps,
 		mockJobRuntimeOps,
 		recoverAllTask,
@@ -425,15 +421,9 @@ func TestRecoveryTerminalJobs(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	ctx := context.Background()
-	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	mockActiveJobsOps := objectmocks.NewMockActiveJobsOps(ctrl)
 	mockJobConfigOps := objectmocks.NewMockJobConfigOps(ctrl)
 	mockJobRuntimeOps := objectmocks.NewMockJobRuntimeOps(ctrl)
-
-	// recoverJobsBatch should pass even if the job to be recovered is terminal
-	// and if it is a batch job, it should be delete from the active_jobs table
-	mockJobStore.EXPECT().
-		GetActiveJobs(ctx).
-		Return([]*peloton.JobID{nonTerminalJobID, terminalJobID}, nil)
 
 	mockJobRuntimeOps.EXPECT().
 		Get(ctx, terminalJobID).
@@ -441,6 +431,12 @@ func TestRecoveryTerminalJobs(t *testing.T) {
 	mockJobRuntimeOps.EXPECT().
 		Get(ctx, nonTerminalJobID).
 		Return(&nonTerminalJobRuntime, nil)
+
+	// recoverJobsBatch should pass even if the job to be recovered is terminal
+	// and if it is a batch job, it should be delete from the active_jobs table
+	mockActiveJobsOps.EXPECT().
+		GetAll(ctx).
+		Return([]*peloton.JobID{nonTerminalJobID, terminalJobID}, nil)
 
 	mockJobConfigOps.EXPECT().
 		Get(ctx, terminalJobID, gomock.Any()).
@@ -450,12 +446,12 @@ func TestRecoveryTerminalJobs(t *testing.T) {
 		Return(&jobConfig, &models.ConfigAddOn{}, nil)
 
 	// Expect this call because this is a terminal BATCH job
-	mockJobStore.EXPECT().DeleteActiveJob(ctx, terminalJobID).Return(nil)
+	mockActiveJobsOps.EXPECT().Delete(ctx, terminalJobID).Return(nil)
 
 	err = RecoverActiveJobs(
 		ctx,
 		scope,
-		mockJobStore,
+		mockActiveJobsOps,
 		mockJobConfigOps,
 		mockJobRuntimeOps,
 		recoverAllTask,
@@ -466,10 +462,11 @@ func TestRecoveryTerminalJobs(t *testing.T) {
 	jobConfig = pb_job.JobConfig{
 		Type: pb_job.JobType_SERVICE,
 	}
+
 	// recoverJobsBatch should pass even if the job to be recovered is terminal
 	// and if it is a batch job, it should be delete from the active_jobs table
-	mockJobStore.EXPECT().
-		GetActiveJobs(ctx).
+	mockActiveJobsOps.EXPECT().
+		GetAll(ctx).
 		Return([]*peloton.JobID{terminalJobID}, nil)
 
 	mockJobRuntimeOps.EXPECT().
@@ -480,12 +477,12 @@ func TestRecoveryTerminalJobs(t *testing.T) {
 		Get(ctx, terminalJobID, gomock.Any()).
 		Return(&jobConfig, &models.ConfigAddOn{}, nil)
 
-	// This time, we don't expect a call to DeleteActiveJob
+	// This time, we don't expect a call to Delete.
 
 	err = RecoverActiveJobs(
 		ctx,
 		scope,
-		mockJobStore,
+		mockActiveJobsOps,
 		mockJobConfigOps,
 		mockJobRuntimeOps,
 		recoverAllTask,
@@ -498,18 +495,18 @@ func TestRecoveryTerminalJobs(t *testing.T) {
 func TestRecoveryErrors(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ctx := context.Background()
-	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	mockActiveJobsOps := objectmocks.NewMockActiveJobsOps(ctrl)
 	mockJobConfigOps := objectmocks.NewMockJobConfigOps(ctrl)
 	mockJobRuntimeOps := objectmocks.NewMockJobRuntimeOps(ctrl)
 
-	//Test GetActiveJobs error
-	mockJobStore.EXPECT().
-		GetActiveJobs(ctx).
-		Return(nil, fmt.Errorf("Fake GetActiveJobs error"))
+	// Test active_jobs GetAll error.
+	mockActiveJobsOps.EXPECT().
+		GetAll(ctx).
+		Return(nil, fmt.Errorf("Fake GetAll active jobs error"))
 	err := RecoverActiveJobs(
 		ctx,
 		scope,
-		mockJobStore,
+		mockActiveJobsOps,
 		mockJobConfigOps,
 		mockJobRuntimeOps,
 		recoverAllTask,
@@ -543,32 +540,32 @@ func TestRecoveryWithFailedJobBatches(t *testing.T) {
 	}
 
 	err = RecoverActiveJobs(
-		ctx, scope, csStore, jobConfigOps, jobRuntimeOps, recoverFailTaskRandomly)
+		ctx, scope, activeJobsOps, jobConfigOps, jobRuntimeOps, recoverFailTaskRandomly)
 	assert.Error(t, err)
 
 	for _, jobID := range activeJobs {
 		// Delete these jobIDs from active jobs table to clear the state for
 		// next tests
-		err = csStore.DeleteActiveJob(ctx, jobID)
+		err = activeJobsOps.Delete(ctx, jobID)
 		assert.NoError(t, err)
 	}
 }
 
-// TestDeleteActiveJobFailure simulates DeleteActiveJob failure and ensures
-// that the recovery still goes through fine
+// TestDeleteActiveJobFailure simulates Delete failure and ensures
+// that the recovery still goes through fine.
 func TestDeleteActiveJobFailure(t *testing.T) {
 	var missingJobID = &peloton.JobID{Value: uuid.New()}
 
 	ctrl := gomock.NewController(t)
 	ctx := context.Background()
-	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	mockActiveJobsOps := objectmocks.NewMockActiveJobsOps(ctrl)
 	mockJobConfigOps := objectmocks.NewMockJobConfigOps(ctrl)
 	mockJobRuntimeOps := objectmocks.NewMockJobRuntimeOps(ctrl)
 
 	// recoverJobsBatch should pass even if there is no job_id present in
 	// job_runtime. It should just skip over to a new job.
-	mockJobStore.EXPECT().
-		GetActiveJobs(ctx).
+	mockActiveJobsOps.EXPECT().
+		GetAll(ctx).
 		Return([]*peloton.JobID{missingJobID}, nil)
 
 	// missingJobID doesn't have job_runtime
@@ -580,14 +577,14 @@ func TestDeleteActiveJobFailure(t *testing.T) {
 				"Cannot find job wth jobID %v", missingJobID.GetValue()),
 		)
 
-	mockJobStore.EXPECT().
-		DeleteActiveJob(ctx, missingJobID).
-		Return(fmt.Errorf("DeleteActiveJob error"))
+	mockActiveJobsOps.EXPECT().
+		Delete(ctx, missingJobID).
+		Return(fmt.Errorf("Delete active jobs error"))
 
 	err := RecoverActiveJobs(
 		ctx,
 		scope,
-		mockJobStore,
+		mockActiveJobsOps,
 		mockJobConfigOps,
 		mockJobRuntimeOps,
 		recoverAllTask,
@@ -602,14 +599,14 @@ func TestDeleteOnlyOnNotFound(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	ctx := context.Background()
-	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	mockJobRuntimeOps := objectmocks.NewMockJobRuntimeOps(ctrl)
+	mockActiveJobsOps := objectmocks.NewMockActiveJobsOps(ctrl)
 	mockJobConfigOps := objectmocks.NewMockJobConfigOps(ctrl)
 
 	// recoverJobsBatch should pass even if there is no job_id present in
 	// job_runtime. It should just skip over to a new job.
-	mockJobStore.EXPECT().
-		GetActiveJobs(ctx).
+	mockActiveJobsOps.EXPECT().
+		GetAll(ctx).
 		Return([]*peloton.JobID{missingJobID}, nil)
 
 	// missingJobID doesn't have job_runtime
@@ -621,13 +618,13 @@ func TestDeleteOnlyOnNotFound(t *testing.T) {
 				"Cannot find job wth jobID %v", missingJobID.GetValue()),
 		)
 
-	// DeleteActiveJob should NOT be called in this case because the job
-	// doesn't result in NotFound error from DB
+	// Delete should NOT be called in this case because the job
+	// doesn't result in NotFound error from DB.
 
 	err := RecoverActiveJobs(
 		ctx,
 		scope,
-		mockJobStore,
+		mockActiveJobsOps,
 		mockJobConfigOps,
 		mockJobRuntimeOps,
 		recoverAllTask,

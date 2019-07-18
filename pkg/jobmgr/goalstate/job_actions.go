@@ -144,7 +144,7 @@ func JobRecover(ctx context.Context, entity goalstate.Entity) error {
 
 		// delete from active job in the end, after this step,
 		// we would not have any reference to the job.
-		if err := goalStateDriver.jobStore.DeleteActiveJob(
+		if err := goalStateDriver.activeJobsOps.Delete(
 			ctx,
 			cachedJob.ID(),
 		); err != nil {
@@ -206,7 +206,7 @@ func DeleteJobFromActiveJobs(
 	// delete a terminal batch job from the active jobs table
 	if cfg.GetType() == job.JobType_BATCH &&
 		util.IsPelotonJobStateTerminal(runtime.GetState()) {
-		if err := goalStateDriver.jobStore.DeleteActiveJob(
+		if err := goalStateDriver.activeJobsOps.Delete(
 			ctx, jobEnt.id); err != nil {
 			return err
 		}

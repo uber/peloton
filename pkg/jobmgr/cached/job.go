@@ -741,7 +741,7 @@ func (j *job) Create(
 
 	// Add jobID to active jobs table before creating job runtime. This should
 	// happen every time a job is first created.
-	if err := j.jobFactory.jobStore.AddActiveJob(
+	if err := j.jobFactory.activeJobsOps.Create(
 		ctx, j.ID()); err != nil {
 		j.invalidateCache()
 		return err
@@ -828,7 +828,7 @@ func (j *job) RollingCreate(
 
 	// Add jobID to active jobs table before creating job runtime. This should
 	// happen every time a job is first created.
-	if err := j.jobFactory.jobStore.AddActiveJob(
+	if err := j.jobFactory.activeJobsOps.Create(
 		ctx, j.ID()); err != nil {
 		j.invalidateCache()
 		return err
@@ -3081,7 +3081,7 @@ func (j *job) Delete(ctx context.Context) error {
 	}
 
 	// delete from active_jobs
-	return j.jobFactory.jobStore.DeleteActiveJob(ctx, j.ID())
+	return j.jobFactory.activeJobsOps.Delete(ctx, j.ID())
 }
 
 func createEmptyResourceUsageMap() map[string]float64 {

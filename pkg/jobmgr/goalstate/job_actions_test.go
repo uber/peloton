@@ -58,6 +58,7 @@ type jobActionsTestSuite struct {
 	cachedTask            *cachedmocks.MockTask
 	jobStore              *storemocks.MockJobStore
 	updateStore           *storemocks.MockUpdateStore
+	activeJobsOps         *ormmocks.MockActiveJobsOps
 	jobIndexOps           *ormmocks.MockJobIndexOps
 	jobRuntimeOps         *ormmocks.MockJobRuntimeOps
 }
@@ -71,6 +72,7 @@ func (suite *jobActionsTestSuite) SetupTest() {
 	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
 	suite.updateStore = storemocks.NewMockUpdateStore(suite.ctrl)
 	suite.updateGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
+	suite.activeJobsOps = ormmocks.NewMockActiveJobsOps(suite.ctrl)
 	suite.jobIndexOps = ormmocks.NewMockJobIndexOps(suite.ctrl)
 	suite.jobRuntimeOps = ormmocks.NewMockJobRuntimeOps(suite.ctrl)
 
@@ -81,6 +83,7 @@ func (suite *jobActionsTestSuite) SetupTest() {
 		jobEngine:     suite.jobGoalStateEngine,
 		taskEngine:    suite.taskGoalStateEngine,
 		jobFactory:    suite.jobFactory,
+		activeJobsOps: suite.activeJobsOps,
 		jobIndexOps:   suite.jobIndexOps,
 		jobRuntimeOps: suite.jobRuntimeOps,
 		mtx:           NewMetrics(tally.NoopScope),
@@ -279,8 +282,8 @@ func (suite *jobActionsTestSuite) TestJobRecoverActionFailToRecover() {
 		Delete(gomock.Any(), suite.jobID).
 		Return(nil)
 
-	suite.jobStore.EXPECT().
-		DeleteActiveJob(gomock.Any(), suite.jobID).
+	suite.activeJobsOps.EXPECT().
+		Delete(gomock.Any(), suite.jobID).
 		Return(nil)
 
 	suite.jobFactory.EXPECT().
@@ -356,7 +359,7 @@ func (suite *jobActionsTestSuite) TestDeleteJobFromActiveJobs() {
 
 		// cachedJob.EXPECT().GetJobType().Return(test.typ)
 		if test.shouldDelete {
-			suite.jobStore.EXPECT().DeleteActiveJob(gomock.Any(), suite.jobID).Return(nil)
+			suite.activeJobsOps.EXPECT().Delete(gomock.Any(), suite.jobID).Return(nil)
 		}
 		err := DeleteJobFromActiveJobs(context.Background(), suite.jobEnt)
 		suite.NoError(err)
@@ -405,7 +408,7 @@ func (suite *jobActionsTestSuite) TestDeleteJobFromActiveJobsFailures() {
 		Return(&job.JobConfig{
 			Type: job.JobType_BATCH,
 		}, nil)
-	suite.jobStore.EXPECT().DeleteActiveJob(gomock.Any(), suite.jobID).
+	suite.activeJobsOps.EXPECT().Delete(gomock.Any(), suite.jobID).
 		Return(fmt.Errorf("DB error"))
 	err = DeleteJobFromActiveJobs(context.Background(), suite.jobEnt)
 	suite.Error(err)

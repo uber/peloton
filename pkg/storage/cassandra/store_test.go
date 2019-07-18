@@ -37,7 +37,6 @@ import (
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/backoff"
 	"github.com/uber/peloton/pkg/common/taskconfig"
-	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/storage"
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 	qb "github.com/uber/peloton/pkg/storage/querybuilder"
@@ -1537,43 +1536,6 @@ func (suite *CassandraStoreTestSuite) TestGetTaskByRange() {
 	suite.validateRange(&jobID, 60, 83)
 	suite.validateRange(&jobID, 70, 97)
 	suite.validateRange(&jobID, 70, 120)
-}
-
-// TestActiveJobsForRecovery tests add/get/delete jobs to active jobs table
-func (suite *CassandraStoreTestSuite) TestActiveJobsForRecovery() {
-	var jobStore storage.JobStore
-	jobStore = store
-	ctx := context.Background()
-	jobIDs := []string{}
-	for i := 0; i < 10; i++ {
-		jobID := peloton.JobID{Value: uuid.New()}
-		err := jobStore.AddActiveJob(ctx, &jobID)
-		suite.NoError(err)
-		jobIDs = append(jobIDs, jobID.GetValue())
-	}
-
-	actualJobIDs, err := jobStore.GetActiveJobs(ctx)
-	suite.NoError(err)
-	suite.Len(actualJobIDs, 10)
-
-	for _, actualID := range actualJobIDs {
-		suite.True(util.Contains(jobIDs, actualID.GetValue()))
-	}
-
-	for _, id := range jobIDs {
-		err := jobStore.DeleteActiveJob(
-			context.Background(), &peloton.JobID{Value: id})
-		suite.NoError(err)
-	}
-
-	actualJobIDs, err = jobStore.GetActiveJobs(ctx)
-	suite.NoError(err)
-	suite.Len(actualJobIDs, 0)
-
-	// Delete job id which is not present in active_jobs table
-	err = jobStore.DeleteActiveJob(
-		context.Background(), &peloton.JobID{Value: uuid.New()})
-	suite.NoError(err)
 }
 
 func (suite *CassandraStoreTestSuite) validateRange(jobID *peloton.JobID, from, to int) {

@@ -16,7 +16,10 @@ package objects
 
 import (
 	"context"
+	"time"
 
+	"github.com/gocql/gocql"
+	log "github.com/sirupsen/logrus"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/pkg/storage/objects/base"
 )
@@ -63,6 +66,11 @@ func init() {
 // newActiveJobsObject creates a ActiveJobsObject.
 func newActiveJobsObject(jobID *peloton.JobID) *ActiveJobsObject {
 	obj := &ActiveJobsObject{
+		// active jobs table is shareded using synthetic shardIDs derived from jobID
+		// This is to prevent large partitions in cassandra. We may choose to add
+		// synthetic sharding later, but for now we will use just one shardID for
+		// this table and recover all jobs in that one shardID. This code is for
+		// future proofing.
 		ShardID: base.NewOptionalUInt64(getActiveJobShardIDFromJobID(jobID)),
 		JobID:   base.NewOptionalString(jobID.GetValue()),
 	}
@@ -93,19 +101,37 @@ func (a *activeJobsOps) Create(ctx context.Context, id *peloton.JobID) error {
 func (a *activeJobsOps) GetAll(ctx context.Context) ([]*peloton.JobID, error) {
 	resultObjs := []*peloton.JobID{}
 
+	callStart := time.Now()
 	objs, err := a.store.oClient.GetAll(ctx, &ActiveJobsObject{})
 	if err != nil {
 		a.store.metrics.OrmJobMetrics.ActiveJobsGetAllFail.Inc(1)
+		callDuration := time.Since(callStart)
+		a.store.metrics.OrmJobMetrics.ActiveJobsGetAllDuration.Record(callDuration)
 		return nil, err
 	}
 
 	for _, obj := range objs {
 		activeJobsObj := obj.(*ActiveJobsObject)
 		jobId := activeJobsObj.JobID.Value
+
+		// If we return an error here because of one potentially corrupt
+		// job_id entry, it will break recovery and jobmgr/resmgr will be
+		// thrown in a crash loop. This is a highly unlikely error, so we
+		// should investigate it if we catch it on sentry without breaking
+		// peloton restarts
+		_, err := gocql.ParseUUID(jobId)
+		if err != nil {
+			log.WithField("job_id", jobId).
+				Error("Invalid jobID in active jobs table")
+			continue
+		}
+
 		resultObjs = append(resultObjs, &peloton.JobID{Value: jobId})
 	}
 
 	a.store.metrics.OrmJobMetrics.ActiveJobsGetAll.Inc(1)
+	callDuration := time.Since(callStart)
+	a.store.metrics.OrmJobMetrics.ActiveJobsGetAllDuration.Record(callDuration)
 	return resultObjs, nil
 }
 
@@ -123,6 +149,7 @@ func (a *activeJobsOps) Delete(ctx context.Context, jobID *peloton.JobID) error 
 	return nil
 }
 
+// Get a list of shardIDs to query active jobs.
 func getActiveJobShardIDFromJobID(jobID *peloton.JobID) uint64 {
 	// This can be constructed from jobID (ex: first byte of job_id is shard id)
 	// For now, we can stick to default shard id

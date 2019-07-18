@@ -94,8 +94,8 @@ Recovery of maintenance queue is performed
 type RecoveryHandler struct {
 	metrics         *Metrics
 	scope           tally.Scope
-	jobStore        storage.JobStore
 	taskStore       storage.TaskStore
+	activeJobsOps   ormobjects.ActiveJobsOps
 	jobConfigOps    ormobjects.JobConfigOps
 	jobRuntimeOps   ormobjects.JobRuntimeOps
 	handler         *ServiceHandler
@@ -115,8 +115,8 @@ type RecoveryHandler struct {
 // NewRecovery initializes the RecoveryHandler
 func NewRecovery(
 	parent tally.Scope,
-	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
+	activeJobsOps ormobjects.ActiveJobsOps,
 	jobConfigOps ormobjects.JobConfigOps,
 	jobRuntimeOps ormobjects.JobRuntimeOps,
 	handler *ServiceHandler,
@@ -128,8 +128,8 @@ func NewRecovery(
 		metrics:       NewMetrics(parent),
 		scope:         parent,
 		config:        config,
-		jobStore:      jobStore,
 		taskStore:     taskStore,
+		activeJobsOps: activeJobsOps,
 		jobConfigOps:  jobConfigOps,
 		jobRuntimeOps: jobRuntimeOps,
 		handler:       handler,
@@ -170,7 +170,7 @@ func (r *RecoveryHandler) Start() error {
 	err := cmn_recovery.RecoverActiveJobs(
 		ctx,
 		r.scope,
-		r.jobStore,
+		r.activeJobsOps,
 		r.jobConfigOps,
 		r.jobRuntimeOps,
 		r.requeueTasksInRange,

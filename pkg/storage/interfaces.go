@@ -55,12 +55,6 @@ type JobStore interface {
 	DeleteJob(ctx context.Context, jobID string) error
 	// GetMaxJobConfigVersion returns the maximum version of configs of a given job
 	GetMaxJobConfigVersion(ctx context.Context, jobID string) (uint64, error)
-	// AddActiveJob adds job to active jobs table
-	AddActiveJob(ctx context.Context, id *peloton.JobID) error
-	// GetActiveJobs fetches all active jobs
-	GetActiveJobs(ctx context.Context) ([]*peloton.JobID, error)
-	// DeleteActiveJob deletes job from active jobs table
-	DeleteActiveJob(ctx context.Context, id *peloton.JobID) error
 }
 
 // TaskStore is the interface to store task states

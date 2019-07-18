@@ -92,6 +92,7 @@ type JobHandlerTestSuite struct {
 	mockedGoalStateDriver *goalstatemocks.MockDriver
 	mockedJobStore        *storemocks.MockJobStore
 	mockedTaskStore       *storemocks.MockTaskStore
+	mockedActiveJobsOps   *objectmocks.MockActiveJobsOps
 	mockedJobIndexOps     *objectmocks.MockJobIndexOps
 	mockedSecretInfoOps   *objectmocks.MockSecretInfoOps
 	mockedJobConfigOps    *objectmocks.MockJobConfigOps
@@ -111,6 +112,7 @@ func (suite *JobHandlerTestSuite) initializeMocks() {
 	suite.mockedResmgrClient = resmocks.NewMockResourceManagerServiceYARPCClient(suite.ctrl)
 	suite.mockedCandidate = leadermocks.NewMockCandidate(suite.ctrl)
 	suite.mockedTaskStore = storemocks.NewMockTaskStore(suite.ctrl)
+	suite.mockedActiveJobsOps = objectmocks.NewMockActiveJobsOps(suite.ctrl)
 	suite.mockedJobIndexOps = objectmocks.NewMockJobIndexOps(suite.ctrl)
 	suite.mockedSecretInfoOps = objectmocks.NewMockSecretInfoOps(suite.ctrl)
 	suite.mockedJobConfigOps = objectmocks.NewMockJobConfigOps(suite.ctrl)
@@ -118,6 +120,7 @@ func (suite *JobHandlerTestSuite) initializeMocks() {
 
 	suite.handler.jobStore = suite.mockedJobStore
 	suite.handler.taskStore = suite.mockedTaskStore
+	suite.handler.activeJobsOps = suite.mockedActiveJobsOps
 	suite.handler.jobIndexOps = suite.mockedJobIndexOps
 	suite.handler.jobConfigOps = suite.mockedJobConfigOps
 	suite.handler.jobRuntimeOps = suite.mockedJobRuntimeOps
@@ -1957,7 +1960,7 @@ func (suite *JobHandlerTestSuite) TestJobGetCache_SUCCESS() {
 
 // TestJobGetActiveJobsFail tests failure to get active jobs list from DB
 func (suite *JobHandlerTestSuite) TestJobGetActiveJobsFail() {
-	suite.mockedJobStore.EXPECT().GetActiveJobs(context.Background()).
+	suite.mockedActiveJobsOps.EXPECT().GetAll(context.Background()).
 		Return(nil, fmt.Errorf("get active jobs err"))
 	_, err := suite.handler.GetActiveJobs(context.Background(),
 		&job.GetActiveJobsRequest{})
@@ -1969,8 +1972,8 @@ func (suite *JobHandlerTestSuite) TestJobGetActiveJobs() {
 	expectedJobIDs := []*peloton.JobID{
 		{Value: "my-job-1"},
 	}
-	suite.mockedJobStore.EXPECT().
-		GetActiveJobs(context.Background()).
+	suite.mockedActiveJobsOps.EXPECT().
+		GetAll(context.Background()).
 		Return(expectedJobIDs, nil)
 
 	resp, err := suite.handler.GetActiveJobs(context.Background(),

@@ -261,19 +261,6 @@ func (suite *MockDatastoreTestSuite) TestDataStoreFailureDeleteJobCfgVersion() {
 	suite.Error(err)
 }
 
-// TestDataStoreFailureActiveJobs tests datastore failures add/get/delete jobID
-// from active jobs
-func (suite *MockDatastoreTestSuite) TestDataStoreFailureActiveJobs() {
-	err := suite.store.AddActiveJob(context.Background(), suite.testJobID)
-	suite.Error(err)
-
-	_, err = suite.store.GetActiveJobs(context.Background())
-	suite.Error(err)
-
-	err = suite.store.DeleteActiveJob(context.Background(), suite.testJobID)
-	suite.Error(err)
-}
-
 // TestWorkflowEventsFailures tests failure scenarios for workflow events
 func (suite *MockDatastoreTestSuite) TestWorkflowEventsFailures() {
 	updateID := &peloton.UpdateID{

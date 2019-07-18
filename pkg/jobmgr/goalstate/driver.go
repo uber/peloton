@@ -141,6 +141,7 @@ func NewDriver(
 		volumeStore:                   volumeStore,
 		updateStore:                   updateStore,
 		podEventsOps:                  ormobjects.NewPodEventsOps(ormStore),
+		activeJobsOps:                 ormobjects.NewActiveJobsOps(ormStore),
 		jobConfigOps:                  ormobjects.NewJobConfigOps(ormStore),
 		jobIndexOps:                   ormobjects.NewJobIndexOps(ormStore),
 		jobRuntimeOps:                 ormobjects.NewJobRuntimeOps(ormStore),
@@ -203,6 +204,7 @@ type driver struct {
 	volumeStore     storage.PersistentVolumeStore
 	updateStore     storage.UpdateStore
 	podEventsOps    ormobjects.PodEventsOps
+	activeJobsOps   ormobjects.ActiveJobsOps   // DB ops for active_jobs table
 	jobConfigOps    ormobjects.JobConfigOps    // DB ops for job_config table
 	jobRuntimeOps   ormobjects.JobRuntimeOps   // DB ops for job_runtime table
 	jobIndexOps     ormobjects.JobIndexOps     // DB ops for job_index table
@@ -397,7 +399,7 @@ func (d *driver) syncFromDB(ctx context.Context) error {
 	if err := recovery.RecoverActiveJobs(
 		ctx,
 		d.jobScope,
-		d.jobStore,
+		d.activeJobsOps,
 		d.jobConfigOps,
 		d.jobRuntimeOps,
 		d.recoverTasks,

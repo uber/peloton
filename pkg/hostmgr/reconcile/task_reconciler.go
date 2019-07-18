@@ -29,6 +29,7 @@ import (
 	hostmgr_mesos "github.com/uber/peloton/pkg/hostmgr/mesos"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
 	"github.com/uber/peloton/pkg/storage"
+	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 )
 
 // TaskReconciler is the interface to initiate task reconciliation to mesos master.
@@ -42,8 +43,8 @@ type taskReconciler struct {
 	metrics *Metrics
 
 	schedulerClient       mpb.SchedulerClient
-	jobStore              storage.JobStore
 	taskStore             storage.TaskStore
+	activeJobsOps         ormobjects.ActiveJobsOps
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider
 
 	explicitReconcileBatchInterval time.Duration
@@ -59,13 +60,13 @@ func NewTaskReconciler(
 	client mpb.SchedulerClient,
 	parent tally.Scope,
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider,
-	jobStore storage.JobStore,
+	activeJobsOps ormobjects.ActiveJobsOps,
 	taskStore storage.TaskStore,
 	cfg *TaskReconcilerConfig) TaskReconciler {
 
 	reconciler := &taskReconciler{
 		schedulerClient:       client,
-		jobStore:              jobStore,
+		activeJobsOps:         activeJobsOps,
 		taskStore:             taskStore,
 		metrics:               NewMetrics(parent.SubScope("reconcile")),
 		frameworkInfoProvider: frameworkInfoProvider,
@@ -189,7 +190,7 @@ func (r *taskReconciler) getReconcileTasks(ctx context.Context) (
 	[]*sched.Call_Reconcile_Task, error) {
 
 	var reconcileTasks []*sched.Call_Reconcile_Task
-	activeJobIDs, err := r.jobStore.GetActiveJobs(ctx)
+	activeJobIDs, err := r.activeJobsOps.GetAll(ctx)
 	if err != nil {
 		log.WithError(err).Error("Failed to get active jobs.")
 		return reconcileTasks, err

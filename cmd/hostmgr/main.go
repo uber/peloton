@@ -56,6 +56,8 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/watchevent"
 	"github.com/uber/peloton/pkg/middleware/inbound"
 	"github.com/uber/peloton/pkg/middleware/outbound"
+	"github.com/uber/peloton/pkg/storage/cassandra"
+	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 	"github.com/uber/peloton/pkg/storage/stores"
 
 	log "github.com/sirupsen/logrus"
@@ -357,6 +359,14 @@ func main() {
 
 	store := stores.MustCreateStore(&cfg.Storage, rootScope)
 
+	ormStore, ormErr := ormobjects.NewCassandraStore(
+		cassandra.ToOrmConfig(&cfg.Storage.Cassandra),
+		rootScope)
+	if ormErr != nil {
+		log.WithError(ormErr).Fatal("Failed to create ORM store for Cassandra")
+	}
+	activeJobsOps := ormobjects.NewActiveJobsOps(ormStore)
+
 	authHeader, err := mesos.GetAuthHeader(&cfg.Mesos, *mesosSecretFile)
 	if err != nil {
 		log.WithError(err).Fatal("Cannot initialize auth header")
@@ -491,7 +501,7 @@ func main() {
 		schedulerClient,
 		rootScope,
 		driver,
-		store, // store implements JobStore
+		activeJobsOps,
 		store, // store implements TaskStore
 		cfg.HostManager.TaskReconcilerConfig,
 	)

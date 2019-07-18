@@ -279,6 +279,7 @@ func main() {
 		log.WithError(ormErr).Fatal("Failed to create ORM store for Cassandra")
 	}
 	respoolOps := ormobjects.NewResPoolOps(ormStore)
+	activeJobsOps := ormobjects.NewActiveJobsOps(ormStore)
 
 	// Create both HTTP and GRPC inbounds
 	inbounds := rpc.NewInbounds(
@@ -433,8 +434,8 @@ func main() {
 	// Initialize recovery
 	recoveryHandler := resmgr.NewRecovery(
 		rootScope,
-		store, // store implements JobStore
 		store, // store implements TaskStore
+		activeJobsOps,
 		ormobjects.NewJobConfigOps(ormStore),
 		ormobjects.NewJobRuntimeOps(ormStore),
 		serviceHandler,

@@ -65,15 +65,6 @@ type JobMetrics struct {
 
 	JobGetNameToID     tally.Counter
 	JobGetNameToIDFail tally.Counter
-
-	// Recovery
-	ActiveJobsAddSuccess    tally.Counter
-	ActiveJobsAddFail       tally.Counter
-	ActiveJobsDeleteSuccess tally.Counter
-	ActiveJobsDeleteFail    tally.Counter
-	GetActiveJobsSuccess    tally.Counter
-	GetActiveJobsFail       tally.Counter
-	GetActiveJobsDuration   tally.Timer
 }
 
 // OrmJobMetrics tracks counters for job related tables accessed through ORM layer
@@ -105,12 +96,13 @@ type OrmJobMetrics struct {
 	JobConfigDeleteFail tally.Counter
 
 	// active_jobs.
-	ActiveJobsCreate     tally.Counter
-	ActiveJobsCreateFail tally.Counter
-	ActiveJobsGetAll     tally.Counter
-	ActiveJobsGetAllFail tally.Counter
-	ActiveJobsDelete     tally.Counter
-	ActiveJobsDeleteFail tally.Counter
+	ActiveJobsCreate         tally.Counter
+	ActiveJobsCreateFail     tally.Counter
+	ActiveJobsGetAll         tally.Counter
+	ActiveJobsGetAllFail     tally.Counter
+	ActiveJobsGetAllDuration tally.Timer
+	ActiveJobsDelete         tally.Counter
+	ActiveJobsDeleteFail     tally.Counter
 
 	// secret_info
 	SecretInfoCreate     tally.Counter
@@ -444,14 +436,6 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		JobUpdateInfo:     jobSuccessScope.Counter("update_info"),
 		JobUpdateInfoFail: jobFailScope.Counter("update_info"),
-
-		ActiveJobsAddSuccess:    jobSuccessScope.Counter("add_active_job"),
-		ActiveJobsAddFail:       jobFailScope.Counter("add_active_job"),
-		ActiveJobsDeleteSuccess: jobSuccessScope.Counter("delete_active_job"),
-		ActiveJobsDeleteFail:    jobFailScope.Counter("delete_active_job"),
-		GetActiveJobsSuccess:    jobSuccessScope.Counter("get_active_job"),
-		GetActiveJobsFail:       jobFailScope.Counter("get_active_job"),
-		GetActiveJobsDuration:   jobSuccessScope.Timer("get_active_jobs_duration"),
 	}
 
 	taskMetrics := &TaskMetrics{
@@ -678,12 +662,13 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		JobConfigDelete:     jobConfigSuccessScope.Counter("delete"),
 		JobConfigDeleteFail: jobConfigFailScope.Counter("delete"),
 
-		ActiveJobsCreate:     activeJobsSuccessScope.Counter("create"),
-		ActiveJobsCreateFail: activeJobsFailScope.Counter("create"),
-		ActiveJobsGetAll:     activeJobsSuccessScope.Counter("getAll"),
-		ActiveJobsGetAllFail: activeJobsFailScope.Counter("getAll"),
-		ActiveJobsDelete:     activeJobsSuccessScope.Counter("delete"),
-		ActiveJobsDeleteFail: activeJobsFailScope.Counter("delete"),
+		ActiveJobsCreate:         activeJobsSuccessScope.Counter("create"),
+		ActiveJobsCreateFail:     activeJobsFailScope.Counter("create"),
+		ActiveJobsGetAll:         activeJobsSuccessScope.Counter("getAll"),
+		ActiveJobsGetAllFail:     activeJobsFailScope.Counter("getAll"),
+		ActiveJobsGetAllDuration: activeJobsSuccessScope.Timer("get_active_jobs_duration"),
+		ActiveJobsDelete:         activeJobsSuccessScope.Counter("delete"),
+		ActiveJobsDeleteFail:     activeJobsFailScope.Counter("delete"),
 
 		SecretInfoCreate:     secretInfoSuccessScope.Counter("create"),
 		SecretInfoCreateFail: secretInfoFailScope.Counter("create"),

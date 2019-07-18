@@ -598,7 +598,7 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 	// first created. Terminal jobs will be removed from this list and must
 	// be added back when they are rerun.
 	if transition == transitionTypeTerminalActive {
-		if err := goalStateDriver.jobStore.AddActiveJob(
+		if err := goalStateDriver.activeJobsOps.Create(
 			ctx, jobID); err != nil {
 			return err
 		}

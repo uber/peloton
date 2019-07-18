@@ -64,6 +64,7 @@ type jobFactory struct {
 	taskStore          storage.TaskStore             // storage task store object
 	updateStore        storage.UpdateStore           // storage update store object
 	volumeStore        storage.PersistentVolumeStore // storage volume store object
+	activeJobsOps      ormobjects.ActiveJobsOps      // DB ops for active_jobs table
 	jobIndexOps        ormobjects.JobIndexOps        // DB ops for job_index table
 	jobConfigOps       ormobjects.JobConfigOps       // DB ops for job_config table
 	jobRuntimeOps      ormobjects.JobRuntimeOps      // DB ops for job_runtime table
@@ -95,6 +96,7 @@ func InitJobFactory(
 		taskStore:          taskStore,
 		updateStore:        updateStore,
 		volumeStore:        volumeStore,
+		activeJobsOps:      ormobjects.NewActiveJobsOps(ormStore),
 		jobIndexOps:        ormobjects.NewJobIndexOps(ormStore),
 		jobConfigOps:       ormobjects.NewJobConfigOps(ormStore),
 		jobRuntimeOps:      ormobjects.NewJobRuntimeOps(ormStore),

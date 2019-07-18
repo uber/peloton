@@ -24,7 +24,6 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
 	"github.com/uber/peloton/pkg/common/util"
-	"github.com/uber/peloton/pkg/storage"
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 
 	log "github.com/sirupsen/logrus"
@@ -159,7 +158,7 @@ func recoverJob(
 
 func recoverJobsBatch(
 	ctx context.Context,
-	jobStore storage.JobStore,
+	activeJobsOps ormobjects.ActiveJobsOps,
 	jobConfigOps ormobjects.JobConfigOps,
 	jobRuntimeOps ormobjects.JobRuntimeOps,
 	batch JobsBatch,
@@ -192,7 +191,7 @@ func recoverJobsBatch(
 				deleteWg.Add(1)
 				go func(jobID peloton.JobID) {
 					defer deleteWg.Done()
-					deleteFromActiveJobs(ctx, &jobID, jobStore)
+					deleteFromActiveJobs(ctx, &jobID, activeJobsOps)
 				}(jobID)
 			}
 			continue
@@ -221,7 +220,7 @@ func recoverJobsBatch(
 				deleteWg.Add(1)
 				go func(jobID peloton.JobID) {
 					defer deleteWg.Done()
-					deleteFromActiveJobs(ctx, &jobID, jobStore)
+					deleteFromActiveJobs(ctx, &jobID, activeJobsOps)
 				}(jobID)
 			}
 			continue
@@ -239,7 +238,7 @@ func recoverJobsBatch(
 				deleteWg.Add(1)
 				go func(jobID peloton.JobID) {
 					defer deleteWg.Done()
-					deleteFromActiveJobs(ctx, &jobID, jobStore)
+					deleteFromActiveJobs(ctx, &jobID, activeJobsOps)
 				}(jobID)
 			}
 			continue
@@ -260,7 +259,7 @@ func recoverJobsBatch(
 func RecoverActiveJobs(
 	ctx context.Context,
 	parentScope tally.Scope,
-	jobStore storage.JobStore,
+	activeJobsOps ormobjects.ActiveJobsOps,
 	jobConfigOps ormobjects.JobConfigOps,
 	jobRuntimeOps ormobjects.JobRuntimeOps,
 	f RecoverBatchTasks,
@@ -268,7 +267,7 @@ func RecoverActiveJobs(
 
 	mtx := NewMetrics(parentScope.SubScope("recovery"))
 
-	activeJobIDs, err := jobStore.GetActiveJobs(ctx)
+	activeJobIDs, err := activeJobsOps.GetAll(ctx)
 	if err != nil {
 		log.WithError(err).
 			Error("GetActiveJobs failed")
@@ -295,7 +294,7 @@ func RecoverActiveJobs(
 			defer bwg.Done()
 			recoverJobsBatch(
 				ctx,
-				jobStore,
+				activeJobsOps,
 				jobConfigOps,
 				jobRuntimeOps,
 				batch,
@@ -360,9 +359,9 @@ func RecoverActiveJobs(
 func deleteFromActiveJobs(
 	ctx context.Context,
 	jobID *peloton.JobID,
-	jobStore storage.JobStore,
+	activeJobsOps ormobjects.ActiveJobsOps,
 ) {
-	if err := jobStore.DeleteActiveJob(ctx, jobID); err != nil {
+	if err := activeJobsOps.Delete(ctx, jobID); err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.GetValue()).
 			Info("DeleteActiveJob failed")
