@@ -3,10 +3,9 @@
 0.9.0 (unreleased)
 ------------------
 
-0.8.9
+0.8.9.1
 ------------------
-* 2019-07-11    Fix perftests report `IndexError` issue                                                yuweit@uber.com
-* 2019-07-11    Migrate CreateTaskConfig to ORM                                                        zhixin@uber.com
+* 2019-07-17    Fix delay due to lock contention in job cache                                          sachins@uber.com
 * 2019-07-10    Remove task_config table                                                               zhixin@uber.com
 * 2019-07-10    (Part 1)Migrate active_jobs table to ORM                                               yuweit@uber.com
 * 2019-07-09    Fix a failure test in TestMesosAgentFailure                                            zhaokai@uber.com
