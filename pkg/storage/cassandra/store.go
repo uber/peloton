@@ -1272,6 +1272,11 @@ func (s *Store) GetTaskConfig(ctx context.Context, id *peloton.JobID,
 	}
 	taskID := fmt.Sprintf(taskIDFmt, id.GetValue(), int(instanceID))
 
+	if len(allResults) == 0 {
+		return nil, nil, yarpcerrors.NotFoundErrorf(
+			"task:%s not found", taskID)
+	}
+
 	// Use last result (the most specific).
 	value := allResults[len(allResults)-1]
 	var record TaskConfigRecord
