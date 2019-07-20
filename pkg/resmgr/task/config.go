@@ -22,6 +22,8 @@ type Config struct {
 	LaunchingTimeout time.Duration `yaml:"launching_timeout"`
 	// Timeout for rm task in statemachine from placing to ready state
 	PlacingTimeout time.Duration `yaml:"placing_timeout"`
+	// Timeout for rm task in statemachine from preempting to running state
+	PreemptingTimeout time.Duration `yaml:"preempting_timeout"`
 	// Timeout for rm task in statemachine from reserved to pending state
 	ReservingTimeout time.Duration `yaml:"reserving_timeout"`
 	// This is the backoff period how much it will backoff

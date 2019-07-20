@@ -28,6 +28,8 @@ resmgr:
     placing_timeout: 10m
     # Timeout for rm task in statemachine from launching to ready state
     launching_timeout: 20m
+    # Timeout for rm task in statemachine from preempting to running state
+    preempting_timeout: 10m
     # Timeout for rm task in statemachine from reserved to pending state
     reserving_timeout: 30m
     # This is the backoff period how much it will backoff

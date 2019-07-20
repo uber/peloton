@@ -25,6 +25,7 @@ resmgr:
   task:
     placing_timeout: 20s
     launching_timeout: 30s
+    preempting_timeout: 20s
     reserving_timeout: 10m
     placement_retry_backoff: 10s
     placement_retry_cycle: 1

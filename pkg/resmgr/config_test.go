@@ -34,6 +34,7 @@ const testConfig = `
   task:
     placing_timeout: 10m
     launching_timeout: 20m
+    preempting_timeout: 10m
   preemption:
     task_preemption_period: 60s
     sustained_over_allocation_count: 5
@@ -64,6 +65,7 @@ func TestResourceManagerConfig(t *testing.T) {
 	assert.Equal(t, 1*time.Hour, testConfig.TaskReconciliationPeriod)
 	assert.Equal(t, 10*time.Minute, testConfig.RmTaskConfig.PlacingTimeout)
 	assert.Equal(t, 20*time.Minute, testConfig.RmTaskConfig.LaunchingTimeout)
+	assert.Equal(t, 10*time.Minute, testConfig.RmTaskConfig.PreemptingTimeout)
 	assert.Equal(t, 1*time.Minute, testConfig.PreemptionConfig.TaskPreemptionPeriod)
 	assert.Equal(t, 5, testConfig.PreemptionConfig.SustainedOverAllocationCount)
 	assert.Equal(t, true, testConfig.PreemptionConfig.Enabled)

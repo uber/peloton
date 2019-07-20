@@ -15,7 +15,6 @@
 package task
 
 import (
-	"github.com/uber-go/tally"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +30,7 @@ import (
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
+	"github.com/uber-go/tally"
 )
 
 var (
@@ -300,6 +300,18 @@ func (rmTask *RMTask) initStateMachine() error {
 					},
 					Timeout:  rmTask.config.ReservingTimeout,
 					Callback: rmTask.timeoutCallbackFromReserving,
+				}).
+			AddTimeoutRule(
+				// If the task is dropped by jobmgr then the rmtask should move
+				// back to RUNNING state (on timeout) so that it is enqueued in the
+				// preemption queue in the next preemption cycle.
+				&state.TimeoutRule{
+					From: state.State(task.TaskState_PREEMPTING.String()),
+					To: []state.State{
+						state.State(task.TaskState_RUNNING.String()),
+					},
+					Timeout:  rmTask.config.PreemptingTimeout,
+					Callback: nil,
 				}).
 			Build()
 	if err != nil {
