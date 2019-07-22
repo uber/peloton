@@ -1,0 +1,21 @@
+logging:
+  level: info
+
+storage:
+  db_write_concurrency: 40
+  use_cassandra: true
+
+election:
+  zk_servers: ["localhost:8192"]
+
+placement:
+  max_placement_duration: 30s
+  max_durations:
+    batch: 120s
+metrics:
+  multi_reporter: true
+  prometheus:
+    enable: true
+  #statsd:
+  #  enable: true
+  #  endpoint: localhost:1234

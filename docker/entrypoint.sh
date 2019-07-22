@@ -7,6 +7,7 @@ if [[ -z "${APP}" ]]; then
 fi
 
 app="${APP}"
+apptype="${APP_TYPE:-$APP}"
 env="${ENVIRONMENT:-development}"
 cfgdir="${CONFIG_DIR:-/etc/peloton}"
 secretcfgdir="${SECRET_CONFIG_DIR}"
@@ -16,20 +17,20 @@ dir="${BUILD_DIR:-/go/src/github.com/uber/peloton}"
 cd "${dir}"
 
 if [[ ! -z ${PRODUCTION_CONFIG} ]]; then
-    echo "${PRODUCTION_CONFIG}" | base64 --decode > "${cfgdir}/${app}/production.yaml"
+    echo "${PRODUCTION_CONFIG}" | base64 --decode > "${cfgdir}/${apptype}/production.yaml"
 fi
 
 if [[ $app == "client" ]] ; then
     exec peloton "$@"
 elif [ ! -z "$secretcfgdir" ]; then
     exec "peloton-${app}" \
-        -c "${cfgdir}/${app}/base.yaml" \
-        -c "${cfgdir}/${app}/${env}.yaml" \
+        -c "${cfgdir}/${apptype}/base.yaml" \
+        -c "${cfgdir}/${apptype}/${env}.yaml" \
         -c "/langley/udocker/peloton/current/secrets.yaml" \
         "$@"
 else
     exec "peloton-${app}" \
-        -c "${cfgdir}/${app}/base.yaml" \
-        -c "${cfgdir}/${app}/${env}.yaml" \
+        -c "${cfgdir}/${apptype}/base.yaml" \
+        -c "${cfgdir}/${apptype}/${env}.yaml" \
         "$@"
 fi

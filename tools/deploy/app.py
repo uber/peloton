@@ -236,10 +236,12 @@ class App(object):
         if self.name == "placement_stateful":
             env_vars["TASK_TYPE"] = "STATEFUL"
             env_vars["APP"] = "placement"
+            env_vars["APP_TYPE"] = "placement_stateful"
 
         if self.name == "placement_stateless":
             env_vars["TASK_TYPE"] = "STATELESS"
             env_vars["APP"] = "placement"
+            env_vars["APP_TYPE"] = "placement_stateless"
 
         if self.name == "placement":
             if getattr(self, "task_dequeue_limit", ""):

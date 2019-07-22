@@ -230,8 +230,10 @@ class VCluster(object):
                     .get(app)
                     .get("enable_revocable_resources")
                 )
+
             if app == "placement_stateless":
                 dynamic_env_master["APP"] = "placement"
+                dynamic_env_master["APP_TYPE"] = "placement_stateless"
                 dynamic_env_master["TASK_TYPE"] = "STATELESS"
 
             peloton_app_count = int(

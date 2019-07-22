@@ -432,12 +432,17 @@ def run_peloton_placement(config):
         ports = [port + i * 10 for port in config["peloton_placement_ports"]]
         name = config["peloton_placement_container"] + repr(i)
         utils.remove_existing_container(name)
+        if task_type == 'BATCH':
+            app_type = 'placement'
+        else:
+            app_type = 'placement_' + task_type.lower()
         start_and_wait(
             "placement",
             name,
             ports,
             config,
             extra_env={
+                "APP_TYPE": app_type,
                 "TASK_TYPE": task_type,
             },
         )
