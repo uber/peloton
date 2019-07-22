@@ -1,0 +1,84 @@
+// Copyright (c) 2019 Uber Technologies, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package lifecyclemgr
+
+import (
+	"context"
+	"time"
+
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	v1_hostsvc "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc"
+
+	"github.com/uber/peloton/pkg/common"
+
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/yarpcerrors"
+	"golang.org/x/time/rate"
+)
+
+// timeout for the kill call
+const _defaultKillPodActionTimeout = 5 * time.Second
+
+type v1LifecycleMgr struct {
+	// v1 client hostmgr pod operations.
+	hostManagerV1 v1_hostsvc.HostManagerServiceYARPCClient
+}
+
+// New returns an instance of the v1 lifecycle manager.
+func New(
+	dispatcher *yarpc.Dispatcher,
+) *v1LifecycleMgr {
+	return &v1LifecycleMgr{
+		hostManagerV1: v1_hostsvc.NewHostManagerServiceYARPCClient(
+			dispatcher.ClientConfig(
+				common.PelotonHostManager,
+			),
+		),
+	}
+}
+
+// Kill tries to kill the pod using podID.
+// Functionality to reserve a host is not implemented in v1.
+func (l *v1LifecycleMgr) Kill(
+	ctx context.Context,
+	podID string,
+	hostToReserve string,
+	rateLimiter *rate.Limiter,
+) error {
+	// enforce rate limit
+	if rateLimiter != nil && !rateLimiter.Allow() {
+		return yarpcerrors.ResourceExhaustedErrorf(
+			"rate limit reached for kill")
+	}
+
+	_, err := l.hostManagerV1.KillPods(
+		ctx,
+		&v1_hostsvc.KillPodsRequest{
+			PodIds: []*peloton.PodID{{Value: podID}},
+		},
+	)
+	return err
+}
+
+// ShutdownExecutor is a no-op for v1 lifecyclemgr.
+// This is a mesos specific call and will only be implemented for v0 case.
+func (l *v1LifecycleMgr) ShutdownExecutor(
+	ctx context.Context,
+	taskID string,
+	agentID string,
+	rateLimiter *rate.Limiter,
+) error {
+	return nil
+}
