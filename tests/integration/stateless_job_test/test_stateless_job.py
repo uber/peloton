@@ -368,6 +368,7 @@ def test__stop_restart_jobmgr(stateless_job, jobmgr):
     stateless_job.wait_for_state(goal_state="KILLED")
 
 
+@pytest.mark.skip(reason="flaky test")
 # test restarting running job, with batch size,
 def test__restart_running_job_with_batch_size(stateless_job, in_place):
     stateless_job.create()
