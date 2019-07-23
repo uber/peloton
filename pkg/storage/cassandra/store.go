@@ -1375,7 +1375,7 @@ func (s *Store) GetTaskConfigs(ctx context.Context, id *peloton.JobID,
 				// Either every instance has a override config or we have a
 				// default config.
 				s.metrics.TaskMetrics.TaskGetConfigFail.Inc(1)
-				return nil, nil, fmt.Errorf("unable to read default task config")
+				return nil, nil, yarpcerrors.NotFoundErrorf("unable to read default task config")
 			}
 			taskConfigMap[instance] = defaultConfig
 		}

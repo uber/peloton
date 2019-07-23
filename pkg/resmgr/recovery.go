@@ -38,6 +38,7 @@ import (
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 const (
@@ -251,6 +252,18 @@ func (r *RecoveryHandler) requeueTasksInRange(ctx context.Context,
 		batch.From, batch.To)
 
 	if err != nil {
+		if yarpcerrors.IsNotFound(err) {
+			// Due to task_config table deprecation, we might see old jobs
+			// fail to recover due to their task config was created in
+			// task_config table instead of task_config_v2. Only log it
+			// instead of error it out.
+			log.WithError(err).
+				WithField("non_running_count", len(nonRunningTasks)).
+				WithField("running_count", len(runningTasks)).
+				WithField("job_id", jobID).
+				Error("Tasks fail to recover")
+			return
+		}
 		errChan <- err
 		return
 	}
