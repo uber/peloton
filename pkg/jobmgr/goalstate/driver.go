@@ -38,6 +38,7 @@ import (
 	"github.com/uber-go/tally"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/yarpcerrors"
 	"golang.org/x/time/rate"
 )
 
@@ -348,7 +349,14 @@ func (d *driver) recoverTasks(
 			WithField("job_id", id).
 			WithField("from", batch.From).
 			WithField("to", batch.To).
-			Error("failed to fetch task runtimes")
+			Error("failed to fetch task infos")
+		if yarpcerrors.IsNotFound(err) {
+			// Due to task_config table deprecation, we might see old jobs
+			// fail to recover due to their task config was created in
+			// task_config table instead of task_config_v2. Only log the
+			// error here instead of crashing jobmgr.
+			return
+		}
 		errChan <- err
 		return
 	}
