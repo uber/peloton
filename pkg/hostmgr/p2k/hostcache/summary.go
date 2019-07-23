@@ -104,7 +104,7 @@ type HostSummary interface {
 	GetHostLease() *hostmgr.HostLease
 
 	// TerminateLease is called when terminating the lease on a host.
-	TerminateLease() error
+	TerminateLease(leaseID string) error
 
 	// HandlePodEvent is called when a pod event occurs for a pod
 	// that affects this host.
@@ -383,7 +383,7 @@ func (a *hostSummary) GetHostLease() *hostmgr.HostLease {
 // TerminateLease is called when terminating the lease on a host.
 // This will be called when host in PLACING state is not used, and placement
 // engine decides to terminate its lease and set the host back to Ready/Held.
-func (a *hostSummary) TerminateLease() error {
+func (a *hostSummary) TerminateLease(leaseID string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -391,8 +391,11 @@ func (a *hostSummary) TerminateLease() error {
 		return yarpcerrors.InvalidArgumentErrorf("invalid status %v", a.status)
 	}
 
-	newStatus := a.getResetStatus()
+	if a.leaseID != leaseID {
+		return yarpcerrors.InvalidArgumentErrorf("host leaseID does not match")
+	}
 
+	newStatus := a.getResetStatus()
 	if err := a.casStatus(PlacingHost, newStatus); err != nil {
 		return yarpcerrors.InvalidArgumentErrorf("failed to set cas status: %s", err)
 	}

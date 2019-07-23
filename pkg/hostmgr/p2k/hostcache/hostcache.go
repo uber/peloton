@@ -35,6 +35,10 @@ type HostCache interface {
 	// AcquireLeases acquires leases on hosts that match the filter constraints.
 	AcquireLeases(hostFilter *hostmgr.HostFilter) ([]*hostmgr.HostLease, map[string]uint32)
 
+	// TerminateLease is called when the lease is not going to be used, and we
+	// want to release the lock on the host.
+	TerminateLease(hostname string, leaseID string) error
+
 	// CompleteLease is called when launching pods on a host that has been
 	// previously leased to the Placement engine.
 	CompleteLease(hostname string, leaseID string, podToResMap map[string]hmscalar.Resources) error
@@ -134,6 +138,33 @@ func (c *hostCache) AcquireLeases(
 		}).Debug("Number of hosts matched is fewer than max hosts")
 	}
 	return hostLeases, matcher.filterCounts
+}
+
+// TerminateLease is called when a lease that was previously acquired, and a
+// host locked, is no longer in use. The leaseID of the acquired host should be
+// supplied in this call so that the hostcache can match the leaseID.
+// At this point, the existing lease is terminated and the host can be used for
+// further placement.
+// Error cases:
+//		LeaseID doesn't match
+//		Host is not in Placing status
+func (c *hostCache) TerminateLease(
+	hostname string,
+	leaseID string,
+) error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	hs, ok := c.hostIndex[hostname]
+	if !ok {
+		// TODO: metrics
+		return yarpcerrors.NotFoundErrorf("cannot find host %s in cache", hostname)
+	}
+	if err := hs.TerminateLease(leaseID); err != nil {
+		// TODO: metrics
+		return err
+	}
+	return nil
 }
 
 // CompleteLease is called when launching pods on a host that has been

@@ -152,6 +152,76 @@ func (suite *HostCacheTestSuite) TestGetClusterCapacity() {
 	suite.Equal(expectedAllocation, allocation)
 }
 
+// TestTerminateLease tests hostcache TerminateLease API
+func (suite *HostCacheTestSuite) TestTerminateLease() {
+	testTable := map[string]struct {
+		podToResMap  map[string]scalar.Resources
+		filter       *hostmgr.HostFilter
+		matched      int
+		filterCounts map[string]uint32
+
+		errExpected bool
+		errMsg      string
+	}{
+		"terminate-valid-lease": {
+			errExpected: false,
+			// launch 5 pods each with 1 Cpu and 10 Mem
+			// So total requirement is 5 CPU and 50Mem
+			podToResMap: generatePodToResMap(10, 1.0, 10.0),
+			// filter to match hosts that have 5 CPU and 50Mem
+			filter: &hostmgr.HostFilter{
+				ResourceConstraint: &hostmgr.ResourceConstraint{
+					Minimum: &pod.ResourceSpec{
+						CpuLimit:   5.0,
+						MemLimitMb: 50.0,
+					},
+				},
+			},
+			matched: 1,
+			filterCounts: map[string]uint32{
+				strings.ToLower("HOST_FILTER_MATCH"): 1,
+			},
+		},
+	}
+	for ttName, tt := range testTable {
+		// Generate 1 host summary with 10 CPU and 100 Mem
+		hosts := generateHostSummaries(1)
+		hc := &hostCache{
+			hostIndex: make(map[string]HostSummary),
+		}
+		// initialize host cache with this host
+		for _, s := range hosts {
+			hc.hostIndex[s.GetHostname()] = s
+		}
+
+		leases, filterResult := hc.AcquireLeases(tt.filter)
+
+		suite.Equal(tt.matched, len(leases), "test case %s", ttName)
+		suite.Equal(tt.filterCounts, filterResult, "test case %s", ttName)
+
+		// Now Terminate this lease and make sure the error that may
+		// result is expected.
+		for _, lease := range leases {
+			err := hc.TerminateLease(
+				lease.GetHostSummary().GetHostname(),
+				lease.GetLeaseId().GetValue(),
+			)
+			if tt.errExpected {
+				suite.Equal(tt.errMsg, err.Error(), "test case %s", ttName)
+				continue
+			}
+			suite.NoError(err, "test case %s", ttName)
+
+			err = hc.CompleteLease(
+				lease.GetHostSummary().GetHostname(),
+				lease.GetLeaseId().GetValue(),
+				tt.podToResMap,
+			)
+			suite.Error(err, "test case %s", ttName)
+		}
+	}
+}
+
 // TestCompleteLease tests hostcache CompleteLease API
 func (suite *HostCacheTestSuite) TestCompleteLease() {
 	testTable := map[string]struct {

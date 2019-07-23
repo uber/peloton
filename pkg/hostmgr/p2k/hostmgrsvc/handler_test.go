@@ -203,6 +203,43 @@ func (suite *HostMgrHandlerTestSuite) TestLaunchPods() {
 	}
 }
 
+func (suite *HostMgrHandlerTestSuite) TestTerminateLease() {
+	defer suite.ctrl.Finish()
+
+	testTable := map[string]struct {
+		errMsg   string
+		leaseID  *hostmgr.LeaseID
+		hostname string
+	}{
+		"terminate-leases-success": {
+			hostname: "host-name",
+			leaseID:  &hostmgr.LeaseID{Value: uuid.New()},
+		},
+	}
+	for ttName, tt := range testTable {
+		req := &svc.TerminateLeasesRequest{
+			Leases: []*svc.TerminateLeasesRequest_LeasePair{
+				{
+					Hostname: tt.hostname,
+					LeaseId:  tt.leaseID,
+				},
+			},
+		}
+
+		suite.hostCache.EXPECT().
+			TerminateLease(tt.hostname, tt.leaseID.GetValue()).
+			Return(nil)
+
+		resp, err := suite.handler.TerminateLeases(rootCtx, req)
+		if tt.errMsg != "" {
+			suite.Equal(tt.errMsg, err.Error(), "test case %s", ttName)
+			continue
+		}
+		suite.NoError(err, "test case %s", ttName)
+		suite.Equal(&svc.TerminateLeasesResponse{}, resp)
+	}
+}
+
 // TestHostManagerTestSuite runs the HostMgrHandlerTestSuite
 func TestHostManagerTestSuite(t *testing.T) {
 	suite.Run(t, new(HostMgrHandlerTestSuite))

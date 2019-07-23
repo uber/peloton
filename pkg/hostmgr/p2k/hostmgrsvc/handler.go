@@ -28,6 +28,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
+	"go.uber.org/multierr"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/yarpcerrors"
 )
@@ -220,8 +221,15 @@ func (h *ServiceHandler) TerminateLeases(
 	ctx context.Context,
 	req *svc.TerminateLeasesRequest,
 ) (resp *svc.TerminateLeasesResponse, err error) {
-	return nil, yarpcerrors.UnimplementedErrorf(
-		"TerminateLeases not implemented")
+	var errs error
+	for _, lease := range req.Leases {
+		err := h.hostCache.TerminateLease(lease.Hostname, lease.LeaseId.Value)
+		errs = multierr.Append(errs, err)
+	}
+	if errs != nil {
+		return nil, yarpcerrors.InternalErrorf(errs.Error())
+	}
+	return &svc.TerminateLeasesResponse{}, nil
 }
 
 func (h *ServiceHandler) ChangeHostPool(

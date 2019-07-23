@@ -260,6 +260,88 @@ func (suite *HostCacheTestSuite) TestTryMatchReadyHost() {
 	}
 }
 
+// TestHostSummaryTerminateLease tests TerminateLease function of host summary
+func (suite *HostCacheTestSuite) TestHostSummaryTerminateLease() {
+	testTable := map[string]struct {
+		errExpected      bool
+		errMsg           string
+		podToResMap      map[string]scalar.Resources
+		preExistingPodID string
+		// allocation before the test
+		beforeAllocated scalar.Resources
+		leaseID         string
+		inputLeaseID    string
+		beforeStatus    HostStatus
+		afterStatus     HostStatus
+	}{
+
+		"terminate-lease-placing-host": {
+			errExpected: false,
+			// 5 pods each with 1 Cpu and 10 Mem
+			podToResMap:     generatePodToResMap(5, 1.0, 10.0),
+			beforeAllocated: createResource(1.0, 10.0),
+			leaseID:         _leaseID,
+			inputLeaseID:    _leaseID,
+			beforeStatus:    PlacingHost,
+			afterStatus:     ReadyHost,
+		},
+		"terminate-lease-held-host": {
+			errExpected:     true,
+			errMsg:          fmt.Sprintf("code:invalid-argument message:invalid status 4"),
+			podToResMap:     generatePodToResMap(10, 1.0, 10.0),
+			beforeAllocated: createResource(1.0, 10.0),
+			leaseID:         _leaseID,
+			inputLeaseID:    _leaseID,
+			beforeStatus:    HeldHost,
+			afterStatus:     HeldHost,
+		},
+		"terminate-lease-ready-host": {
+			errExpected:     true,
+			errMsg:          fmt.Sprintf("code:invalid-argument message:invalid status 1"),
+			podToResMap:     generatePodToResMap(10, 1.0, 10.0),
+			beforeAllocated: createResource(1.0, 10.0),
+			leaseID:         _leaseID,
+			inputLeaseID:    _leaseID,
+			beforeStatus:    ReadyHost,
+			afterStatus:     ReadyHost,
+		},
+		"terminate-lease-id-mismatch": {
+			errExpected:     true,
+			errMsg:          fmt.Sprintf("code:invalid-argument message:host leaseID does not match"),
+			podToResMap:     generatePodToResMap(10, 1.0, 10.0),
+			beforeAllocated: createResource(1.0, 10.0),
+			leaseID:         _leaseID,
+			inputLeaseID:    uuid.New(),
+			beforeStatus:    PlacingHost,
+			afterStatus:     PlacingHost,
+		},
+	}
+
+	for ttName, tt := range testTable {
+		// create a host with 10 CPU and 100Mem
+		s := newHostSummary(_hostname, _capacity, _version).(*hostSummary)
+		s.status = tt.beforeStatus
+		// initialize host cache with a podMap
+		s.podToResMap = generatePodToResMap(1, 1.0, 10.0)
+		s.allocated = tt.beforeAllocated
+		s.leaseID = tt.leaseID
+
+		if tt.preExistingPodID != "" {
+			s.podToResMap[tt.preExistingPodID] = scalar.Resources{}
+			tt.podToResMap[tt.preExistingPodID] = scalar.Resources{}
+		}
+
+		err := s.TerminateLease(tt.inputLeaseID)
+		if tt.errExpected {
+			suite.Error(err)
+			suite.Equal(tt.errMsg, err.Error(), "test case: %s", ttName)
+		} else {
+			suite.NoError(err, "test case: %s", ttName)
+		}
+		suite.Equal(tt.afterStatus, s.GetHostStatus(), "test case: %s", ttName)
+	}
+}
+
 // TestHostSummaryCompleteLease tests CompleteLease function of host summary
 func (suite *HostCacheTestSuite) TestHostSummaryCompleteLease() {
 	testTable := map[string]struct {
