@@ -40,8 +40,8 @@ func makeMetrics(res scalar.Resources, ports uint64) *metrics.Set {
 	result := metrics.NewSet()
 	result.Set(common.CPUAvailable, res.CPU*100.0)
 	result.Set(common.GPUAvailable, res.GPU*100.0)
-	result.Set(common.MemoryAvailable, res.Mem)
-	result.Set(common.DiskAvailable, res.Disk)
+	result.Set(common.MemoryAvailable, res.Mem*metrics.MiB)
+	result.Set(common.DiskAvailable, res.Disk*metrics.MiB)
 	result.Set(common.PortsAvailable, float64(ports))
 
 	result.Set(common.CPUFree, 0.0)

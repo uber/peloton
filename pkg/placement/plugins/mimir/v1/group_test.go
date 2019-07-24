@@ -19,6 +19,7 @@ import (
 
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 	common "github.com/uber/peloton/pkg/placement/plugins/mimir/common"
+	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/model/metrics"
 
 	"github.com/stretchr/testify/require"
 )
@@ -32,11 +33,11 @@ func TestCreateGroup(t *testing.T) {
 			GPU:  2,
 		}
 		ports := uint64(1000)
-		metrics := makeMetrics(res, ports)
-		require.Equal(t, 100.0, metrics.Get(common.CPUAvailable))
-		require.Equal(t, 200.0, metrics.Get(common.GPUAvailable))
-		require.Equal(t, 200.0, metrics.Get(common.MemoryAvailable))
-		require.Equal(t, 1000.0, metrics.Get(common.DiskAvailable))
+		m := makeMetrics(res, ports)
+		require.Equal(t, 100.0, m.Get(common.CPUAvailable))
+		require.Equal(t, 200.0, m.Get(common.GPUAvailable))
+		require.Equal(t, 200.0*metrics.MiB, m.Get(common.MemoryAvailable))
+		require.Equal(t, 1000.0*metrics.MiB, m.Get(common.DiskAvailable))
 	})
 
 	t.Run("group name", func(t *testing.T) {
