@@ -229,21 +229,24 @@ func (s *service) SetPlacements(
 func (s *service) createPlacements(assigned []models.Task) []*resmgr.Placement {
 	createPlacementStart := time.Now()
 	// For each offer find all tasks assigned to it.
-	offersToTasks := map[models.Offer][]models.Task{}
+	offersByID := map[string]models.Offer{}
+	offersToTasks := map[string][]models.Task{}
 	for _, placement := range assigned {
 		offer := placement.GetPlacement()
 		if offer == nil {
 			continue
 		}
-		if _, exists := offersToTasks[offer]; !exists {
-			offersToTasks[offer] = []models.Task{}
+		offersByID[offer.ID()] = offer
+		if _, exists := offersToTasks[offer.ID()]; !exists {
+			offersToTasks[offer.ID()] = []models.Task{}
 		}
-		offersToTasks[offer] = append(offersToTasks[offer], placement)
+		offersToTasks[offer.ID()] = append(offersToTasks[offer.ID()], placement)
 	}
 
 	// For each offer create a placement with all the tasks assigned to it.
 	var resPlacements []*resmgr.Placement
-	for offer, tasks := range offersToTasks {
+	for offerID, tasks := range offersToTasks {
+		offer := offersByID[offerID]
 		selectedPorts := models.AssignPorts(offer, tasks)
 		agentID := offer.AgentID()
 		placement := &resmgr.Placement{

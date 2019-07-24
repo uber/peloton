@@ -15,9 +15,13 @@
 package v0_testutil
 
 import (
+	"fmt"
+
 	"github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+
+	"github.com/pborman/uuid"
 )
 
 // SetupHostOffer creates a v0 host offer for testing.
@@ -39,8 +43,9 @@ func SetupHostOffer() *hostsvc.HostOffer {
 	textType := mesos_v1.Value_TEXT
 	scalarType := mesos_v1.Value_SCALAR
 	rangesType := mesos_v1.Value_RANGES
+	offerID := fmt.Sprintf("host-offer-id-%s", uuid.NewUUID().String())
 	return &hostsvc.HostOffer{
-		Id:       &peloton.HostOfferID{Value: "host-offer-id"},
+		Id:       &peloton.HostOfferID{Value: offerID},
 		Hostname: "hostname",
 		Attributes: []*mesos_v1.Attribute{
 			{

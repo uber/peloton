@@ -493,18 +493,19 @@ func (e *engine) findUnusedHosts(
 	assignments = append(assignments, retryable...)
 
 	// For each offer determine if any tasks where assigned to it.
-	usedOffers := map[models.Offer]struct{}{}
+	usedOffers := map[string]struct{}{}
 	for _, placement := range assignments {
 		offer := placement.GetPlacement()
 		if offer == nil {
 			continue
 		}
-		usedOffers[offer] = struct{}{}
+		usedOffers[offer.ID()] = struct{}{}
 	}
+
 	// Find the unused hosts
 	unusedOffers := []models.Offer{}
 	for _, offer := range hosts {
-		if _, used := usedOffers[offer]; !used {
+		if _, used := usedOffers[offer.ID()]; !used {
 			unusedOffers = append(unusedOffers, offer)
 		}
 	}
