@@ -47,6 +47,7 @@ import (
 	"github.com/uber/peloton/pkg/storage/objects"
 	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
+	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/common/backoff"
 	"github.com/uber/peloton/pkg/common/util"
 	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
@@ -492,7 +493,7 @@ func (suite *LauncherTestSuite) TestLaunch() {
 			Times(1),
 	)
 
-	suite.taskLauncher.useK8S = true
+	suite.taskLauncher.hmVersion = api.V1Alpha
 	skipped, err := suite.taskLauncher.Launch(
 		context.Background(), taskInfos, placement)
 	suite.NoError(err)
@@ -502,7 +503,7 @@ func (suite *LauncherTestSuite) TestLaunch() {
 	}
 	suite.Equal(expectedLaunchedHosts, hostsLaunchedOn)
 	suite.Equal(podSpecs, launchedPodSpecMap)
-	suite.taskLauncher.useK8S = false
+	suite.taskLauncher.hmVersion = api.V0
 }
 
 // This test ensures that tasks got rescheduled when launched got invalid offer resp.

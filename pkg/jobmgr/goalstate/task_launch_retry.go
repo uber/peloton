@@ -152,7 +152,7 @@ func TaskLaunchRetry(ctx context.Context, entity goalstate.Entity) error {
 	}
 
 	if err == nil {
-		jobmgrtask.KillOrphanTask(ctx, goalStateDriver.hostmgrClient, taskInfo)
+		jobmgrtask.KillOrphanTask(ctx, goalStateDriver.lm, taskInfo)
 	}
 
 	// going to regenerate the mesos id and enqueue to place it again

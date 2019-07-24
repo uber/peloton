@@ -26,6 +26,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 
 	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/common/goalstate"
 	goalstatemocks "github.com/uber/peloton/pkg/common/goalstate/mocks"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
@@ -139,6 +140,25 @@ func (suite *DriverTestSuite) TestNewDriver() {
 		tally.NoopScope,
 		config,
 		false,
+		api.V0,
+	)
+	suite.NotNil(dr)
+	suite.Equal(dr.(*driver).jobType, job.JobType_SERVICE)
+
+	dr = NewDriver(
+		dispatcher,
+		suite.jobStore,
+		suite.taskStore,
+		volumeStore,
+		updateStore,
+		&ormStore.Store{},
+		suite.jobFactory,
+		taskLauncher,
+		job.JobType_SERVICE,
+		tally.NoopScope,
+		config,
+		false,
+		api.V1Alpha,
 	)
 	suite.NotNil(dr)
 	suite.Equal(dr.(*driver).jobType, job.JobType_SERVICE)

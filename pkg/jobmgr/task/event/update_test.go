@@ -36,14 +36,14 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
-	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	host_mocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 
 	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/common/api"
 	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
 	goalstatemocks "github.com/uber/peloton/pkg/jobmgr/goalstate/mocks"
 	jobmgrtask "github.com/uber/peloton/pkg/jobmgr/task"
 	event_mocks "github.com/uber/peloton/pkg/jobmgr/task/event/mocks"
+	lmmocks "github.com/uber/peloton/pkg/jobmgr/task/lifecyclemgr/mocks"
 	store_mocks "github.com/uber/peloton/pkg/storage/mocks"
 )
 
@@ -77,17 +77,17 @@ var nowMock = func() time.Time {
 type TaskUpdaterTestSuite struct {
 	suite.Suite
 
-	updater           *statusUpdate
-	ctrl              *gomock.Controller
-	testScope         tally.TestScope
-	mockJobStore      *store_mocks.MockJobStore
-	mockTaskStore     *store_mocks.MockTaskStore
-	mockVolumeStore   *store_mocks.MockPersistentVolumeStore
-	jobFactory        *cachedmocks.MockJobFactory
-	goalStateDriver   *goalstatemocks.MockDriver
-	mockListener1     *event_mocks.MockListener
-	mockListener2     *event_mocks.MockListener
-	mockHostMgrClient *host_mocks.MockInternalHostServiceYARPCClient
+	updater         *statusUpdate
+	ctrl            *gomock.Controller
+	testScope       tally.TestScope
+	mockJobStore    *store_mocks.MockJobStore
+	mockTaskStore   *store_mocks.MockTaskStore
+	mockVolumeStore *store_mocks.MockPersistentVolumeStore
+	jobFactory      *cachedmocks.MockJobFactory
+	goalStateDriver *goalstatemocks.MockDriver
+	mockListener1   *event_mocks.MockListener
+	mockListener2   *event_mocks.MockListener
+	lmMock          *lmmocks.MockManager
 }
 
 func (suite *TaskUpdaterTestSuite) SetupTest() {
@@ -100,7 +100,7 @@ func (suite *TaskUpdaterTestSuite) SetupTest() {
 	suite.goalStateDriver = goalstatemocks.NewMockDriver(suite.ctrl)
 	suite.mockListener1 = event_mocks.NewMockListener(suite.ctrl)
 	suite.mockListener2 = event_mocks.NewMockListener(suite.ctrl)
-	suite.mockHostMgrClient = host_mocks.NewMockInternalHostServiceYARPCClient(suite.ctrl)
+	suite.lmMock = lmmocks.NewMockManager(suite.ctrl)
 
 	suite.updater = &statusUpdate{
 		jobStore:        suite.mockJobStore,
@@ -111,7 +111,7 @@ func (suite *TaskUpdaterTestSuite) SetupTest() {
 		goalStateDriver: suite.goalStateDriver,
 		rootCtx:         context.Background(),
 		metrics:         NewMetrics(suite.testScope.SubScope("status_updater")),
-		hostmgrClient:   suite.mockHostMgrClient,
+		lm:              suite.lmMock,
 	}
 	suite.updater.applier = newBucketEventProcessor(suite.updater, 10, 10)
 }
@@ -145,6 +145,20 @@ func (suite *TaskUpdaterTestSuite) TestNewTaskStatusUpdate() {
 		suite.goalStateDriver,
 		[]Listener{},
 		tally.NoopScope,
+		api.V0,
+	)
+	suite.NotNil(statusUpdater)
+
+	statusUpdater = NewTaskStatusUpdate(
+		dispatcher,
+		suite.mockJobStore,
+		suite.mockTaskStore,
+		suite.mockVolumeStore,
+		suite.jobFactory,
+		suite.goalStateDriver,
+		[]Listener{},
+		tally.NoopScope,
+		api.V1Alpha,
 	)
 	suite.NotNil(statusUpdater)
 }
@@ -1119,14 +1133,13 @@ func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskRunningStatusUpdate() {
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(context.Background(), _pelotonTaskID).
 		Return(taskInfo, nil)
-	suite.mockHostMgrClient.EXPECT().KillTasks(gomock.Any(), &hostsvc.KillTasksRequest{
-		TaskIds: []*mesos.TaskID{orphanTaskID},
-	}).
-		Do(func(ctx context.Context, req *hostsvc.KillTasksRequest) {
-			_, ok := ctx.Deadline()
-			suite.True(ok)
-		}).
-		Return(nil, nil)
+
+	suite.lmMock.EXPECT().Kill(
+		gomock.Any(),
+		orphanTaskID.GetValue(),
+		"",
+		nil,
+	).Return(nil)
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 }
 
@@ -1147,10 +1160,12 @@ func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskKillError() {
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(context.Background(), _pelotonTaskID).
 		Return(taskInfo, nil)
-	suite.mockHostMgrClient.EXPECT().KillTasks(gomock.Any(), &hostsvc.KillTasksRequest{
-		TaskIds: []*mesos.TaskID{orphanTaskID},
-	}).
-		Return(nil, fmt.Errorf("fake db error")).
+	suite.lmMock.EXPECT().Kill(
+		gomock.Any(),
+		orphanTaskID.GetValue(),
+		"",
+		nil,
+	).Return(fmt.Errorf("fake db error")).
 		Times(_numOrphanTaskKillAttempts)
 
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
@@ -1192,9 +1207,9 @@ func (suite *TaskUpdaterTestSuite) TestProcessMissingTaskStatusUpdate() {
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(context.Background(), _pelotonTaskID).
 		Return(nil, yarpcerrors.NotFoundErrorf("task:%s not found", _pelotonTaskID))
-	suite.mockHostMgrClient.EXPECT().
-		KillTasks(gomock.Any(), gomock.Any()).
-		Return(&hostsvc.KillTasksResponse{}, nil)
+	suite.lmMock.EXPECT().
+		Kill(gomock.Any(), gomock.Any(), gomock.Any(), nil).
+		Return(nil)
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 }
 

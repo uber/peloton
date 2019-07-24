@@ -23,14 +23,15 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
-	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
 	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/common/goalstate"
 	"github.com/uber/peloton/pkg/common/recovery"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	"github.com/uber/peloton/pkg/jobmgr/task/launcher"
+	"github.com/uber/peloton/pkg/jobmgr/task/lifecyclemgr"
 	"github.com/uber/peloton/pkg/storage"
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 
@@ -110,7 +111,9 @@ func NewDriver(
 	jobType job.JobType,
 	parentScope tally.Scope,
 	cfg Config,
-	jobRuntimeCalculationViaCache bool) Driver {
+	jobRuntimeCalculationViaCache bool,
+	hmVersion api.Version,
+) Driver {
 	cfg.normalize()
 	scope := parentScope.SubScope("goalstate")
 	jobScope := scope.SubScope("job")
@@ -133,8 +136,7 @@ func NewDriver(
 			cfg.FailureRetryDelay,
 			cfg.MaxRetryDelay,
 			workflowScope),
-		hostmgrClient: hostsvc.NewInternalHostServiceYARPCClient(
-			d.ClientConfig(common.PelotonHostManager)),
+		lm: lifecyclemgr.New(hmVersion, d),
 		resmgrClient: resmgrsvc.NewResourceManagerServiceYARPCClient(
 			d.ClientConfig(common.PelotonResourceManager)),
 		jobStore:                      jobStore,
@@ -195,9 +197,8 @@ type driver struct {
 	taskEngine   goalstate.Engine
 	updateEngine goalstate.Engine
 
-	// hostmgrClient and resmgrClient are the host manager and resource manager clients.
-	hostmgrClient hostsvc.InternalHostServiceYARPCClient
-	resmgrClient  resmgrsvc.ResourceManagerServiceYARPCClient
+	lm           lifecyclemgr.Manager
+	resmgrClient resmgrsvc.ResourceManagerServiceYARPCClient
 
 	// jobStore, taskStore and volumeStore are the objects to the storage interface.
 	jobStore        storage.JobStore

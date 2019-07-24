@@ -17,7 +17,6 @@ package task
 import (
 	"context"
 	"encoding/base64"
-	"fmt"
 	"time"
 
 	"github.com/uber/peloton/.gen/mesos/v1"
@@ -25,23 +24,17 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
-	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/taskconfig"
 	"github.com/uber/peloton/pkg/common/util"
+	"github.com/uber/peloton/pkg/jobmgr/task/lifecyclemgr"
 	taskutil "github.com/uber/peloton/pkg/jobmgr/util/task"
 
 	log "github.com/sirupsen/logrus"
-	"go.uber.org/yarpc/yarpcerrors"
-	"golang.org/x/time/rate"
 )
 
-const (
-	// timeout for the orphan task kill call
-	_defaultKillTaskActionTimeout = 5 * time.Second
-	_initialRunID                 = 1
-)
+const _initialRunID = 1
 
 // CreateInitializingTask for insertion into the storage layer, before being
 // enqueued.
@@ -78,8 +71,9 @@ func GetDefaultTaskGoalState(jobType job.JobType) task.TaskState {
 // KillOrphanTask kills a non-stateful Mesos task with unterminated state
 func KillOrphanTask(
 	ctx context.Context,
-	hostmgrClient hostsvc.InternalHostServiceYARPCClient,
-	taskInfo *task.TaskInfo) error {
+	lm lifecyclemgr.Manager,
+	taskInfo *task.TaskInfo,
+) error {
 
 	// TODO(chunyang.shen): store the stateful info into cache instead of going to DB to fetch config
 	if util.IsTaskHasValidVolume(taskInfo) {
@@ -95,9 +89,19 @@ func KillOrphanTask(
 	if !util.IsPelotonStateTerminal(state) && mesosTaskID != nil {
 		var err error
 		if state == task.TaskState_KILLING {
-			err = ShutdownMesosExecutor(ctx, hostmgrClient, mesosTaskID, agentID, nil)
+			err = lm.ShutdownExecutor(
+				ctx,
+				mesosTaskID.GetValue(),
+				agentID.GetValue(),
+				nil,
+			)
 		} else {
-			err = KillTask(ctx, hostmgrClient, mesosTaskID, "", nil)
+			err = lm.Kill(
+				ctx,
+				mesosTaskID.GetValue(),
+				"",
+				nil,
+			)
 		}
 		if err != nil {
 			log.WithError(err).
@@ -106,134 +110,6 @@ func KillOrphanTask(
 		}
 		return err
 	}
-	return nil
-}
-
-// KillTask kills a task given its mesos task ID
-func KillTask(
-	ctx context.Context,
-	hostmgrClient hostsvc.InternalHostServiceYARPCClient,
-	taskID *mesos_v1.TaskID,
-	hostToReserve string,
-	rateLimiter *rate.Limiter,
-) error {
-	newCtx := ctx
-	_, ok := ctx.Deadline()
-	if !ok {
-		var cancelFunc context.CancelFunc
-		newCtx, cancelFunc = context.WithTimeout(context.Background(), _defaultKillTaskActionTimeout)
-		defer cancelFunc()
-	}
-
-	if len(hostToReserve) != 0 {
-		return killAndReserveHost(newCtx, hostmgrClient, taskID, hostToReserve, rateLimiter)
-	}
-
-	return killHost(newCtx, hostmgrClient, taskID, rateLimiter)
-}
-
-func killHost(
-	ctx context.Context,
-	hostmgrClient hostsvc.InternalHostServiceYARPCClient,
-	taskID *mesos_v1.TaskID,
-	rateLimiter *rate.Limiter,
-) error {
-	if rateLimiter != nil && !rateLimiter.Allow() {
-		return yarpcerrors.ResourceExhaustedErrorf("rate limit reached for kill task")
-	}
-
-	req := &hostsvc.KillTasksRequest{
-		TaskIds: []*mesos_v1.TaskID{taskID},
-	}
-	res, err := hostmgrClient.KillTasks(ctx, req)
-	if err != nil {
-		return err
-	} else if e := res.GetError(); e != nil {
-		switch {
-		case e.KillFailure != nil:
-			return fmt.Errorf(e.KillFailure.Message)
-		case e.InvalidTaskIDs != nil:
-			return fmt.Errorf(e.InvalidTaskIDs.Message)
-		default:
-			return fmt.Errorf(e.String())
-		}
-	}
-	return nil
-}
-
-func killAndReserveHost(
-	ctx context.Context,
-	hostmgrClient hostsvc.InternalHostServiceYARPCClient,
-	mesosTaskID *mesos_v1.TaskID,
-	hostToReserve string,
-	rateLimiter *rate.Limiter,
-) error {
-	if rateLimiter != nil && !rateLimiter.Allow() {
-		return yarpcerrors.ResourceExhaustedErrorf("rate limit reached for kill and reserve task")
-	}
-
-	taskID, err := util.ParseTaskIDFromMesosTaskID(mesosTaskID.GetValue())
-	if err != nil {
-		return err
-	}
-
-	req := &hostsvc.KillAndReserveTasksRequest{
-		Entries: []*hostsvc.KillAndReserveTasksRequest_Entry{
-			{Id: &peloton.TaskID{Value: taskID}, TaskId: mesosTaskID, HostToReserve: hostToReserve},
-		},
-	}
-	res, err := hostmgrClient.KillAndReserveTasks(ctx, req)
-	if err != nil {
-		return err
-	} else if e := res.GetError(); e != nil {
-		switch {
-		case e.KillFailure != nil:
-			return fmt.Errorf(e.KillFailure.Message)
-		case e.InvalidTaskIDs != nil:
-			return fmt.Errorf(e.InvalidTaskIDs.Message)
-		default:
-			return fmt.Errorf(e.String())
-		}
-	}
-	return nil
-}
-
-// ShutdownMesosExecutor shutdown a executor given its executor ID and agent ID
-func ShutdownMesosExecutor(
-	ctx context.Context,
-	hostmgrClient hostsvc.InternalHostServiceYARPCClient,
-	taskID *mesos_v1.TaskID,
-	agentID *mesos_v1.AgentID,
-	rateLimiter *rate.Limiter,
-) error {
-	if rateLimiter != nil && !rateLimiter.Allow() {
-		return yarpcerrors.ResourceExhaustedErrorf("rate limit reached for executor shutdown")
-	}
-
-	req := &hostsvc.ShutdownExecutorsRequest{
-		Executors: []*hostsvc.ExecutorOnAgent{
-			{
-				ExecutorId: &mesos_v1.ExecutorID{Value: taskID.Value},
-				AgentId:    agentID,
-			},
-		},
-	}
-
-	res, err := hostmgrClient.ShutdownExecutors(ctx, req)
-
-	if err != nil {
-		return err
-	} else if e := res.GetError(); e != nil {
-		switch {
-		case e.ShutdownFailure != nil:
-			return fmt.Errorf(e.ShutdownFailure.Message)
-		case e.InvalidExecutors != nil:
-			return fmt.Errorf(e.InvalidExecutors.Message)
-		default:
-			return fmt.Errorf(e.String())
-		}
-	}
-
 	return nil
 }
 

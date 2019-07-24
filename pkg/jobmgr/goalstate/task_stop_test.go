@@ -24,14 +24,13 @@ import (
 	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
-	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	hostmocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 	resmocks "github.com/uber/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
 	"github.com/uber/peloton/pkg/common/goalstate"
 	goalstatemocks "github.com/uber/peloton/pkg/common/goalstate/mocks"
 	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
+	lmmocks "github.com/uber/peloton/pkg/jobmgr/task/lifecyclemgr/mocks"
 	storemocks "github.com/uber/peloton/pkg/storage/mocks"
 
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
@@ -51,15 +50,15 @@ func TestTaskStop(t *testing.T) {
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
 	cachedJob := cachedmocks.NewMockJob(ctrl)
 	cachedTask := cachedmocks.NewMockTask(ctrl)
-	hostMock := hostmocks.NewMockInternalHostServiceYARPCClient(ctrl)
+	lmMock := lmmocks.NewMockManager(ctrl)
 
 	goalStateDriver := &driver{
-		jobEngine:     jobGoalStateEngine,
-		taskEngine:    taskGoalStateEngine,
-		jobFactory:    jobFactory,
-		hostmgrClient: hostMock,
-		mtx:           NewMetrics(tally.NoopScope),
-		cfg:           &Config{},
+		jobEngine:  jobGoalStateEngine,
+		taskEngine: taskGoalStateEngine,
+		jobFactory: jobFactory,
+		lm:         lmMock,
+		mtx:        NewMetrics(tally.NoopScope),
+		cfg:        &Config{},
 	}
 	goalStateDriver.cfg.normalize()
 
@@ -104,9 +103,12 @@ func TestTaskStop(t *testing.T) {
 		}, false,
 		)
 
-	hostMock.EXPECT().KillTasks(gomock.Any(), &hostsvc.KillTasksRequest{
-		TaskIds: []*mesos_v1.TaskID{taskID},
-	}).Return(nil, nil)
+	lmMock.EXPECT().Kill(
+		gomock.Any(),
+		taskID.GetValue(),
+		"",
+		nil,
+	).Return(nil)
 
 	cachedJob.EXPECT().
 		GetJobType().Return(pbjob.JobType_BATCH)
@@ -149,15 +151,15 @@ func TestTaskStopForInPlaceUpdate(t *testing.T) {
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
 	cachedJob := cachedmocks.NewMockJob(ctrl)
 	cachedTask := cachedmocks.NewMockTask(ctrl)
-	hostMock := hostmocks.NewMockInternalHostServiceYARPCClient(ctrl)
+	lmMock := lmmocks.NewMockManager(ctrl)
 
 	goalStateDriver := &driver{
-		jobEngine:     jobGoalStateEngine,
-		taskEngine:    taskGoalStateEngine,
-		jobFactory:    jobFactory,
-		hostmgrClient: hostMock,
-		mtx:           NewMetrics(tally.NoopScope),
-		cfg:           &Config{},
+		jobEngine:  jobGoalStateEngine,
+		taskEngine: taskGoalStateEngine,
+		jobFactory: jobFactory,
+		lm:         lmMock,
+		mtx:        NewMetrics(tally.NoopScope),
+		cfg:        &Config{},
 	}
 	goalStateDriver.cfg.normalize()
 
@@ -203,7 +205,12 @@ func TestTaskStopForInPlaceUpdate(t *testing.T) {
 		}, false,
 		)
 
-	hostMock.EXPECT().KillAndReserveTasks(gomock.Any(), gomock.Any()).Return(nil, nil)
+	lmMock.EXPECT().Kill(
+		gomock.Any(),
+		taskID.GetValue(),
+		"host1",
+		nil,
+	).Return(nil)
 
 	cachedJob.EXPECT().
 		GetJobType().Return(pbjob.JobType_BATCH)

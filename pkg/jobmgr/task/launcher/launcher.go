@@ -36,6 +36,7 @@ import (
 	aurora "github.com/uber/peloton/.gen/thrift/aurora/api"
 
 	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/common/backoff"
 	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
@@ -149,7 +150,7 @@ type launcher struct {
 	secretInfoOps        ormobjects.SecretInfoOps
 	metrics              *Metrics
 	retryPolicy          backoff.RetryPolicy
-	useK8S               bool
+	hmVersion            api.Version
 }
 
 const (
@@ -176,7 +177,7 @@ func InitTaskLauncher(
 	volumeStore storage.PersistentVolumeStore,
 	ormStore *ormobjects.Store,
 	parent tally.Scope,
-	useK8S bool,
+	hmVersion api.Version,
 ) {
 	onceInitTaskLauncher.Do(func() {
 		if taskLauncher != nil {
@@ -196,7 +197,7 @@ func InitTaskLauncher(
 			metrics:         NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
 			// TODO: make launch retry policy config.
 			retryPolicy: backoff.NewRetryPolicy(3, 15*time.Second),
-			useK8S:      useK8S,
+			hmVersion:   hmVersion,
 		}
 	})
 }
@@ -215,7 +216,7 @@ func (l *launcher) Launch(
 	taskInfos map[string]*LaunchableTaskInfo,
 	placement *resmgr.Placement,
 ) (skippedTaskInfos map[string]*LaunchableTaskInfo, err error) {
-	if l.useK8S {
+	if l.hmVersion.IsV1() {
 		err = l.launchOnK8S(ctx, taskInfos, placement)
 		err = errors.Wrap(err, "Launch on k8s failed: ")
 	} else {
@@ -392,7 +393,7 @@ func (l *launcher) GetLaunchableTasks(
 		}
 
 		var spec *pbpod.PodSpec
-		if l.useK8S {
+		if l.hmVersion.IsV1() {
 			spec, err = l.taskConfigV2Ops.GetPodSpec(
 				ctx,
 				jobID,

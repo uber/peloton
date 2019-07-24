@@ -22,18 +22,17 @@ import (
 	"github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
-	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	hostmocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 
 	goalstatemocks "github.com/uber/peloton/pkg/common/goalstate/mocks"
 	"github.com/uber/peloton/pkg/common/util"
 	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
+	lmmocks "github.com/uber/peloton/pkg/jobmgr/task/lifecyclemgr/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
-	"go.uber.org/yarpc"
+	"golang.org/x/time/rate"
 )
 
 func TestTaskStopShutdownExecutor(t *testing.T) {
@@ -45,15 +44,15 @@ func TestTaskStopShutdownExecutor(t *testing.T) {
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
 	cachedJob := cachedmocks.NewMockJob(ctrl)
 	cachedTask := cachedmocks.NewMockTask(ctrl)
-	hostMock := hostmocks.NewMockInternalHostServiceYARPCClient(ctrl)
+	lmMock := lmmocks.NewMockManager(ctrl)
 
 	goalStateDriver := &driver{
-		jobEngine:     jobGoalStateEngine,
-		taskEngine:    taskGoalStateEngine,
-		jobFactory:    jobFactory,
-		hostmgrClient: hostMock,
-		mtx:           NewMetrics(tally.NoopScope),
-		cfg:           &Config{},
+		jobEngine:  jobGoalStateEngine,
+		taskEngine: taskGoalStateEngine,
+		jobFactory: jobFactory,
+		lm:         lmMock,
+		mtx:        NewMetrics(tally.NoopScope),
+		cfg:        &Config{},
 	}
 	goalStateDriver.cfg.normalize()
 
@@ -92,13 +91,21 @@ func TestTaskStopShutdownExecutor(t *testing.T) {
 	cachedTask.EXPECT().
 		GetRuntime(gomock.Any()).Return(runtime, nil)
 
-	hostMock.EXPECT().
-		ShutdownExecutors(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, req *hostsvc.ShutdownExecutorsRequest, opt ...yarpc.CallOption) {
-			assert.Equal(t, req.GetExecutors()[0].GetExecutorId().GetValue(), taskID.GetValue())
-			assert.Equal(t, req.GetExecutors()[0].GetAgentId().GetValue(), agentID.GetValue())
+	lmMock.EXPECT().
+		ShutdownExecutor(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			nil).
+		Do(func(
+			ctx context.Context,
+			tid, agent string,
+			_ *rate.Limiter,
+		) {
+			assert.Equal(t, tid, taskID.GetValue())
+			assert.Equal(t, agent, agentID.GetValue())
 		}).
-		Return(&hostsvc.ShutdownExecutorsResponse{}, nil)
+		Return(nil)
 
 	err := TaskExecutorShutdown(context.Background(), taskEnt)
 	assert.NoError(t, err)
@@ -113,15 +120,15 @@ func TestTaskStopNoTimeout(t *testing.T) {
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
 	cachedJob := cachedmocks.NewMockJob(ctrl)
 	cachedTask := cachedmocks.NewMockTask(ctrl)
-	hostMock := hostmocks.NewMockInternalHostServiceYARPCClient(ctrl)
+	lmMock := lmmocks.NewMockManager(ctrl)
 
 	goalStateDriver := &driver{
-		jobEngine:     jobGoalStateEngine,
-		taskEngine:    taskGoalStateEngine,
-		jobFactory:    jobFactory,
-		hostmgrClient: hostMock,
-		mtx:           NewMetrics(tally.NoopScope),
-		cfg:           &Config{},
+		jobEngine:  jobGoalStateEngine,
+		taskEngine: taskGoalStateEngine,
+		jobFactory: jobFactory,
+		lm:         lmMock,
+		mtx:        NewMetrics(tally.NoopScope),
+		cfg:        &Config{},
 	}
 	goalStateDriver.cfg.normalize()
 

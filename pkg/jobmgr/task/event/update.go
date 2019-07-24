@@ -24,14 +24,15 @@ import (
 	pb_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
-	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/common/eventstream"
 	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	"github.com/uber/peloton/pkg/jobmgr/goalstate"
 	jobmgr_task "github.com/uber/peloton/pkg/jobmgr/task"
+	"github.com/uber/peloton/pkg/jobmgr/task/lifecyclemgr"
 	taskutil "github.com/uber/peloton/pkg/jobmgr/util/task"
 	"github.com/uber/peloton/pkg/storage"
 
@@ -79,7 +80,7 @@ type statusUpdate struct {
 	taskStore       storage.TaskStore
 	volumeStore     storage.PersistentVolumeStore
 	eventClients    map[string]*eventstream.Client
-	hostmgrClient   hostsvc.InternalHostServiceYARPCClient
+	lm              lifecyclemgr.Manager
 	applier         *asyncEventProcessor
 	jobFactory      cached.JobFactory
 	goalStateDriver goalstate.Driver
@@ -97,7 +98,9 @@ func NewTaskStatusUpdate(
 	jobFactory cached.JobFactory,
 	goalStateDriver goalstate.Driver,
 	listeners []Listener,
-	parentScope tally.Scope) StatusUpdate {
+	parentScope tally.Scope,
+	hmVersion api.Version,
+) StatusUpdate {
 
 	statusUpdater := &statusUpdate{
 		jobStore:        jobStore,
@@ -109,7 +112,7 @@ func NewTaskStatusUpdate(
 		jobFactory:      jobFactory,
 		goalStateDriver: goalStateDriver,
 		listeners:       listeners,
-		hostmgrClient:   hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(common.PelotonHostManager)),
+		lm:              lifecyclemgr.New(hmVersion, d),
 	}
 	// TODO: add config for BucketEventProcessor
 	statusUpdater.applier = newBucketEventProcessor(statusUpdater, 100, 10000)
@@ -170,7 +173,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 
 		// Kill the orphan task
 		for i := 0; i < _numOrphanTaskKillAttempts; i++ {
-			err = jobmgr_task.KillOrphanTask(ctx, p.hostmgrClient, taskInfo)
+			err = jobmgr_task.KillOrphanTask(ctx, p.lm, taskInfo)
 			if err == nil {
 				return nil
 			}

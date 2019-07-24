@@ -26,7 +26,6 @@ import (
 	"github.com/uber/peloton/pkg/common/goalstate"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
-	jobmgrtask "github.com/uber/peloton/pkg/jobmgr/task"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -173,10 +172,9 @@ func stopMesosTask(ctx context.Context, taskEnt *taskEntity, runtime *task.Runti
 	}
 
 	// Send kill signal to mesos first time
-	err := jobmgrtask.KillTask(
+	err := goalStateDriver.lm.Kill(
 		ctx,
-		goalStateDriver.hostmgrClient,
-		runtime.GetMesosTaskId(),
+		runtime.GetMesosTaskId().GetValue(),
 		runtime.GetDesiredHost(),
 		goalStateDriver.taskKillRateLimiter,
 	)

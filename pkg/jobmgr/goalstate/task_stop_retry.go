@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/uber/peloton/pkg/common/goalstate"
-	jobmgrtask "github.com/uber/peloton/pkg/jobmgr/task"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -49,11 +48,10 @@ func TaskExecutorShutdown(ctx context.Context, entity goalstate.Entity) error {
 		WithField("instance_id", taskEnt.instanceID).
 		Info("task kill timed out, try to shutdown executor")
 
-	return jobmgrtask.ShutdownMesosExecutor(
+	return goalStateDriver.lm.ShutdownExecutor(
 		ctx,
-		goalStateDriver.hostmgrClient,
-		runtime.GetMesosTaskId(),
-		runtime.GetAgentID(),
+		runtime.GetMesosTaskId().GetValue(),
+		runtime.GetAgentID().GetValue(),
 		goalStateDriver.executorShutShutdownRateLimiter,
 	)
 }
