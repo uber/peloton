@@ -43,18 +43,22 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// _sleepRetryCheckRunningState is the duration to wait during stop/start while waiting for
-// the driver to be running/to be not running..
-const (
-	_sleepRetryCheckRunningState = 10 * time.Millisecond
-)
-
-// driverState indicates whether driver is running or not
+// driverState indicates the running state of driver
 type driverState int32
 
 const (
-	notRunning driverState = iota + 1 // not running
-	running                           // running
+	stopped driverState = iota + 1
+	stopping
+	starting
+	started
+)
+
+// driverCacheState indicates the cache state of driver
+type driverCacheState int32
+
+const (
+	cleaned driverCacheState = iota + 1
+	populated
 )
 
 // Driver is the interface to enqueue jobs and tasks into the goal state engine
@@ -92,8 +96,12 @@ type Driver interface {
 	JobRuntimeDuration(jobType job.JobType) time.Duration
 	// Start is used to start processing items in the goal state engine.
 	Start()
-	// Stop is used to clean all items and then stop the goal state engine.
-	Stop()
+	// Stop is used to stop the goal state engine.
+	// If cleanUpCache is set to true, then all of the cache would be removed,
+	// and it would be recovered when start again.
+	// If cleanUpCache is not set, cache would be kept in the memory, and start
+	// would skip cache recovery.
+	Stop(cleanUpCache bool)
 	// Started returns true if goal state engine has finished start process
 	Started() bool
 }
@@ -120,7 +128,7 @@ func NewDriver(
 	taskScope := scope.SubScope("task")
 	workflowScope := scope.SubScope("workflow")
 
-	return &driver{
+	driver := &driver{
 		jobEngine: goalstate.NewEngine(
 			cfg.NumWorkerJobThreads,
 			cfg.FailureRetryDelay,
@@ -163,6 +171,10 @@ func NewDriver(
 			cfg.RateLimiterConfig.ExecutorShutdown.Rate,
 			cfg.RateLimiterConfig.ExecutorShutdown.Burst),
 	}
+
+	driver.setState(stopped)
+	driver.setCacheState(cleaned)
+	return driver
 }
 
 // EnqueueJobWithDefaultDelay is a helper function to enqueue a job into the
@@ -218,9 +230,10 @@ type driver struct {
 	// taskLauncher is used to launch tasks to host manager
 	taskLauncher launcher.Launcher
 
-	cfg     *Config  // goal state engine configuration
-	mtx     *Metrics // goal state metrics
-	running int32    // whether driver is running or not
+	cfg        *Config  // goal state engine configuration
+	mtx        *Metrics // goal state metrics
+	running    int32    // whether driver is running or not
+	cacheState int32    // the state of driver cache
 
 	jobType job.JobType // the type of the job for the driver
 	// feature flag of aggressive runtime updater calculation
@@ -423,24 +436,26 @@ func (d *driver) syncFromDB(ctx context.Context) error {
 	return nil
 }
 
-// runningState returns the running state of the driver
-// (1 is not running, 2 if runing and 0 is invalid).
-func (d *driver) runningState() int32 {
-	return atomic.LoadInt32(&d.running)
-}
-
 func (d *driver) Start() {
-	// Ensure that driver is not already running
 	for {
-		if d.runningState() != int32(running) {
+		state := d.getState()
+		if state == starting || state == started {
+			return
+		}
+
+		// make sure state did not change in-between
+		if d.compareAndSwapState(state, starting) {
 			break
 		}
-		time.Sleep(_sleepRetryCheckRunningState)
 	}
 
-	if err := d.syncFromDB(context.Background()); err != nil {
-		log.WithError(err).
-			Fatal("failed to sync job manager with DB")
+	// only need to sync from DB if cache was cleaned up
+	if d.getCacheState() == cleaned {
+		if err := d.syncFromDB(context.Background()); err != nil {
+			log.WithError(err).
+				Fatal("failed to sync job manager with DB")
+		}
+		d.setCacheState(populated)
 	}
 
 	d.Lock()
@@ -449,21 +464,32 @@ func (d *driver) Start() {
 	d.updateEngine.Start()
 	d.Unlock()
 
-	atomic.StoreInt32(&d.running, int32(running))
+	d.setState(started)
 	log.Info("goalstate driver started")
 }
 
 func (d *driver) Started() bool {
-	return driverState(d.runningState()) == running
+	return d.getState() == started
 }
 
-func (d *driver) Stop() {
-	// Ensure that driver is running
+func (d *driver) Stop(cleanUpCache bool) {
 	for {
-		if d.runningState() != int32(notRunning) {
+		// if cleanUpCache is set to true, but cache was not cleaned up,
+		// continue the stopping process, no matter the current driver state,
+		// because driver needs to get rid of the job factory cache
+		if cleanUpCache && d.getCacheState() == populated {
 			break
 		}
-		time.Sleep(_sleepRetryCheckRunningState)
+
+		state := d.getState()
+		if state == stopping || state == stopped {
+			return
+		}
+
+		// make sure state did not change in-between
+		if d.compareAndSwapState(state, stopping) {
+			break
+		}
 	}
 
 	d.Lock()
@@ -472,7 +498,16 @@ func (d *driver) Stop() {
 	d.jobEngine.Stop()
 	d.Unlock()
 
-	// Cleanup tasks and jobs from the goal state engine
+	if cleanUpCache {
+		d.cleanUpJobFactory()
+		d.setCacheState(cleaned)
+	}
+
+	d.setState(stopped)
+	log.Info("goalstate driver stopped")
+}
+
+func (d *driver) cleanUpJobFactory() {
 	jobs := d.jobFactory.GetAllJobs()
 	for jobID, cachedJob := range jobs {
 		tasks := cachedJob.GetAllTasks()
@@ -495,7 +530,25 @@ func (d *driver) Stop() {
 				})
 		}
 	}
+}
 
-	atomic.StoreInt32(&d.running, int32(notRunning))
-	log.Info("goalstate driver stopped")
+// getState returns the running state of the driver
+func (d *driver) getState() driverState {
+	return driverState(atomic.LoadInt32(&d.running))
+}
+
+func (d *driver) compareAndSwapState(oldState driverState, newState driverState) bool {
+	return atomic.CompareAndSwapInt32(&d.running, int32(oldState), int32(newState))
+}
+
+func (d *driver) setState(state driverState) {
+	atomic.StoreInt32(&d.running, int32(state))
+}
+
+func (d *driver) setCacheState(state driverCacheState) {
+	atomic.StoreInt32(&d.cacheState, int32(state))
+}
+
+func (d *driver) getCacheState() driverCacheState {
+	return driverCacheState(atomic.LoadInt32(&d.cacheState))
 }

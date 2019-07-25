@@ -36,6 +36,7 @@ import (
 	"github.com/uber/peloton/pkg/common/rpc"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/peer"
 	"github.com/uber/peloton/pkg/jobmgr"
+	"github.com/uber/peloton/pkg/jobmgr/adminsvc"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	"github.com/uber/peloton/pkg/jobmgr/goalstate"
 	"github.com/uber/peloton/pkg/jobmgr/jobsvc"
@@ -708,6 +709,11 @@ func main() {
 		store, // store implements UpdateStore
 		goalStateDriver,
 		jobFactory,
+	)
+
+	adminsvc.InitServiceHandler(
+		dispatcher,
+		goalStateDriver,
 	)
 
 	// Start dispatch loop

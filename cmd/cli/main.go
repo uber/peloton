@@ -631,6 +631,15 @@ var (
 
 	// command to disable the kill tasks request to mesos master
 	disableKillTasks = hostmgr.Command("disable-kill-tasks", "disable the kill task request to mesos master")
+
+	// Top level admin command
+	admin = app.Command("admin", "administrative APIs")
+	// command for locking down components
+	lock           = admin.Command("lock", "lock down components in peloton")
+	lockComponents = lock.Arg("components", "components to lockdown").Enums("GoalStateEngine")
+	// command for unlock components
+	unlock           = admin.Command("unlock", "remove lock down components in peloton")
+	unlockComponents = unlock.Arg("components", "components to remove lockdown").Enums("GoalStateEngine")
 )
 
 // TaskRangeValue allows us to define a new target type for kingpin to allow specifying ranges of tasks with from:to syntax as a TaskRangeFlag
@@ -1031,6 +1040,10 @@ func main() {
 		err = client.WatchPod(*watchPodJobID, *watchPodPodNames, *watchLabels)
 	case watchCancel.FullCommand():
 		err = client.CancelWatch(*watchCancelWatchID)
+	case lock.FullCommand():
+		err = client.LockComponents(*lockComponents)
+	case unlock.FullCommand():
+		err = client.UnlockComponents(*unlockComponents)
 	default:
 		app.Fatalf("Unknown command %s", cmd)
 	}

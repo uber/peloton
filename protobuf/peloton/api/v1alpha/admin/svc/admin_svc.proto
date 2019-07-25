@@ -1,0 +1,54 @@
+// This file defines Administrative Peloton APIs only accessible to operators
+
+syntax = "proto3";
+
+package peloton.api.v1alpha.admin.svc;
+
+option go_package = "peloton/api/v1alpha/admin/svc";
+option java_package = "peloton.api.v1alpha.admin.svc";
+
+// Component that can be locked/unlocked
+enum Component {
+    GoalStateEngine = 0;
+}
+
+// Message for faliure to lock/unlock a component
+message ComponentFailure {
+    Component component = 1;
+    string FailureMessage = 2;
+}
+
+// Request message for AdminService.Lockdown method.
+message LockdownRequest {
+    repeated Component components = 1;
+}
+
+// Response message for AdminService.Lockdown method.
+// Return errors:
+//   INTERNAL:        If fail to lock component due to internal error
+message LockdownResponse {
+    repeated Component successes = 1;
+    repeated ComponentFailure failures = 2;
+}
+
+// Request message for AdminService.RemoveLockDown method.
+message RemoveLockdownRequest {
+    repeated Component components = 1;
+}
+
+// Response message for AdminService.RemoveLockDown method.
+// Return errors:
+//   INTERNAL:        If fail to remove lock on component due to internal error
+message RemoveLockdownResponse {
+    repeated Component successes = 1;
+    repeated ComponentFailure failures = 2;
+}
+
+// Admin service defines administrative operations like locking down the Peloton cluster
+service AdminService {
+    // Lock the components requested
+    rpc Lockdown (LockdownRequest) returns (LockdownResponse);
+
+    // Unlock the components requested
+    rpc RemoveLockdown (RemoveLockdownRequest) returns (RemoveLockdownResponse);
+}

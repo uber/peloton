@@ -122,7 +122,7 @@ func (s *Server) LostLeadershipCallback() error {
 	s.taskPreemptor.Stop()
 	s.deadlineTracker.Stop()
 	s.backgroundManager.Stop()
-	s.goalstateDriver.Stop()
+	s.goalstateDriver.Stop(true)
 	s.jobFactory.Stop()
 	s.watchProcessor.StopTaskClients()
 
@@ -151,7 +151,7 @@ func (s *Server) ShutDownCallback() error {
 	s.taskPreemptor.Stop()
 	s.deadlineTracker.Stop()
 	s.backgroundManager.Stop()
-	s.goalstateDriver.Stop()
+	s.goalstateDriver.Stop(true)
 	s.jobFactory.Stop()
 	s.watchProcessor.StopTaskClients()
 
