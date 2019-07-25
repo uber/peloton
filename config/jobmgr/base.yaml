@@ -8,6 +8,7 @@ storage:
       contactPoints: ["127.0.0.1"]
       port: 9042
       consistency: LOCAL_QUORUM
+      serialConsistency: LOCAL_SERIAL
       hostPolicy: TokenAwareHostPolicy
       # Need to increase timeout from 10s to 20s to avoid recovery code from timing out
       # We saw recovery code timing out when peloton was recovering from a
