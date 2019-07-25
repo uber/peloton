@@ -52,7 +52,6 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 	"github.com/uber/peloton/pkg/hostmgr/queue"
 	"github.com/uber/peloton/pkg/hostmgr/reconcile"
-	"github.com/uber/peloton/pkg/hostmgr/task"
 	"github.com/uber/peloton/pkg/hostmgr/watchevent"
 	"github.com/uber/peloton/pkg/middleware/inbound"
 	"github.com/uber/peloton/pkg/middleware/outbound"
@@ -586,37 +585,16 @@ func main() {
 	offer.InitEventHandler(
 		dispatcher,
 		rootScope,
-		time.Duration(cfg.HostManager.OfferHoldTimeSec)*time.Second,
-		time.Duration(cfg.HostManager.OfferPruningPeriodSec)*time.Second,
 		schedulerClient,
+		resmgrsvc.NewResourceManagerServiceYARPCClient(
+			dispatcher.ClientConfig(common.PelotonResourceManager)),
 		backgroundManager,
-		cfg.HostManager.HostPruningPeriodSec,
-		cfg.HostManager.HeldHostPruningPeriodSec,
-		cfg.HostManager.ScarceResourceTypes,
-		cfg.HostManager.SlackResourceTypes,
 		defaultRanker,
-		cfg.HostManager.BinPackingRefreshIntervalSec,
-		cfg.HostManager.HostPlacingOfferStatusTimeout,
+		cfg.HostManager,
 		watchProcessor,
 	)
 
 	maintenanceQueue := queue.NewMaintenanceQueue()
-
-	// Initializing TaskStateManager will start to record task status
-	// update back to storage.  TODO(zhitao): This is
-	// temporary. Eventually we should create proper API protocol for
-	// `WaitTaskStatusUpdate` and allow RM/JM to retrieve this
-	// separately.
-	taskStateManager := task.NewStateManager(
-		dispatcher,
-		schedulerClient,
-		watchProcessor,
-		cfg.HostManager.TaskUpdateBufferSize,
-		cfg.HostManager.TaskUpdateAckConcurrency,
-		resmgrsvc.NewResourceManagerServiceYARPCClient(
-			dispatcher.ClientConfig(common.PelotonResourceManager)),
-		rootScope,
-	)
 
 	if cfg.K8s.Enabled {
 		podEventCh := make(chan *scalar.PodEvent, k8s.EventChanSize)
@@ -662,6 +640,7 @@ func main() {
 			pem,
 		)
 	}
+
 	// Create new hostmgr internal service handler.
 	serviceHandler := hostmgr.NewServiceHandler(
 		dispatcher,
@@ -675,7 +654,6 @@ func main() {
 		maintenanceQueue,
 		cfg.HostManager.SlackResourceTypes,
 		maintenanceHostInfoMap,
-		taskStateManager,
 		watchProcessor,
 	)
 
@@ -685,16 +663,6 @@ func main() {
 		masterOperatorClient,
 		maintenanceQueue,
 		maintenanceHostInfoMap,
-	)
-
-	// Register background worker to start mesos task status update counter.
-	backgroundManager.RegisterWorks(
-		background.Work{
-			Name:         "mesostaskstatusupdatecounter",
-			Func:         taskStateManager.UpdateCounters,
-			Period:       time.Duration(1) * time.Second,
-			InitialDelay: time.Duration(1) * time.Second,
-		},
 	)
 
 	recoveryHandler := hostmgr.NewRecoveryHandler(

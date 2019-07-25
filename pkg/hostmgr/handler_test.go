@@ -50,7 +50,6 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/reserver"
 	reserver_mocks "github.com/uber/peloton/pkg/hostmgr/reserver/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/summary"
-	task_state_mocks "github.com/uber/peloton/pkg/hostmgr/task/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/watchevent"
 	watchmocks "github.com/uber/peloton/pkg/hostmgr/watchevent/mocks"
 
@@ -205,7 +204,6 @@ type HostMgrHandlerTestSuite struct {
 	drainingMachines       []*mesos.MachineID
 	downMachines           []*mesos.MachineID
 	maintenanceHostInfoMap *hm.MockMaintenanceHostInfoMap
-	taskStateManager       *task_state_mocks.MockStateManager
 	watchProcessor         *watchmocks.MockWatchProcessor
 	watchEventStreamServer *hostsvcmocks.MockInternalHostServiceServiceWatchEventStreamEventYARPCServer
 	watchHostSummaryServer *hostsvcmocks.MockInternalHostServiceServiceWatchHostSummaryEventYARPCServer
@@ -240,7 +238,6 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 	suite.masterOperatorClient = mpb_mocks.NewMockMasterOperatorClient(suite.ctrl)
 	suite.provider = hostmgr_mesos_mocks.NewMockFrameworkInfoProvider(suite.ctrl)
 	suite.mesosDetector = hostmgr_mesos_mocks.NewMockMasterDetector(suite.ctrl)
-	suite.taskStateManager = task_state_mocks.NewMockStateManager(suite.ctrl)
 	suite.watchProcessor = watchmocks.NewMockWatchProcessor(suite.ctrl)
 	suite.watchEventStreamServer = hostsvcmocks.NewMockInternalHostServiceServiceWatchEventStreamEventYARPCServer(suite.ctrl)
 	suite.watchHostSummaryServer = hostsvcmocks.NewMockInternalHostServiceServiceWatchHostSummaryEventYARPCServer(suite.ctrl)
@@ -276,7 +273,6 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 		mesosDetector:          suite.mesosDetector,
 		maintenanceQueue:       suite.maintenanceQueue,
 		maintenanceHostInfoMap: suite.maintenanceHostInfoMap,
-		taskStateManager:       suite.taskStateManager,
 		watchProcessor:         suite.watchProcessor,
 	}
 	suite.handler.reserver = reserver.NewReserver(

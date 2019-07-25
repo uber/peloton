@@ -46,7 +46,6 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/reserver"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 	"github.com/uber/peloton/pkg/hostmgr/summary"
-	taskStateManager "github.com/uber/peloton/pkg/hostmgr/task"
 	hmutil "github.com/uber/peloton/pkg/hostmgr/util"
 	"github.com/uber/peloton/pkg/hostmgr/watchevent"
 
@@ -93,7 +92,6 @@ type ServiceHandler struct {
 	maintenanceQueue       mqueue.MaintenanceQueue // queue containing machineIDs of the machines to be put into maintenance
 	slackResourceTypes     []string
 	maintenanceHostInfoMap host.MaintenanceHostInfoMap
-	taskStateManager       taskStateManager.StateManager
 	watchProcessor         watchevent.WatchProcessor
 	disableKillTasks       atomic.Bool
 }
@@ -111,7 +109,7 @@ func NewServiceHandler(
 	maintenanceQueue mqueue.MaintenanceQueue,
 	slackResourceTypes []string,
 	maintenanceHostInfoMap host.MaintenanceHostInfoMap,
-	taskStateManager taskStateManager.StateManager, watchProcessor watchevent.WatchProcessor) *ServiceHandler {
+	watchProcessor watchevent.WatchProcessor) *ServiceHandler {
 
 	handler := &ServiceHandler{
 		schedulerClient:        schedulerClient,
@@ -124,7 +122,6 @@ func NewServiceHandler(
 		maintenanceQueue:       maintenanceQueue,
 		slackResourceTypes:     slackResourceTypes,
 		maintenanceHostInfoMap: maintenanceHostInfoMap,
-		taskStateManager:       taskStateManager,
 		watchProcessor:         watchProcessor,
 	}
 	// Creating Reserver object for handler
