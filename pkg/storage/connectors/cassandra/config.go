@@ -25,6 +25,7 @@ type CassandraConn struct {
 	Username           string        `yaml:"username"`
 	Password           string        `yaml:"password"`
 	Consistency        string        `yaml:"consistency"`
+	SerialConsistency  string        `yaml:"serialConsistency"`
 	ConnectionsPerHost int           `yaml:"connectionsPerHost"`
 	Timeout            time.Duration `yaml:"timeout"`
 	SocketKeepalive    time.Duration `yaml:"socketKeepalive"`

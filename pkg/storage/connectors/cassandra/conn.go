@@ -27,13 +27,14 @@ const (
 	// in cassandra config. Config values for this were bumped to 20s
 	// In case any new component doesn't have this set in config,
 	// it is good to keep it consistent.
-	defaultTimeout         = 20000 * time.Millisecond
-	defaultProtoVersion    = 3
-	defaultConsistency     = "LOCAL_QUORUM"
-	defaultSocketKeepAlive = 30 * time.Second
-	defaultPageSize        = 1000
-	defaultConcurrency     = 1000
-	defaultPort            = 9042
+	defaultTimeout           = 20000 * time.Millisecond
+	defaultProtoVersion      = 3
+	defaultConsistency       = "LOCAL_QUORUM"
+	defaultSerialConsistency = "LOCAL_SERIAL"
+	defaultSocketKeepAlive   = 30 * time.Second
+	defaultPageSize          = 1000
+	defaultConcurrency       = 1000
+	defaultPort              = 9042
 )
 
 // NewCluster returns a clusterConfig object
@@ -47,6 +48,13 @@ func newCluster(storeConfig *CassandraConn) *gocql.ClusterConfig {
 		consistency = defaultConsistency
 	}
 	cluster.Consistency = gocql.ParseConsistency(consistency)
+
+	serialConsistency := config.SerialConsistency
+	if serialConsistency == "" || serialConsistency == defaultSerialConsistency {
+		cluster.SerialConsistency = gocql.LocalSerial
+	} else {
+		cluster.SerialConsistency = gocql.Serial
+	}
 
 	cluster.Timeout = config.Timeout
 	if cluster.Timeout == 0 {
