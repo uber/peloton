@@ -45,7 +45,8 @@ class StatelessUpdate(object):
         start_paused=None,
     ):
 
-        self.config = config or IntegrationTestConfig()
+        self.config = config or IntegrationTestConfig(
+            pool_file='test_stateless_respool.yaml')
         self.client = client or Client()
         self.pool = pool or Pool(self.config)
         if updated_job_spec is None:

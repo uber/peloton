@@ -53,7 +53,10 @@ def test__create_a_stateless_job_with_3_tasks_on_3_different_hosts():
 
     job = Job(
         job_file="test_stateless_job.yaml",
-        config=IntegrationTestConfig(max_retry_attempts=100),
+        config=IntegrationTestConfig(
+            max_retry_attempts=100,
+            pool_file='test_stateless_respool.yaml',
+        ),
         options=[
             with_labels({label_key: label_value}),
             with_constraint(_label_constraint(label_key, label_value)),
@@ -83,7 +86,10 @@ def test__create_2_stateless_jobs_with_task_to_task_anti_affinity_between_jobs()
     for i in range(2):
         job = Job(
             job_file="test_stateless_job.yaml",
-            config=IntegrationTestConfig(max_retry_attempts=100),
+            config=IntegrationTestConfig(
+                max_retry_attempts=100,
+                pool_file='test_stateless_respool.yaml',
+            ),
             options=[
                 with_labels({label_key: "peloton_stateless_job%s" % i}),
                 with_job_name("TestPelotonDockerJob_Stateless" + repr(i)),

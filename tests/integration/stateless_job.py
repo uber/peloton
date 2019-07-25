@@ -47,7 +47,8 @@ class StatelessJob(object):
         job_id=None,
     ):
 
-        self.config = config or IntegrationTestConfig()
+        self.config = config or IntegrationTestConfig(
+            pool_file='test_stateless_respool.yaml')
         self.client = client or Client()
         self.pool = pool or Pool(self.config, self.client)
         self.job_id = job_id
@@ -458,6 +459,8 @@ class StatelessJob(object):
         """
         Waits for all (or specified number of) pods in the job to be
         in RUNNING state
+
+        :param num_pods: wait for at least `num_pods` to be in RUNNING state
         """
         attempts = 0
         start = time.time()
@@ -476,7 +479,7 @@ class StatelessJob(object):
                     if num_pods is None
                     else num_pods
                 )
-                if count == expected:
+                if count >= expected:
                     break
             except Exception as e:
                 log.warn(e)

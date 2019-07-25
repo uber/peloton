@@ -36,34 +36,32 @@ def test__stop_start_all_tasks_kills_tasks_and_job(long_running_job):
     raise Exception("was able to start terminated job")
 
 
-@pytest.mark.stateless
-def test__stop_start_partial_tests_with_single_range(test_job):
-    test_job.create()
-    test_job.wait_for_state(goal_state="RUNNING")
+def test__stop_start_partial_tests_with_single_range(long_running_job):
+    long_running_job.create()
+    long_running_job.wait_for_state(goal_state="RUNNING")
 
     range = task_pb2.InstanceRange(to=1)
     setattr(range, "from", 0)
 
     def wait_for_instance_to_stop():
-        return test_job.get_task(0).state_str == "KILLED"
+        return long_running_job.get_task(0).state_str == "KILLED"
 
-    test_job.stop(ranges=[range])
-    test_job.wait_for_condition(wait_for_instance_to_stop)
+    long_running_job.stop(ranges=[range])
+    long_running_job.wait_for_condition(wait_for_instance_to_stop)
 
     def wait_for_instance_to_run():
-        return test_job.get_task(0).state_str == "RUNNING"
+        return long_running_job.get_task(0).state_str == "RUNNING"
 
-    test_job.start(ranges=[range])
-    test_job.wait_for_condition(wait_for_instance_to_run)
+    long_running_job.start(ranges=[range])
+    long_running_job.wait_for_condition(wait_for_instance_to_run)
 
-    test_job.stop()
-    test_job.wait_for_state(goal_state="KILLED")
+    long_running_job.stop()
+    long_running_job.wait_for_state(goal_state="KILLED")
 
 
-@pytest.mark.stateless
-def test__stop_start_partial_tests_with_multiple_ranges(test_job):
-    test_job.create()
-    test_job.wait_for_state(goal_state="RUNNING")
+def test__stop_start_partial_tests_with_multiple_ranges(long_running_job):
+    long_running_job.create()
+    long_running_job.wait_for_state(goal_state="RUNNING")
 
     range1 = task_pb2.InstanceRange(to=1)
     setattr(range1, "from", 0)
@@ -72,24 +70,24 @@ def test__stop_start_partial_tests_with_multiple_ranges(test_job):
 
     def wait_for_instance_to_stop():
         return (
-            test_job.get_task(0).state_str == "KILLED"
-            and test_job.get_task(1).state_str == "KILLED"
+            long_running_job.get_task(0).state_str == "KILLED"
+            and long_running_job.get_task(1).state_str == "KILLED"
         )
 
-    test_job.stop(ranges=[range1, range2])
-    test_job.wait_for_condition(wait_for_instance_to_stop)
+    long_running_job.stop(ranges=[range1, range2])
+    long_running_job.wait_for_condition(wait_for_instance_to_stop)
 
     def wait_for_instance_to_run():
         return (
-            test_job.get_task(0).state_str == "RUNNING"
-            and test_job.get_task(1).state_str == "RUNNING"
+            long_running_job.get_task(0).state_str == "RUNNING"
+            and long_running_job.get_task(1).state_str == "RUNNING"
         )
 
-    test_job.start(ranges=[range1, range2])
-    test_job.wait_for_condition(wait_for_instance_to_run)
+    long_running_job.start(ranges=[range1, range2])
+    long_running_job.wait_for_condition(wait_for_instance_to_run)
 
-    test_job.stop()
-    test_job.wait_for_state(goal_state="KILLED")
+    long_running_job.stop()
+    long_running_job.wait_for_state(goal_state="KILLED")
 
 
 def test__start_stop_task_without_job_id():
@@ -115,81 +113,78 @@ def test__start_stop_task_with_nonexistent_job_id():
     assert resp.error.HasField("notFound")
 
 
-@pytest.mark.stateless
 def test__stop_start_tasks_when_mesos_master_down_kills_tasks_when_started(
-    test_job, mesos_master
+    long_running_job, mesos_master
 ):
-    test_job.create()
-    test_job.wait_for_state(goal_state="RUNNING")
+    long_running_job.create()
+    long_running_job.wait_for_state(goal_state="RUNNING")
 
     range = task_pb2.InstanceRange(to=1)
     setattr(range, "from", 0)
 
     def wait_for_instance_to_stop():
-        return test_job.get_task(0).state_str == "KILLED"
+        return long_running_job.get_task(0).state_str == "KILLED"
 
     mesos_master.stop()
-    test_job.stop(ranges=[range])
+    long_running_job.stop(ranges=[range])
     mesos_master.start()
-    test_job.wait_for_condition(wait_for_instance_to_stop)
+    long_running_job.wait_for_condition(wait_for_instance_to_stop)
 
     def wait_for_instance_to_run():
-        return test_job.get_task(0).state_str == "RUNNING"
+        return long_running_job.get_task(0).state_str == "RUNNING"
 
     mesos_master.stop()
-    test_job.start(ranges=[range])
+    long_running_job.start(ranges=[range])
     mesos_master.start()
-    test_job.wait_for_condition(wait_for_instance_to_run)
+    long_running_job.wait_for_condition(wait_for_instance_to_run)
 
     mesos_master.stop()
-    test_job.stop()
+    long_running_job.stop()
     mesos_master.start()
-    test_job.wait_for_terminated()
+    long_running_job.wait_for_terminated()
 
 
-@pytest.mark.stateless
 def test__stop_start_tasks_when_mesos_master_down_and_jobmgr_restarts(
-    test_job, mesos_master, jobmgr
+    long_running_job, mesos_master, jobmgr
 ):
-    test_job.create()
-    test_job.wait_for_state(goal_state="RUNNING")
+    long_running_job.create()
+    long_running_job.wait_for_state(goal_state="RUNNING")
 
     range = task_pb2.InstanceRange(to=1)
     setattr(range, "from", 0)
 
     def wait_for_instance_to_stop():
-        return test_job.get_task(0).state_str == "KILLED"
+        return long_running_job.get_task(0).state_str == "KILLED"
 
     mesos_master.stop()
-    test_job.stop(ranges=[range])
+    long_running_job.stop(ranges=[range])
     jobmgr.restart()
     mesos_master.start()
-    test_job.wait_for_condition(wait_for_instance_to_stop)
+    long_running_job.wait_for_condition(wait_for_instance_to_stop)
 
     def wait_for_instance_to_run():
-        return test_job.get_task(0).state_str == "RUNNING"
+        return long_running_job.get_task(0).state_str == "RUNNING"
 
     mesos_master.stop()
-    test_job.start(ranges=[range])
+    long_running_job.start(ranges=[range])
     jobmgr.restart()
     mesos_master.start()
-    test_job.wait_for_condition(wait_for_instance_to_run)
+    long_running_job.wait_for_condition(wait_for_instance_to_run)
 
     mesos_master.stop()
-    test_job.stop()
+    long_running_job.stop()
     jobmgr.restart()
     mesos_master.start()
-    test_job.wait_for_terminated()
+    long_running_job.wait_for_terminated()
 
 
-@pytest.mark.stateless
-def test__kill_mesos_agent_makes_task_resume(test_job, mesos_agent):
-    test_job.create()
-    test_job.wait_for_state(goal_state="RUNNING")
+def test__kill_mesos_agent_makes_task_resume(long_running_job, mesos_agent):
+    long_running_job.create()
+    long_running_job.wait_for_state(goal_state="RUNNING")
 
     mesos_agent.restart()
 
-    test_job.wait_for_state(goal_state="RUNNING")
+    long_running_job.wait_for_state(goal_state="RUNNING")
 
 
 def test_controller_task_limit():

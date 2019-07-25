@@ -323,13 +323,6 @@ def host_affinity_job(request):
     return job
 
 
-# For unit tests running with test_job, it would be tested with both
-# long_running_job and stateless_job
-@pytest.fixture(params=[long_running_job, stateless_job])
-def test_job(request):
-    return request.param(request)
-
-
 # For unit tests of update/restart running with in_place, it would
 # be tested with both in_place feature enabled and disabled
 @pytest.fixture(params=[True, False])

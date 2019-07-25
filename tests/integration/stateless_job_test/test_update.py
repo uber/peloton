@@ -533,7 +533,10 @@ def test__create_update_with_failed_health_check(stateless_job, in_place):
 def test__create_update_to_disable_health_check(in_place):
     job = StatelessJob(
         job_file=UPDATE_STATELESS_JOB_WITH_HEALTH_CHECK_SPEC,
-        config=IntegrationTestConfig(max_retry_attempts=100),
+        config=IntegrationTestConfig(
+            max_retry_attempts=100,
+            pool_file='test_stateless_respool.yaml',
+        ),
     )
     job.create()
     job.wait_for_state(goal_state="RUNNING")
@@ -554,7 +557,10 @@ def test__create_update_to_disable_health_check(in_place):
 def test__create_update_to_enable_health_check(in_place):
     job = StatelessJob(
         job_file=UPDATE_STATELESS_JOB_WITH_HEALTH_CHECK_SPEC,
-        config=IntegrationTestConfig(max_retry_attempts=100),
+        config=IntegrationTestConfig(
+            max_retry_attempts=100,
+            pool_file='test_stateless_respool.yaml',
+        ),
     )
     job.job_spec.default_spec.containers[0].liveness_check.enabled = False
     job.create()
@@ -576,7 +582,10 @@ def test__create_update_to_enable_health_check(in_place):
 def test__create_update_to_unset_health_check(in_place):
     job = StatelessJob(
         job_file=UPDATE_STATELESS_JOB_WITH_HEALTH_CHECK_SPEC,
-        config=IntegrationTestConfig(max_retry_attempts=100),
+        config=IntegrationTestConfig(
+            max_retry_attempts=100,
+            pool_file='test_stateless_respool.yaml',
+        ),
     )
     job.create()
     job.wait_for_state(goal_state="RUNNING")
@@ -596,7 +605,10 @@ def test__create_update_to_unset_health_check(in_place):
 def test__create_update_to_set_health_check(in_place):
     job = StatelessJob(
         job_file=UPDATE_STATELESS_JOB_SPEC,
-        config=IntegrationTestConfig(max_retry_attempts=100),
+        config=IntegrationTestConfig(
+            max_retry_attempts=100,
+            pool_file='test_stateless_respool.yaml',
+        ),
     )
     job.create()
     job.wait_for_state(goal_state="RUNNING")
@@ -616,7 +628,10 @@ def test__create_update_to_set_health_check(in_place):
 def test__create_update_to_change_health_check_config(in_place):
     job = StatelessJob(
         job_file=UPDATE_STATELESS_JOB_WITH_HEALTH_CHECK_SPEC,
-        config=IntegrationTestConfig(max_retry_attempts=100),
+        config=IntegrationTestConfig(
+            max_retry_attempts=100,
+            pool_file='test_stateless_respool.yaml',
+        ),
     )
     job.job_spec.default_spec.containers[0].liveness_check.enabled = False
     job.create()
@@ -1108,14 +1123,20 @@ def test__in_place_update_multi_component_restart(jobmgr, resmgr, hostmgr, place
     # to process given hostmgr would be restarted
     job1 = StatelessJob(
         job_file="test_stateless_job_spec.yaml",
-        config=IntegrationTestConfig(max_retry_attempts=300),
+        config=IntegrationTestConfig(
+            max_retry_attempts=300,
+            pool_file='test_stateless_respool.yaml',
+        ),
     )
     job1.create()
     job1.wait_for_all_pods_running()
 
     job2 = StatelessJob(
         job_file="test_stateless_job_spec.yaml",
-        config=IntegrationTestConfig(max_retry_attempts=300),
+        config=IntegrationTestConfig(
+            max_retry_attempts=300,
+            pool_file='test_stateless_respool.yaml',
+        ),
     )
     job2.create()
     job2.wait_for_all_pods_running()
@@ -1202,7 +1223,10 @@ def test__in_place_update_host_maintenance(stateless_job, maintenance):
     stateless_job.job_spec.instance_count = 9
     # need extra retry attempts, since in-place update would need more time
     # to process given agent is put in maintenance mode
-    stateless_job.config = IntegrationTestConfig(max_retry_attempts=300)
+    stateless_job.config = IntegrationTestConfig(
+        max_retry_attempts=300,
+        pool_file='test_stateless_respool.yaml',
+    ),
     stateless_job.create()
     stateless_job.wait_for_all_pods_running()
 
