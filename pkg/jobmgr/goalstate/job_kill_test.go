@@ -319,6 +319,133 @@ func (suite JobKillTestSuite) TestJobKillPatchFailed() {
 	suite.Error(err)
 }
 
+// TestJobKillPatchTasksRetryInstances tests case when patching
+// the runtime needs to be retried for a few tasks
+func (suite JobKillTestSuite) TestJobKillPatchTasksRetryInstances() {
+	instanceCount := uint32(5)
+	stateVersion := uint64(1)
+	desiredStateVersion := uint64(2)
+
+	cachedTasks := make(map[uint32]cached.Task)
+	mockTasks := make(map[uint32]*cachedmocks.MockTask)
+	for i := uint32(0); i < instanceCount; i++ {
+		cachedTask := cachedmocks.NewMockTask(suite.ctrl)
+		mockTasks[i] = cachedTask
+		cachedTasks[i] = cachedTask
+	}
+
+	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
+	runtimes[0] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_RUNNING,
+		GoalState: pbtask.TaskState_SUCCEEDED,
+	}
+	runtimes[1] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_RUNNING,
+		GoalState: pbtask.TaskState_SUCCEEDED,
+	}
+	runtimes[2] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_INITIALIZED,
+		GoalState: pbtask.TaskState_SUCCEEDED,
+	}
+	runtimes[3] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_INITIALIZED,
+		GoalState: pbtask.TaskState_SUCCEEDED,
+	}
+	runtimes[4] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_FAILED,
+		GoalState: pbtask.TaskState_RUNNING,
+	}
+
+	termStatus := &pbtask.TerminationStatus{
+		Reason: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST,
+	}
+	runtimeDiffs := make(map[uint32]jobmgrcommon.RuntimeDiff)
+	runtimeDiffs[0] = map[string]interface{}{
+		jobmgrcommon.GoalStateField:         pbtask.TaskState_KILLED,
+		jobmgrcommon.MessageField:           "Task stop API request",
+		jobmgrcommon.ReasonField:            "",
+		jobmgrcommon.TerminationStatusField: termStatus,
+		jobmgrcommon.DesiredHostField:       "",
+	}
+	runtimeDiffs[1] = map[string]interface{}{
+		jobmgrcommon.GoalStateField:         pbtask.TaskState_KILLED,
+		jobmgrcommon.MessageField:           "Task stop API request",
+		jobmgrcommon.ReasonField:            "",
+		jobmgrcommon.TerminationStatusField: termStatus,
+		jobmgrcommon.DesiredHostField:       "",
+	}
+	runtimeDiffs[2] = map[string]interface{}{
+		jobmgrcommon.GoalStateField:         pbtask.TaskState_KILLED,
+		jobmgrcommon.MessageField:           "Task stop API request",
+		jobmgrcommon.ReasonField:            "",
+		jobmgrcommon.TerminationStatusField: termStatus,
+		jobmgrcommon.DesiredHostField:       "",
+	}
+	runtimeDiffs[3] = map[string]interface{}{
+		jobmgrcommon.GoalStateField:         pbtask.TaskState_KILLED,
+		jobmgrcommon.MessageField:           "Task stop API request",
+		jobmgrcommon.ReasonField:            "",
+		jobmgrcommon.TerminationStatusField: termStatus,
+		jobmgrcommon.DesiredHostField:       "",
+	}
+	runtimeDiffs[4] = map[string]interface{}{
+		jobmgrcommon.GoalStateField:         pbtask.TaskState_KILLED,
+		jobmgrcommon.MessageField:           "Task stop API request",
+		jobmgrcommon.ReasonField:            "",
+		jobmgrcommon.TerminationStatusField: termStatus,
+		jobmgrcommon.DesiredHostField:       "",
+	}
+
+	jobRuntime := &pbjob.RuntimeInfo{
+		State:               pbjob.JobState_RUNNING,
+		GoalState:           pbjob.JobState_SUCCEEDED,
+		StateVersion:        stateVersion,
+		DesiredStateVersion: desiredStateVersion,
+	}
+
+	suite.cachedJob.EXPECT().ID().Return(suite.jobID).AnyTimes()
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		GetAllTasks().
+		Return(cachedTasks).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(jobRuntime, nil)
+
+	for i := uint32(0); i < instanceCount; i++ {
+		mockTasks[i].EXPECT().
+			GetRuntime(gomock.Any()).
+			Return(runtimes[i], nil)
+	}
+
+	suite.cachedJob.EXPECT().
+		PatchTasks(gomock.Any(), runtimeDiffs, false).
+		Return(nil, []uint32{0}, nil)
+
+	suite.cachedJob.EXPECT().
+		GetJobType().
+		Return(pbjob.JobType_BATCH)
+
+	suite.taskGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return().
+		Times(int(instanceCount - 1)) // one of the instance is not in terminal state
+
+	suite.jobGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
+
+	err := JobKill(context.Background(), suite.jobEnt)
+	suite.NoError(err)
+}
+
 // TestJobKillNoRumtimes tests when job doesn't has runtime
 func (suite JobKillTestSuite) TestJobKillNoJobRuntime() {
 	cachedTasks := make(map[uint32]cached.Task)

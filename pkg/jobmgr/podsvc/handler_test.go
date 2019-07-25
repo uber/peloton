@@ -1036,6 +1036,64 @@ func (suite *podHandlerTestSuite) TestStopPodPatchTasksFailure() {
 	suite.NotNil(response)
 }
 
+// TestStopPodPodNotInCache tests the failure case of stopping a
+// pod when the pod is not present in the cache
+func (suite *podHandlerTestSuite) TestStopPodPodNotInCache() {
+	jobID := &peloton.JobID{Value: testJobID}
+	mesosTaskID := testPodID
+	taskRuntimeInfo := &pbtask.RuntimeInfo{
+		MesosTaskId: &mesos.TaskID{
+			Value: &mesosTaskID,
+		},
+	}
+	runtimeDiff := make(map[uint32]jobmgrcommon.RuntimeDiff)
+	runtimeDiff[uint32(testInstanceID)] = jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.GoalStateField:   pbtask.TaskState_KILLED,
+		jobmgrcommon.MessageField:     "Task stop API request",
+		jobmgrcommon.ReasonField:      "",
+		jobmgrcommon.DesiredHostField: "",
+
+		jobmgrcommon.TerminationStatusField: &pbtask.TerminationStatus{
+			Reason: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST,
+		},
+	}
+
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(jobID).
+		AnyTimes()
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().
+			IsLeader().
+			Return(true),
+
+		suite.jobFactory.EXPECT().
+			AddJob(&peloton.JobID{Value: testJobID}).
+			Return(suite.cachedJob),
+
+		suite.podStore.EXPECT().
+			GetTaskRuntime(gomock.Any(), jobID, uint32(testInstanceID)).
+			Return(taskRuntimeInfo, nil),
+
+		suite.cachedJob.EXPECT().
+			PatchTasks(gomock.Any(), runtimeDiff, false).
+			Return(nil, []uint32{uint32(testInstanceID)}, nil),
+
+		suite.goalStateDriver.EXPECT().
+			EnqueueTask(jobID, uint32(testInstanceID), gomock.Any()),
+	)
+
+	request := &svc.StopPodRequest{
+		PodName: &v1alphapeloton.PodName{
+			Value: testPodName,
+		},
+	}
+
+	_, err := suite.handler.StopPod(context.Background(), request)
+	suite.Equal(_errPodNotInCache, err)
+}
+
 // TestRestartPodSuccess tests the success case of restarting a pod
 func (suite *podHandlerTestSuite) TestRestartPodSuccess() {
 	jobID := &peloton.JobID{Value: testJobID}

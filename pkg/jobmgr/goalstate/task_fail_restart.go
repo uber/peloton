@@ -84,6 +84,9 @@ func rescheduleTask(
 	}
 
 	if len(runtimeDiff) != 0 {
+		// we do not need to handle `instancesToBeRetried` here since the task
+		// is being requeued to the goalstate. Goalstate will reload the task
+		// runtime when the task is evaluated the next time
 		_, _, err := cachedJob.PatchTasks(ctx,
 			map[uint32]jobmgrcommon.RuntimeDiff{instanceID: runtimeDiff},
 			false,

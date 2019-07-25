@@ -208,7 +208,11 @@ func (p *preemptor) preemptTasks(
 			runtime,
 			preemptPolicy)
 
-		// update the task and SLAInfo in cache and enqueue to goal state engine
+		// update the task and SLAInfo in cache and enqueue to goal state engine.
+		// We do not need to handle the `instancesToBeRetried` here since the
+		// task is being enqueued into the goalstate. The goalstate will reload
+		// runtime into cache if needed. The task preemption will be retried
+		// in the next preemption cycle.
 		_, _, err = cachedJob.PatchTasks(
 			ctx,
 			map[uint32]jobmgrcommon.RuntimeDiff{uint32(instanceID): runtimeDiff},

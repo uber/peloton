@@ -386,9 +386,15 @@ func transitTasksToPending(
 		return nil
 	}
 
-	_, _, err := cachedJob.PatchTasks(ctx, runtimeDiffs, false)
+	_, instancesToRetry, err := cachedJob.PatchTasks(ctx, runtimeDiffs, false)
 	if err != nil {
 		return errors.Wrap(err, "failed to update task runtime to pending")
 	}
+
+	if len(instancesToRetry) != 0 {
+		// throw error here so that the action is retried
+		return errors.Wrap(_errTasksNotInCache, "failed to update task runtime to pending")
+	}
+
 	return nil
 }

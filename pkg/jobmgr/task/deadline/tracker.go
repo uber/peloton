@@ -212,6 +212,10 @@ func (t *tracker) stopTask(ctx context.Context, task *peloton.TaskID) error {
 
 	// update the task in DB and cache, and then schedule to goalstate
 	cachedJob := t.jobFactory.AddJob(jobID)
+
+	// we do not need to handle `instancesToBeRetried` here. Goalstate will
+	// reload the task runtime and retry action when the task is evaluated
+	// the next time since the task is being requeued to the goalstate
 	_, _, err = cachedJob.PatchTasks(
 		ctx,
 		map[uint32]jobmgrcommon.RuntimeDiff{uint32(instanceID): runtimeDiff},

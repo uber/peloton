@@ -33,6 +33,8 @@ import (
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
+var _errTasksNotInCache = yarpcerrors.InternalErrorf("some tasks not in cache")
+
 // JobUntrack deletes the job and tasks from the goal state engine and the cache.
 func JobUntrack(ctx context.Context, entity goalstate.Entity) error {
 	jobEnt := entity.(*jobEntity)
@@ -234,6 +236,9 @@ func JobStart(
 		}
 	}
 
+	// We do not need to handle 'instancesToBeRetried' here since all tasks
+	// in runtimeDiff are being requeued to the goalstate. The action will be
+	// retried by the goalstate when the tasks are evaluated next time.
 	_, _, err := cachedJob.PatchTasks(ctx, runtimeDiff, false)
 	if err != nil {
 		return err
@@ -427,7 +432,7 @@ func JobKillAndUntrack(ctx context.Context, entity goalstate.Entity) error {
 		return nil
 	}
 
-	runtimeDiffNonTerminatedTasks, err :=
+	runtimeDiffNonTerminatedTasks, _, err :=
 		stopTasks(ctx, cachedJob, goalStateDriver)
 	if err != nil {
 		return err

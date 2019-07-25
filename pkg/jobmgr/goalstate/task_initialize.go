@@ -75,6 +75,9 @@ func TaskInitialize(ctx context.Context, entity goalstate.Entity) error {
 			runtime.GetDesiredConfigVersion()
 	}
 
+	// we do not need to handle `instancesToBeRetried` here since the task
+	// is being requeued to the goalstate. Goalstate will reload the task
+	// runtime when the task is evaluated the next time
 	_, _, err = cachedJob.PatchTasks(ctx,
 		map[uint32]jobmgrcommon.RuntimeDiff{taskEnt.instanceID: runtimeDiff},
 		false,

@@ -40,6 +40,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
@@ -765,4 +766,77 @@ func (suite *JobCreateTestSuite) TestJobCreateResmgrFailureResponse() {
 
 	err := JobCreateTasks(context.Background(), suite.jobEnt)
 	suite.Error(err)
+}
+
+// TestJobRecoverTaskNotInCache tests JobRecover action when PatchTasks
+// for a few tasks fails due to some tasks not present in the cache
+func (suite *JobCreateTestSuite) TestJobRecoverTaskNotInCache() {
+	taskInfos := make(map[uint32]*pbtask.TaskInfo)
+	taskInfos[0] = &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:     pbtask.TaskState_RUNNING,
+			GoalState: pbtask.TaskState_SUCCEEDED,
+		},
+		InstanceId: 0,
+		JobId:      suite.jobID,
+	}
+	taskInfos[1] = &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:     pbtask.TaskState_INITIALIZED,
+			GoalState: pbtask.TaskState_SUCCEEDED,
+		},
+		InstanceId: 1,
+		JobId:      suite.jobID,
+	}
+
+	suite.taskStore.EXPECT().
+		GetTasksForJob(gomock.Any(), suite.jobID).
+		Return(taskInfos, nil)
+
+	suite.jobConfigOps.EXPECT().
+		GetResultCurrentVersion(gomock.Any(), suite.jobID).
+		Return(&ormobjects.JobConfigOpsResult{
+			JobConfig:   suite.jobConfig,
+			ConfigAddOn: &models.ConfigAddOn{},
+		}, nil)
+
+	suite.cachedJob.EXPECT().
+		CreateTaskConfigs(
+			gomock.Any(),
+			suite.jobID,
+			gomock.Any(),
+			gomock.Any(),
+			nil).
+		Return(nil)
+
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetTask(uint32(1)).Return(nil)
+
+	suite.cachedJob.EXPECT().
+		ReplaceTasks(gomock.Any(), false).
+		Return(nil)
+
+	suite.cachedJob.EXPECT().
+		CreateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	suite.resmgrClient.EXPECT().
+		EnqueueGangs(gomock.Any(), gomock.Any()).
+		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
+
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob).
+		Times(2)
+
+	suite.cachedJob.EXPECT().
+		PatchTasks(gomock.Any(), gomock.Any(), false).
+		Return(nil, []uint32{1}, nil)
+
+	err := JobCreateTasks(context.Background(), suite.jobEnt)
+	suite.Equal(_errTasksNotInCache, errors.Cause(err))
 }

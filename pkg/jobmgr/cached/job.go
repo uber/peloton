@@ -1420,24 +1420,27 @@ func (j *job) filterRuntimeDiffsBySLA(
 		t := j.tasks[i]
 		taskCurrentState := t.CurrentState()
 		taskGoalState := t.GoalState()
-		if taskCurrentState.State == pbtask.TaskState_UNKNOWN {
-			instancesToBeRetried = append(instancesToBeRetried, i)
-			continue
-		}
-
 		if goalState, ok := runtimeDiff[jobmgrcommon.GoalStateField]; ok &&
 			goalState.(pbtask.TaskState) == pbtask.TaskState_DELETED {
 
 			delete(instanceAvailabilityInfo.killedInstances, i)
 			delete(instanceAvailabilityInfo.unavailableInstances, i)
 
-		} else if goalState, ok := runtimeDiff[jobmgrcommon.GoalStateField]; ok &&
+			runtimesToPatch[i] = runtimeDiff
+			continue
+		}
+
+		if goalState, ok := runtimeDiff[jobmgrcommon.GoalStateField]; ok &&
 			goalState.(pbtask.TaskState) == pbtask.TaskState_KILLED {
 
 			delete(instanceAvailabilityInfo.unavailableInstances, i)
 			instanceAvailabilityInfo.killedInstances[i] = true
 
-		} else if termStatus := runtimeDiff[jobmgrcommon.TerminationStatusField]; termStatus != nil {
+			runtimesToPatch[i] = runtimeDiff
+			continue
+		}
+
+		if termStatus := runtimeDiff[jobmgrcommon.TerminationStatusField]; termStatus != nil {
 			reason := termStatus.(*pbtask.TerminationStatus).GetReason()
 
 			switch reason {
@@ -1462,7 +1465,17 @@ func (j *job) filterRuntimeDiffsBySLA(
 				instanceAvailabilityInfo.killedInstances[i] = true
 			}
 
-		} else if desiredMesosTaskID := runtimeDiff[jobmgrcommon.DesiredMesosTaskIDField]; desiredMesosTaskID != nil &&
+			runtimesToPatch[i] = runtimeDiff
+			continue
+		}
+
+		if taskCurrentState.State == pbtask.TaskState_UNKNOWN ||
+			taskGoalState.State == pbtask.TaskState_UNKNOWN {
+			instancesToBeRetried = append(instancesToBeRetried, i)
+			continue
+		}
+
+		if desiredMesosTaskID := runtimeDiff[jobmgrcommon.DesiredMesosTaskIDField]; desiredMesosTaskID != nil &&
 			desiredMesosTaskID.(*mesos.TaskID).GetValue() != taskGoalState.MesosTaskID.GetValue() {
 
 			// If the desired mesos-task-id is being modified and
@@ -1492,8 +1505,8 @@ func (j *job) filterRuntimeDiffsBySLA(
 				// if the task goal state is being set to RUNNING or if the task
 				// is already RUNNING, mark it unavailable. If the task is
 				// incorrectly marked unavailable (say when updating HealthState),
-				// it'll be updated once the task has been patched (since
-				// instanceAvailabilityInfo is updated by TaskListener)
+				// it'll be updated once the task has been patched (when
+				// instanceAvailabilityInfo is updated)
 				delete(instanceAvailabilityInfo.killedInstances, i)
 				instanceAvailabilityInfo.unavailableInstances[i] = true
 			}

@@ -167,10 +167,17 @@ func killJob(
 		return
 	}
 
-	runtimeDiffNonTerminatedTasks, err := stopTasks(ctx, cachedJob, goalStateDriver)
+	runtimeDiffNonTerminatedTasks, allTasksMarked, err := stopTasks(ctx, cachedJob, goalStateDriver)
 	if err != nil {
 		err = errors.Wrap(err, "failed to update task runtimes to kill a job")
 		return
+	}
+
+	// if the goal state of some tasks could not be patched, do not update
+	// the state of the job. We should update the job state to KILLING only
+	// when the goalstate of all tasks have been set to KILLED.
+	if !allTasksMarked {
+		return jobRuntime.GetState(), false, nil
 	}
 
 	jobState := calculateJobState(
@@ -211,15 +218,19 @@ func stopTasks(
 	ctx context.Context,
 	cachedJob cached.Job,
 	goalStateDriver Driver,
-) (runtimeDiffNonTerminatedTasks map[uint32]jobmgrcommon.RuntimeDiff, err error) {
+) (
+	runtimeDiffNonTerminatedTasks map[uint32]jobmgrcommon.RuntimeDiff,
+	allTasksMarked bool,
+	err error,
+) {
 	// Update task runtimes in DB and cache to kill task
 	runtimeDiffNonTerminatedTasks, _, runtimeDiffAll, err :=
 		createRuntimeDiffForKill(ctx, cachedJob)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	_, _, err = cachedJob.PatchTasks(ctx, runtimeDiffAll, false)
+	_, instancesToBeRetried, err := cachedJob.PatchTasks(ctx, runtimeDiffAll, false)
 
 	// Schedule non terminated tasks in goal state engine.
 	// This should happen even if PatchTasks fail, so if part of
@@ -230,5 +241,12 @@ func stopTasks(
 		goalStateDriver.EnqueueTask(cachedJob.ID(), instanceID, time.Now())
 	}
 
-	return runtimeDiffNonTerminatedTasks, err
+	// If patching of few non terminal tasks failed, enqueue
+	// the job so that the action is retried
+	if len(instancesToBeRetried) != 0 {
+		EnqueueJobWithDefaultDelay(cachedJob.ID(), goalStateDriver, cachedJob)
+		return runtimeDiffNonTerminatedTasks, false, err
+	}
+
+	return runtimeDiffNonTerminatedTasks, true, err
 }

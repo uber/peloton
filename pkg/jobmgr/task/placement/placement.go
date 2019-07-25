@@ -295,7 +295,7 @@ func (p *processor) createTaskInfos(
 		}
 		retry := 0
 		for retry < maxRetryCount {
-			_, _, err = cachedJob.PatchTasks(
+			_, _, err := cachedJob.PatchTasks(
 				ctx,
 				map[uint32]jobmgrcommon.RuntimeDiff{
 					uint32(instanceID): launchableTask.RuntimeDiff,
@@ -316,21 +316,24 @@ func (p *processor) createTaskInfos(
 				}
 				break
 			}
+
 			if common.IsTransientError(err) {
 				// TBD add a max retry to bail out after a few retries.
 				log.WithError(err).WithFields(log.Fields{
 					"job_id":      id,
 					"instance_id": instanceID,
 				}).Warn("retrying update task runtime on transient error")
-			} else {
-				log.WithError(err).WithFields(log.Fields{
+				retry++
+				continue
+			}
+
+			log.WithError(err).
+				WithFields(log.Fields{
 					"job_id":      id,
 					"instance_id": instanceID,
 				}).Error("cannot process placement due to non-transient db error")
-				delete(taskInfos, taskID)
-				break
-			}
-			retry++
+			delete(taskInfos, taskID)
+			break
 		}
 	}
 	return taskInfos, skippedTasks

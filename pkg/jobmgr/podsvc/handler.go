@@ -52,6 +52,8 @@ const (
 	_frameworkName = "Peloton"
 )
 
+var _errPodNotInCache = yarpcerrors.InternalErrorf("pod not present in cache, please retry action")
+
 type serviceHandler struct {
 	jobStore           storage.JobStore
 	podStore           storage.TaskStore
@@ -322,7 +324,7 @@ func (h *serviceHandler) StopPod(
 		},
 		jobmgrcommon.DesiredHostField: "",
 	}
-	_, _, err = cachedJob.PatchTasks(ctx, runtimeDiff, false)
+	_, instancesToRetry, err := cachedJob.PatchTasks(ctx, runtimeDiff, false)
 
 	// We should enqueue the tasks even if PatchTasks fail,
 	// because some tasks may get updated successfully in db.
@@ -332,6 +334,10 @@ func (h *serviceHandler) StopPod(
 		instanceID,
 		time.Now(),
 	)
+
+	if err == nil && len(instancesToRetry) != 0 {
+		return nil, _errPodNotInCache
+	}
 
 	return &svc.StopPodResponse{}, err
 }
@@ -380,7 +386,7 @@ func (h *serviceHandler) RestartPod(
 	runtimeDiff[instanceID] = jobmgrcommon.RuntimeDiff{
 		jobmgrcommon.DesiredMesosTaskIDField: newPodID,
 	}
-	_, _, err = cachedJob.PatchTasks(ctx, runtimeDiff, false)
+	_, instancesToRetry, err := cachedJob.PatchTasks(ctx, runtimeDiff, false)
 
 	// We should enqueue the tasks even if PatchTasks fail,
 	// because some tasks may get updated successfully in db.
@@ -390,6 +396,10 @@ func (h *serviceHandler) RestartPod(
 		instanceID,
 		time.Now(),
 	)
+
+	if err == nil && len(instancesToRetry) != 0 {
+		return nil, _errPodNotInCache
+	}
 
 	return &svc.RestartPodResponse{}, err
 }

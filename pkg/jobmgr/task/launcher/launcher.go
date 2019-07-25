@@ -533,11 +533,13 @@ func (l *launcher) CreateLaunchableTasks(
 				// TODO: Notify resmgr that the state of this task
 				// is failed and it should not retry this task
 				// Need a private resmgr API for this.
-				err = l.updateTaskRuntime(
-					ctx, id,
-					task.TaskState_KILLED, "REASON_SECRET_NOT_FOUND",
-					err.Error())
-				if err != nil {
+				if err = l.updateTaskRuntime(
+					ctx,
+					id,
+					task.TaskState_KILLED,
+					"REASON_SECRET_NOT_FOUND",
+					err.Error(),
+				); err != nil {
 					// Not retrying here, worst case we will attempt to launch
 					// this task again from ProcessPlacement() call, and mark
 					// goalstate properly in the next iteration.

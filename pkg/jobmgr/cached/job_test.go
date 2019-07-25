@@ -2496,9 +2496,6 @@ func (suite *jobTestSuite) TestPatchTasksSLAAwareUnknownTaskState() {
 		jobmgrcommon.DesiredMesosTaskIDField: &mesos.TaskID{
 			Value: &[]string{testNewMesosTaskID}[0],
 		},
-		jobmgrcommon.TerminationStatusField: &pbtask.TerminationStatus{
-			Reason: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_HOST_MAINTENANCE,
-		},
 	}
 
 	oldRuntime := &pbtask.RuntimeInfo{
