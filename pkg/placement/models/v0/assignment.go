@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package models
+package models_v0
 
 import (
 	"time"
@@ -23,6 +23,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
+	"github.com/uber/peloton/pkg/placement/models"
 	"github.com/uber/peloton/pkg/placement/plugins"
 )
 
@@ -31,13 +32,13 @@ const (
 )
 
 // Ensure that Assignment implements the Task interface.
-var _ Task = &Assignment{}
+var _ models.Task = &Assignment{}
 
 // Assignment represents the assignment of a task to a host.
 // One host can be used in multiple assignments.
 type Assignment struct {
-	Task  *TaskV0 `json:"task"`
-	Offer Offer   `json:"host"`
+	Task  *TaskV0      `json:"task"`
+	Offer models.Offer `json:"host"`
 
 	PlacementFailure string
 }
@@ -71,12 +72,12 @@ func (a *Assignment) IsPastDeadline(now time.Time) bool {
 }
 
 // SetPlacement sets the matching offer of this task.
-func (a *Assignment) SetPlacement(offer Offer) {
+func (a *Assignment) SetPlacement(offer models.Offer) {
 	a.Offer = offer
 }
 
 // GetPlacement returns the matching offer of this task.
-func (a *Assignment) GetPlacement() Offer {
+func (a *Assignment) GetPlacement() models.Offer {
 	return a.Offer
 }
 

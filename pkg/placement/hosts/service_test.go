@@ -26,7 +26,7 @@ import (
 	resource_mocks "github.com/uber/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
 	"github.com/uber/peloton/pkg/placement/metrics"
-	"github.com/uber/peloton/pkg/placement/models"
+	models_v0 "github.com/uber/peloton/pkg/placement/models/v0"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
@@ -133,7 +133,7 @@ func (suite *ServiceTestSuite) TestHostsService_ReserveHosts() {
 
 	err = suite.hostService.ReserveHost(
 		ctx,
-		[]*models.Host{{Host: &hostsvc.HostInfo{}}},
+		[]*models_v0.Host{{Host: &hostsvc.HostInfo{}}},
 		nil)
 	require.Error(suite.T(), err)
 	suite.Equal(err.Error(), errNoValidTask.Error())
@@ -143,7 +143,7 @@ func (suite *ServiceTestSuite) TestHostsService_ReserveHosts() {
 		Return(nil, errReturn)
 	err = suite.hostService.ReserveHost(
 		ctx,
-		[]*models.Host{{Host: &hostsvc.HostInfo{}}},
+		[]*models_v0.Host{{Host: &hostsvc.HostInfo{}}},
 		&resmgr.Task{})
 	require.Error(suite.T(), err)
 	suite.Equal(err.Error(), errReturn.Error())
@@ -161,7 +161,7 @@ func (suite *ServiceTestSuite) TestHostsService_ReserveHosts() {
 		)
 	err = suite.hostService.ReserveHost(
 		ctx,
-		[]*models.Host{{Host: &hostsvc.HostInfo{}}},
+		[]*models_v0.Host{{Host: &hostsvc.HostInfo{}}},
 		&resmgr.Task{})
 	require.Error(suite.T(), err)
 
@@ -172,7 +172,7 @@ func (suite *ServiceTestSuite) TestHostsService_ReserveHosts() {
 		)
 	err = suite.hostService.ReserveHost(
 		ctx,
-		[]*models.Host{{Host: &hostsvc.HostInfo{}}},
+		[]*models_v0.Host{{Host: &hostsvc.HostInfo{}}},
 		&resmgr.Task{})
 	require.NoError(suite.T(), err)
 }

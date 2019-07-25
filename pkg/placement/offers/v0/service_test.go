@@ -31,6 +31,7 @@ import (
 
 	"github.com/uber/peloton/pkg/placement/metrics"
 	"github.com/uber/peloton/pkg/placement/models"
+	"github.com/uber/peloton/pkg/placement/models/v0"
 	"github.com/uber/peloton/pkg/placement/plugins"
 	"github.com/uber/peloton/pkg/placement/plugins/v0"
 
@@ -171,7 +172,7 @@ func TestOfferService_Return(t *testing.T) {
 		hostOffer,
 	}
 	offers := []models.Offer{
-		models.NewHostOffers(hostOffer, nil, time.Now()),
+		models_v0.NewHostOffers(hostOffer, nil, time.Now()),
 	}
 
 	// Test empty host offers

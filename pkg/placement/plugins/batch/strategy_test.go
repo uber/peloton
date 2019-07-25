@@ -23,14 +23,14 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
-	"github.com/uber/peloton/pkg/placement/models"
+	"github.com/uber/peloton/pkg/placement/models/v0"
 	"github.com/uber/peloton/pkg/placement/plugins"
 	"github.com/uber/peloton/pkg/placement/plugins/v0"
 	"github.com/uber/peloton/pkg/placement/testutil"
 )
 
 func TestBatchPlacePackLoadedHost(t *testing.T) {
-	assignments := []*models.Assignment{
+	assignments := []*models_v0.Assignment{
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
@@ -40,7 +40,7 @@ func TestBatchPlacePackLoadedHost(t *testing.T) {
 		testutil.SetupHostOffers(),
 	}
 	strategy := New()
-	tasks := models.AssignmentsToPluginsTasks(assignments)
+	tasks := models_v0.AssignmentsToPluginsTasks(assignments)
 	placements := strategy.GetTaskPlacements(tasks, offers)
 
 	assert.Equal(t, 0, placements[0])
@@ -49,7 +49,7 @@ func TestBatchPlacePackLoadedHost(t *testing.T) {
 }
 
 func TestBatchGetTaskPlacementsPackFreeHost(t *testing.T) {
-	assignments := []*models.Assignment{
+	assignments := []*models_v0.Assignment{
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 	}
@@ -61,14 +61,14 @@ func TestBatchGetTaskPlacementsPackFreeHost(t *testing.T) {
 	}
 
 	strategy := New()
-	tasks := models.AssignmentsToPluginsTasks(assignments)
+	tasks := models_v0.AssignmentsToPluginsTasks(assignments)
 	placements := strategy.GetTaskPlacements(tasks, offers)
 	assert.Equal(t, 0, placements[0])
 	assert.Equal(t, 0, placements[1])
 }
 
 func TestBatchGetTaskPlacementsSpread(t *testing.T) {
-	assignments := make([]*models.Assignment, 0)
+	assignments := make([]*models_v0.Assignment, 0)
 	for i := 0; i < 5; i++ {
 		a := testutil.SetupAssignment(time.Now().Add(10*time.Second), 1)
 		a.GetTask().GetTask().Resource.CpuLimit = 5
@@ -82,7 +82,7 @@ func TestBatchGetTaskPlacementsSpread(t *testing.T) {
 	}
 
 	strategy := New()
-	tasks := models.AssignmentsToPluginsTasks(assignments)
+	tasks := models_v0.AssignmentsToPluginsTasks(assignments)
 	placements := strategy.GetTaskPlacements(tasks, offers)
 
 	assert.Equal(t, 0, placements[0])
@@ -93,7 +93,7 @@ func TestBatchGetTaskPlacementsSpread(t *testing.T) {
 }
 
 func TestBatchFiltersWithResources(t *testing.T) {
-	assignments := []*models.Assignment{
+	assignments := []*models_v0.Assignment{
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
@@ -101,7 +101,7 @@ func TestBatchFiltersWithResources(t *testing.T) {
 	assignments[2].GetTask().GetTask().Resource.CpuLimit += 1.0
 
 	strategy := New()
-	tasks := models.AssignmentsToPluginsTasks(assignments)
+	tasks := models_v0.AssignmentsToPluginsTasks(assignments)
 	tasksByNeeds := strategy.GroupTasksByPlacementNeeds(tasks)
 	assert.Equal(t, 2, len(tasksByNeeds))
 	for _, group := range tasksByNeeds {
@@ -118,7 +118,7 @@ func TestBatchFiltersWithResources(t *testing.T) {
 }
 
 func TestBatchFiltersWithPorts(t *testing.T) {
-	assignments := []*models.Assignment{
+	assignments := []*models_v0.Assignment{
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
@@ -128,7 +128,7 @@ func TestBatchFiltersWithPorts(t *testing.T) {
 	assignments[2].GetTask().GetTask().NumPorts = 2
 
 	strategy := New()
-	tasks := models.AssignmentsToPluginsTasks(assignments)
+	tasks := models_v0.AssignmentsToPluginsTasks(assignments)
 	tasksByNeeds := strategy.GroupTasksByPlacementNeeds(tasks)
 
 	assert.Equal(t, 2, len(tasksByNeeds))

@@ -29,6 +29,7 @@ import (
 	"github.com/uber/peloton/pkg/placement/config"
 	"github.com/uber/peloton/pkg/placement/metrics"
 	"github.com/uber/peloton/pkg/placement/models"
+	"github.com/uber/peloton/pkg/placement/models/v0"
 )
 
 const (
@@ -124,7 +125,7 @@ func (s *service) Dequeue(
 	now := time.Now()
 	for _, gang := range response.Gangs {
 		for _, task := range s.createTasks(gang, now) {
-			assignments = append(assignments, models.NewAssignment(task))
+			assignments = append(assignments, models_v0.NewAssignment(task))
 		}
 	}
 
@@ -264,9 +265,9 @@ func (s *service) createPlacements(assigned []models.Task) []*resmgr.Placement {
 	return resPlacements
 }
 
-func (s *service) createTasks(gang *resmgrsvc.Gang, now time.Time) []*models.TaskV0 {
+func (s *service) createTasks(gang *resmgrsvc.Gang, now time.Time) []*models_v0.TaskV0 {
 	resTasks := gang.GetTasks()
-	tasks := make([]*models.TaskV0, len(resTasks))
+	tasks := make([]*models_v0.TaskV0, len(resTasks))
 	if len(resTasks) == 0 {
 		return tasks
 	}
@@ -276,7 +277,7 @@ func (s *service) createTasks(gang *resmgrsvc.Gang, now time.Time) []*models.Tas
 	deadline := now.Add(duration)
 	desiredHostPlacementDeadline := now.Add(s.config.MaxDesiredHostPlacementDuration)
 	for i, task := range resTasks {
-		tasks[i] = models.NewTask(gang, task, deadline,
+		tasks[i] = models_v0.NewTask(gang, task, deadline,
 			desiredHostPlacementDeadline, maxRounds)
 	}
 	return tasks

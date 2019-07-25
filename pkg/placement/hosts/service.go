@@ -23,7 +23,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 	"github.com/uber/peloton/pkg/placement/metrics"
-	"github.com/uber/peloton/pkg/placement/models"
+	models_v0 "github.com/uber/peloton/pkg/placement/models/v0"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -43,10 +43,10 @@ var (
 // Service will manage hosts used to get hosts and reserve hosts.
 type Service interface {
 	// GetHosts fetches a batch of hosts from the host manager matching filter.
-	GetHosts(ctx context.Context, task *resmgr.Task, filter *hostsvc.HostFilter) (hosts []*models.Host, err error)
+	GetHosts(ctx context.Context, task *resmgr.Task, filter *hostsvc.HostFilter) (hosts []*models_v0.Host, err error)
 
 	// ReserveHost Makes reservation for the host in hostmanager.
-	ReserveHost(ctx context.Context, host []*models.Host, task *resmgr.Task) (err error)
+	ReserveHost(ctx context.Context, host []*models_v0.Host, task *resmgr.Task) (err error)
 
 	// GetCompletedReservation gets the completed reservation
 	// from host manager
@@ -81,7 +81,7 @@ func NewService(
 func (s *service) GetHosts(
 	ctx context.Context,
 	task *resmgr.Task,
-	filter *hostsvc.HostFilter) (hosts []*models.Host, err error) {
+	filter *hostsvc.HostFilter) (hosts []*models_v0.Host, err error) {
 	ctx, cancelFunc := context.WithTimeout(ctx, _timeout)
 	defer cancelFunc()
 
@@ -121,14 +121,14 @@ func (s *service) GetHosts(
 // such that placement can take care of task-task affinity.
 func (s *service) fillTasksInHost(
 	hosts []*hostsvc.HostInfo,
-	tasks map[string]*resmgrsvc.TaskList) []*models.Host {
-	placementHosts := make([]*models.Host, 0, len(hosts))
+	tasks map[string]*resmgrsvc.TaskList) []*models_v0.Host {
+	placementHosts := make([]*models_v0.Host, 0, len(hosts))
 	for _, host := range hosts {
 		var taskList []*resmgr.Task
 		if tasks != nil && tasks[host.Hostname] != nil {
 			taskList = tasks[host.Hostname].Tasks
 		}
-		placementHosts = append(placementHosts, models.NewHosts(host, taskList))
+		placementHosts = append(placementHosts, models_v0.NewHosts(host, taskList))
 	}
 
 	return placementHosts
@@ -163,7 +163,7 @@ func (s *service) getTasks(
 
 // ReserveHost reserves the given host for the given task in Host Manager
 func (s *service) ReserveHost(ctx context.Context,
-	hosts []*models.Host,
+	hosts []*models_v0.Host,
 	task *resmgr.Task) error {
 	if len(hosts) <= 0 {
 		return errNoValidHosts
@@ -192,8 +192,8 @@ func (s *service) ReserveHost(ctx context.Context,
 	return nil
 }
 
-// HostInfoToHostModel returns the array of models.Host to hostsvc.HostInfo
-func HostInfoToHostModel(hostModels []*models.Host) []*hostsvc.HostInfo {
+// HostInfoToHostModel returns the array of models_v0.Host to hostsvc.HostInfo
+func HostInfoToHostModel(hostModels []*models_v0.Host) []*hostsvc.HostInfo {
 	hInfos := make([]*hostsvc.HostInfo, 0, len(hostModels))
 	for _, hModel := range hostModels {
 		hInfos = append(hInfos, hModel.Host)

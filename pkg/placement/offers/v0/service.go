@@ -30,6 +30,7 @@ import (
 
 	"github.com/uber/peloton/pkg/placement/metrics"
 	"github.com/uber/peloton/pkg/placement/models"
+	"github.com/uber/peloton/pkg/placement/models/v0"
 	"github.com/uber/peloton/pkg/placement/offers"
 	"github.com/uber/peloton/pkg/placement/plugins"
 	"github.com/uber/peloton/pkg/placement/plugins/v0"
@@ -254,7 +255,7 @@ func (s *service) convertOffers(
 		if tasks != nil && tasks[hostOffer.Hostname] != nil {
 			taskList = tasks[hostOffer.Hostname].Tasks
 		}
-		offers = append(offers, models.NewHostOffers(hostOffer, taskList, now))
+		offers = append(offers, models_v0.NewHostOffers(hostOffer, taskList, now))
 	}
 
 	return offers

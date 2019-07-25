@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package models
+package models_v0
 
 /*
 Package models contains all the data containers used to wrap the Peloton HostOffer, Task and Placement types in order to

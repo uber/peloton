@@ -24,7 +24,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 
 	"github.com/uber/peloton/pkg/placement/config"
-	"github.com/uber/peloton/pkg/placement/models"
+	"github.com/uber/peloton/pkg/placement/models/v0"
 	"github.com/uber/peloton/pkg/placement/plugins"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/algorithms"
 	"github.com/uber/peloton/pkg/placement/plugins/v0"
@@ -47,7 +47,7 @@ func setupStrategy() *mimir {
 }
 
 func TestMimirPlace(t *testing.T) {
-	assignments := []*models.Assignment{
+	assignments := []*models_v0.Assignment{
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 	}
@@ -55,7 +55,7 @@ func TestMimirPlace(t *testing.T) {
 		testutil.SetupHostOffers(),
 	}
 	strategy := setupStrategy()
-	tasks := models.AssignmentsToPluginsTasks(assignments)
+	tasks := models_v0.AssignmentsToPluginsTasks(assignments)
 	placements := strategy.GetTaskPlacements(tasks, offers)
 
 	assert.Equal(t, 0, placements[0])
@@ -65,7 +65,7 @@ func TestMimirPlace(t *testing.T) {
 // TestMimirPlacePreferHostWithMoreResource tests the case that
 // a task would be placed on the host with more resources
 func TestMimirPlacePreferHostWithMoreResource(t *testing.T) {
-	assignments := []*models.Assignment{
+	assignments := []*models_v0.Assignment{
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 	}
 
@@ -90,7 +90,7 @@ func TestMimirPlacePreferHostWithMoreResource(t *testing.T) {
 
 	// the host will choose host with more free resources
 	strategy := setupStrategy()
-	tasks := models.AssignmentsToPluginsTasks(assignments)
+	tasks := models_v0.AssignmentsToPluginsTasks(assignments)
 	placements := strategy.GetTaskPlacements(tasks, offers)
 	assert.Equal(t, 1, placements[0])
 }
@@ -99,7 +99,7 @@ func TestMimirPlacePreferHostWithMoreResource(t *testing.T) {
 // would try to place a task on its desired host when there is
 // enough resource for the task.
 func TestMimirPlacePreferHostWithDesiredHost(t *testing.T) {
-	assignments := []*models.Assignment{
+	assignments := []*models_v0.Assignment{
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 	}
 
@@ -126,7 +126,7 @@ func TestMimirPlacePreferHostWithDesiredHost(t *testing.T) {
 	// even if it has less resource
 	assignments[0].Task.Task.DesiredHost = hostWithScarceResources.GetOffer().GetHostname()
 	strategy := setupStrategy()
-	tasks := models.AssignmentsToPluginsTasks(assignments)
+	tasks := models_v0.AssignmentsToPluginsTasks(assignments)
 	placements := strategy.GetTaskPlacements(tasks, offers)
 	assert.Equal(t, 0, placements[0])
 }
@@ -135,7 +135,7 @@ func TestMimirPlacePreferHostWithDesiredHost(t *testing.T) {
 // would try to place on other hosts, if its desired host does not have
 // enough resource for the task.
 func TestMimirPlaceIgnoreDesiredHostWhenNoEnoughResource(t *testing.T) {
-	assignments := []*models.Assignment{
+	assignments := []*models_v0.Assignment{
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 	}
 
@@ -161,7 +161,7 @@ func TestMimirPlaceIgnoreDesiredHostWhenNoEnoughResource(t *testing.T) {
 	// But it could not as it does not have enough resources for the task.
 	strategy := setupStrategy()
 	assignments[0].Task.Task.DesiredHost = hostWithScarceResources.GetOffer().GetHostname()
-	tasks := models.AssignmentsToPluginsTasks(assignments)
+	tasks := models_v0.AssignmentsToPluginsTasks(assignments)
 	placements := strategy.GetTaskPlacements(tasks, offers)
 	assert.Equal(t, 1, placements[0])
 }
@@ -182,7 +182,7 @@ func TestMimirFilters(t *testing.T) {
 			Requirement: 1,
 		},
 	}
-	assignments := []*models.Assignment{
+	assignments := []*models_v0.Assignment{
 		testutil.SetupAssignment(deadline, 1),
 		testutil.SetupAssignment(deadline, 1),
 		testutil.SetupAssignment(deadline, 1),
@@ -226,7 +226,7 @@ func TestMimirFilters(t *testing.T) {
 	for _, taskType := range taskTypes {
 		strategy.config.TaskType = taskType
 
-		tasks := models.AssignmentsToPluginsTasks(assignments)
+		tasks := models_v0.AssignmentsToPluginsTasks(assignments)
 		tasksByNeeds := strategy.GroupTasksByPlacementNeeds(tasks)
 		assert.Equal(t, 4, len(tasksByNeeds))
 

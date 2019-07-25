@@ -34,6 +34,7 @@ import (
 	"github.com/uber/peloton/pkg/placement/config"
 	"github.com/uber/peloton/pkg/placement/metrics"
 	"github.com/uber/peloton/pkg/placement/models"
+	"github.com/uber/peloton/pkg/placement/models/v0"
 	"github.com/uber/peloton/pkg/placement/testutil"
 )
 
@@ -155,15 +156,15 @@ func TestTaskService_SetPlacements(t *testing.T) {
 
 	ctx := context.Background()
 	assignments := []models.Task{
-		&models.Assignment{
-			Offer: &models.HostOffers{
+		&models_v0.Assignment{
+			Offer: &models_v0.HostOffers{
 				Offer: &hostsvc.HostOffer{
 					Id:       &peloton.HostOfferID{Value: "pelotonid"},
 					Hostname: "hostname",
 					AgentId:  &mesos_v1.AgentID{Value: &[]string{"agentid"}[0]},
 				},
 			},
-			Task: &models.TaskV0{
+			Task: &models_v0.TaskV0{
 				Task: &resmgr.Task{
 					Id:     &peloton.TaskID{Value: "taskid"},
 					TaskId: &mesos_v1.TaskID{Value: &[]string{"mesostaskid"}[0]},

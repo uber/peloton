@@ -19,12 +19,12 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 
-	"github.com/uber/peloton/pkg/placement/models"
+	"github.com/uber/peloton/pkg/placement/models/v0"
 	"github.com/uber/peloton/pkg/placement/testutil/v0"
 )
 
 // SetupHostOffers creates an host offer.
-func SetupHostOffers() *models.HostOffers {
+func SetupHostOffers() *models_v0.HostOffers {
 	hostOffer := v0_testutil.SetupHostOffer()
-	return models.NewHostOffers(hostOffer, []*resmgr.Task{}, time.Now())
+	return models_v0.NewHostOffers(hostOffer, []*resmgr.Task{}, time.Now())
 }

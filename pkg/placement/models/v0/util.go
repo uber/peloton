@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package models
+package models_v0
 
-import "github.com/uber/peloton/pkg/placement/plugins"
+import (
+	"github.com/uber/peloton/pkg/placement/models"
+	"github.com/uber/peloton/pkg/placement/plugins"
+)
 
 // NOTE: This file is needed because the following does not compile in Go:
 // `var s1 []interface{} = []string{}`
@@ -32,8 +35,8 @@ func AssignmentsToPluginsTasks(assignments []*Assignment) []plugins.Task {
 
 // AssignmentsToTasks converts a slice of assignments into a slice
 // of Tasks.
-func AssignmentsToTasks(assignments []*Assignment) []Task {
-	tasks := []Task{}
+func AssignmentsToTasks(assignments []*Assignment) []models.Task {
+	tasks := []models.Task{}
 	for _, a := range assignments {
 		tasks = append(tasks, a)
 	}
@@ -42,8 +45,8 @@ func AssignmentsToTasks(assignments []*Assignment) []Task {
 
 // HostOffersToOffers converts a slice of HostOffers into a slice of
 // Offers.
-func HostOffersToOffers(offers []*HostOffers) []Offer {
-	result := make([]Offer, len(offers))
+func HostOffersToOffers(offers []*HostOffers) []models.Offer {
+	result := make([]models.Offer, len(offers))
 	for i, offer := range offers {
 		result[i] = offer
 	}

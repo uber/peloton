@@ -20,18 +20,18 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
-	"github.com/uber/peloton/pkg/placement/models"
+	"github.com/uber/peloton/pkg/placement/models/v0"
 	"github.com/uber/peloton/pkg/placement/testutil/v0"
 )
 
 // SetupAssignment creates an assignment.
-func SetupAssignment(deadline time.Time, maxRounds int) *models.Assignment {
+func SetupAssignment(deadline time.Time, maxRounds int) *models_v0.Assignment {
 	resmgrTask := v0_testutil.SetupRMTask()
 	resmgrGang := &resmgrsvc.Gang{
 		Tasks: []*resmgr.Task{
 			resmgrTask,
 		},
 	}
-	task := models.NewTask(resmgrGang, resmgrTask, deadline, deadline, maxRounds)
-	return models.NewAssignment(task)
+	task := models_v0.NewTask(resmgrGang, resmgrTask, deadline, deadline, maxRounds)
+	return models_v0.NewAssignment(task)
 }

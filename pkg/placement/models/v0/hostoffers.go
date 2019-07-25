@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package models
+package models_v0
 
 import (
 	"sync"
@@ -22,6 +22,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
+	"github.com/uber/peloton/pkg/placement/models"
 )
 
 // NewHostOffers will create a placement host from a host manager host and all the resource manager tasks on it.
@@ -49,7 +50,7 @@ type HostOffers struct {
 }
 
 // Make sure that that HostOffers satisfies the plugins interface.
-var _ Offer = &HostOffers{}
+var _ models.Offer = &HostOffers{}
 
 // ID returns the ID of the offer.
 func (host *HostOffers) ID() string {
@@ -91,14 +92,14 @@ func (host *HostOffers) Data() interface{} {
 }
 
 // AvailablePortRanges returns the available port ranges.
-func (host *HostOffers) AvailablePortRanges() map[*PortRange]struct{} {
-	availablePortRanges := map[*PortRange]struct{}{}
+func (host *HostOffers) AvailablePortRanges() map[*models.PortRange]struct{} {
+	availablePortRanges := map[*models.PortRange]struct{}{}
 	for _, resource := range host.GetOffer().GetResources() {
 		if resource.GetName() != "ports" {
 			continue
 		}
 		for _, portRange := range resource.GetRanges().GetRange() {
-			r := NewPortRange(*portRange.Begin, *portRange.End)
+			r := models.NewPortRange(*portRange.Begin, *portRange.End)
 			availablePortRanges[r] = struct{}{}
 		}
 	}

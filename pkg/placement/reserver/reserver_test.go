@@ -32,6 +32,7 @@ import (
 	hosts_mock "github.com/uber/peloton/pkg/placement/hosts/mocks"
 	"github.com/uber/peloton/pkg/placement/metrics"
 	"github.com/uber/peloton/pkg/placement/models"
+	"github.com/uber/peloton/pkg/placement/models/v0"
 	tasks_mock "github.com/uber/peloton/pkg/placement/tasks/mocks"
 	"github.com/uber/peloton/pkg/placement/testutil"
 
@@ -82,7 +83,7 @@ func (suite *ReserverTestSuite) TestReserverStop() {
 // TestReservation tries to test the reservation is working as expected
 func (suite *ReserverTestSuite) TestReservation() {
 	task := createResMgrTask()
-	hosts := []*models.Host{
+	hosts := []*models_v0.Host{
 		{
 			Host: creareHostInfo(),
 		},
@@ -151,7 +152,7 @@ func (suite *ReserverTestSuite) TestReservationErrorinAcquire() {
 // from the HostService and verify that.
 func (suite *ReserverTestSuite) TestReservationErrorInReservation() {
 	task := createResMgrTask()
-	hosts := []*models.Host{
+	hosts := []*models_v0.Host{
 		{
 			Host: creareHostInfo(),
 		},
@@ -357,7 +358,7 @@ func (suite *ReserverTestSuite) getReserver() (*reserver, *queue_mocks.MockQueue
 		taskService:               suite.taskService,
 		reservationQueue:          reserverQueue,
 		completedReservationQueue: completedQueue,
-		reservations:              make(map[string][]*models.Host),
+		reservations:              make(map[string][]*models_v0.Host),
 		tasks:                     make(map[string]*resmgr.Task),
 	}, reserverQueue, completedQueue
 }
@@ -382,7 +383,7 @@ func (suite *ReserverTestSuite) getCompletedReservation() *hostsvc.CompletedRese
 // TestTaskLen tests the TaskLen function which gets the
 // length of the tasks in HostModel
 func (suite *ReserverTestSuite) TestTaskLen() {
-	host := &models.Host{
+	host := &models_v0.Host{
 		Host: creareHostInfo(),
 		Tasks: []*resmgr.Task{
 			createResMgrTask(),
