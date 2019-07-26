@@ -30,13 +30,6 @@ if [[ -z "${TAGS}" ]]; then
   TAGS='default'
 fi
 
-# If TAGS is not set, all tests from default group will run
-# set up minicluster with BATCH type for tests under batch_job_test/
-PATH=$PATH:$(pwd)/bin JOB_TYPE=BATCH pytest -p no:random-order -p no:repeat -vsrx --durations=0 tests/integration/batch_job_test --junit-xml=integration-test-report.xml -m "$TAGS"
-
-# set up minicluster with BATCH type for tests under misc_tes/
-PATH=$PATH:$(pwd)/bin JOB_TYPE=BATCH pytest -p no:random-order -p no:repeat -vsrx --durations=0 tests/integration/misc_test --junit-xml=integration-test-report.xml -m "$TAGS"
-
 # set up minicluster with SERVICE type for tests under stateless_job/
 PATH=$PATH:$(pwd)/bin JOB_TYPE=SERVICE pytest -p no:random-order -p no:repeat -vsrx --durations=0 tests/integration/stateless_job_test --junit-xml=integration-test-report.xml -m "$TAGS"
 
