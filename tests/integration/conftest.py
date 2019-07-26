@@ -193,9 +193,7 @@ def teardown_minicluster(dump_logs=False):
                 # TODO (varung): enable PE and mesos-master logs if needed
                 cli = Client(base_url="unix://var/run/docker.sock")
                 for c in ("peloton-jobmgr0",
-                          "peloton-resmgr0",
-                          "peloton-hostmgr0",
-                          "peloton-aurorabridge0"):
+                          "peloton-resmgr0"):
                     for l in cli.logs(c, stream=True):
                         # remove newline character when logging
                         log.info(l.rstrip())
