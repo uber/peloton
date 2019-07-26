@@ -1,1 +1,0 @@
-make integ-test

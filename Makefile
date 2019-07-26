@@ -257,9 +257,13 @@ test_pkg: $(GOCOV) $(GENS) mockgens test-containers
 unit-test: $(GOCOV) $(GENS) mockgens
 	gocov test $(ALL_PKGS) --tags "unit" | gocov report
 
-integ-test: $(GOKIND)
+batch-integ-test: $(GOKIND)
 	ls -la $(shell pwd)/bin
-	PATH="$(PATH):$(shell pwd)/bin" ./tests/run-integration-tests.sh
+	PATH="$(PATH):$(shell pwd)/bin" ./tests/run-batch-integration-tests.sh
+
+stateless-integ-test: $(GOKIND)
+	ls -la $(shell pwd)/bin
+	PATH="$(PATH):$(shell pwd)/bin" ./tests/run-stateless-integration-tests.sh
 
 aurorabridge-integ-test: $(GOKIND)
 	ls -la $(shell pwd)/bin
