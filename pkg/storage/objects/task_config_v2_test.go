@@ -17,6 +17,7 @@ package objects
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
@@ -25,6 +26,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/models"
 	"github.com/uber/peloton/pkg/common"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 )
@@ -182,5 +184,54 @@ func (s *TaskConfigV2ObjectTestSuite) TestCreateGetTaskConfig() {
 	config, addOn, err = db.GetTaskConfig(ctx, s.jobID, uint32(instance1), configVersion)
 	s.NoError(err)
 	s.Equal(config, defaultConfig)
+	s.Equal(addOn, configAddOn)
+}
+
+// TestGetTaskConfigLegacy tests a case where config is present in task_config
+// and not in task_config_v2.
+func (s *TaskConfigV2ObjectTestSuite) TestGetTaskConfigLegacy() {
+	var configVersion uint64 = 1
+
+	db := NewTaskConfigV2Ops(testStore)
+	ctx := context.Background()
+
+	configAddOn := &models.ConfigAddOn{
+		SystemLabels: []*peloton.Label{{Key: "k1", Value: "v1"}},
+	}
+
+	taskConfig := &pbtask.TaskConfig{
+		Name: "default",
+		Resource: &pbtask.ResourceConfig{
+			CpuLimit:    0.8,
+			MemLimitMb:  800,
+			DiskLimitMb: 1500,
+		},
+	}
+
+	configBuffer, err := proto.Marshal(taskConfig)
+	s.NoError(err)
+	addOnBuffer, err := proto.Marshal(configAddOn)
+	s.NoError(err)
+
+	// Write config to legacy task_config table.
+	obj := &TaskConfigObject{
+		JobID:        s.jobID.GetValue(),
+		Version:      configVersion,
+		InstanceID:   0,
+		Config:       configBuffer,
+		ConfigAddOn:  addOnBuffer,
+		CreationTime: time.Now(),
+	}
+	s.NoError(testStore.oClient.Create(ctx, obj))
+
+	// read should go through and fetch data internally from task_config table.
+	config, addOn, err := db.GetTaskConfig(
+		ctx,
+		s.jobID,
+		uint32(0),
+		configVersion,
+	)
+	s.NoError(err)
+	s.Equal(config, taskConfig)
 	s.Equal(addOn, configAddOn)
 }

@@ -28,12 +28,13 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
 // init adds a TaskConfigV2Object instance to the global list of storage objects
 func init() {
-	Objs = append(Objs, &TaskConfigV2Object{})
+	Objs = append(Objs, &TaskConfigV2Object{}, &TaskConfigObject{})
 }
 
 // TaskConfigV2Object corresponds to a row in task_config_v2 table.
@@ -56,6 +57,25 @@ type TaskConfigV2Object struct {
 	Spec []byte `column:"name=spec"`
 	// APIVersion of the task config
 	APIVersion string `column:"name=api_version"`
+}
+
+// TaskConfigObject corresponds to a row in task_config table. This is a legacy
+// table to which nothing should be written, only used for reading.
+type TaskConfigObject struct {
+	// base.Object DB specific annotations
+	base.Object `cassandra:"name=task_config, primaryKey=((job_id),version,instance_id)"`
+	// JobID of the job which the task belongs to (uuid)
+	JobID string `column:"name=job_id"`
+	// Version of the config
+	Version uint64 `column:"name=version"`
+	// InstanceID of the task
+	InstanceID int64 `column:"name=instance_id"`
+	// Config of the task config
+	Config []byte `column:"name=config"`
+	// ConfigAddOn of the task config
+	ConfigAddOn []byte `column:"name=config_addon"`
+	// CreationTime of the task config
+	CreationTime time.Time `column:"name=creation_time"`
 }
 
 const (
@@ -243,7 +263,11 @@ func (d *taskConfigV2Object) getTaskConfig(
 		Version:    version,
 	}
 
-	if err := d.store.oClient.Get(ctx, obj, configColumn, configAddOnColumn); err != nil {
+	if err := d.store.oClient.Get(
+		ctx, obj, configColumn, configAddOnColumn); err != nil {
+		if yarpcerrors.IsNotFound(err) {
+			return d.handleLegacyConfig(ctx, id, instanceID, version)
+		}
 		return nil, nil, err
 	}
 
@@ -264,5 +288,75 @@ func (d *taskConfigV2Object) getTaskConfig(
 			"Failed to unmarshal config addOn")
 	}
 
+	return taskConfig, configAddOn, nil
+}
+
+// Read config from legacy task_config table and back fill to task_config_v2.
+func (d *taskConfigV2Object) handleLegacyConfig(
+	ctx context.Context,
+	id *peloton.JobID,
+	instanceID int64,
+	version uint64,
+) (*pbtask.TaskConfig, *models.ConfigAddOn, error) {
+	var err error
+	taskConfig := &pbtask.TaskConfig{}
+	configAddOn := &models.ConfigAddOn{}
+
+	defer func() {
+		if err != nil {
+			d.store.metrics.OrmTaskMetrics.TaskConfigLegacyGetFail.Inc(1)
+		} else {
+			if taskConfig != nil {
+				// if taskConfig is not nil, this means the config definitely
+				// exists in legacy task_config table.
+				d.store.metrics.OrmTaskMetrics.TaskConfigLegacyGet.Inc(1)
+			}
+		}
+	}()
+
+	objLegacy := &TaskConfigObject{
+		JobID:      id.GetValue(),
+		InstanceID: int64(instanceID),
+		Version:    version,
+	}
+
+	if err = d.store.oClient.Get(
+		ctx, objLegacy, configColumn, configAddOnColumn); err != nil {
+		return nil, nil, err
+	}
+
+	// no config set, return nil
+	if len(objLegacy.Config) == 0 {
+		return nil, nil, nil
+	}
+
+	if err = proto.Unmarshal(objLegacy.Config, taskConfig); err != nil {
+		return nil, nil, errors.Wrap(yarpcerrors.InternalErrorf(err.Error()),
+			"Failed to unmarshal legacy task config")
+	}
+
+	if err = proto.Unmarshal(objLegacy.ConfigAddOn, configAddOn); err != nil {
+		return nil, nil, errors.Wrap(yarpcerrors.InternalErrorf(err.Error()),
+			"Failed to unmarshal legacy config addOn")
+	}
+
+	// Now write the legacy config back to task_config_v2 table.
+	if err = d.Create(
+		ctx,
+		id,
+		instanceID,
+		taskConfig,
+		configAddOn,
+		nil,
+		version,
+	); err != nil {
+		// Do not fail read path because write path failed.
+		log.WithError(err).
+			WithFields(log.Fields{
+				"job_id":      id.GetValue(),
+				"instance_id": instanceID,
+			}).
+			Info("back fill to task_config_v2 failed")
+	}
 	return taskConfig, configAddOn, nil
 }

@@ -140,9 +140,15 @@ type TaskMetrics struct {
 
 	TaskGetConfig     tally.Counter
 	TaskGetConfigFail tally.Counter
+	// This metric is to indicate how many task gets are performed using
+	// legacy task_config table
+	TaskGetConfigLegacy tally.Counter
 
 	TaskGetConfigs     tally.Counter
 	TaskGetConfigsFail tally.Counter
+
+	TaskConfigBackFill     tally.Counter
+	TaskConfigBackFillFail tally.Counter
 
 	TaskLogState     tally.Counter
 	TaskLogStateFail tally.Counter
@@ -304,6 +310,9 @@ type OrmTaskMetrics struct {
 	TaskConfigV2Get     tally.Counter
 	TaskConfigV2GetFail tally.Counter
 
+	TaskConfigLegacyGet     tally.Counter
+	TaskConfigLegacyGetFail tally.Counter
+
 	PodSpecGet     tally.Counter
 	PodSpecGetFail tally.Counter
 }
@@ -439,14 +448,17 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	}
 
 	taskMetrics := &TaskMetrics{
-		TaskCreate:         taskSuccessScope.Counter("create"),
-		TaskCreateFail:     taskFailScope.Counter("create"),
-		TaskGet:            taskSuccessScope.Counter("get"),
-		TaskGetFail:        taskFailScope.Counter("get"),
-		TaskGetConfig:      taskSuccessScope.Counter("get_config"),
-		TaskGetConfigFail:  taskFailScope.Counter("get_config"),
-		TaskGetConfigs:     taskSuccessScope.Counter("get_configs"),
-		TaskGetConfigsFail: taskFailScope.Counter("get_configs"),
+		TaskCreate:             taskSuccessScope.Counter("create"),
+		TaskCreateFail:         taskFailScope.Counter("create"),
+		TaskGet:                taskSuccessScope.Counter("get"),
+		TaskGetFail:            taskFailScope.Counter("get"),
+		TaskGetConfig:          taskSuccessScope.Counter("get_config"),
+		TaskGetConfigLegacy:    taskSuccessScope.Counter("get_config_legacy"),
+		TaskGetConfigFail:      taskFailScope.Counter("get_config"),
+		TaskGetConfigs:         taskSuccessScope.Counter("get_configs"),
+		TaskGetConfigsFail:     taskFailScope.Counter("get_configs"),
+		TaskConfigBackFill:     taskSuccessScope.Counter("get_configs_backfill"),
+		TaskConfigBackFillFail: taskFailScope.Counter("get_configs_backfill"),
 
 		TaskLogState:        taskSuccessScope.Counter("log_state"),
 		TaskLogStateFail:    taskFailScope.Counter("log_state"),
@@ -704,6 +716,9 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		TaskConfigV2Get:     taskConfigV2SuccessScope.Counter("get"),
 		TaskConfigV2GetFail: taskConfigV2FailScope.Counter("get"),
+
+		TaskConfigLegacyGet:     taskConfigV2SuccessScope.Counter("get_legacy"),
+		TaskConfigLegacyGetFail: taskConfigV2FailScope.Counter("get_legacy"),
 
 		PodSpecGet:     podSpecSuccessScope.Counter("get"),
 		PodSpecGetFail: podSpecFailScope.Counter("get"),

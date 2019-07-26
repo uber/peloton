@@ -67,6 +67,7 @@ const (
 	jobRuntimeTable        = "job_runtime"
 	jobIndexTable          = "job_index"
 	taskConfigV2Table      = "task_config_v2"
+	taskConfigTable        = "task_config"
 	taskRuntimeTable       = "task_runtime"
 	podEventsTable         = "pod_events"
 	updatesTable           = "update_info"
@@ -1052,6 +1053,7 @@ func (s *Store) GetTaskConfigs(ctx context.Context, id *peloton.JobID,
 	instanceIDs []uint32, version uint64) (map[uint32]*task.TaskConfig, *models.ConfigAddOn, error) {
 	taskConfigMap := make(map[uint32]*task.TaskConfig)
 	var configAddOn *models.ConfigAddOn
+	var backFill bool
 
 	// add default instance ID to read the default config
 	var dbInstanceIDs []int
@@ -1076,6 +1078,33 @@ func (s *Store) GetTaskConfigs(ctx context.Context, id *peloton.JobID,
 			Error("Failed to get task configs")
 		s.metrics.TaskMetrics.TaskGetConfigsFail.Inc(1)
 		return taskConfigMap, nil, err
+	}
+
+	if len(allResults) == 0 {
+		// Try to get task configs from legacy task_config table
+		stmt := s.DataStore.NewQuery().Select("*").From(taskConfigTable).
+			Where(
+				qb.Eq{
+					"job_id":      id.GetValue(),
+					"version":     version,
+					"instance_id": dbInstanceIDs,
+				})
+		allResults, err = s.executeRead(ctx, stmt)
+		if err != nil {
+			s.metrics.TaskMetrics.TaskGetConfigsFail.Inc(1)
+			return taskConfigMap,
+				nil,
+				errors.Wrap(
+					err,
+					fmt.Sprintf(
+						"failed to get task configs for %v", id.GetValue()),
+				)
+		}
+		if len(allResults) == 0 {
+			return taskConfigMap, nil, nil
+		}
+		s.metrics.TaskMetrics.TaskGetConfigLegacy.Inc(1)
+		backFill = true
 	}
 
 	var defaultConfig *task.TaskConfig
@@ -1126,6 +1155,35 @@ func (s *Store) GetTaskConfigs(ctx context.Context, id *peloton.JobID,
 				return nil, nil, yarpcerrors.NotFoundErrorf("unable to read default task config")
 			}
 			taskConfigMap[instance] = defaultConfig
+		}
+	}
+
+	if backFill {
+		// back fill entry from task_config to task_config_v2
+		worker := func(i uint32) error {
+			var cfg *task.TaskConfig
+			var ok bool
+			if cfg, ok = taskConfigMap[i]; !ok {
+				return yarpcerrors.NotFoundErrorf(
+					"failed to get config for instance %v", id,
+				)
+			}
+			return s.taskConfigV2Ops.Create(
+				ctx,
+				id,
+				int64(i),
+				cfg,
+				configAddOn,
+				nil,
+				version,
+			)
+		}
+		err := util.RunInParallel(id.GetValue(), instanceIDs, worker)
+		if err != nil {
+			log.WithError(err).Info("failed to backfill task_config_v2")
+			s.metrics.TaskMetrics.TaskConfigBackFillFail.Inc(1)
+		} else {
+			s.metrics.TaskMetrics.TaskConfigBackFill.Inc(1)
 		}
 	}
 	s.metrics.TaskMetrics.TaskGetConfigs.Inc(1)
