@@ -5,7 +5,7 @@ LOCAL_ZK_PORT=8192
 ZK_CONTAINER=peloton-zk
 
 # Mesos configs
-MESOS_VERSION=1.6.0-rc1
+MESOS_VERSION=1.7.1
 MESOS_MASTER_CONTAINER=peloton-mesos-master
 MESOS_AGENT_CONTAINER=peloton-mesos-agent
 NUM_AGENTS=3
