@@ -889,6 +889,13 @@ message MasterInfo {
     enum Type {
       UNKNOWN = 0;
 
+      // NOTE: When the master starts to use a new capability that
+      // may prevent compatible downgrade, remember to add the
+      // capability to `Registry::MinimumCapability`. Conversely,
+      // the added minimum capability should be removed if the capability
+      // is deemed to be no longer required for compatible downgrade.
+      // See MESOS-8878 for more details.
+
       // The master can handle slaves whose state
       // changes after reregistering.
       AGENT_UPDATE = 1;
@@ -1018,7 +1025,7 @@ message CSIPluginContainerInfo {
  * Describes a CSI plugin.
  */
 message CSIPluginInfo {
-  // The type of the CSI service. This uniquely identifies a CSI
+  // The type of the CSI plugin. This uniquely identifies a CSI
   // implementation. For instance:
   //     org.apache.mesos.csi.test
   //
@@ -1027,11 +1034,17 @@ message CSIPluginInfo {
   // to avoid conflicts on type names.
   required string type = 1;
 
-  // The name of the CSI service. There could be mutliple instances of a
-  // type of CSI service. The name field is used to distinguish these
-  // instances. It should be a legal Java identifier
+  // The name of the CSI plugin. There could be multiple instances of a
+  // type of CSI plugin within a Mesos cluster. The name field is used to
+  // distinguish these instances. It should be a legal Java identifier
   // (https://docs.oracle.com/javase/tutorial/java/nutsandbolts/variables.html)
   // to avoid conflicts on concatenation of type and name.
+  //
+  // The type and name together provide the means to uniquely identify a storage
+  // backend and its resources in the cluster, so the operator should ensure
+  // that the concatenation of type and name is unique in the cluster, and it
+  // remains the same if the instance is migrated to another agent (e.g., there
+  // is a change in the agent ID).
   required string name = 2;
 
   // A list of container configurations to run CSI plugin components.
@@ -1443,12 +1456,18 @@ message Resource {
       optional Path path = 2;
       optional Mount mount = 3;
 
-      // An identifier for this source. This field maps onto CSI
-      // volume IDs and is not expected to be set by frameworks.
+      // The vendor of this source. If present, this field provides the means to
+      // uniquely identify the storage backend of this source in the cluster.
+      optional string vendor = 7; // EXPERIMENTAL.
+
+      // The identifier of this source. This field maps onto CSI volume IDs and
+      // is not expected to be set by frameworks. If both `vendor` and `id` are
+      // present, these two fields together provide the means to uniquely
+      // identify this source in the cluster.
       optional string id = 4; // EXPERIMENTAL.
 
-      // Additional metadata for this source. This field maps onto CSI
-      // volume metadata and is not expected to be set by frameworks.
+      // Additional metadata for this source. This field maps onto CSI volume
+      // attributes and is not expected to be set by frameworks.
       optional Labels metadata = 5; // EXPERIMENTAL.
 
       // This field serves as an indirection to a set of storage
@@ -1915,12 +1934,10 @@ message Offer {
       UNRESERVE = 3;
       CREATE = 4;
       DESTROY = 5;
-      CREATE_VOLUME = 7;  // EXPERIMENTAL.
-      DESTROY_VOLUME = 8; // EXPERIMENTAL.
-      CREATE_BLOCK = 9;   // EXPERIMENTAL.
-      DESTROY_BLOCK = 10; // EXPERIMENTAL.
       GROW_VOLUME = 11;   // EXPERIMENTAL.
       SHRINK_VOLUME = 12; // EXPERIMENTAL.
+      CREATE_DISK = 13;   // EXPERIMENTAL.
+      DESTROY_DISK = 14;  // EXPERIMENTAL.
     }
 
     // TODO(vinod): Deprecate this in favor of `LaunchGroup` below.
@@ -1975,30 +1992,67 @@ message Offer {
       required Value.Scalar subtract = 2;
     }
 
+    // Create a `MOUNT` or `BLOCK` disk resource backed by a CSI volume from a
+    // `RAW` disk resource.
+    //
+    // In the typical case where the `RAW` disk resource has a profile and no
+    // source ID, a new CSI volume will be provisioned by Mesos to back the
+    // returned `MOUNT` or `BLOCK` disk resource. However, the `RAW` disk
+    // resource can instead have no profile but a source ID, indicating that
+    // it is already backed by a CSI volume in one of the following scenarios:
+    //
+    // (1) The CSI volume is preprovisioned out-of-band.
+    //
+    // (2) The CSI volume is provisioned by Mesos, but Mesos has lost the
+    //     corresponding `MOUNT` or `BLOCK` resource metadata. This could
+    //     happen if there has been a change in the agent ID or resource
+    //     provider ID where the volume belongs.
+    //
+    // In the above cases, Mesos won't provision a new CSI volume, but instead
+    // will simply return a `MOUNT` or `BLOCK` disk resource backed by the same
+    // CSI volume, with the profile specified in this call.
+    //
     // NOTE: For the time being, this API is subject to change and the related
     // feature is experimental.
-    message CreateVolume {
+    message CreateDisk {
       required Resource source = 1;
+
+      // NOTE: Only `MOUNT` or `BLOCK` is allowed in this field.
       required Resource.DiskInfo.Source.Type target_type = 2;
+
+      // Apply the specified profile to the created disk. This field must be set
+      // if `source` does not have a profile, and must not be set if it has one.
+      //
+      // NOTE: The operation will fail If the specified profile is unknown to
+      // Mesos, i.e., not reported by the disk profile adaptor.
+      optional string target_profile = 3;
     }
 
+    // Destroy a disk resource backed by a CSI volume.
+    //
+    // In the typical case where the CSI plugin of the volume supports volume
+    // deprovisioning and the disk resource is a `MOUNT` or `BLOCK` disk with a
+    // profile known to Mesos, the volume will be deprovisioned and a `RAW` disk
+    // resource with the same profile but no source ID will be returned.
+    // However, the following scenarios could lead to different outcomes:
+    //
+    // (1) If the CSI plugin supports volume deprovisioning but the profile of
+    //     the disk resource is unknown to the disk profile adaptor, or the disk
+    //     resource is a `RAW` disk with no profile but a source ID (see above
+    //     for possible scenarios), the volume will be deprovisioned but no
+    //     resource will be returned.
+     //
+    // (2) If the CSI plugin does not support volume deprovisioning, the volume
+    //     won't be deprovisioned and a `RAW` disk resource with no profile but
+    //     the same source ID will be returned.
+    //
     // NOTE: For the time being, this API is subject to change and the related
     // feature is experimental.
-    message DestroyVolume {
-      required Resource volume = 1;
-    }
-
-    // NOTE: For the time being, this API is subject to change and the related
-    // feature is experimental.
-    message CreateBlock {
+    message DestroyDisk {
+      // NOTE: Only a `MOUNT`, `BLOCK` or `RAW` disk is allowed in this field.
       required Resource source = 1;
     }
 
-    // NOTE: For the time being, this API is subject to change and the related
-    // feature is experimental.
-    message DestroyBlock {
-      required Resource block = 1;
-    }
 
     optional Type type = 1;
 
@@ -2015,10 +2069,8 @@ message Offer {
     optional Destroy destroy = 6;
     optional GrowVolume grow_volume = 13; // EXPERIMENTAL.
     optional ShrinkVolume shrink_volume = 14; // EXPERIMENTAL.
-    optional CreateVolume create_volume = 8;
-    optional DestroyVolume destroy_volume = 9;
-    optional CreateBlock create_block = 10;
-    optional DestroyBlock destroy_block = 11;
+    optional CreateDisk create_disk = 15; // EXPERIMENTAL.
+    optional DestroyDisk destroy_disk = 16; // EXPERIMENTAL.
   }
 }
 
@@ -2388,6 +2440,18 @@ message OperationStatus {
   // include a `uuid`. The status is considered delivered once
   // it is acknowledged by the scheduler.
   optional UUID uuid = 5;
+
+  // If the operation affects resources from a local resource provider,
+  // both `agent_id` and `resource_provider_id` will be set.
+  //
+  // If the operation affects resources that belong to an external
+  // resource provider, only `resource_provider_id` will be set.
+  //
+  // In certain cases, e.g., invalid operations, neither `uuid`,
+  // `slave_id` nor `resource_provider_id` will be set, and the
+  // scheduler does not need to acknowledge this status update.
+  optional AgentID agent_id = 6;
+  optional ResourceProviderID resource_provider_id = 7;
 }
 
 
@@ -3276,6 +3340,7 @@ message CgroupInfo {
       WRITE = 3;
       SYNC = 4;
       ASYNC = 5;
+      DISCARD = 6;
     }
 
     // Describes a stat value without the device descriptor part.
