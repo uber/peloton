@@ -6,6 +6,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 // HostEventType describes the type of host event sent by plugin.
@@ -72,6 +73,13 @@ func (h *HostInfo) GetResourceVersion() string {
 	return h.resourceVersion
 }
 
+// Initialize each host disk capacity to 1T by default for k8s.
+// This is because k8s does not have concept of disk resource.
+func getDefaultDiskMbPerHost() float64 {
+	r := resource.MustParse("1Ti")
+	return float64(r.MilliValue() / 1000000000)
+}
+
 // BuildHostEventFromNode builds a host event from underlying k8s node object.
 func BuildHostEventFromNode(
 	node *corev1.Node,
@@ -93,7 +101,7 @@ func BuildHostEventFromNode(
 					node.Status.Capacity.Cpu().MilliValue()) / 1000,
 				MemMb: float64(
 					node.Status.Capacity.Memory().MilliValue()) / 1000000000,
-				DiskMb: 0,
+				DiskMb: getDefaultDiskMbPerHost(),
 				Gpu:    0,
 			},
 			resourceVersion: rv,

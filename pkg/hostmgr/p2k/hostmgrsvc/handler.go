@@ -182,6 +182,10 @@ func (h *ServiceHandler) KillPods(
 		}
 	}()
 
+	log.WithFields(log.Fields{
+		"pod_id": req.GetPodIds(),
+	}).Debug("KillPods success")
+
 	for _, podID := range req.GetPodIds() {
 		err := h.plugin.KillPod(podID.GetValue())
 		if err != nil {

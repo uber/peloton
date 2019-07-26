@@ -70,6 +70,16 @@ func (s *TaskConfigV2ObjectTestSuite) TestCreateGetPodSpec() {
 	s.NoError(db.Create(
 		ctx,
 		s.jobID,
+		common.DefaultTaskConfigID,
+		taskConfig,
+		&models.ConfigAddOn{},
+		podSpec,
+		configVersion,
+	))
+
+	s.NoError(db.Create(
+		ctx,
+		s.jobID,
 		instance0,
 		taskConfig,
 		&models.ConfigAddOn{},
@@ -77,11 +87,22 @@ func (s *TaskConfigV2ObjectTestSuite) TestCreateGetPodSpec() {
 		configVersion,
 	))
 
-	// test normal get
+	// test normal get for instance0.
 	spec, err := db.GetPodSpec(
 		ctx,
 		s.jobID,
 		uint32(instance0),
+		configVersion,
+	)
+	s.NoError(err)
+	s.Equal(podSpec, spec)
+
+	// Test get for an instance with no spec.
+	// This should return default spec.
+	spec, err = db.GetPodSpec(
+		ctx,
+		s.jobID,
+		uint32(22),
 		configVersion,
 	)
 	s.NoError(err)
@@ -116,6 +137,7 @@ func (s *TaskConfigV2ObjectTestSuite) TestCreateGetPodSpec() {
 	)
 	s.NoError(err)
 	s.Nil(spec)
+
 }
 
 func (s *TaskConfigV2ObjectTestSuite) TestCreateGetTaskConfig() {

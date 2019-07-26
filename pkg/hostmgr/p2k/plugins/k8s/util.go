@@ -17,9 +17,18 @@ package k8s
 import (
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 
+	"github.com/pborman/uuid"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+const (
+	// K8S requires pod spec to contain an image name, default to busybox.
+	_defaultImageName = "busybox"
+	// K8S enforces minimum mem limit for container to be 4MB. KinD enforces
+	// this limit as 100MB.
+	_defaultMinMemMb = 100.0
 )
 
 // Convert peloton container specs to k8s container specs
@@ -53,9 +62,24 @@ func toK8SContainerSpec(c *pbpod.ContainerSpec) corev1.Container {
 		})
 	}
 
+	cname := c.GetName()
+	if cname == "" {
+		cname = uuid.New()
+	}
+
+	cimage := c.GetImage()
+	if cimage == "" {
+		cimage = _defaultImageName
+	}
+
+	memMb := c.GetResource().GetMemLimitMb()
+	if memMb < _defaultMinMemMb {
+		memMb = _defaultMinMemMb
+	}
+
 	k8sSpec := corev1.Container{
-		Name:  c.GetName(),
-		Image: c.GetImage(),
+		Name:  cname,
+		Image: cimage,
 		Env:   kEnvs,
 		Ports: ports,
 		Resources: corev1.ResourceRequirements{
@@ -65,7 +89,7 @@ func toK8SContainerSpec(c *pbpod.ContainerSpec) corev1.Container {
 					resource.DecimalSI,
 				),
 				corev1.ResourceMemory: *resource.NewMilliQuantity(
-					int64(c.GetResource().GetMemLimitMb()*1000000000),
+					int64(memMb*1000000000),
 					resource.DecimalSI,
 				),
 			},
@@ -75,7 +99,7 @@ func toK8SContainerSpec(c *pbpod.ContainerSpec) corev1.Container {
 					resource.DecimalSI,
 				),
 				corev1.ResourceMemory: *resource.NewMilliQuantity(
-					int64(c.GetResource().GetMemLimitMb()*1000000000),
+					int64(memMb*1000000000),
 					resource.DecimalSI,
 				),
 			},
@@ -83,7 +107,7 @@ func toK8SContainerSpec(c *pbpod.ContainerSpec) corev1.Container {
 	}
 
 	if entrypoint := c.GetEntrypoint().GetValue(); entrypoint != "" {
-		k8sSpec.Command = []string{entrypoint}
+		k8sSpec.Command = []string{"-c", "/bin/sh", entrypoint}
 		k8sSpec.Args = c.Command.Arguments
 	}
 

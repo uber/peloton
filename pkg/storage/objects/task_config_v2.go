@@ -204,7 +204,15 @@ func (d *taskConfigV2Object) GetPodSpec(
 	}
 
 	if err := d.store.oClient.Get(ctx, obj, specColumn); err != nil {
-		return nil, err
+		if yarpcerrors.IsNotFound(errors.Cause(err)) {
+			// per-instance spec not found, return default spec in this case.
+			obj.InstanceID = common.DefaultTaskConfigID
+			if err = d.store.oClient.Get(ctx, obj, specColumn); err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
 	}
 
 	// no spec set, return nil
@@ -239,7 +247,7 @@ func (d *taskConfigV2Object) GetTaskConfig(
 	taskConfig, configAddOn, err = d.getTaskConfig(ctx, id, int64(instanceID), version)
 
 	// no instance config, return default config
-	if yarpcerrors.IsNotFound(err) {
+	if yarpcerrors.IsNotFound(errors.Cause(err)) {
 		return d.getTaskConfig(ctx, id, common.DefaultTaskConfigID, version)
 	}
 
@@ -265,7 +273,7 @@ func (d *taskConfigV2Object) getTaskConfig(
 
 	if err := d.store.oClient.Get(
 		ctx, obj, configColumn, configAddOnColumn); err != nil {
-		if yarpcerrors.IsNotFound(err) {
+		if yarpcerrors.IsNotFound(errors.Cause(err)) {
 			return d.handleLegacyConfig(ctx, id, instanceID, version)
 		}
 		return nil, nil, err
