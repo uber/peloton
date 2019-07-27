@@ -144,6 +144,9 @@ const (
 
 	// TaskThrottleMessage indicates that the task is throttled due to repeated failures.
 	TaskThrottleMessage = "Task throttled due to failure"
+
+	// DefaultHostPoolID is the ID of default host pool.
+	DefaultHostPoolID = "default"
 )
 
 const (
