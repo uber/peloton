@@ -193,14 +193,6 @@ var (
 		Envar("JOB_TYPE").
 		Enum("BATCH", "SERVICE")
 
-	jobRuntimeCalculationViaCache = app.Flag(
-		"job-runtime-calculation-via-cache",
-		"Enable runtime re-calculation from cache "+
-			"when MV diverged").
-		Default("false").
-		Envar("JOB_RUNTIME_CALCULATION_VIA_CACHE").
-		Bool()
-
 	authType = app.Flag(
 		"auth-type",
 		"Define the auth type used, default to NOOP").
@@ -291,9 +283,6 @@ func main() {
 		cfg.JobManager.JobSvcCfg.EnableSecrets = true
 	}
 
-	if *jobRuntimeCalculationViaCache {
-		cfg.JobManager.JobRuntimeCalculationViaCache = true
-	}
 	// now, override any CLI flags in the loaded config.Config
 	if *httpPort != 0 {
 		cfg.JobManager.HTTPPort = *httpPort
@@ -567,7 +556,6 @@ func main() {
 		job.JobType(job.JobType_value[*jobType]),
 		rootScope,
 		cfg.JobManager.GoalState,
-		cfg.JobManager.JobRuntimeCalculationViaCache,
 		cfg.JobManager.HostManagerAPIVersion,
 	)
 

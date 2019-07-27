@@ -54,24 +54,23 @@ const (
 type JobRuntimeUpdaterTestSuite struct {
 	suite.Suite
 
-	ctrl                          *gomock.Controller
-	jobStore                      *storemocks.MockJobStore
-	jobConfigOps                  *objectmocks.MockJobConfigOps
-	taskStore                     *storemocks.MockTaskStore
-	updateStore                   *storemocks.MockUpdateStore
-	jobGoalStateEngine            *goalstatemocks.MockEngine
-	taskGoalStateEngine           *goalstatemocks.MockEngine
-	updateGoalStateEngine         *goalstatemocks.MockEngine
-	jobFactory                    *cachedmocks.MockJobFactory
-	cachedJob                     *cachedmocks.MockJob
-	cachedConfig                  *cachedmocks.MockJobConfigCache
-	cachedTask                    *cachedmocks.MockTask
-	goalStateDriver               *driver
-	resmgrClient                  *resmocks.MockResourceManagerServiceYARPCClient
-	jobID                         *peloton.JobID
-	jobEnt                        *jobEntity
-	lastUpdateTs                  float64
-	jobRuntimeCalculationViaCache bool
+	ctrl                  *gomock.Controller
+	jobStore              *storemocks.MockJobStore
+	jobConfigOps          *objectmocks.MockJobConfigOps
+	taskStore             *storemocks.MockTaskStore
+	updateStore           *storemocks.MockUpdateStore
+	jobGoalStateEngine    *goalstatemocks.MockEngine
+	taskGoalStateEngine   *goalstatemocks.MockEngine
+	updateGoalStateEngine *goalstatemocks.MockEngine
+	jobFactory            *cachedmocks.MockJobFactory
+	cachedJob             *cachedmocks.MockJob
+	cachedConfig          *cachedmocks.MockJobConfigCache
+	cachedTask            *cachedmocks.MockTask
+	goalStateDriver       *driver
+	resmgrClient          *resmocks.MockResourceManagerServiceYARPCClient
+	jobID                 *peloton.JobID
+	jobEnt                *jobEntity
+	lastUpdateTs          float64
 }
 
 func TestJobRuntimeUpdater(t *testing.T) {
@@ -93,20 +92,18 @@ func (suite *JobRuntimeUpdaterTestSuite) SetupTest() {
 	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
 	suite.cachedTask = cachedmocks.NewMockTask(suite.ctrl)
 	suite.cachedConfig = cachedmocks.NewMockJobConfigCache(suite.ctrl)
-	suite.jobRuntimeCalculationViaCache = false
 	suite.goalStateDriver = &driver{
-		jobEngine:                     suite.jobGoalStateEngine,
-		taskEngine:                    suite.taskGoalStateEngine,
-		updateEngine:                  suite.updateGoalStateEngine,
-		jobStore:                      suite.jobStore,
-		taskStore:                     suite.taskStore,
-		jobConfigOps:                  suite.jobConfigOps,
-		updateStore:                   suite.updateStore,
-		jobFactory:                    suite.jobFactory,
-		resmgrClient:                  suite.resmgrClient,
-		mtx:                           NewMetrics(tally.NoopScope),
-		cfg:                           &Config{},
-		jobRuntimeCalculationViaCache: suite.jobRuntimeCalculationViaCache,
+		jobEngine:    suite.jobGoalStateEngine,
+		taskEngine:   suite.taskGoalStateEngine,
+		updateEngine: suite.updateGoalStateEngine,
+		jobStore:     suite.jobStore,
+		taskStore:    suite.taskStore,
+		jobConfigOps: suite.jobConfigOps,
+		updateStore:  suite.updateStore,
+		jobFactory:   suite.jobFactory,
+		resmgrClient: suite.resmgrClient,
+		mtx:          NewMetrics(tally.NoopScope),
+		cfg:          &Config{},
 	}
 	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}
 	suite.jobEnt = &jobEntity{

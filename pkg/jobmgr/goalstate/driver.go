@@ -119,7 +119,6 @@ func NewDriver(
 	jobType job.JobType,
 	parentScope tally.Scope,
 	cfg Config,
-	jobRuntimeCalculationViaCache bool,
 	hmVersion api.Version,
 ) Driver {
 	cfg.normalize()
@@ -147,23 +146,22 @@ func NewDriver(
 		lm: lifecyclemgr.New(hmVersion, d),
 		resmgrClient: resmgrsvc.NewResourceManagerServiceYARPCClient(
 			d.ClientConfig(common.PelotonResourceManager)),
-		jobStore:                      jobStore,
-		taskStore:                     taskStore,
-		volumeStore:                   volumeStore,
-		updateStore:                   updateStore,
-		podEventsOps:                  ormobjects.NewPodEventsOps(ormStore),
-		activeJobsOps:                 ormobjects.NewActiveJobsOps(ormStore),
-		jobConfigOps:                  ormobjects.NewJobConfigOps(ormStore),
-		jobIndexOps:                   ormobjects.NewJobIndexOps(ormStore),
-		jobRuntimeOps:                 ormobjects.NewJobRuntimeOps(ormStore),
-		taskConfigV2Ops:               ormobjects.NewTaskConfigV2Ops(ormStore),
-		jobFactory:                    jobFactory,
-		taskLauncher:                  taskLauncher,
-		mtx:                           NewMetrics(scope),
-		cfg:                           &cfg,
-		jobType:                       jobType,
-		jobRuntimeCalculationViaCache: jobRuntimeCalculationViaCache,
-		jobScope:                      jobScope,
+		jobStore:        jobStore,
+		taskStore:       taskStore,
+		volumeStore:     volumeStore,
+		updateStore:     updateStore,
+		podEventsOps:    ormobjects.NewPodEventsOps(ormStore),
+		activeJobsOps:   ormobjects.NewActiveJobsOps(ormStore),
+		jobConfigOps:    ormobjects.NewJobConfigOps(ormStore),
+		jobIndexOps:     ormobjects.NewJobIndexOps(ormStore),
+		jobRuntimeOps:   ormobjects.NewJobRuntimeOps(ormStore),
+		taskConfigV2Ops: ormobjects.NewTaskConfigV2Ops(ormStore),
+		jobFactory:      jobFactory,
+		taskLauncher:    taskLauncher,
+		mtx:             NewMetrics(scope),
+		cfg:             &cfg,
+		jobType:         jobType,
+		jobScope:        jobScope,
 		taskKillRateLimiter: rate.NewLimiter(
 			cfg.RateLimiterConfig.TaskKill.Rate,
 			cfg.RateLimiterConfig.TaskKill.Burst),
@@ -236,8 +234,6 @@ type driver struct {
 	cacheState int32    // the state of driver cache
 
 	jobType job.JobType // the type of the job for the driver
-	// feature flag of aggressive runtime updater calculation
-	jobRuntimeCalculationViaCache bool
 	// job scope for goalstate driver
 	jobScope tally.Scope
 

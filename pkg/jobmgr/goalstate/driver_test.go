@@ -83,21 +83,20 @@ func (suite *DriverTestSuite) SetupTest() {
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
 	suite.mockedPodEventsOps = objectmocks.NewMockPodEventsOps(suite.ctrl)
 	suite.goalStateDriver = &driver{
-		jobEngine:                     suite.jobGoalStateEngine,
-		taskEngine:                    suite.taskGoalStateEngine,
-		updateEngine:                  suite.updateGoalStateEngine,
-		jobStore:                      suite.jobStore,
-		taskStore:                     suite.taskStore,
-		activeJobsOps:                 suite.activeJobsOps,
-		jobConfigOps:                  suite.jobConfigOps,
-		jobRuntimeOps:                 suite.jobRuntimeOps,
-		podEventsOps:                  suite.mockedPodEventsOps,
-		jobFactory:                    suite.jobFactory,
-		mtx:                           NewMetrics(tally.NoopScope),
-		jobScope:                      tally.NoopScope,
-		cfg:                           &Config{},
-		jobType:                       job.JobType_BATCH,
-		jobRuntimeCalculationViaCache: false,
+		jobEngine:     suite.jobGoalStateEngine,
+		taskEngine:    suite.taskGoalStateEngine,
+		updateEngine:  suite.updateGoalStateEngine,
+		jobStore:      suite.jobStore,
+		taskStore:     suite.taskStore,
+		activeJobsOps: suite.activeJobsOps,
+		jobConfigOps:  suite.jobConfigOps,
+		jobRuntimeOps: suite.jobRuntimeOps,
+		podEventsOps:  suite.mockedPodEventsOps,
+		jobFactory:    suite.jobFactory,
+		mtx:           NewMetrics(tally.NoopScope),
+		jobScope:      tally.NoopScope,
+		cfg:           &Config{},
+		jobType:       job.JobType_BATCH,
 	}
 	suite.goalStateDriver.cfg.normalize()
 	suite.goalStateDriver.setState(stopped)
@@ -141,7 +140,6 @@ func (suite *DriverTestSuite) TestNewDriver() {
 		job.JobType_SERVICE,
 		tally.NoopScope,
 		config,
-		false,
 		api.V0,
 	)
 	suite.NotNil(dr)
@@ -159,7 +157,6 @@ func (suite *DriverTestSuite) TestNewDriver() {
 		job.JobType_SERVICE,
 		tally.NoopScope,
 		config,
-		false,
 		api.V1Alpha,
 	)
 	suite.NotNil(dr)
