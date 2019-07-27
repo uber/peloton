@@ -67,7 +67,7 @@ config = load_config()
 #
 # Run peloton
 #
-def run_peloton(applications):
+def run_peloton(applications, enable_k8s=False):
     print_utils.okblue(
         'docker image "uber/peloton" has to be built first '
         "locally by running IMAGE=uber/peloton make docker"
@@ -78,7 +78,9 @@ def run_peloton(applications):
             should_disable = applications[app]
             if should_disable:
                 continue
-        APP_START_ORDER[app](config)
+        # TODO: Define class PelotonCluster, set startup ordering and
+        # enable_k8s there.
+        APP_START_ORDER[app](config, enable_k8s)
 
 
 #
@@ -98,7 +100,7 @@ def setup(
         minicluster.run_k8s()
 
     if enable_peloton:
-        run_peloton(applications)
+        run_peloton(applications, enable_k8s)
 
 
 # Tear down a personal cluster

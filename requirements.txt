@@ -2,14 +2,14 @@
 # is compatible with docker 1.9.1 (jenkins box) and 1.12.x (Laptop).
 docker-py==1.7.2
 pyyaml
-pytest-xdist==1.21.0
-pytest-forked==0.2
+pytest-xdist
+pytest-forked
 filelock==3.0.10
-pytest-repeat==0.7.0
+pytest-repeat
 pytest-random-order
 
 # Integration tests requirements.
-pytest==3.0.7
+pytest==3.10.1
 enum
 protobuf
 

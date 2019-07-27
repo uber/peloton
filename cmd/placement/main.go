@@ -167,6 +167,13 @@ var (
 		Default("").
 		Envar("AUTH_CONFIG_FILE").
 		String()
+
+	hostMgrAPIVersionStr = app.Flag(
+		"hostmgr-api-version",
+		"Define the API Version of host manager").
+		Default("").
+		Envar("HOSTMGR_API_VERSION").
+		String()
 )
 
 func main() {
@@ -247,6 +254,17 @@ func main() {
 
 	if *taskDequeuePeriod != 0 {
 		cfg.Placement.TaskDequeuePeriod = time.Duration(*taskDequeuePeriod) * time.Second
+	}
+
+	if *hostMgrAPIVersionStr != "" {
+		hostMgrAPIVersion, err := api.ParseVersion(*hostMgrAPIVersionStr)
+		if err != nil {
+			log.WithError(err).Fatal("Failed to parse hostmgr-api-version")
+		}
+		cfg.Placement.HostManagerAPIVersion = hostMgrAPIVersion
+	}
+	if cfg.Placement.HostManagerAPIVersion == "" {
+		cfg.Placement.HostManagerAPIVersion = api.V0
 	}
 
 	// Parse and setup peloton auth

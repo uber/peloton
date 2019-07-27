@@ -246,6 +246,13 @@ var (
 		Default("0").
 		Envar("EXECUTOR_SHUTDOWN_BURST_LIMIT").
 		Int()
+	hostMgrAPIVersionStr = app.Flag(
+		"hostmgr-api-version",
+		"Define the API Version of host manager",
+	).
+		Default("").
+		Envar("HOSTMGR_API_VERSION").
+		String()
 )
 
 func main() {
@@ -328,6 +335,13 @@ func main() {
 		cfg.Storage.Cassandra.CassandraConn.DataCenter = *datacenter
 	}
 
+	if *hostMgrAPIVersionStr != "" {
+		hostMgrAPIVersion, err := api.ParseVersion(*hostMgrAPIVersionStr)
+		if err != nil {
+			log.WithError(err).Fatal("Failed to parse hostmgr-api-version")
+		}
+		cfg.JobManager.HostManagerAPIVersion = hostMgrAPIVersion
+	}
 	if cfg.JobManager.HostManagerAPIVersion == "" {
 		cfg.JobManager.HostManagerAPIVersion = api.V0
 	}

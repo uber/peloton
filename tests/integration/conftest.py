@@ -159,7 +159,7 @@ def wait_for_mesos_master_leader(
     assert False, "timed out waiting for mesos master leader"
 
 
-def setup_minicluster():
+def setup_minicluster(enable_k8s=False):
     """
     setup minicluster
     """
@@ -168,7 +168,7 @@ def setup_minicluster():
         log.info("cluster mode")
     else:
         log.info("local minicluster mode")
-        setup(enable_peloton=True)
+        setup(enable_peloton=True, enable_k8s=enable_k8s)
         time.sleep(5)
 
 

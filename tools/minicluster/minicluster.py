@@ -339,7 +339,11 @@ def start_and_wait(
 #
 # Run peloton resmgr app
 #
-def run_peloton_resmgr(config):
+def run_peloton_resmgr(config, enable_k8s=False):
+    env = {}
+    if enable_k8s:
+        env.update({"HOSTMGR_API_VERSION": "v1alpha"})
+
     # TODO: move docker run logic into a common function for all apps to share
     for i in range(0, config["peloton_resmgr_instance_count"]):
         # to not cause port conflicts among apps, increase port by 10
@@ -352,25 +356,34 @@ def run_peloton_resmgr(config):
             name,
             ports,
             config,
+            extra_env=env,
         )
 
 
 #
 # Run peloton hostmgr app
 #
-def run_peloton_hostmgr(config):
-    k8s = kind.Kind(PELOTON_K8S_NAME)
+def run_peloton_hostmgr(config, enable_k8s=False):
+    scarce_resource = ",".join(config["scarce_resource_types"])
+    slack_resource = ",".join(config["slack_resource_types"])
     mounts = []
-    if k8s.is_running():
+    env = {
+        "SCARCE_RESOURCE_TYPES": scarce_resource,
+        "SLACK_RESOURCE_TYPES": slack_resource,
+    }
+    if enable_k8s:
+        k8s = kind.Kind(PELOTON_K8S_NAME)
         kubeconfig_dir = os.path.dirname(k8s.get_kubeconfig())
         mounts = [kubeconfig_dir + ":/.kube"]
+        env.update({
+            "ENABLE_K8S": True,
+            "KUBECONFIG": "/.kube/kind-config-peloton-k8s",
+        })
 
     for i in range(0, config["peloton_hostmgr_instance_count"]):
         # to not cause port conflicts among apps, increase port
         # by 10 for each instance
         ports = [port + i * 10 for port in config["peloton_hostmgr_ports"]]
-        scarce_resource = ",".join(config["scarce_resource_types"])
-        slack_resource = ",".join(config["slack_resource_types"])
         name = config["peloton_hostmgr_container"] + repr(i)
         utils.remove_existing_container(name)
         start_and_wait(
@@ -378,10 +391,7 @@ def run_peloton_hostmgr(config):
             name,
             ports,
             config,
-            extra_env={
-                "SCARCE_RESOURCE_TYPES": scarce_resource,
-                "SLACK_RESOURCE_TYPES": slack_resource,
-            },
+            extra_env=env,
             mounts=mounts,
         )
 
@@ -389,7 +399,14 @@ def run_peloton_hostmgr(config):
 #
 # Run peloton jobmgr app
 #
-def run_peloton_jobmgr(config):
+def run_peloton_jobmgr(config, enable_k8s=False):
+    env = {
+        "MESOS_AGENT_WORK_DIR": config["work_dir"],
+        "JOB_TYPE": os.getenv("JOB_TYPE", "BATCH"),
+    }
+    if enable_k8s:
+        env.update({"HOSTMGR_API_VERSION": "v1alpha"})
+
     for i in range(0, config["peloton_jobmgr_instance_count"]):
         # to not cause port conflicts among apps, increase port by 10
         #  for each instance
@@ -401,17 +418,14 @@ def run_peloton_jobmgr(config):
             name,
             ports,
             config,
-            extra_env={
-                "MESOS_AGENT_WORK_DIR": config["work_dir"],
-                "JOB_TYPE": os.getenv("JOB_TYPE", "BATCH"),
-            },
+            extra_env=env,
         )
 
 
 #
 # Run peloton aurora bridge app
 #
-def run_peloton_aurorabridge(config):
+def run_peloton_aurorabridge(config, enable_k8s=False):
     for i in range(0, config["peloton_aurorabridge_instance_count"]):
         ports = [
             port + i * 10 for port in config["peloton_aurorabridge_ports"]
@@ -424,7 +438,7 @@ def run_peloton_aurorabridge(config):
 #
 # Run peloton placement app
 #
-def run_peloton_placement(config):
+def run_peloton_placement(config, enable_k8s=False):
     i = 0
     for task_type in config["peloton_placement_instances"]:
         # to not cause port conflicts among apps, increase port by 10
@@ -436,15 +450,18 @@ def run_peloton_placement(config):
             app_type = 'placement'
         else:
             app_type = 'placement_' + task_type.lower()
+        env = {
+            "APP_TYPE": app_type,
+            "TASK_TYPE": task_type,
+        }
+        if enable_k8s:
+            env.update({"HOSTMGR_API_VERSION": "v1alpha"})
         start_and_wait(
             "placement",
             name,
             ports,
             config,
-            extra_env={
-                "APP_TYPE": app_type,
-                "TASK_TYPE": task_type,
-            },
+            extra_env=env,
         )
         i = i + 1
 
@@ -452,7 +469,7 @@ def run_peloton_placement(config):
 #
 # Run peloton archiver app
 #
-def run_peloton_archiver(config):
+def run_peloton_archiver(config, enable_k8s=False):
     for i in range(0, config["peloton_archiver_instance_count"]):
         ports = [port + i * 10 for port in config["peloton_archiver_ports"]]
         name = config["peloton_archiver_container"] + repr(i)

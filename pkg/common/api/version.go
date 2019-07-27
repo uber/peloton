@@ -14,6 +14,11 @@
 
 package api
 
+import "go.uber.org/yarpc/yarpcerrors"
+
+// ErrInvalidVersion is returned when user configures an invalid api version.
+var ErrInvalidVersion = yarpcerrors.InvalidArgumentErrorf("invalid version")
+
 // Version is the type of API versions.
 type Version string
 
@@ -33,4 +38,18 @@ func (v Version) IsV1() bool {
 // String returns the string representation of the version.
 func (v Version) String() string {
 	return string(v)
+}
+
+// ParseVersion parses version from string.
+func ParseVersion(str string) (Version, error) {
+	switch Version(str) {
+	case V0:
+		return V0, nil
+	case V1:
+		return V1, nil
+	case V1Alpha:
+		return V1Alpha, nil
+	default:
+		return "", ErrInvalidVersion
+	}
 }

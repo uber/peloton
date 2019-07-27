@@ -6,10 +6,11 @@ from tests.integration.conftest import (
 )
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def bootstrap_cluster(request):
     tests_failed_before_module = request.session.testsfailed
-    setup_minicluster()
+    setup_minicluster(enable_k8s=(
+        request.session.get_marker('k8s') is not None))
 
     yield
 

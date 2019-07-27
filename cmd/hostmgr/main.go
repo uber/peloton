@@ -208,8 +208,15 @@ var (
 	kubeConfigFile = app.Flag(
 		"kube-config-file",
 		"YAML config file for kubernetes plugin").
+		Default("").
 		Envar("KUBECONFIG").
 		String()
+
+	enableK8s = app.Flag(
+		"enable-k8s",
+		"Enable k8s plugin").
+		Envar("ENABLE_K8S").
+		Bool()
 )
 
 func main() {
@@ -273,8 +280,6 @@ func main() {
 		cfg.Auth.Path = *authConfigFile
 	}
 
-	log.WithField("config", cfg).Info("Loaded Host Manager configuration")
-
 	// Parse and setup peloton secrets
 	if *pelotonSecretFile != "" {
 		var secretsCfg config.PelotonSecretsConfig
@@ -325,7 +330,15 @@ func main() {
 		cfg.HostManager.BinPacking = *binPacking
 	}
 
-	log.WithField("config", cfg).Debug("Loaded Host Manager config")
+	if *enableK8s {
+		cfg.K8s.Enabled = true
+	}
+
+	if *kubeConfigFile != "" {
+		cfg.K8s.Kubeconfig = *kubeConfigFile
+	}
+
+	log.WithField("config", cfg).Info("Loaded Host Manager configuration")
 
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(
 		&cfg.Metrics,
@@ -347,6 +360,7 @@ func main() {
 		mux,
 	)
 
+	// TODO: Skip it when k8s is enabled.
 	mesosMasterDetector, err := mesos.NewZKDetector(cfg.Mesos.ZkPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize mesos master detector: %v", err)

@@ -1,3 +1,4 @@
 peloton-client~=0.8.0
 # m3 4.2.0 breaks compatibility with python 2
 m3>=3.0.0,<4.2.0
+pytest==3.10.1

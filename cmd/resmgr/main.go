@@ -161,6 +161,13 @@ var (
 		Default("").
 		Envar("AUTH_CONFIG_FILE").
 		String()
+
+	hostMgrAPIVersionStr = app.Flag(
+		"hostmgr-api-version",
+		"Define the API Version of host manager").
+		Default("").
+		Envar("HOSTMGR_API_VERSION").
+		String()
 )
 
 func getConfig(cfgFiles ...string) Config {
@@ -223,6 +230,16 @@ func getConfig(cfgFiles ...string) Config {
 	if *enableSLATracking {
 		cfg.ResManager.RmTaskConfig.EnableSLATracking = *enableSLATracking
 	}
+	if *hostMgrAPIVersionStr != "" {
+		hostMgrAPIVersion, err := api.ParseVersion(*hostMgrAPIVersionStr)
+		if err != nil {
+			log.WithError(err).Fatal("Failed to parse hostmgr-api-version")
+		}
+		cfg.ResManager.HostManagerAPIVersion = hostMgrAPIVersion
+	}
+	if cfg.ResManager.HostManagerAPIVersion == "" {
+		cfg.ResManager.HostManagerAPIVersion = api.V0
+	}
 
 	// Parse and setup peloton auth
 	if len(*authType) != 0 {
@@ -260,10 +277,6 @@ func main() {
 
 	log.WithField("config", cfg).
 		Info("Completed Resource Manager config")
-
-	if cfg.ResManager.HostManagerAPIVersion == "" {
-		cfg.ResManager.HostManagerAPIVersion = api.V0
-	}
 
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(
 		&cfg.Metrics,
