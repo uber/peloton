@@ -75,6 +75,8 @@ class StatelessJob(object):
         respool_id = self.pool.ensure_exists()
         self.job_spec.respool_id.value = respool_id
 
+        # wait for job manager leader
+        self.wait_for_jobmgr_available()
         attempts = 0
         while attempts < self.config.max_retry_attempts:
             try:
@@ -119,6 +121,8 @@ class StatelessJob(object):
             get config version and retry until version is correct.
         :return: start response from the API
         """
+        # wait for job manager leader
+        self.wait_for_jobmgr_available()
         if ranges is None:
             job_entity_version = (
                 entity_version
@@ -195,6 +199,8 @@ class StatelessJob(object):
             get config version and retry until version is correct.
         :return: stop response from the API
         """
+        # wait for job manager leader
+        self.wait_for_jobmgr_available()
         if ranges is None:
             job_entity_version = (
                 entity_version
@@ -263,6 +269,8 @@ class StatelessJob(object):
 
         :return: restart response from the API
         """
+        # wait for job manager leader
+        self.wait_for_jobmgr_available()
         job_entity_version = (
             entity_version
             or self.entity_version
@@ -660,6 +668,8 @@ class StatelessJob(object):
             stopped and deleted. This step cannot be undone, and the job cannot
             be re-created (with same uuid) till the delete is complete.
         """
+        # wait for job manager leader
+        self.wait_for_jobmgr_available()
         job_entity_version = (
             entity_version
             or self.entity_version
@@ -695,6 +705,32 @@ class StatelessJob(object):
                 raise
             break
         log.info("job %s deleted", self.job_id)
+
+    def wait_for_jobmgr_available(self):
+        """
+        utility method to wait for job manger leader to come up.
+        good practice to check before all write apis
+        """
+        attempts = 0
+        while attempts < self.config.max_retry_attempts:
+            try:
+                request = stateless_svc.DeleteJobRequest(
+                    job_id=v1alpha_peloton.JobID(value=self.job_id),
+                    version=v1alpha_peloton.EntityVersion(
+                        value="dummy-entity-version"
+                    ),
+                )
+                self.client.stateless_svc.DeleteJob(
+                    request,
+                    metadata=self.client.jobmgr_metadata,
+                    timeout=self.config.rpc_timeout_sec,
+                )
+            except grpc.RpcError as e:
+                if e.code() != grpc.StatusCode.UNAVAILABLE:
+                    break
+            log.info("waiting for job manager leader")
+            time.sleep(self.config.sleep_time_sec)
+            attempts += 1
 
     def get_pods(self):
         """
