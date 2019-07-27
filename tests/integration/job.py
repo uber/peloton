@@ -93,8 +93,7 @@ class Job(object):
         self.job_config.respoolID.value = respool_id
 
         # wait for job manager leader
-        self.wait_for_leader()
-
+        self.wait_for_jobmgr_available()
         request = job.CreateRequest(config=self.job_config)
         resp = self.client.job_svc.Create(
             request,
@@ -111,6 +110,8 @@ class Job(object):
         updates a job
         :param new_job_file: The job config file used for updating
         """
+        # wait for job manager leader
+        self.wait_for_jobmgr_available()
         job_config_dump = load_test_config(new_job_file)
         new_job_config = job.JobConfig()
         json_format.ParseDict(job_config_dump, new_job_config)
@@ -135,6 +136,8 @@ class Job(object):
         :param ranges: the instance ranges to start
         :return: task start response from the API
         """
+        # wait for job manager leader
+        self.wait_for_jobmgr_available()
         request = task.StartRequest(
             jobId=peloton.JobID(value=self.job_id), ranges=ranges
         )
@@ -156,6 +159,8 @@ class Job(object):
         :param ranges: the instance ranges to stop
         :return: task stop response from the API
         """
+        # wait for job manager leader
+        self.wait_for_jobmgr_available()
         request = task.StopRequest(
             jobId=peloton.JobID(value=self.job_id), ranges=ranges
         )
@@ -176,6 +181,8 @@ class Job(object):
         Deletes a job
         :return: delete job response from the API
         """
+        # wait for job manager leader
+        self.wait_for_jobmgr_available()
         request = job.DeleteRequest(id=peloton.JobID(value=self.job_id))
         response = self.client.job_svc.Delete(
             request,
@@ -581,7 +588,7 @@ class Job(object):
             message=self.job_id, condition=condition, config=self.config
         )
 
-    def wait_for_leader(self):
+    def wait_for_jobmgr_available(self):
         """
         utility method to wait for job manger leader to come up.
         good practice to check before all write apis
