@@ -117,8 +117,7 @@ func (suite *ReserverTestSuite) TestReserverStop() {
 func (suite *ReserverTestSuite) TestReservationWithNoTasks() {
 	delay, err := suite.reserver.Reserve(context.Background())
 	suite.Equal(delay.Seconds(), _noTasksTimeoutPenalty.Seconds())
-	suite.Error(err)
-	suite.Contains(err.Error(), "no items in reservation queue")
+	suite.Nil(err)
 }
 
 // Testing reservation with Nil Task
@@ -136,7 +135,7 @@ func (suite *ReserverTestSuite) TestReservationWithNilTasks() {
 func (suite *ReserverTestSuite) TestReservation() {
 	reservation := createReservation()
 	_, err := suite.reserver.Reserve(context.Background())
-	suite.Error(err)
+	suite.Nil(err)
 
 	suite.reserver.EnqueueReservation(context.Background(), reservation)
 	summary := summary_mocks.NewMockHostSummary(suite.mockCtrl)
@@ -186,11 +185,11 @@ func (suite *ReserverTestSuite) TestReservationWithMultipleHosts() {
 	suite.Equal(reservation, reserver.reservations["host1"])
 }
 
-// Testing reservation when ther is no host available
+// Testing reservation when there is no host available
 func (suite *ReserverTestSuite) TestNoHostReservation() {
 	reservation := createReservation()
 	_, err := suite.reserver.Reserve(context.Background())
-	suite.Error(err)
+	suite.Nil(err)
 
 	suite.reserver.EnqueueReservation(context.Background(), reservation)
 	summary := summary_mocks.NewMockHostSummary(suite.mockCtrl)
@@ -211,7 +210,7 @@ func (suite *ReserverTestSuite) TestNoHostReservation() {
 func (suite *ReserverTestSuite) TestHostSummaryReservationError() {
 	reservation := createReservation()
 	_, err := suite.reserver.Reserve(context.Background())
-	suite.Error(err)
+	suite.Nil(err)
 
 	suite.reserver.EnqueueReservation(context.Background(), reservation)
 	gomock.InOrder(

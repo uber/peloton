@@ -195,7 +195,8 @@ func (r *reserver) Reserve(ctx context.Context) (time.Duration, error) {
 	// Get reservation from the reservation queue
 	item, err := r.reservationQueue.Dequeue(1 * time.Second)
 	if err != nil {
-		return _noTasksTimeoutPenalty, errors.New("No items in reservation queue")
+		log.Debug("No items in reservation queue")
+		return _noTasksTimeoutPenalty, nil
 	}
 	reservation, ok := item.(*hostsvc.Reservation)
 	if !ok || reservation.GetTask() == nil || reservation.GetTask().GetId() == nil {
@@ -403,7 +404,8 @@ func (r *reserver) processCompletedReservations(ctx context.Context) error {
 		return err
 	}
 	if len(reservations) == 0 {
-		return errors.New("no valid reservations")
+		log.Debug("no valid reservations")
+		return nil
 	}
 
 	now := time.Now()

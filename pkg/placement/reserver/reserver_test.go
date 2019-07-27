@@ -111,8 +111,7 @@ func (suite *ReserverTestSuite) TestReservationNoTasks() {
 	suite.hostService.EXPECT().GetHosts(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
 	delay, err := suite.reserver.Reserve(context.Background())
 	suite.Equal(delay.Seconds(), _noTasksTimeoutPenalty.Seconds())
-	require.Error(suite.T(), err)
-	suite.Contains(err.Error(), "No items in reservation queue")
+	suite.Nil(err)
 }
 
 // TestReservationInvalidTask making the resmgr task invalid
@@ -284,7 +283,7 @@ func (suite *ReserverTestSuite) TestProcessCompletedReservations() {
 	var reservation *hostsvc.CompletedReservation
 	completedQueue.EXPECT().Dequeue(gomock.Any()).Return(reservation, nil)
 	err = reserver.processCompletedReservations(context.Background())
-	suite.Contains(err.Error(), "no valid reservations")
+	suite.Nil(err)
 
 	// Testing the scenario where GetCompletedReservation returns with valid reservations
 	host := "host"
