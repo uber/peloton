@@ -380,6 +380,9 @@ func (tr *tracker) markItDone(t *RMTask, mesosTaskID string) error {
 
 // TasksByHosts returns all tasks of the given type running on the given hosts.
 func (tr *tracker) TasksByHosts(hosts []string, taskType resmgr.TaskType) map[string][]*RMTask {
+	tr.lock.RLock()
+	defer tr.lock.RUnlock()
+
 	result := map[string][]*RMTask{}
 	var types []resmgr.TaskType
 	if taskType == resmgr.TaskType_UNKNOWN {

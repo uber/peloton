@@ -23,7 +23,6 @@ import (
 
 	"github.com/uber/peloton/pkg/common/backoff"
 	"github.com/uber/peloton/pkg/common/lifecycle"
-	"github.com/uber/peloton/pkg/common/stringset"
 	"github.com/uber/peloton/pkg/resmgr/preemption"
 	rmtask "github.com/uber/peloton/pkg/resmgr/task"
 
@@ -50,7 +49,6 @@ type Drainer struct {
 	drainerPeriod   time.Duration       // Period to run host drainer
 	preemptionQueue preemption.Queue    // Preemption Queue
 	lifecycle       lifecycle.LifeCycle // Lifecycle manager
-	drainingHosts   stringset.StringSet // Set of hosts currently being drained
 }
 
 // NewDrainer creates a new Drainer
@@ -68,7 +66,6 @@ func NewDrainer(
 		preemptionQueue: preemptionQueue,
 		drainerPeriod:   drainerPeriod,
 		lifecycle:       lifecycle.NewLifeCycle(),
-		drainingHosts:   stringset.New(),
 	}
 }
 
@@ -115,18 +112,11 @@ func (d *Drainer) Stop() error {
 	log.Info("Stopping Host Drainer")
 	// Wait for drainer to be stopped
 	d.lifecycle.Wait()
-	// Clear the set
-	d.drainingHosts.Clear()
 	log.Info("Host Drainer Stopped")
 	return nil
 }
 
 func (d *Drainer) performDrainCycle() error {
-	// Clear the set of drainingHosts on every run to not work on stale
-	// set of hosts.
-	// TODO: remove the set altogether since its not doing anything useful.
-	d.drainingHosts.Clear()
-
 	request := &hostsvc.GetDrainingHostsRequest{
 		Limit:   drainingHostsLimit,
 		Timeout: drainingHostsTimeout,
@@ -139,27 +129,23 @@ func (d *Drainer) performDrainCycle() error {
 		return err
 	}
 
-	for _, host := range response.GetHostnames() {
-		d.drainingHosts.Add(host)
-	}
-	return d.drainHosts()
+	return d.drainHosts(response.GetHostnames())
 }
 
-func (d *Drainer) drainHosts() error {
+func (d *Drainer) drainHosts(hosts []string) error {
 	var errs error
 
-	drainingHosts := d.drainingHosts.ToSlice()
-	log.WithField("hosts", drainingHosts).Info("Draining hosts")
+	log.WithField("hosts", hosts).Info("Draining hosts")
 	// No-op if there are no hosts to drain
-	if len(drainingHosts) == 0 {
+	if len(hosts) == 0 {
 		return nil
 	}
 	// Get all tasks on the DRAINING hosts
-	tasksByHost := d.rmTracker.TasksByHosts(drainingHosts, resmgr.TaskType_UNKNOWN)
+	tasksByHost := d.rmTracker.TasksByHosts(hosts, resmgr.TaskType_UNKNOWN)
 	var drainedHosts []string
-	for _, host := range drainingHosts {
+	for _, host := range hosts {
 		tasks, ok := tasksByHost[host]
-		if !ok {
+		if !ok || len(tasks) == 0 {
 			drainedHosts = append(drainedHosts, host)
 			continue
 		}
@@ -202,7 +188,6 @@ func (d *Drainer) markHostDrained(host string) error {
 			if err != nil {
 				return err
 			}
-			d.drainingHosts.Remove(host)
 			log.WithField("hostname", host).
 				Info("successfully marked host as drained, removing from queue")
 			return nil

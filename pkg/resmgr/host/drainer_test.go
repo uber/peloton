@@ -29,7 +29,6 @@ import (
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/eventstream"
 	"github.com/uber/peloton/pkg/common/lifecycle"
-	"github.com/uber/peloton/pkg/common/stringset"
 	preemption_mocks "github.com/uber/peloton/pkg/resmgr/preemption/mocks"
 	rm_task "github.com/uber/peloton/pkg/resmgr/task"
 
@@ -81,7 +80,6 @@ func (suite *DrainerTestSuite) SetupTest() {
 		preemptionQueue: suite.preemptor,
 		rmTracker:       suite.tracker,
 		lifecycle:       lifecycle.NewLifeCycle(),
-		drainingHosts:   stringset.New(),
 	}
 
 	jobID := uuid.New()
@@ -156,7 +154,6 @@ func (suite *DrainerTestSuite) TestDrainCycle_EnqueueError() {
 		Return(fmt.Errorf("fake Enqueue error"))
 	err := suite.drainer.performDrainCycle()
 	suite.Error(err)
-	suite.drainer.drainingHosts.Clear()
 }
 
 func (suite *DrainerTestSuite) TestDrainCycle() {
@@ -189,12 +186,6 @@ func (suite *DrainerTestSuite) TestDrainCycle() {
 
 		err := suite.drainer.performDrainCycle()
 		suite.NoError(err)
-
-		// the drainer should only have the newest host.
-		suite.Len(suite.drainer.drainingHosts.ToSlice(), len(suite.hostnames))
-		for _, host := range hosts {
-			suite.Equal(true, suite.drainer.drainingHosts.Contains(host))
-		}
 	}
 }
 func (suite *DrainerTestSuite) TestDrainCycle_NoHostsToDrain() {
