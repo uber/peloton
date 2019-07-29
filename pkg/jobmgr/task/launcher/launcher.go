@@ -26,7 +26,6 @@ import (
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
-	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	pbhostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
@@ -41,10 +40,8 @@ import (
 	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
-	"github.com/uber/peloton/pkg/storage"
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 
-	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
@@ -106,16 +103,6 @@ type Launcher interface {
 		tasks map[string]*LaunchableTaskInfo,
 		placement *resmgr.Placement,
 	) (map[string]*LaunchableTaskInfo, error)
-	// LaunchStatefulTasks launches stateful task with reserved resource to
-	// hostmgr directly.
-	LaunchStatefulTasks(
-		ctx context.Context,
-		selectedTasks []*hostsvc.LaunchableTask,
-		hostname string,
-		selectedPorts []uint32,
-		hostOfferID *peloton.HostOfferID,
-		checkVolume bool,
-	) error
 	// GetLaunchableTasks returns current task configuration and
 	// the runtime diff which needs to be patched onto existing runtime for
 	// each launchable task. The second return value contains the tasks that
@@ -146,7 +133,6 @@ type launcher struct {
 	hostMgrV1AlphaClient svc.HostManagerServiceYARPCClient
 	jobFactory           cached.JobFactory
 	taskConfigV2Ops      ormobjects.TaskConfigV2Ops
-	volumeStore          storage.PersistentVolumeStore
 	secretInfoOps        ormobjects.SecretInfoOps
 	metrics              *Metrics
 	retryPolicy          backoff.RetryPolicy
@@ -174,7 +160,6 @@ func InitTaskLauncher(
 	d *yarpc.Dispatcher,
 	hostMgrClientName string,
 	jobFactory cached.JobFactory,
-	volumeStore storage.PersistentVolumeStore,
 	ormStore *ormobjects.Store,
 	parent tally.Scope,
 	hmVersion api.Version,
@@ -192,7 +177,6 @@ func InitTaskLauncher(
 				d.ClientConfig(hostMgrClientName)),
 			jobFactory:      jobFactory,
 			taskConfigV2Ops: ormobjects.NewTaskConfigV2Ops(ormStore),
-			volumeStore:     volumeStore,
 			secretInfoOps:   ormobjects.NewSecretInfoOps(ormStore),
 			metrics:         NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
 			// TODO: make launch retry policy config.
@@ -407,24 +391,6 @@ func (l *launcher) GetLaunchableTasks(
 		}
 
 		runtimeDiff := make(jobmgrcommon.RuntimeDiff)
-
-		// Generate volume ID if not set for stateful task.
-		if taskConfig.GetVolume() != nil {
-			if cachedRuntime.GetVolumeID() == nil || hostname != cachedRuntime.GetHost() {
-				newVolumeID := &peloton.VolumeID{
-					Value: uuid.New(),
-				}
-				log.WithFields(log.Fields{
-					"task_id":       ptaskID,
-					"hostname":      hostname,
-					"new_volume_id": newVolumeID,
-				}).Info("generates new volume id for task")
-				// Generates volume ID if first time launch the stateful task,
-				// OR task is being launched to a different host.
-				runtimeDiff[jobmgrcommon.VolumeIDField] = newVolumeID
-			}
-		}
-
 		if cachedRuntime.GetGoalState() != task.TaskState_KILLED {
 			runtimeDiff[jobmgrcommon.HostField] = hostname
 			runtimeDiff[jobmgrcommon.AgentIDField] = agentID
@@ -588,96 +554,9 @@ func (l *launcher) CreateLaunchableTasks(
 			},
 		}
 
-		// Add volume info into launchable task if task config has volume.
-		if launchableTaskInfo.Config.GetVolume() != nil {
-			diskResource := util.NewMesosResourceBuilder().
-				WithName("disk").
-				WithValue(float64(launchableTaskInfo.Config.GetVolume().GetSizeMB())).
-				Build()
-			launchableTask.Volume = &hostsvc.Volume{
-				Id:            launchableTaskInfo.Runtime.GetVolumeID(),
-				ContainerPath: launchableTaskInfo.Config.GetVolume().GetContainerPath(),
-				Resource:      diskResource,
-			}
-		}
 		launchableTasks = append(launchableTasks, &launchableTask)
 	}
 	return launchableTasks, skippedTaskInfos
-}
-
-func (l *launcher) LaunchStatefulTasks(
-	ctx context.Context,
-	selectedTasks []*hostsvc.LaunchableTask,
-	hostname string,
-	selectedPorts []uint32,
-	hostOfferID *peloton.HostOfferID,
-	checkVolume bool,
-) error {
-	ctx, cancel := context.WithTimeout(ctx, _rpcTimeout)
-	defer cancel()
-
-	volumeID := &peloton.VolumeID{
-		Value: selectedTasks[0].GetVolume().GetId().GetValue(),
-	}
-	createVolume := false
-	if checkVolume {
-		pv, err := l.volumeStore.GetPersistentVolume(ctx, volumeID)
-		if err != nil {
-			_, ok := err.(*storage.VolumeNotFoundError)
-			if !ok {
-				// volume store db read error.
-				return err
-			}
-			// First time launch stateful task and create volume.
-			createVolume = true
-		} else if pv.GetState() != volume.VolumeState_CREATED {
-			// Retry launch task but volume is not created.
-			createVolume = true
-		}
-	}
-
-	var err error
-	var operations []*hostsvc.OfferOperation
-	hostOperationFactory := NewHostOperationsFactory(selectedTasks, hostname, selectedPorts)
-	if createVolume {
-		// Reserve, Create and Launch the task.
-		operations, err = hostOperationFactory.GetHostOperations(
-			[]hostsvc.OfferOperation_Type{
-				hostsvc.OfferOperation_RESERVE,
-				hostsvc.OfferOperation_CREATE,
-				hostsvc.OfferOperation_LAUNCH,
-			})
-	} else {
-		// Launch using the volume.
-		operations, err = hostOperationFactory.GetHostOperations(
-			[]hostsvc.OfferOperation_Type{
-				hostsvc.OfferOperation_LAUNCH,
-			})
-	}
-
-	if err != nil {
-		return err
-	}
-
-	var request = &hostsvc.OfferOperationsRequest{
-		Hostname:   hostname,
-		Operations: operations,
-		Id:         hostOfferID,
-	}
-
-	log.WithFields(log.Fields{
-		"request":        request,
-		"selected_tasks": selectedTasks,
-	}).Info("OfferOperations called")
-
-	response, err := l.hostMgrClient.OfferOperations(ctx, request)
-	if err != nil {
-		return err
-	}
-	if response.GetError() != nil {
-		return errors.New(response.Error.String())
-	}
-	return nil
 }
 
 func (l *launcher) launchBatchTasks(
@@ -717,7 +596,6 @@ func (l *launcher) launchTasks(
 	selectedTasks []*hostsvc.LaunchableTask,
 	placement *resmgr.Placement) error {
 	// TODO: Add retry Logic for tasks launching failure
-	var err error
 	if len(selectedTasks) == 0 {
 		return errEmptyTasks
 	}
@@ -725,21 +603,11 @@ func (l *launcher) launchTasks(
 	log.WithField("tasks", selectedTasks).Debug("Launching Tasks")
 
 	callStart := time.Now()
-	if placement.Type != resmgr.TaskType_STATEFUL {
-		err = backoff.Retry(
-			func() error {
-				return l.launchBatchTasks(ctx, selectedTasks, placement)
-			}, l.retryPolicy, l.isLauncherRetryableError)
-	} else {
-		err = l.LaunchStatefulTasks(
-			ctx,
-			selectedTasks,
-			placement.GetHostname(),
-			placement.GetPorts(),
-			placement.GetHostOfferID(),
-			true, /* checkVolume */
-		)
-	}
+	err := backoff.Retry(
+		func() error {
+			return l.launchBatchTasks(ctx, selectedTasks, placement)
+		}, l.retryPolicy, l.isLauncherRetryableError)
+
 	callDuration := time.Since(callStart)
 
 	if err != nil {

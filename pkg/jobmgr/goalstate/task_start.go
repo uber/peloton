@@ -19,18 +19,13 @@ import (
 	"fmt"
 	"time"
 
-	mesos "github.com/uber/peloton/.gen/mesos/v1"
-	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
-	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
 	"github.com/uber/peloton/pkg/common/goalstate"
 	"github.com/uber/peloton/pkg/common/util"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 	jobmgr_task "github.com/uber/peloton/pkg/jobmgr/task"
-	"github.com/uber/peloton/pkg/jobmgr/task/launcher"
-	"github.com/uber/peloton/pkg/storage"
 
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc/yarpcerrors"
@@ -44,117 +39,6 @@ const (
 	// in production if we can set an even larger value.
 	_jobEnqueueMultiplierOnTaskStart = 6
 )
-
-// startStatefulTask starts stateful tasks.
-func startStatefulTask(ctx context.Context, taskEnt *taskEntity, taskInfo *task.TaskInfo, goalStateDriver *driver) error {
-	// Volume is in CREATED state so launch the task directly to hostmgr.
-	if goalStateDriver.taskLauncher == nil {
-		return fmt.Errorf("task launcher not available")
-	}
-
-	if taskInfo.GetRuntime().GetGoalState() == task.TaskState_KILLED {
-		return nil
-	}
-
-	pelotonTaskID := &peloton.TaskID{
-		Value: taskEnt.GetID(),
-	}
-
-	launchableTasks, _, err := goalStateDriver.taskLauncher.GetLaunchableTasks(
-		ctx,
-		[]*mesos.TaskID{taskInfo.GetRuntime().GetMesosTaskId()},
-		taskInfo.GetRuntime().GetHost(),
-		taskInfo.GetRuntime().GetAgentID(),
-		nil,
-	)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", taskEnt.jobID).
-			WithField("instance_id", taskEnt.instanceID).
-			Error("failed to get launchable tasks")
-		return err
-	}
-
-	// update the runtime in cache and DB with runtimeDiff returned by
-	// GetLaunchableTasks
-	cachedJob := goalStateDriver.jobFactory.GetJob(taskEnt.jobID)
-	if cachedJob == nil {
-		return nil
-	}
-
-	cachedTask := cachedJob.GetTask(taskEnt.instanceID)
-	if cachedTask == nil {
-		log.WithFields(log.Fields{
-			"job_id":      taskEnt.jobID.GetValue(),
-			"instance_id": taskEnt.instanceID,
-		}).Error("task is nil in cache with valid job")
-		return nil
-	}
-
-	launchableTask := launchableTasks[pelotonTaskID.GetValue()]
-	// safety check, should not happen
-	if launchableTask == nil {
-		log.WithFields(log.Fields{
-			"job_id":      taskEnt.jobID.Value,
-			"instance_id": taskEnt.instanceID,
-		}).Error("unexpected nil launchableTask")
-		return nil
-	}
-
-	_, _, err = cachedJob.PatchTasks(
-		ctx,
-		map[uint32]jobmgrcommon.RuntimeDiff{
-			taskEnt.instanceID: launchableTask.RuntimeDiff,
-		},
-		false,
-	)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", taskEnt.jobID).
-			WithField("instance_id", taskEnt.instanceID).
-			Error("failed to update task runtime during launch")
-		return err
-	}
-
-	newRuntime, err := cachedTask.GetRuntime(ctx)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", taskEnt.jobID).
-			WithField("instance_id", taskEnt.instanceID).
-			Error("failed to fetch task runtime from cache")
-		return err
-	}
-
-	taskInfos := map[string]*launcher.LaunchableTaskInfo{
-		pelotonTaskID.Value: {
-			TaskInfo: &task.TaskInfo{
-				Runtime:    newRuntime,
-				Config:     launchableTask.Config,
-				JobId:      taskEnt.jobID,
-				InstanceId: taskEnt.instanceID,
-			},
-			ConfigAddOn: launchableTask.ConfigAddOn,
-		},
-	}
-
-	// ignoring skippedTaskInfo for now since this is stateful task
-	tasksToBeLaunched, _ :=
-		goalStateDriver.taskLauncher.CreateLaunchableTasks(ctx, taskInfos)
-	var selectedPorts []uint32
-	runtimePorts := taskInfo.GetRuntime().GetPorts()
-	for _, port := range runtimePorts {
-		selectedPorts = append(selectedPorts, port)
-	}
-
-	return goalStateDriver.taskLauncher.LaunchStatefulTasks(
-		ctx,
-		tasksToBeLaunched,
-		taskInfo.GetRuntime().GetHost(),
-		selectedPorts,
-		nil,   // TODO persist host offer id for stateful
-		false, /* checkVolume */
-	)
-}
 
 // TaskStart sends the task to resource manager for placement and changes the state to PENDING.
 func TaskStart(ctx context.Context, entity goalstate.Entity) error {
@@ -198,23 +82,6 @@ func TaskStart(ctx context.Context, entity goalstate.Entity) error {
 	}
 	if taskInfo == nil {
 		return fmt.Errorf("task info not found for %v", taskID)
-	}
-
-	stateful := taskInfo.GetConfig().GetVolume() != nil && len(taskInfo.GetRuntime().GetVolumeID().GetValue()) > 0
-	if stateful {
-		volumeID := &peloton.VolumeID{
-			Value: taskInfo.GetRuntime().GetVolumeID().GetValue(),
-		}
-		pv, err := goalStateDriver.volumeStore.GetPersistentVolume(ctx, volumeID)
-		if err != nil {
-			_, ok := err.(*storage.VolumeNotFoundError)
-			if !ok {
-				return fmt.Errorf("failed to read volume %v for task %v", volumeID, taskID)
-			}
-			// Volume not exist so enqueue as normal task going through placement.
-		} else if pv.GetState() == volume.VolumeState_CREATED {
-			return startStatefulTask(ctx, taskEnt, taskInfo, goalStateDriver)
-		}
 	}
 
 	// TODO: Investigate how to create proper gangs for scheduling (currently, task are treat independently)

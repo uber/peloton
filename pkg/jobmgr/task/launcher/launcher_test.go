@@ -34,7 +34,6 @@ import (
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
-	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
 	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
@@ -117,7 +116,6 @@ func (suite *LauncherTestSuite) SetupTest() {
 		hostMgrClient:        suite.mockHostMgr,
 		hostMgrV1AlphaClient: suite.mockV1HostMgr,
 		jobFactory:           suite.jobFactory,
-		volumeStore:          suite.mockVolumeStore,
 		taskConfigV2Ops:      suite.taskConfigV2Ops,
 		secretInfoOps:        suite.secretInfoOps,
 		metrics:              suite.metrics,
@@ -309,78 +307,6 @@ func (suite *LauncherTestSuite) TestGetLaunchableTasksSkipOldRun() {
 	suite.Empty(launchableTasks)
 	suite.Len(skippedTasks, 1)
 	suite.Equal(taskID, fmt.Sprintf("%s-%d", skippedTasks[0].GetValue(), 0))
-}
-
-func (suite *LauncherTestSuite) TestGetLaunchableTasksStateful() {
-	unknownTasks := []*mesos.TaskID{
-		{Value: &[]string{"bcabcabc-bcab-bcab-bcab-bcabcabcabca-0-0"}[0]},
-		{Value: &[]string{"abcabcab-bcab-bcab-bcab-bcabcabcabca-1-0"}[0]},
-	}
-
-	// generate 25 test tasks
-	numTasks := 25
-	var tasks []*mesos.TaskID
-	var selectedPorts []uint32
-	taskInfos := make(map[string]*LaunchableTaskInfo)
-	for i := 0; i < numTasks; i++ {
-		tmp := createTestTask(i)
-		tmp.GetConfig().Volume = &task.PersistentVolumeConfig{
-			ContainerPath: "testpath",
-			SizeMB:        10,
-		}
-		taskID := &peloton.TaskID{
-			Value: tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId),
-		}
-		tasks = append(tasks, tmp.GetRuntime().GetMesosTaskId())
-		taskInfos[taskID.GetValue()] = tmp
-		selectedPorts = append(selectedPorts, testPort+uint32(i))
-	}
-	rs := createResources(1)
-	hostOffer := createHostOffer(0, rs)
-
-	for i := 0; i < numTasks; i++ {
-		taskID := tasks[i].GetValue()
-		jobID, instanceID, err := util.ParseJobAndInstanceID(taskID)
-		suite.NoError(err)
-		ptaskID := util.CreatePelotonTaskID(jobID, instanceID)
-		suite.jobFactory.EXPECT().
-			GetJob(&peloton.JobID{Value: jobID}).Return(suite.cachedJob)
-		suite.cachedJob.EXPECT().
-			AddTask(gomock.Any(), uint32(instanceID)).
-			Return(suite.cachedTask, nil)
-		suite.taskConfigV2Ops.EXPECT().
-			GetTaskConfig(gomock.Any(), &peloton.JobID{Value: jobID}, uint32(instanceID), gomock.Any()).
-			Return(taskInfos[ptaskID].GetConfig(), &models.ConfigAddOn{}, nil)
-		suite.cachedTask.EXPECT().
-			GetRuntime(gomock.Any()).Return(taskInfos[ptaskID].GetRuntime(), nil)
-	}
-	for _, taskID := range unknownTasks {
-		jobID, _, err := util.ParseJobAndInstanceID(taskID.GetValue())
-		suite.NoError(err)
-		suite.jobFactory.EXPECT().
-			GetJob(&peloton.JobID{Value: jobID}).Return(nil)
-	}
-
-	tasks = append(tasks, unknownTasks...)
-	launchableTasks, skippedTasks, err := suite.taskLauncher.GetLaunchableTasks(
-		context.Background(),
-		tasks,
-		hostOffer.Hostname,
-		hostOffer.AgentId,
-		selectedPorts,
-	)
-	suite.NoError(err)
-	for _, launchableTask := range launchableTasks {
-		runtimeDiff := launchableTask.RuntimeDiff
-		suite.Equal(task.TaskState_LAUNCHED, runtimeDiff[jobmgrcommon.StateField])
-		suite.Equal(hostOffer.Hostname, runtimeDiff[jobmgrcommon.HostField])
-		suite.Equal(hostOffer.AgentId, runtimeDiff[jobmgrcommon.AgentIDField])
-		suite.NotNil(runtimeDiff[jobmgrcommon.VolumeIDField], "Volume ID should not be null")
-	}
-	suite.Len(skippedTasks, len(unknownTasks))
-	for i, t := range skippedTasks {
-		suite.Equal(unknownTasks[i].GetValue(), fmt.Sprintf("%s-%d", t.GetValue(), 0))
-	}
 }
 
 // This test ensures that multiple tasks can be launched in hostmgr
@@ -651,142 +577,6 @@ func (suite *LauncherTestSuite) TestLaunchTasksRetryWithError() {
 	suite.Equal(
 		int64(4),
 		suite.testScope.Snapshot().Counters()["launch_tasks.retry+"].Value())
-}
-
-func (suite *LauncherTestSuite) TestLaunchStatefulTask() {
-	// generate 1 test task
-	numTasks := 1
-	var launchableTasks []*hostsvc.LaunchableTask
-	taskInfos := make(map[string]*LaunchableTaskInfo)
-	for i := 0; i < numTasks; i++ {
-		tmp := createTestTask(i)
-		tmp.GetConfig().Volume = &task.PersistentVolumeConfig{
-			ContainerPath: "testpath",
-			SizeMB:        10,
-		}
-		launchableTask := hostsvc.LaunchableTask{
-			TaskId: tmp.GetRuntime().GetMesosTaskId(),
-			Config: tmp.GetConfig(),
-			Ports:  tmp.GetRuntime().GetPorts(),
-		}
-		launchableTasks = append(launchableTasks, &launchableTask)
-		taskID := tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId)
-		taskInfos[taskID] = tmp
-	}
-
-	// generate 1 host offer, each can hold many tasks
-	rs := createResources(1)
-	hostOffer := createHostOffer(0, rs)
-	placement := createPlacementMultipleTasks(taskInfos, hostOffer)
-	placement.Type = resmgr.TaskType_STATEFUL
-
-	// Capture OfferOperation calls
-	hostsLaunchedOn := make(map[string]bool)
-
-	volumeInfo := &volume.PersistentVolumeInfo{}
-	gomock.InOrder(
-		suite.mockVolumeStore.EXPECT().
-			GetPersistentVolume(gomock.Any(), gomock.Any()).
-			Return(volumeInfo, nil),
-
-		// Mock OfferOperation call.
-		suite.mockHostMgr.EXPECT().
-			OfferOperations(
-				gomock.Any(),
-				gomock.Any()).
-			Do(func(_ context.Context, reqBody interface{}) {
-				// No need to unmarksnal output: empty means success.
-				// Capture call since we don't know ordering of tasks.
-				lock.Lock()
-				defer lock.Unlock()
-				req := reqBody.(*hostsvc.OfferOperationsRequest)
-				hostsLaunchedOn[req.Hostname] = true
-				suite.Equal(3, len(req.Operations))
-			}).
-			Return(&hostsvc.OfferOperationsResponse{}, nil).
-			Times(1),
-	)
-
-	suite.taskLauncher.ProcessPlacement(context.Background(), launchableTasks, placement)
-
-	time.Sleep(1 * time.Second)
-	expectedLaunchedHosts := map[string]bool{
-		"hostname-0": true,
-	}
-	lock.Lock()
-	defer lock.Unlock()
-	suite.Equal(expectedLaunchedHosts, hostsLaunchedOn)
-}
-
-// TestLaunchStatefulTaskLaunchWithVolume will return persistent volume info to be non-null
-func (suite *LauncherTestSuite) TestLaunchStatefulTaskLaunchWithVolume() {
-	// generate 1 test task
-	numTasks := 1
-	var launchableTasks []*hostsvc.LaunchableTask
-	taskInfos := make(map[string]*LaunchableTaskInfo)
-	taskConfigs := make(map[string]*task.TaskConfig)
-	for i := 0; i < numTasks; i++ {
-		tmp := createTestTask(i)
-		tmp.GetConfig().Volume = &task.PersistentVolumeConfig{
-			ContainerPath: "testpath",
-			SizeMB:        10,
-		}
-		launchableTask := hostsvc.LaunchableTask{
-			TaskId: tmp.GetRuntime().GetMesosTaskId(),
-			Config: tmp.GetConfig(),
-			Ports:  tmp.GetRuntime().GetPorts(),
-		}
-		launchableTasks = append(launchableTasks, &launchableTask)
-		taskID := tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId)
-		taskInfos[taskID] = tmp
-		taskConfigs[tmp.GetRuntime().GetMesosTaskId().GetValue()] = tmp.Config
-	}
-
-	// generate 1 host offer, each can hold many tasks
-	rs := createResources(1)
-	hostOffer := createHostOffer(0, rs)
-	placement := createPlacementMultipleTasks(taskInfos, hostOffer)
-	placement.Type = resmgr.TaskType_STATEFUL
-
-	// Capture OfferOperation calls
-	hostsLaunchedOn := make(map[string]bool)
-
-	volumeInfo := &volume.PersistentVolumeInfo{
-		State: volume.VolumeState_CREATED,
-	}
-	gomock.InOrder(
-		suite.mockVolumeStore.EXPECT().
-			GetPersistentVolume(gomock.Any(), gomock.Any()).
-			Return(volumeInfo, nil),
-
-		// Mock OfferOperation call.
-		suite.mockHostMgr.EXPECT().
-			OfferOperations(
-				gomock.Any(),
-				gomock.Any()).
-			Do(func(_ context.Context, reqBody interface{}) {
-				// No need to unmarksnal output: empty means success.
-				// Capture call since we don't know ordering of tasks.
-				lock.Lock()
-				defer lock.Unlock()
-				req := reqBody.(*hostsvc.OfferOperationsRequest)
-				hostsLaunchedOn[req.Hostname] = true
-				// Since volume info is already present, only 1 operation is requested.
-				suite.Equal(1, len(req.Operations))
-			}).
-			Return(&hostsvc.OfferOperationsResponse{}, nil).
-			Times(1),
-	)
-
-	suite.taskLauncher.ProcessPlacement(context.Background(), launchableTasks, placement)
-
-	time.Sleep(1 * time.Second)
-	expectedLaunchedHosts := map[string]bool{
-		"hostname-0": true,
-	}
-	lock.Lock()
-	defer lock.Unlock()
-	suite.Equal(expectedLaunchedHosts, hostsLaunchedOn)
 }
 
 func (suite *LauncherTestSuite) TestProcessPlacementsWithNoTasksReleasesOffers() {

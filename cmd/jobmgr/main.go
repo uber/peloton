@@ -538,7 +538,6 @@ func main() {
 		dispatcher,
 		common.PelotonHostManager,
 		jobFactory,
-		store, // store implements VolumeStore
 		ormStore,
 		rootScope,
 		cfg.JobManager.HostManagerAPIVersion,
