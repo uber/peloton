@@ -1094,6 +1094,9 @@ func (suite *jobActionsTestSuite) TestClientJobDeleteAction() {
 
 // TestClientJobStopAction tests stopping a job
 func (suite *jobActionsTestSuite) TestClientJobStopAction() {
+	// If neither jobId nor owner info is provided, no stop action is issued.
+	suite.Equal(suite.client.JobStopAction("", false, "", "", false), nil)
+
 	getResponse := &job.GetResponse{
 		JobInfo: &job.JobInfo{
 			Id: &peloton.JobID{
@@ -1981,7 +1984,7 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionLabels() {
 		Do(func(_ context.Context, stopRequest *task.StopRequest) {
 			suite.Equal(results[0].GetId(), stopRequest.GetJobId())
 		}).Return(&task.StopResponse{}, nil)
-	suite.NoError(suite.client.JobStopAction("", false, "", "testkey1=testvalue1", true))
+	suite.NoError(suite.client.JobStopAction("", false, owner, "testkey1=testvalue1", true))
 
 	// Test empty job query result
 	response = &job.QueryResponse{
@@ -1992,12 +1995,12 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionLabels() {
 			suite.Equal(request.Spec.JobStates, queryRequest.Spec.JobStates)
 			suite.Equal(request.SummaryOnly, queryRequest.SummaryOnly)
 		}).Return(response, nil)
-	suite.NoError(suite.client.JobStopAction("", false, "", "testkey1=testvalue1", true))
+	suite.NoError(suite.client.JobStopAction("", false, owner, "testkey1=testvalue1", true))
 }
 
 // TestClientJobStopActionLabelsErrors tests errors while stopping jobs by labels
 func (suite *jobActionsTestSuite) TestClientJobStopActionLabelsErrors() {
-	suite.Error(suite.client.JobStopAction("", false, "", "testkey1:testvalue1", true))
+	suite.Error(suite.client.JobStopAction(testJobID, false, "", "testkey1:testvalue1", true))
 }
 
 // TestClientJobStopActionJobIDAndLabels tests stopping jobs by jobID and labels

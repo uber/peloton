@@ -356,6 +356,12 @@ func (c *Client) JobStopAction(
 		}
 	}
 
+	if jobID == "" && owner == "" {
+		fmt.Printf("Either jobID or owner needs to be provided.\n")
+		tabWriter.Flush()
+		return nil
+	}
+
 	if jobID != "" {
 		// check the job status
 		jobGetResponse, err := c.jobGet(jobID)
