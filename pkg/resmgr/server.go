@@ -48,7 +48,7 @@ type Server struct {
 	reconciler            ServerProcess
 	drainer               ServerProcess
 	preemptor             ServerProcess
-
+	batchScorer           ServerProcess
 	// TODO move these to use ServerProcess
 	getTaskScheduler func() task.Scheduler
 
@@ -66,7 +66,8 @@ func NewServer(
 	entitlementCalculator ServerProcess,
 	reconciler ServerProcess,
 	preemptor ServerProcess,
-	drainer ServerProcess) *Server {
+	drainer ServerProcess,
+	batchScorer ServerProcess) *Server {
 	return &Server{
 		ID:                    leader.NewID(httpPort, grpcPort),
 		role:                  common.ResourceManagerRole,
@@ -77,6 +78,7 @@ func NewServer(
 		reconciler:            reconciler,
 		preemptor:             preemptor,
 		drainer:               drainer,
+		batchScorer:           batchScorer,
 		metrics:               NewMetrics(parent),
 	}
 }
@@ -150,6 +152,12 @@ func (s *Server) GainedLeadershipCallback() (err error) {
 		return err
 	}
 
+	// Start the batch scorer
+	if err = s.batchScorer.Start(); err != nil {
+		log.WithError(err).
+			Error("Failed to start batch scorer")
+		return err
+	}
 	return nil
 }
 
@@ -196,6 +204,11 @@ func (s *Server) LostLeadershipCallback() error {
 
 	if err := s.resTree.Stop(); err != nil {
 		log.Errorf("Failed to stop resource pool tree")
+		return err
+	}
+
+	if err := s.batchScorer.Stop(); err != nil {
+		log.Errorf("Failed to stop batch scorer")
 		return err
 	}
 

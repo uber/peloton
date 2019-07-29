@@ -31,12 +31,12 @@ import (
 	hostsvc_mocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
-
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/eventstream"
 	"github.com/uber/peloton/pkg/common/queue"
 	"github.com/uber/peloton/pkg/common/statemachine"
 	rc "github.com/uber/peloton/pkg/resmgr/common"
+	hostmover_mocks "github.com/uber/peloton/pkg/resmgr/hostmover/mocks"
 	"github.com/uber/peloton/pkg/resmgr/preemption/mocks"
 	"github.com/uber/peloton/pkg/resmgr/respool"
 	rm "github.com/uber/peloton/pkg/resmgr/respool/mocks"
@@ -75,6 +75,7 @@ type handlerTestSuite struct {
 	resTree           respool.Tree
 	rmTaskTracker     rm_task.Tracker
 	mockHostmgrClient *hostsvc_mocks.MockInternalHostServiceYARPCClient
+	mockBatchScorer   *hostmover_mocks.MockScorer
 
 	cfg rc.PreemptionConfig
 }
@@ -89,6 +90,7 @@ func (s *handlerTestSuite) SetupSuite() {
 	mockTaskStore := store_mocks.NewMockTaskStore(s.ctrl)
 
 	s.mockHostmgrClient = hostsvc_mocks.NewMockInternalHostServiceYARPCClient(s.ctrl)
+	s.mockBatchScorer = hostmover_mocks.NewMockScorer(s.ctrl)
 
 	s.cfg = rc.PreemptionConfig{
 		Enabled: false,
@@ -131,6 +133,7 @@ func (s *handlerTestSuite) SetupSuite() {
 			RmTaskConfig: tasktestutil.CreateTaskConfig(),
 		},
 		hostmgrClient: s.mockHostmgrClient,
+		batchScorer:   s.mockBatchScorer,
 	}
 	s.handler.eventStreamHandler = eventstream.NewEventStreamHandler(
 		1000,
@@ -176,10 +179,12 @@ func (s *handlerTestSuite) TestNewServiceHandler() {
 	tracker := task_mocks.NewMockTracker(s.ctrl)
 	mockPreemptionQueue := mocks.NewMockQueue(s.ctrl)
 	mockHostmgrClient := hostsvc_mocks.NewMockInternalHostServiceYARPCClient(s.ctrl)
+	mockBatchScorer := hostmover_mocks.NewMockScorer(s.ctrl)
 	handler := NewServiceHandler(
 		dispatcher,
 		tally.NoopScope,
 		tracker,
+		mockBatchScorer,
 		s.resTree,
 		mockPreemptionQueue,
 		mockHostmgrClient,
@@ -1591,6 +1596,19 @@ func (s *handlerTestSuite) TestGetOrphanTasks() {
 	for _, t := range resp.GetOrphanTasks() {
 		s.Equal(rmTaskMap[t.GetTaskId().GetValue()], t)
 	}
+}
+
+func (s *handlerTestSuite) TestGetHostsByScores() {
+	hosts := []string{"host1", "host2"}
+	s.mockBatchScorer.EXPECT().GetHostsByScores(gomock.Any()).Return(hosts)
+
+	resp, err := s.handler.GetHostsByScores(
+		s.context,
+		&resmgrsvc.GetHostsByScoresRequest{Limit: 10})
+	s.NoError(err)
+	s.NotNil(resp)
+
+	s.Equal(hosts, resp.Hosts)
 }
 
 // Test helpers

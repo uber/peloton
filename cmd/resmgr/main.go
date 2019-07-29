@@ -19,6 +19,7 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
+	pb_hostsvc "github.com/uber/peloton/.gen/peloton/api/v0/host/svc"
 	"github.com/uber/peloton/pkg/auth"
 	auth_impl "github.com/uber/peloton/pkg/auth/impl"
 	"github.com/uber/peloton/pkg/common"
@@ -36,6 +37,7 @@ import (
 	"github.com/uber/peloton/pkg/resmgr"
 	"github.com/uber/peloton/pkg/resmgr/entitlement"
 	maintenance "github.com/uber/peloton/pkg/resmgr/host"
+	"github.com/uber/peloton/pkg/resmgr/hostmover"
 	"github.com/uber/peloton/pkg/resmgr/preemption"
 	"github.com/uber/peloton/pkg/resmgr/respool"
 	"github.com/uber/peloton/pkg/resmgr/respool/respoolsvc"
@@ -376,6 +378,11 @@ func main() {
 			common.PelotonHostManager),
 	)
 
+	hostServiceClient := pb_hostsvc.NewHostServiceYARPCClient(
+		dispatcher.ClientConfig(
+			common.PelotonHostManager),
+	)
+
 	// Initializing Resource Pool Tree.
 	tree := respool.NewTree(
 		rootScope,
@@ -439,11 +446,17 @@ func main() {
 		task.GetTracker(),
 		preemptor)
 
+	// Initializing the batch scorer
+	batchScorer := hostmover.NewBatchScorer(
+		cfg.ResManager.EnableHostScorer,
+		hostServiceClient)
+
 	// Initialize resource manager service handlers
 	serviceHandler := resmgr.NewServiceHandler(
 		dispatcher,
 		rootScope,
 		task.GetTracker(),
+		batchScorer,
 		tree,
 		preemptor,
 		hostmgrClient,
@@ -473,6 +486,7 @@ func main() {
 		reconciler,
 		preemptor,
 		drainer,
+		batchScorer,
 	)
 	// Set nomination for leader check middleware
 	leaderCheckMiddleware.SetNomination(server)

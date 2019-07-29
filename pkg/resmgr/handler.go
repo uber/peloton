@@ -27,6 +27,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
+	"github.com/uber/peloton/pkg/resmgr/hostmover"
 
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/eventstream"
@@ -82,6 +83,10 @@ type ServiceHandler struct {
 
 	// rmtasks tracker
 	rmTracker rmtask.Tracker
+
+	// batch host scorer
+	batchScorer hostmover.Scorer
+
 	// in-memory resource pool tree
 	resPoolTree respool.Tree
 
@@ -93,6 +98,7 @@ func NewServiceHandler(
 	d *yarpc.Dispatcher,
 	parent tally.Scope,
 	rmTracker rmtask.Tracker,
+	batchScorer hostmover.Scorer,
 	tree respool.Tree,
 	preemptionQueue preemption.Queue,
 	hostmgrClient hostsvc.InternalHostServiceYARPCClient,
@@ -108,6 +114,7 @@ func NewServiceHandler(
 			maxPlacementQueueSize,
 		),
 		rmTracker:       rmTracker,
+		batchScorer:     batchScorer,
 		preemptionQueue: preemptionQueue,
 		maxOffset:       &maxOffset,
 		config:          conf,
@@ -1178,4 +1185,15 @@ func (h *ServiceHandler) GetOrphanTasks(
 	return &resmgrsvc.GetOrphanTasksResponse{
 		OrphanTasks: orphanTasks,
 	}, nil
+}
+
+// GetHostsByScores returns a list of batch hosts with lowest host scores
+func (h *ServiceHandler) GetHostsByScores(
+	ctx context.Context,
+	req *resmgrsvc.GetHostsByScoresRequest,
+) (*resmgrsvc.GetHostsByScoresResponse, error) {
+	return &resmgrsvc.GetHostsByScoresResponse{
+		Hosts: h.batchScorer.GetHostsByScores(req.Limit),
+	}, nil
+
 }

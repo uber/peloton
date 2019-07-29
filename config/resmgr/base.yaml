@@ -24,6 +24,7 @@ resmgr:
   task_scheduling_period: 100ms
   entitlement_calculation_period: 60s
   task_reconciliation_period: 1h
+  enable_host_scorer: false
   task:
     # Timeout for rm task in statemachine from placing to ready state
     placing_timeout: 10m

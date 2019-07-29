@@ -48,6 +48,9 @@ type Config struct {
 	// Period to run host drainer
 	HostDrainerPeriod time.Duration `yaml:"host_drainer_period"`
 
+	// This flag will enable/disable host scorer service
+	EnableHostScorer bool `yaml:"enable_host_scorer"`
+
 	// HostManagerAPIVersion is the API version that the Resource Manager
 	// should use to talk to Host Manager.
 	HostManagerAPIVersion api.Version `yaml:"hostmgr_api_version"`

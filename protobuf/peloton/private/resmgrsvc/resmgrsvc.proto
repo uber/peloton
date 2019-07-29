@@ -119,6 +119,13 @@ service ResourceManagerService {
    * This API is for debug purpose only.
   */
   rpc GetOrphanTasks(GetOrphanTasksRequest) returns (GetOrphanTasksResponse);
+
+  /**
+   * GetHostsByScores returns a list of batch hosts by rankings, in which hosts are
+   * ranked by suitability for draining including number of running tasks, normalized
+   * task priorities, average task runtime, etc.
+   */
+  rpc GetHostsByScores(GetHostsByScoresRequest) returns (GetHostsByScoresResponse);
 }
 
 message GetPreemptibleTasksFailure {
@@ -462,3 +469,18 @@ message GetOrphanTasksRequest {
 message GetOrphanTasksResponse {
   repeated resmgr.Task orphanTasks = 1;
 }
+
+// GetHostsByScoresRequest is the request message for GetHostsByScores
+message GetHostsByScoresRequest {
+  // Max number of hosts to retrieve
+  uint32 limit = 1;
+}
+
+// GetHostsByScoresResponse is the response message for GetHostsByScores
+message GetHostsByScoresResponse {
+  // The list of hosts to be moved to different partition
+  repeated string hosts = 1; 
+}
+
+
+
