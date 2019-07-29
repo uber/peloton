@@ -179,6 +179,7 @@ def test__stop_start_tasks_when_mesos_master_down_and_jobmgr_restarts(
 
 
 def test__kill_mesos_agent_makes_task_resume(long_running_job, mesos_agent):
+    long_running_job.job_config.defaultConfig.restartPolicy.maxFailures = 1
     long_running_job.create()
     long_running_job.wait_for_state(goal_state="RUNNING")
 
