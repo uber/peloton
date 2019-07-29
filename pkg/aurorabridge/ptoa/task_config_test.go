@@ -17,9 +17,9 @@ package ptoa
 import (
 	"testing"
 
-	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/apachemesos"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
 
 	"github.com/uber/peloton/pkg/aurorabridge/atop"
@@ -93,38 +93,27 @@ func TestNewResources(t *testing.T) {
 }
 
 func TestNewContainer_Mesos(t *testing.T) {
-	containerType := mesos.ContainerInfo_MESOS
-	imageType := mesos.Image_DOCKER
-	modeRW := mesos.Volume_RW
-	modeRO := mesos.Volume_RO
-
 	c := &pod.ContainerSpec{
-		Container: &mesos.ContainerInfo{
-			Type: &containerType,
-			Mesos: &mesos.ContainerInfo_MesosInfo{
-				Image: &mesos.Image{
-					Type: &imageType,
-					Docker: &mesos.Image_Docker{
-						Name: ptr.String("127.0.0.1:5055/test-image:test-tag"),
-					},
-				},
+		Image: "127.0.0.1:5055/test-image:test-tag",
+		VolumeMounts: []*pod.VolumeMount{
+			{
+				MountPath: "/container-path-1",
+				Name:      "/host-path-1",
+				ReadOnly:  false,
 			},
-			Volumes: []*mesos.Volume{
-				{
-					ContainerPath: ptr.String("/container-path-1"),
-					HostPath:      ptr.String("/host-path-1"),
-					Mode:          &modeRW,
-				},
-				{
-					ContainerPath: ptr.String("/container-path-2"),
-					HostPath:      ptr.String("/host-path-2"),
-					Mode:          &modeRO,
-				},
+			{
+				MountPath: "/container-path-2",
+				Name:      "/host-path-2",
+				ReadOnly:  true,
 			},
 		},
 	}
 
-	ac, err := newContainer(c)
+	mp := &apachemesos.PodSpec{
+		Type: apachemesos.PodSpec_CONTAINER_TYPE_MESOS,
+	}
+
+	ac, err := newContainer(c, mp)
 	assert.NoError(t, err)
 	assert.Equal(t, &api.Container{
 		Mesos: &api.MesosContainer{
@@ -151,24 +140,21 @@ func TestNewContainer_Mesos(t *testing.T) {
 }
 
 func TestNewContainer_Docker(t *testing.T) {
-	containerType := mesos.ContainerInfo_DOCKER
-
 	c := &pod.ContainerSpec{
-		Container: &mesos.ContainerInfo{
-			Type: &containerType,
-			Docker: &mesos.ContainerInfo_DockerInfo{
-				Image: ptr.String("127.0.0.1:5055/test-image:test-tag"),
-				Parameters: []*mesos.Parameter{
-					{
-						Key:   ptr.String("p1"),
-						Value: ptr.String("v1"),
-					},
-				},
+		Image: "127.0.0.1:5055/test-image:test-tag",
+	}
+
+	mp := &apachemesos.PodSpec{
+		Type: apachemesos.PodSpec_CONTAINER_TYPE_DOCKER,
+		DockerParameters: []*apachemesos.PodSpec_DockerParameter{
+			{
+				Key:   "p1",
+				Value: "v1",
 			},
 		},
 	}
 
-	ac, err := newContainer(c)
+	ac, err := newContainer(c, mp)
 	assert.NoError(t, err)
 	assert.Equal(t, &api.Container{
 		Docker: &api.DockerContainer{

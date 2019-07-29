@@ -824,11 +824,6 @@ func ConvertPodSpecToMesosContainer(spec *pod.PodSpec) *mesosv1.ContainerInfo {
 		return mainContainer.GetContainer()
 	}
 
-	if len(mainContainer.GetImage()) == 0 {
-		// Container being launched without an image
-		return nil
-	}
-
 	containerInfo := &mesosv1.ContainerInfo{}
 	mesosPodSpec := spec.GetMesosSpec()
 
@@ -839,6 +834,8 @@ func ConvertPodSpecToMesosContainer(spec *pod.PodSpec) *mesosv1.ContainerInfo {
 	} else if mesosPodSpec.GetType() == apachemesos.PodSpec_CONTAINER_TYPE_DOCKER {
 		containerType := mesosv1.ContainerInfo_DOCKER
 		containerInfo.Type = &containerType
+	} else {
+		return nil
 	}
 
 	// Populate volumes
@@ -999,14 +996,18 @@ func ConvertPodSpecToMesosCommand(spec *pod.PodSpec) *mesosv1.CommandInfo {
 		uriExecutable := uri.GetExecutable()
 		uriExtract := uri.GetExtract()
 		uriCache := uri.GetCache()
-		uriOutputFile := uri.GetOutputFile()
 		mesosUri := &mesosv1.CommandInfo_URI{
 			Value:      &uriValue,
 			Executable: &uriExecutable,
 			Extract:    &uriExtract,
 			Cache:      &uriCache,
-			OutputFile: &uriOutputFile,
 		}
+
+		if len(uri.GetOutputFile()) > 0 {
+			uriOutputFile := uri.GetOutputFile()
+			mesosUri.OutputFile = &uriOutputFile
+		}
+
 		uris = append(uris, mesosUri)
 	}
 

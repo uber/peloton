@@ -18,12 +18,16 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"path"
 	"sort"
+	"strings"
 
-	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/apachemesos"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/volume"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
+
 	"github.com/uber/peloton/pkg/aurorabridge/common"
 	"github.com/uber/peloton/pkg/aurorabridge/label"
 
@@ -69,6 +73,13 @@ func NewPodSpec(
 		return nil, fmt.Errorf("new constraint: %s", err)
 	}
 
+	volumes, volumeMounts := newVolumes(t.GetContainer())
+
+	image, err := newImage(t.GetContainer())
+	if err != nil {
+		return nil, err
+	}
+
 	return &pod.PodSpec{
 		PodName:        nil, // Unused.
 		Labels:         labels,
@@ -76,12 +87,12 @@ func NewPodSpec(
 		Containers: []*pod.ContainerSpec{{
 			Name:           "", // Unused.
 			Resource:       newResourceSpec(t.GetResources(), gpuLimit),
-			Container:      newMesosContainerInfo(t.GetContainer()),
-			Command:        NewThermosCommandInfo(c),
-			Executor:       NewThermosExecutorInfo(c, executorData),
-			LivenessCheck:  nil, // TODO(codyg): Figure this default.
+			LivenessCheck:  nil, // Unused,
 			ReadinessCheck: nil, // Unused.
 			Ports:          newPortSpecs(t.GetResources()),
+			Entrypoint:     newEntryPoint(c),
+			Image:          image,
+			VolumeMounts:   volumeMounts,
 		}},
 		Constraint:             constraint,
 		RestartPolicy:          nil,   // Unused.
@@ -90,6 +101,8 @@ func NewPodSpec(
 		Controller:             false, // Unused.
 		KillGracePeriodSeconds: 0,     // Unused.
 		Revocable:              t.GetTier() == common.Revocable,
+		Volumes:                volumes,
+		MesosSpec:              newMesosPodSpec(t.GetContainer(), c, executorData),
 	}, nil
 }
 
@@ -132,77 +145,135 @@ func newPortSpecs(rs []*api.Resource) []*pod.PortSpec {
 	return result
 }
 
-func newMesosContainerInfo(c *api.Container) *mesos_v1.ContainerInfo {
+func newImage(c *api.Container) (string, error) {
+	if c == nil {
+		return "", nil
+	}
+
+	if c.IsSetMesos() {
+		if !c.GetMesos().IsSetImage() {
+			return "", nil
+		}
+
+		if c.GetMesos().GetImage().IsSetDocker() {
+			return fmt.Sprintf("%s:%s",
+				c.GetMesos().GetImage().GetDocker().GetName(),
+				c.GetMesos().GetImage().GetDocker().GetTag(),
+			), nil
+		}
+		return "", fmt.Errorf("invalid mesos image type appc")
+	}
+
+	if c.IsSetDocker() {
+		return c.GetDocker().GetImage(), nil
+	}
+
+	return "", fmt.Errorf("only docker and mesos containerizers are supported")
+}
+
+func newEntryPoint(c ThermosExecutorConfig) *pod.CommandSpec {
+	var b strings.Builder
+	b.WriteString("${MESOS_SANDBOX=.}/")
+	b.WriteString(path.Base(c.Path))
+	b.WriteString(" ")
+	b.WriteString(c.Flags)
+	command := strings.TrimSpace(b.String())
+
+	result := &pod.CommandSpec{
+		Value: command,
+	}
+	return result
+}
+
+func newMesosPodSpec(
+	c *api.Container,
+	t ThermosExecutorConfig,
+	executorData []byte,
+) *apachemesos.PodSpec {
 	if c == nil {
 		return nil
 	}
 
-	result := &mesos_v1.ContainerInfo{}
+	result := &apachemesos.PodSpec{}
 	if c.IsSetMesos() {
-		result.Type = mesos_v1.ContainerInfo_MESOS.Enum()
-		result.Mesos = &mesos_v1.ContainerInfo_MesosInfo{
-			Image: newMesosImage(c.GetMesos().GetImage()),
-		}
-		result.Volumes = newMesosVolumes(c.GetMesos().GetVolumes())
+		result.Type = apachemesos.PodSpec_CONTAINER_TYPE_MESOS
 	}
+
 	if c.IsSetDocker() {
-		result.Type = mesos_v1.ContainerInfo_DOCKER.Enum()
-		result.Docker = &mesos_v1.ContainerInfo_DockerInfo{
-			Image:      ptr.String(c.GetDocker().GetImage()),
-			Parameters: newMesosDockerParameters(c.GetDocker().GetParameters()),
-		}
-	}
-	return result
-}
-
-func newMesosImage(i *api.Image) *mesos_v1.Image {
-	if i == nil {
-		return nil
+		result.Type = apachemesos.PodSpec_CONTAINER_TYPE_DOCKER
+		result.DockerParameters = newDockerParameters(
+			c.GetDocker().GetParameters())
 	}
 
-	result := &mesos_v1.Image{}
-	if i.IsSetDocker() {
-		result.Type = mesos_v1.Image_DOCKER.Enum()
-		result.Docker = &mesos_v1.Image_Docker{
-			Name: ptr.String(
-				fmt.Sprintf("%s:%s", i.GetDocker().GetName(), i.GetDocker().GetTag())),
-		}
+	// Fill the URI
+	resourcesToFetch := []string{t.Path}
+	if t.Resources != "" {
+		resourcesToFetch = append(
+			resourcesToFetch,
+			strings.Split(t.Resources, _thermosExecutorDelimiter)...,
+		)
 	}
-	if i.IsSetAppc() {
-		result.Type = mesos_v1.Image_APPC.Enum()
-		result.Appc = &mesos_v1.Image_Appc{
-			Name: ptr.String(i.GetAppc().GetName()),
-			Id:   ptr.String(i.GetAppc().GetImageId()),
-		}
-	}
-	return result
-}
 
-func newMesosVolumes(vs []*api.Volume) []*mesos_v1.Volume {
-	var result []*mesos_v1.Volume
-	for _, v := range vs {
-		result = append(result, &mesos_v1.Volume{
-			ContainerPath: ptr.String(v.GetContainerPath()),
-			HostPath:      ptr.String(v.GetHostPath()),
-			Mode:          newMesosVolumeMode(v.GetMode()).Enum(),
+	var mesosUris []*apachemesos.PodSpec_URI
+	for _, r := range resourcesToFetch {
+		mesosUris = append(mesosUris, &apachemesos.PodSpec_URI{
+			Value:      r,
+			Executable: true,
 		})
 	}
+	result.Uris = mesosUris
+
+	result.Shell = true
+
+	result.ExecutorSpec = &apachemesos.PodSpec_ExecutorSpec{
+		Type:       apachemesos.PodSpec_ExecutorSpec_EXECUTOR_TYPE_CUSTOM,
+		ExecutorId: _thermosExecutorIDPlaceholder,
+		Data:       executorData,
+	}
+
 	return result
 }
 
-func newMesosVolumeMode(mode api.Mode) mesos_v1.Volume_Mode {
-	if mode == api.ModeRw {
-		return mesos_v1.Volume_RW
+func newVolumes(c *api.Container) ([]*volume.VolumeSpec, []*pod.VolumeMount) {
+	if c == nil {
+		return nil, nil
 	}
-	return mesos_v1.Volume_RO
+
+	var volumes []*volume.VolumeSpec
+	var volumeMounts []*pod.VolumeMount
+
+	vs := c.GetMesos().GetVolumes()
+	for _, v := range vs {
+		volume := &volume.VolumeSpec{
+			Name: v.GetHostPath(),
+			Type: volume.VolumeSpec_VOLUME_TYPE_HOST_PATH,
+			HostPath: &volume.VolumeSpec_HostPathVolumeSource{
+				Path: v.GetHostPath(),
+			},
+		}
+
+		volumeMount := &pod.VolumeMount{
+			Name:      v.GetHostPath(),
+			ReadOnly:  isReadOnly(v.GetMode()),
+			MountPath: v.GetContainerPath(),
+		}
+
+		volumes = append(volumes, volume)
+		volumeMounts = append(volumeMounts, volumeMount)
+	}
+	return volumes, volumeMounts
 }
 
-func newMesosDockerParameters(ps []*api.DockerParameter) []*mesos_v1.Parameter {
-	var result []*mesos_v1.Parameter
+func isReadOnly(mode api.Mode) bool {
+	return mode == api.ModeRo
+}
+
+func newDockerParameters(ps []*api.DockerParameter) []*apachemesos.PodSpec_DockerParameter {
+	var result []*apachemesos.PodSpec_DockerParameter
 	for _, p := range ps {
-		result = append(result, &mesos_v1.Parameter{
-			Key:   ptr.String(p.GetName()),
-			Value: ptr.String(p.GetValue()),
+		result = append(result, &apachemesos.PodSpec_DockerParameter{
+			Key:   p.GetName(),
+			Value: p.GetValue(),
 		})
 	}
 	return result

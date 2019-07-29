@@ -18,9 +18,9 @@ import (
 	"fmt"
 	"strings"
 
-	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/apachemesos"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
 
 	"github.com/uber/peloton/pkg/aurorabridge/label"
@@ -52,7 +52,10 @@ func NewTaskConfig(
 
 	auroraMetadata := label.ParseAuroraMetadata(podSpec.GetLabels())
 
-	auroraContainer, err := newContainer(podSpec.GetContainers()[0])
+	auroraContainer, err := newContainer(
+		podSpec.GetContainers()[0],
+		podSpec.GetMesosSpec(),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -136,26 +139,32 @@ func newResources(container *pod.ContainerSpec) []*api.Resource {
 }
 
 // newContainer creates a Container object.
-func newContainer(container *pod.ContainerSpec) (*api.Container, error) {
-	if container.GetContainer() == nil {
+func newContainer(
+	container *pod.ContainerSpec,
+	mesosPodSpec *apachemesos.PodSpec,
+) (*api.Container, error) {
+	if mesosPodSpec == nil || container == nil {
 		return nil, nil
 	}
 
 	var mesosContainer *api.MesosContainer
 	var dockerContainer *api.DockerContainer
 
-	switch container.GetContainer().GetType() {
-	case mesos.ContainerInfo_MESOS:
+	switch mesosPodSpec.GetType() {
+	case apachemesos.PodSpec_CONTAINER_TYPE_MESOS:
 		var err error
 		mesosContainer, err = newMesosContainer(
-			container.GetContainer().GetMesos(),
-			container.GetContainer().GetVolumes())
+			container.GetImage(),
+			container.GetVolumeMounts(),
+		)
 		if err != nil {
 			return nil, err
 		}
-	case mesos.ContainerInfo_DOCKER:
+	case apachemesos.PodSpec_CONTAINER_TYPE_DOCKER:
 		dockerContainer = newDockerContainer(
-			container.GetContainer().GetDocker())
+			container.GetImage(),
+			mesosPodSpec.GetDockerParameters(),
+		)
 	}
 
 	return &api.Container{
@@ -166,23 +175,20 @@ func newContainer(container *pod.ContainerSpec) (*api.Container, error) {
 
 // newMesosContainer creates a MesosContainer object.
 func newMesosContainer(
-	mesosInfo *mesos.ContainerInfo_MesosInfo,
-	volumes []*mesos.Volume,
+	image string,
+	volumeMounts []*pod.VolumeMount,
 ) (*api.MesosContainer, error) {
-	if mesosInfo == nil {
-		return nil, nil
-	}
-
 	var avs []*api.Volume
-	for _, v := range volumes {
+	for _, v := range volumeMounts {
 		avs = append(avs, &api.Volume{
-			ContainerPath: ptr.String(v.GetContainerPath()),
-			HostPath:      ptr.String(v.GetHostPath()),
-			Mode:          newMode(v.GetMode()),
+			ContainerPath: ptr.String(v.GetMountPath()),
+			// Host path is the same as the name
+			HostPath: ptr.String(v.GetName()),
+			Mode:     newMode(v.GetReadOnly()),
 		})
 	}
 
-	i, err := newImage(mesosInfo.GetImage())
+	i, err := newImage(image)
 	if err != nil {
 		return nil, err
 	}
@@ -193,49 +199,36 @@ func newMesosContainer(
 	}, nil
 }
 
-func newImage(image *mesos.Image) (*api.Image, error) {
-	if image == nil {
+func newImage(image string) (*api.Image, error) {
+	if len(image) == 0 {
 		return nil, nil
 	}
 
 	var docker *api.DockerImage
-	var appc *api.AppcImage
 
-	switch image.GetType() {
-	case mesos.Image_DOCKER:
-		// assuming the image name in <repository>:<tag> form
-		n := image.GetDocker().GetName()
-		ns := strings.Split(n, ":")
-		if len(ns) < 2 {
-			return nil, fmt.Errorf(
-				"invalid docker image %q: expected <repo>:<tag>", n)
-		}
-		tag := ns[len(ns)-1]
-		repo := strings.Join(ns[:len(ns)-1], ":")
+	// assuming the image name in <repository>:<tag> form
+	n := image
+	ns := strings.Split(n, ":")
+	if len(ns) < 2 {
+		return nil, fmt.Errorf(
+			"invalid docker image %q: expected <repo>:<tag>", n)
+	}
+	tag := ns[len(ns)-1]
+	repo := strings.Join(ns[:len(ns)-1], ":")
 
-		docker = &api.DockerImage{
-			Name: ptr.String(repo),
-			Tag:  ptr.String(tag),
-		}
-	case mesos.Image_APPC:
-		appc = &api.AppcImage{
-			Name:    ptr.String(image.GetAppc().GetName()),
-			ImageId: ptr.String(image.GetAppc().GetId()),
-		}
+	docker = &api.DockerImage{
+		Name: ptr.String(repo),
+		Tag:  ptr.String(tag),
 	}
 
 	return &api.Image{
 		Docker: docker,
-		Appc:   appc,
 	}, nil
 }
 
-// newMode converts mesos.Volume.Mode enum to aurora Mode enum.
-func newMode(m mesos.Volume_Mode) *api.Mode {
-	switch m {
-	case mesos.Volume_RW:
-		return api.ModeRw.Ptr()
-	case mesos.Volume_RO:
+// newMode converts readOnly boolean to aurora Mode enum.
+func newMode(readOnly bool) *api.Mode {
+	if readOnly {
 		return api.ModeRo.Ptr()
 	}
 	return api.ModeRw.Ptr()
@@ -243,14 +236,11 @@ func newMode(m mesos.Volume_Mode) *api.Mode {
 
 // newDockerContainer create a DockerContainer object.
 func newDockerContainer(
-	dockerInfo *mesos.ContainerInfo_DockerInfo,
+	image string,
+	parameters []*apachemesos.PodSpec_DockerParameter,
 ) *api.DockerContainer {
-	if dockerInfo == nil {
-		return nil
-	}
-
 	var aps []*api.DockerParameter
-	for _, p := range dockerInfo.GetParameters() {
+	for _, p := range parameters {
 		aps = append(aps, &api.DockerParameter{
 			Name:  ptr.String(p.GetKey()),
 			Value: ptr.String(p.GetValue()),
@@ -258,7 +248,7 @@ func newDockerContainer(
 	}
 
 	return &api.DockerContainer{
-		Image:      ptr.String(dockerInfo.GetImage()),
+		Image:      ptr.String(image),
 		Parameters: aps,
 	}
 }

@@ -62,9 +62,9 @@ func TestNewPodSpec_ContainersResource(t *testing.T) {
 	assert.Equal(t, float64(disk), r.GetDiskLimitMb())
 	assert.Equal(t, float64(gpu), r.GetGpuLimit())
 
-	assert.NotNil(t, p.Containers[0].GetCommand())
-	assert.NotNil(t, p.Containers[0].GetExecutor())
-
+	assert.NotNil(t, p.GetMesosSpec())
+	assert.NotNil(t, p.GetMesosSpec().GetExecutorSpec())
+	assert.NotNil(t, p.GetContainers()[0].GetEntrypoint())
 	assert.Len(t, p.GetLabels(), 3)
 }
 
