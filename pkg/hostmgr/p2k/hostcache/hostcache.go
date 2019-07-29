@@ -51,6 +51,10 @@ type HostCache interface {
 
 	// Stop will stop the host cache go routine that listens for host events.
 	Stop()
+
+	// GetSummaries returns a list of host summaries that the host cache is
+	// managing.
+	GetSummaries() (summaries []HostSummary)
 }
 
 // hostCache is an implementation of HostCache interface.
@@ -90,6 +94,14 @@ func New(
 	}
 }
 
+func (c *hostCache) GetSummaries() []HostSummary {
+	summaries := make([]HostSummary, 0, len(c.hostIndex))
+	for _, summary := range c.hostIndex {
+		summaries = append(summaries, summary)
+	}
+	return summaries
+}
+
 // AcquireLeases acquires leases on hosts that match the filter constraints.
 // The lease will be held until Jobmgr actively launches pods using the leaseID.
 // Returns:
@@ -125,7 +137,7 @@ func (c *hostCache) AcquireLeases(
 	var hostLeases []*hostmgr.HostLease
 	hostLimitReached := matcher.hostLimitReached()
 	for _, hostname := range matcher.hostNames {
-		hs, _ := c.hostIndex[hostname]
+		hs := c.hostIndex[hostname]
 		hostLeases = append(hostLeases, hs.GetHostLease())
 	}
 
@@ -333,7 +345,7 @@ func (c *hostCache) updateHost(event *scalar.HostEvent) {
 
 	if hs, ok = c.hostIndex[hostInfo.GetHostName()]; !ok {
 		// Host not found, possibly an out of order even during host
-		// maintanence, due to host being removed from host manager before API
+		// maintenance, due to host being removed from host manager before API
 		// server.
 		// If for some reason a host was indeed missing, it will be added via
 		// reconcile logic.

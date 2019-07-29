@@ -34,6 +34,7 @@ import (
 	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
 	watchsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/watch/svc"
 	hostmgr_svc "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	hostmgr_svc_v1 "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc"
 	"github.com/uber/peloton/.gen/peloton/private/jobmgrsvc"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
@@ -54,6 +55,7 @@ type Client struct {
 	updateClient    updatesvc.UpdateServiceYARPCClient
 	volumeClient    volume_svc.VolumeServiceYARPCClient
 	hostMgrClient   hostmgr_svc.InternalHostServiceYARPCClient
+	hostMgrClientV1 hostmgr_svc_v1.HostManagerServiceYARPCClient
 	hostClient      hostsvc.HostServiceYARPCClient
 	jobmgrClient    jobmgrsvc.JobManagerServiceYARPCClient
 	adminClient     adminsvc.AdminServiceYARPCClient
@@ -137,6 +139,9 @@ func New(
 			dispatcher.ClientConfig(common.PelotonJobManager),
 		),
 		hostMgrClient: hostmgr_svc.NewInternalHostServiceYARPCClient(
+			dispatcher.ClientConfig(common.PelotonHostManager),
+		),
+		hostMgrClientV1: hostmgr_svc_v1.NewHostManagerServiceYARPCClient(
 			dispatcher.ClientConfig(common.PelotonHostManager),
 		),
 		hostClient: hostsvc.NewHostServiceYARPCClient(

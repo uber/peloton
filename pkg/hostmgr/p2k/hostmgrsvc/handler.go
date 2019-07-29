@@ -16,8 +16,10 @@ package hostmgrsvc
 
 import (
 	"context"
+	"fmt"
 
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
+	v1alpha "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc"
 
 	"github.com/uber/peloton/pkg/common"
@@ -238,6 +240,36 @@ func (h *ServiceHandler) ChangeHostPool(
 ) (resp *svc.ChangeHostPoolResponse, err error) {
 	return nil, yarpcerrors.UnimplementedErrorf(
 		"ChangeHostPool not implemented")
+}
+
+// GetHostCache returns a dump of the host cache.
+func (h *ServiceHandler) GetHostCache(
+	ctx context.Context,
+	req *svc.GetHostCacheRequest,
+) (resp *svc.GetHostCacheResponse, err error) {
+	resp = &svc.GetHostCacheResponse{
+		Summaries: []*svc.GetHostCacheResponse_Summary{},
+	}
+	for _, summary := range h.hostCache.GetSummaries() {
+		allocation, capacity := summary.GetAllocated(), summary.GetCapacity()
+		resp.Summaries = append(resp.Summaries, &svc.GetHostCacheResponse_Summary{
+			Hostname: summary.GetHostname(),
+			Status:   fmt.Sprintf("%v", summary.GetHostStatus()),
+			Allocation: []*v1alpha.Resource{
+				{Kind: "cpu", Capacity: allocation.CPU},
+				{Kind: "mem", Capacity: allocation.Mem},
+				{Kind: "disk", Capacity: allocation.Disk},
+				{Kind: "gpu", Capacity: allocation.GPU},
+			},
+			Capacity: []*v1alpha.Resource{
+				{Kind: "cpu", Capacity: capacity.CPU},
+				{Kind: "mem", Capacity: capacity.Mem},
+				{Kind: "disk", Capacity: capacity.Disk},
+				{Kind: "gpu", Capacity: capacity.GPU},
+			},
+		})
+	}
+	return resp, nil
 }
 
 // validateLaunchPodsRequest does some sanity checks on launch pods request.

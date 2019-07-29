@@ -24,8 +24,10 @@ import (
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc"
+	"github.com/uber/peloton/pkg/hostmgr/p2k/hostcache"
 	hostcache_mocks "github.com/uber/peloton/pkg/hostmgr/p2k/hostcache/mocks"
 	plugins_mocks "github.com/uber/peloton/pkg/hostmgr/p2k/plugins/mocks"
+	"github.com/uber/peloton/pkg/hostmgr/scalar"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -104,6 +106,55 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 // TearDownTest tears down tests in HostMgrHandlerTestSuite
 func (suite *HostMgrHandlerTestSuite) TearDownTest() {
 	log.Debug("tearing down")
+}
+
+// TestGetHostCache tests the GetHostCache API.
+func (suite *HostMgrHandlerTestSuite) TestGetHostCache() {
+	defer suite.ctrl.Finish()
+
+	allocated := scalar.Resources{
+		CPU:  1,
+		Mem:  10,
+		Disk: 100,
+		GPU:  2,
+	}
+	capacity := scalar.Resources{
+		CPU:  2,
+		Mem:  20,
+		Disk: 150,
+		GPU:  3,
+	}
+
+	summary := hostcache_mocks.NewMockHostSummary(suite.ctrl)
+	summary.EXPECT().GetHostname().Return("h1")
+	summary.EXPECT().GetHostStatus().Return(hostcache.ReadyHost)
+	summary.EXPECT().GetAllocated().Return(allocated)
+	summary.EXPECT().GetCapacity().Return(capacity)
+
+	suite.hostCache.EXPECT().
+		GetSummaries().
+		Return([]hostcache.HostSummary{summary})
+
+	resp, err := suite.handler.GetHostCache(rootCtx, nil)
+	suite.NoError(err)
+	suite.NotNil(resp)
+	suite.Len(resp.Summaries, 1)
+	suite.Equal(&svc.GetHostCacheResponse_Summary{
+		Hostname: "h1",
+		Status:   "1",
+		Allocation: []*hostmgr.Resource{
+			{Kind: "cpu", Capacity: 1},
+			{Kind: "mem", Capacity: 10},
+			{Kind: "disk", Capacity: 100},
+			{Kind: "gpu", Capacity: 2},
+		},
+		Capacity: []*hostmgr.Resource{
+			{Kind: "cpu", Capacity: 2},
+			{Kind: "mem", Capacity: 20},
+			{Kind: "disk", Capacity: 150},
+			{Kind: "gpu", Capacity: 3},
+		},
+	}, resp.Summaries[0])
 }
 
 // TestAcquireHosts tests AcquireHosts API

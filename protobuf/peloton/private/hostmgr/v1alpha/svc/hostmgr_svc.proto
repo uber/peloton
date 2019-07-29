@@ -135,6 +135,28 @@ message ChangeHostPoolResponse {
   Error error = 1;
 }
 
+// GetHostCacheRequest is the request to dump the hostcache.
+message GetHostCacheRequest {}
+
+// GetHostCacheResponse is the dump of the hostcache inside host manager.
+message GetHostCacheResponse {
+    message Summary {
+        // The hostname that this summary belongs to.
+        string hostname = 1;
+
+        // The status of this host.
+        string status = 2;
+
+        // Resources allocated.
+        repeated hostmgr.Resource allocation = 3;
+
+        // Represents total cluster capacity.
+        repeated hostmgr.Resource capacity = 4;
+    }
+
+    repeated Summary summaries = 1;
+}
+
 // HostManagerService interface to be used by JobManager, PlacementEngine and
 // ResourceManager for scheduling and managing pods and hosts in the cluster.
 service HostManagerService
@@ -166,4 +188,8 @@ service HostManagerService
   // It returns DestinationPoolNotFoundFailure error if destination pool not found.
   // It returns YARPC error accordingly for other types of failures.
   rpc ChangeHostPool(ChangeHostPoolRequest) returns (ChangeHostPoolResponse);
+
+  // GetHostCache dumps the contents of the host cache. Should only be used for
+  // debugging the internal state of the host cache.
+  rpc GetHostCache(GetHostCacheRequest) returns (GetHostCacheResponse);
 }

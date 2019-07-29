@@ -152,6 +152,27 @@ func (suite *HostCacheTestSuite) TestGetClusterCapacity() {
 	suite.Equal(expectedAllocation, allocation)
 }
 
+// TestMarshal tests the host cache GetSummaries API.
+func (suite *HostCacheTestSuite) TestGetSummaries() {
+	hosts := generateHostSummaries(10)
+	hc := &hostCache{
+		hostIndex: make(map[string]HostSummary),
+	}
+
+	// Allocate 1CPU and 10Mem per host
+	allocPerHost := createResource(1.0, 10.0)
+	// initialize host cache with these 10 hosts
+	for _, s := range hosts {
+		s.(*hostSummary).allocated = allocPerHost
+		hc.hostIndex[s.GetHostname()] = s
+	}
+
+	for _, summary := range hc.GetSummaries() {
+		host := hc.hostIndex[summary.GetHostname()].(*hostSummary)
+		suite.Equal(summary, host)
+	}
+}
+
 // TestTerminateLease tests hostcache TerminateLease API
 func (suite *HostCacheTestSuite) TestTerminateLease() {
 	testTable := map[string]struct {

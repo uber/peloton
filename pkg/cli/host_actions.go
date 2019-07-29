@@ -23,6 +23,7 @@ import (
 	host_svc "github.com/uber/peloton/.gen/peloton/api/v0/host/svc"
 	pb_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	host_svc_v1 "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc"
 
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 )
@@ -33,7 +34,44 @@ const (
 	hostSeparator         = ","
 	getHostsFormatHeader  = "Hostname\tCPU\tGPU\tMEM\tDisk\tState\t Task Hold\n"
 	getHostsFormatBody    = "%s\t%.2f\t%.2f\t%.2f MB\t%.2f MB\t%s\t%s\n"
+	hostCacheFormatHeader = "Hostname\tCPU\tGPU\tMEM\tDisk\tStatus\n"
+	hostCacheFormatBody   = "%s\t%.2f/%.2f\t%.2f/%.2f\t%.2f/%.2f MB\t%.2f/%.2f MB\t%s\n"
 )
+
+// HostCacheDump dumps the contents of the host cache.
+func (c *Client) HostCacheDump() error {
+	resp, err := c.hostMgrClientV1.GetHostCache(c.ctx,
+		&host_svc_v1.GetHostCacheRequest{})
+	if err != nil {
+		return err
+	}
+	if len(resp.Summaries) == 0 {
+		fmt.Fprintf(tabWriter, "HostCache empty.\n")
+		tabWriter.Flush()
+		return nil
+	}
+
+	fmt.Fprintf(tabWriter, "Hostname\tcontents:\n")
+	fmt.Fprintf(tabWriter, hostCacheFormatHeader)
+	for _, summary := range resp.Summaries {
+		fmt.Fprintf(tabWriter,
+			hostCacheFormatBody,
+			summary.GetHostname(),
+			summary.Allocation[0].Capacity,
+			summary.Capacity[0].Capacity,
+			summary.Allocation[1].Capacity,
+			summary.Capacity[1].Capacity,
+			summary.Allocation[2].Capacity,
+			summary.Capacity[2].Capacity,
+			summary.Allocation[3].Capacity,
+			summary.Capacity[3].Capacity,
+			summary.Status,
+		)
+	}
+
+	tabWriter.Flush()
+	return nil
+}
 
 // HostMaintenanceStartAction is the action for starting host maintenance. StartMaintenance puts the host
 // into DRAINING state by posting a maintenance schedule to Mesos Master. Inverse offers are sent out and
