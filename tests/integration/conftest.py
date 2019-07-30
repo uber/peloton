@@ -8,17 +8,17 @@ import requests
 from docker import Client
 from tools.minicluster.main import setup, teardown, config as mc_config
 from tools.minicluster.minicluster import run_mesos_agent, teardown_mesos_agent
+from host import start_maintenance, complete_maintenance, wait_for_host_state
 from job import Job
 from job import query_jobs as batch_query_jobs
 from job import kill_jobs as batch_kill_jobs
-from host import start_maintenance, complete_maintenance, wait_for_host_state
 from stateless_job import StatelessJob
 from stateless_job import query_jobs as stateless_query_jobs
 from stateless_job import delete_jobs as stateless_delete_jobs
 from m3.client import M3
 from m3.emitter import BatchedEmitter
-from peloton_client.pbgen.peloton.api.v0.job import job_pb2
 from peloton_client.pbgen.peloton.api.v0.host import host_pb2
+from peloton_client.pbgen.peloton.api.v0.job import job_pb2
 from conf_util import (
     TERMINAL_JOB_STATES,
     ACTIVE_JOB_STATES,
@@ -136,6 +136,10 @@ class Container(object):
 
         if self._names[0] in MESOS_MASTER:
             wait_for_mesos_master_leader()
+
+
+def get_container(container_name):
+    return Container(container_name)
 
 
 def wait_for_mesos_master_leader(
@@ -347,15 +351,18 @@ def maintenance(request):
             log.error("Complete maintenance failed:" + resp)
             return resp
 
-        for h in hosts:
-            draining_hosts.remove(h)
-            # The mesos-agent containers needs to be started explicitly as they would
-            # have been stopped when the agents transition to DOWN
-            Container([h]).start()
+        # The mesos-agent containers needs to be started explicitly as they would
+        # have been stopped when the agents transition to DOWN
+        Container(hosts).start()
+        del draining_hosts[:]
 
         return resp
 
     def clean_up():
+        # kill stateless jobs. This is needed since host draining
+        # is done in SLA aware manner for stateless jobs.
+        for j in stateless_query_jobs():
+            j.stop()
         if not draining_hosts:
             return
         for h in draining_hosts:

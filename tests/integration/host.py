@@ -10,7 +10,7 @@ from peloton_client.pbgen.peloton.api.v0.host.svc import (
 
 log = logging.getLogger(__name__)
 
-draining_period_sec = 10
+draining_period_sec = 5
 
 
 def start_maintenance(hosts):
@@ -71,7 +71,7 @@ def wait_for_host_state(hostname, state):
     :param state:  The host state to reach
     """
     attempts = 0
-    max_retry_attempts = 10
+    max_retry_attempts = 20
 
     log.info("%s waiting for state %s", hostname, host.HostState.Name(state))
     start = time.time()

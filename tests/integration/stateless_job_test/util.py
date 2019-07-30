@@ -62,3 +62,15 @@ def assert_pod_id_changed(old_pod_infos, new_pod_infos):
 
     for pod_name, pod_id in old_pod_dict.items():
         assert not new_pod_dict[pod_name] == pod_id
+
+
+def get_host_to_task_count(hosts, job):
+    host_task_count = {}
+
+    for h in hosts:
+        host_task_count[h] = 0
+
+    for p in job.query_pods():
+        host_task_count[p.status.host] += 1
+
+    return host_task_count

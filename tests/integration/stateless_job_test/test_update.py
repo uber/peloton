@@ -1,6 +1,7 @@
 import pytest
 import grpc
 import logging
+import operator
 import time
 import random
 
@@ -16,17 +17,24 @@ from peloton_client.pbgen.peloton.api.v0.host import host_pb2
 
 from google.protobuf import json_format
 
+from tests.integration.conftest import get_container
 from tests.integration.stateless_job_test.util import (
     assert_pod_id_changed,
     assert_pod_spec_changed,
     assert_pod_spec_equal,
+    get_host_to_task_count,
 )
 from tests.integration.stateless_update import StatelessUpdate
 from tests.integration.util import load_test_config
 from tests.integration.stateless_job import StatelessJob
 from tests.integration.common import IntegrationTestConfig
 from tests.integration.stateless_job import INVALID_ENTITY_VERSION_ERR_MESSAGE
-from tests.integration.host import get_host_in_state, wait_for_host_state
+from tests.integration.host import (
+    get_host_in_state,
+    wait_for_host_state,
+    is_host_in_state,
+    query_hosts,
+)
 
 pytestmark = [
     pytest.mark.default,
@@ -1247,3 +1255,86 @@ def test__in_place_update_host_maintenance(stateless_job, maintenance):
 
     wait_for_host_state(test_host, host_pb2.HOST_STATE_DOWN)
     update.wait_for_state(goal_state="SUCCEEDED")
+
+
+def test__update_with_sla_aware_host_maintenance(stateless_job, maintenance):
+    """
+    1. Create a stateless job with 3 instances.
+    2. Create a job update to update the instance job with instance count 2,
+    add host-limit-1 constraint and define sla with maximum_unavailable_instances=1
+    3. Start host maintenance on one of the hosts
+    4. The host should transition to DOWN and the update workflow should SUCCEED
+    """
+    stateless_job.create()
+    stateless_job.wait_for_all_pods_running()
+
+    job_spec_dump = load_test_config('test_stateless_job_spec_sla.yaml')
+    updated_job_spec = JobSpec()
+    json_format.ParseDict(job_spec_dump, updated_job_spec)
+    updated_job_spec.instance_count = 2
+
+    update = StatelessUpdate(stateless_job,
+                             updated_job_spec=updated_job_spec,
+                             batch_size=1)
+    update.create()
+
+    # Pick a host that is UP and start maintenance on it
+    test_host = get_host_in_state(host_pb2.HOST_STATE_UP)
+    resp = maintenance["start"]([test_host])
+    assert resp
+
+    wait_for_host_state(test_host, host_pb2.HOST_STATE_DOWN)
+    update.wait_for_state(goal_state="SUCCEEDED")
+
+
+def test__update_with_host_maintenance_and_agent_down(stateless_job, maintenance):
+    """
+    1. Create a large stateless job )that take up more than two-thirds of
+       the cluster resources) with MaximumUnavailableInstances=2.
+    2. Start host maintenance on one of the hosts (say A) having pods of the job.
+       MaximumUnavailableInstances=2 ensures that not more than 2 pods are
+       unavailable due to host maintenance at a time.
+    3. Take down another host which has pods running on it. This will TASK_LOST
+       to be sent for all pods on the host after 75 seconds.
+    4. Start an update to modify the instance spec of one of the pods.
+    5. Since TASK_LOST would cause the job SLA to be violated, instances on the
+       host A should not be killed once LOST event is received. Verify that
+       host A does not transition to DOWN.
+    """
+    stateless_job.job_spec.instance_count = 30
+    stateless_job.job_spec.default_spec.containers[0].resource.cpu_limit = 0.3
+    stateless_job.job_spec.sla.maximum_unavailable_instances = 2
+    stateless_job.create()
+    stateless_job.wait_for_all_pods_running()
+
+    hosts = [h.hostname for h in query_hosts([]).host_infos]
+    host_to_task_count = get_host_to_task_count(hosts, stateless_job)
+    sorted_hosts = [t[0] for t in sorted(
+        host_to_task_count.items(), key=operator.itemgetter(1), reverse=True)]
+
+    # Pick a host that has pods running on it to start maintenance on it.
+    test_host = sorted_hosts[0]
+    # pick another host which has pods of the job to take down
+    host_container = get_container([sorted_hosts[1]])
+
+    try:
+        host_container.stop()
+        maintenance["start"]([test_host])
+
+        stateless_job.job_spec.instance_spec[10].containers.extend(
+            [pod_pb2.ContainerSpec(resource=pod_pb2.ResourceSpec(disk_limit_mb=20))])
+        update = StatelessUpdate(stateless_job,
+                                 updated_job_spec=stateless_job.job_spec,
+                                 batch_size=0)
+        update.create()
+        update.wait_for_state(goal_state="SUCCEEDED")
+
+        stateless_job.stop()
+
+        wait_for_host_state(test_host, host_pb2.HOST_STATE_DOWN)
+        assert False, 'Host should not transition to DOWN'
+    except:
+        assert is_host_in_state(test_host, host_pb2.HOST_STATE_DRAINING)
+        pass
+    finally:
+        host_container.start()

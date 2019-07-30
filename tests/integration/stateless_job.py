@@ -398,12 +398,12 @@ class StatelessJob(object):
         """
         return self.get_pod(instance_id)
 
-    def get_pod(self, pod_id):
+    def get_pod(self, instance_id):
         """
-        :param pod_id: The pod id of the pod
+        :param instance_id: The instance id of the pod
         :return: The Pod of the job based on the instance id
         """
-        return Pod(self, pod_id)
+        return Pod(self, instance_id)
 
     def get_pod_status(self, instance_id):
         """
@@ -623,12 +623,15 @@ class StatelessJob(object):
         elapsed = end - start
         log.info("%s state transition took %s seconds", self.job_id, elapsed)
 
-    def query_pods(self):
+    def query_pods(self, states=None):
         """
         :return: list of pod info of all matching pod
         """
         request = stateless_svc.QueryPodsRequest(
-            job_id=v1alpha_peloton.JobID(value=self.job_id)
+            job_id=v1alpha_peloton.JobID(value=self.job_id),
+            spec=pod.QuerySpec(
+                pod_states=states,
+            ),
         )
         resp = self.client.stateless_svc.QueryPods(
             request,

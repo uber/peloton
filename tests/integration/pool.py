@@ -116,3 +116,17 @@ class Pool(object):
             if u.kind == type:
                 alloc = u.allocation
         return alloc
+
+
+def query_pools(client=None):
+    c = client or Client()
+    req = respool.QueryRequest()
+    resp = c.respool_svc.Query(
+        req,
+        metadata=c.resmgr_metadata,
+        timeout=60,
+    )
+
+    assert resp
+
+    return resp.resourcePools
