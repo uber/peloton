@@ -2997,6 +2997,71 @@ func (suite *jobTestSuite) TestRepopulateInstanceAvailabilityInfoBatchJob() {
 	suite.Nil(suite.job.instanceAvailabilityInfo)
 }
 
+// TestGetInstanceAvailabilityTypeSpecifyInstances tests getting the instance
+// availability type for the given subset of instances
+func (suite *jobTestSuite) TestGetInstanceAvailabilityTypeSpecifyInstances() {
+	instances := []uint32{0, 2, 3}
+
+	suite.job.addTaskToJobMap(0).runtime = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_RUNNING,
+		GoalState: pbtask.TaskState_RUNNING,
+		Healthy:   pbtask.HealthState_HEALTHY,
+	}
+
+	suite.job.addTaskToJobMap(1).runtime = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_RUNNING,
+		GoalState: pbtask.TaskState_RUNNING,
+		Healthy:   pbtask.HealthState_DISABLED,
+	}
+
+	suite.job.addTaskToJobMap(2).runtime = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_PENDING,
+		GoalState: pbtask.TaskState_RUNNING,
+		Healthy:   pbtask.HealthState_DISABLED,
+	}
+
+	instanceAvailabilityMap := suite.job.GetInstanceAvailabilityType(
+		context.Background(),
+		instances...,
+	)
+
+	suite.Len(instanceAvailabilityMap, len(instances))
+	suite.Equal(jobmgrcommon.InstanceAvailability_AVAILABLE, instanceAvailabilityMap[0])
+	suite.Equal(jobmgrcommon.InstanceAvailability_UNAVAILABLE, instanceAvailabilityMap[2])
+	suite.Equal(jobmgrcommon.InstanceAvailability_INVALID, instanceAvailabilityMap[3])
+}
+
+// TestGetInstanceAvailabilityTypeNoInstancesSpecified tests getting the instance
+// availability type when no instances are specified
+func (suite *jobTestSuite) TestGetInstanceAvailabilityTypeNoInstancesSpecified() {
+	suite.job.addTaskToJobMap(0).runtime = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_RUNNING,
+		GoalState: pbtask.TaskState_RUNNING,
+		Healthy:   pbtask.HealthState_HEALTHY,
+	}
+
+	suite.job.addTaskToJobMap(1)
+
+	suite.job.addTaskToJobMap(2).runtime = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_PENDING,
+		GoalState: pbtask.TaskState_RUNNING,
+		Healthy:   pbtask.HealthState_DISABLED,
+	}
+
+	suite.taskStore.EXPECT().
+		GetTaskRuntime(gomock.Any(), suite.jobID, uint32(1)).
+		Return(nil, fmt.Errorf("fake error"))
+
+	instanceAvailabilityMap := suite.job.GetInstanceAvailabilityType(
+		context.Background(),
+	)
+
+	suite.Len(instanceAvailabilityMap, len(suite.job.tasks))
+	suite.Equal(jobmgrcommon.InstanceAvailability_AVAILABLE, instanceAvailabilityMap[0])
+	suite.Equal(jobmgrcommon.InstanceAvailability_INVALID, instanceAvailabilityMap[1])
+	suite.Equal(jobmgrcommon.InstanceAvailability_UNAVAILABLE, instanceAvailabilityMap[2])
+}
+
 // TestJobCreateWorkflowWithSameConfigSuccess tests create a workflow
 // with same config succeeds and is noop
 func (suite *jobTestSuite) TestJobCreateWorkflowWithSameConfigSuccess() {

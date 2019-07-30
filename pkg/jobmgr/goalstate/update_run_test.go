@@ -340,6 +340,11 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateWithStartTasksOn() {
 		DesiredConfigVersion: oldJobConfigVer,
 	}
 
+	instanceAvailabilityMap := map[uint32]jobmgrcommon.InstanceAvailability_Type{}
+	for _, i := range instancesTotal {
+		instanceAvailabilityMap[i] = jobmgrcommon.InstanceAvailability_AVAILABLE
+	}
+
 	cachedTasks := make(map[uint32]*cachedmocks.MockTask)
 	for _, instID := range instancesTotal {
 		cachedTasks[instID] = cachedmocks.NewMockTask(suite.ctrl)
@@ -382,6 +387,10 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateWithStartTasksOn() {
 			JobVersion: uint64(4),
 		}).
 		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		GetInstanceAvailabilityType(gomock.Any(), instancesTotal).
+		Return(instanceAvailabilityMap)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesAdded().
@@ -573,6 +582,11 @@ func (suite *UpdateRunTestSuite) TestRunningInPlaceUpdate() {
 		DesiredHost:          "host2",
 	}
 
+	instanceAvailabilityMap := map[uint32]jobmgrcommon.InstanceAvailability_Type{}
+	for _, i := range instancesTotal {
+		instanceAvailabilityMap[i] = jobmgrcommon.InstanceAvailability_AVAILABLE
+	}
+
 	cachedTasks := make(map[uint32]*cachedmocks.MockTask)
 	for _, instID := range instancesTotal {
 		cachedTasks[instID] = cachedmocks.NewMockTask(suite.ctrl)
@@ -610,6 +624,10 @@ func (suite *UpdateRunTestSuite) TestRunningInPlaceUpdate() {
 			JobVersion: uint64(4),
 		}).
 		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		GetInstanceAvailabilityType(gomock.Any(), instancesTotal).
+		Return(instanceAvailabilityMap)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesAdded().
@@ -1448,6 +1466,12 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningUpdateInstances() {
 		BatchSize: batchSize,
 	}
 
+	instancesUpdated := newSlice(0, instanceNumber)
+	instanceAvailabilityMap := map[uint32]jobmgrcommon.InstanceAvailability_Type{}
+	for _, i := range instancesUpdated {
+		instanceAvailabilityMap[i] = jobmgrcommon.InstanceAvailability_AVAILABLE
+	}
+
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
 		Return(suite.cachedJob).
@@ -1519,8 +1543,12 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningUpdateInstances() {
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesUpdated().
-		Return(newSlice(0, instanceNumber)).
+		Return(instancesUpdated).
 		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		GetInstanceAvailabilityType(gomock.Any(), instancesUpdated).
+		Return(instanceAvailabilityMap)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().
@@ -1619,6 +1647,12 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsKilledTaskUpdateInstances(
 	jobVersion := uint64(3)
 	newJobVersion := uint64(4)
 
+	instancesUpdated := newSlice(0, instanceNumber)
+	instanceAvailabilityMap := map[uint32]jobmgrcommon.InstanceAvailability_Type{}
+	for _, i := range instancesUpdated {
+		instanceAvailabilityMap[i] = jobmgrcommon.InstanceAvailability_AVAILABLE
+	}
+
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
 		Return(suite.cachedJob).
@@ -1656,9 +1690,13 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsKilledTaskUpdateInstances(
 			JobVersion: newJobVersion,
 		}).AnyTimes()
 
+	suite.cachedJob.EXPECT().
+		GetInstanceAvailabilityType(gomock.Any(), instancesUpdated).
+		Return(instanceAvailabilityMap)
+
 	suite.cachedUpdate.EXPECT().
 		GetInstancesUpdated().
-		Return(newSlice(0, instanceNumber)).
+		Return(instancesUpdated).
 		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
@@ -1780,6 +1818,12 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsTerminatedTaskInstances() 
 	jobVersion := uint64(3)
 	newJobVersion := uint64(4)
 
+	instancesUpdated := newSlice(0, instanceNumber)
+	instanceAvailabilityMap := map[uint32]jobmgrcommon.InstanceAvailability_Type{}
+	for _, i := range instancesUpdated {
+		instanceAvailabilityMap[i] = jobmgrcommon.InstanceAvailability_AVAILABLE
+	}
+
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
 		Return(suite.cachedJob).
@@ -1805,6 +1849,10 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsTerminatedTaskInstances() 
 			State: pbupdate.State_ROLLING_FORWARD,
 		})
 
+	suite.cachedJob.EXPECT().
+		GetInstanceAvailabilityType(gomock.Any(), instancesUpdated).
+		Return(instanceAvailabilityMap)
+
 	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().
 		Return(nil).
@@ -1819,7 +1867,7 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsTerminatedTaskInstances() 
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesUpdated().
-		Return(newSlice(0, instanceNumber)).
+		Return(instancesUpdated).
 		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
@@ -2217,6 +2265,12 @@ func (suite *UpdateRunTestSuite) TestUpdateRunDBErrorUpdateInstances() {
 	batchSize := uint32(5)
 	newJobVersion := uint64(4)
 
+	instancesUpdated := newSlice(0, instanceNumber)
+	instanceAvailabilityMap := map[uint32]jobmgrcommon.InstanceAvailability_Type{}
+	for _, i := range instancesUpdated {
+		instanceAvailabilityMap[i] = jobmgrcommon.InstanceAvailability_AVAILABLE
+	}
+
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).
 		Return(suite.cachedJob).
@@ -2250,11 +2304,15 @@ func (suite *UpdateRunTestSuite) TestUpdateRunDBErrorUpdateInstances() {
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesUpdated().
-		Return(newSlice(0, instanceNumber))
+		Return(instancesUpdated)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesAdded().
 		Return(nil)
+
+	suite.cachedJob.EXPECT().
+		GetInstanceAvailabilityType(gomock.Any(), instancesUpdated).
+		Return(instanceAvailabilityMap)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesRemoved().

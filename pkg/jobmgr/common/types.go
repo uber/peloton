@@ -19,6 +19,24 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 )
 
+// instance availability type. It is used to determine the type of instance
+// availability in instance availability calculation for SLA Aware pod kill
+type InstanceAvailability_Type int32
+
+const (
+	// Invalid instance availability
+	InstanceAvailability_INVALID InstanceAvailability_Type = 0
+	// instance is available - RUNNING and HEALTHY (if health check defined)
+	InstanceAvailability_AVAILABLE InstanceAvailability_Type = 1
+	// instance has been killed (deadline-exceeded, by user, etc) or preempted
+	InstanceAvailability_KILLED InstanceAvailability_Type = 2
+	// instance has been deleted
+	InstanceAvailability_DELETED InstanceAvailability_Type = 3
+	// instance is any state other than the ones specified above is said to be
+	// unavailable
+	InstanceAvailability_UNAVAILABLE InstanceAvailability_Type = 4
+)
+
 // JobConfig stores the job configurations in cache which is fetched multiple
 // times during normal job/task operations.
 // JobConfig makes the job interface cleaner by having the caller request

@@ -102,7 +102,13 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 
 	instancesToAdd, instancesToUpdate, instancesToRemove :=
 		getInstancesForUpdateRun(
-			cachedWorkflow, instancesCurrent, instancesDone, instancesFailed)
+			ctx,
+			cachedJob,
+			cachedWorkflow,
+			instancesCurrent,
+			instancesDone,
+			instancesFailed,
+		)
 
 	instancesToAdd, instancesToUpdate, instancesToRemove, instancesRemovedDone, err :=
 		confirmInstancesStatus(
@@ -755,6 +761,8 @@ func confirmInstancesStatus(
 // getInstancesForUpdateRun returns the instances to update/add in
 // the given call of UpdateRun.
 func getInstancesForUpdateRun(
+	ctx context.Context,
+	cachedJob cached.Job,
 	update cached.Update,
 	instancesCurrent []uint32,
 	instancesDone []uint32,
@@ -766,8 +774,21 @@ func getInstancesForUpdateRun(
 ) {
 
 	unprocessedInstancesToAdd,
-		unprocessedInstancesToUpdate, unprocessedInstancesToRemove := getUnprocessedInstances(
-		update, instancesCurrent, instancesDone, instancesFailed)
+		unprocessedInstancesToUpdate,
+		unprocessedInstancesToRemove := getUnprocessedInstances(
+		update,
+		instancesCurrent,
+		instancesDone,
+		instancesFailed,
+	)
+
+	if len(unprocessedInstancesToUpdate) != 0 {
+		unprocessedInstancesToUpdate = sortInstancesByAvailability(
+			ctx,
+			cachedJob,
+			unprocessedInstancesToUpdate,
+		)
+	}
 
 	// if batch size is 0 or updateConfig is nil, update all of the instances
 	if update.GetUpdateConfig().GetBatchSize() == 0 {
@@ -814,6 +835,52 @@ func getInstancesForUpdateRun(
 
 	// if can process part of the instances to add
 	return unprocessedInstancesToAdd[:maxNumOfInstancesToProcess], nil, nil
+}
+
+// sortInstancesByAvailability sorts the instances of the job by its availability.
+// The sort order is
+// 1. unavailable-instances
+// 2. killed-instances
+// 3. invalid-instances
+// 4. available-instances
+// This is needed because we need to try to update unhealthy instances
+// before healthy ones in order to keep the number of unavailable instances to
+// a minimum thereby giving the update workflow the best chance to progress.
+func sortInstancesByAvailability(
+	ctx context.Context,
+	cachedJob cached.Job,
+	instances []uint32,
+) []uint32 {
+	instancesByAvailability := make(map[jobmgrcommon.InstanceAvailability_Type][]uint32)
+
+	instanceAvailabilityByInstance := cachedJob.GetInstanceAvailabilityType(ctx, instances...)
+	for _, i := range instances {
+		availabilityType := instanceAvailabilityByInstance[i]
+		instancesByAvailability[availabilityType] = append(
+			instancesByAvailability[availabilityType],
+			i,
+		)
+	}
+
+	var sortedInstances []uint32
+	sortedInstances = append(
+		sortedInstances,
+		instancesByAvailability[jobmgrcommon.InstanceAvailability_UNAVAILABLE]...,
+	)
+	sortedInstances = append(
+		sortedInstances,
+		instancesByAvailability[jobmgrcommon.InstanceAvailability_KILLED]...,
+	)
+	sortedInstances = append(
+		sortedInstances,
+		instancesByAvailability[jobmgrcommon.InstanceAvailability_INVALID]...,
+	)
+	sortedInstances = append(
+		sortedInstances,
+		instancesByAvailability[jobmgrcommon.InstanceAvailability_AVAILABLE]...,
+	)
+
+	return sortedInstances
 }
 
 // getUnprocessedInstances returns all of the
