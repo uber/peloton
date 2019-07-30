@@ -258,7 +258,7 @@ func (e *engine) placeAssignmentGroup(
 			"needs":           needs,
 			"len_assignments": len(assignments),
 			"assignments":     assignments,
-		}).Info("placing assignment group")
+		}).Debug("placing assignment group")
 
 		// Get hosts with available resources and tasks currently running.
 		offers, reason := e.offerService.Acquire(
@@ -327,6 +327,7 @@ func (e *engine) placeAssignmentGroup(
 			"unassigned": unassigned,
 			"hosts":      offers,
 		}).Debug("Finshed one round placing assignment group")
+
 		// Set placements and return unused offers and failed tasks
 		e.cleanup(ctx, assigned, retryable, unassigned, offers)
 
