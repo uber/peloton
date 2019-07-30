@@ -140,6 +140,10 @@ func matchRules(service, method string, rules map[string][]string) bool {
 }
 
 func matchRule(method string, rule string) bool {
+	if len(rule) == 0 {
+		return false
+	}
+
 	if rule == _matchAllRule {
 		return true
 	}

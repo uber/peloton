@@ -95,6 +95,7 @@ type Config struct {
 	// RateLimiterConfig defines rate limiter config
 	RateLimiterConfig RateLimiterConfig `yaml:"rate_limit"`
 }
+
 type RateLimiterConfig struct {
 	// ExecutorShutdown rate limit config for executor shutdown call to hostmgr
 	ExecutorShutdown TokenBucketConfig `yaml:"executor_shutdown"`

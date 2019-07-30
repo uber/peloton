@@ -20,6 +20,7 @@ import (
 	adminsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/admin/svc"
 	yarpcutil "github.com/uber/peloton/pkg/common/util/yarpc"
 	"github.com/uber/peloton/pkg/jobmgr/goalstate"
+	"github.com/uber/peloton/pkg/middleware/inbound"
 
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc"
@@ -30,15 +31,16 @@ import (
 func InitServiceHandler(
 	d *yarpc.Dispatcher,
 	goalStateDriver goalstate.Driver,
+	apiLock inbound.APILockInterface,
 ) {
-	handler := createServiceHandler(goalStateDriver)
+	handler := createServiceHandler(goalStateDriver, apiLock)
 	d.Register(adminsvc.BuildAdminServiceYARPCProcedures(handler))
 }
 
-func createServiceHandler(goalStateDriver goalstate.Driver) *serviceHandler {
+func createServiceHandler(goalStateDriver goalstate.Driver, apiLock inbound.APILockInterface) *serviceHandler {
 	handler := &serviceHandler{components: make(map[adminsvc.Component]lockableComponent)}
 
-	for _, component := range createLockableComponents(goalStateDriver) {
+	for _, component := range createLockableComponents(goalStateDriver, apiLock) {
 		handler.components[component.component()] = component
 	}
 
@@ -160,10 +162,11 @@ func (h *serviceHandler) getLockableComponents(components []adminsvc.Component) 
 	return result, nil
 }
 
-func createLockableComponents(goalStateDriver goalstate.Driver) []lockableComponent {
+func createLockableComponents(goalStateDriver goalstate.Driver, apiLock inbound.APILockInterface) []lockableComponent {
 	var result []lockableComponent
 
 	result = append(result, &goalStateComponent{driver: goalStateDriver})
-
+	result = append(result, &readAPILockComponent{apiLock: apiLock})
+	result = append(result, &writeAPILockComponent{apiLock: apiLock})
 	return result
 }

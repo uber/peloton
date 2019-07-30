@@ -38,7 +38,7 @@ type adminServiceHandlerTestSuite struct {
 func (suite *adminServiceHandlerTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.goalStateDriver = goalstatemocks.NewMockDriver(suite.ctrl)
-	suite.handler = createServiceHandler(suite.goalStateDriver)
+	suite.handler = createServiceHandler(suite.goalStateDriver, nil)
 }
 
 func (suite *adminServiceHandlerTestSuite) TearDownTest() {

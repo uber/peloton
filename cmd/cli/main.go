@@ -636,10 +636,12 @@ var (
 	admin = app.Command("admin", "administrative APIs")
 	// command for locking down components
 	lock           = admin.Command("lock", "lock down components in peloton")
-	lockComponents = lock.Arg("components", "components to lockdown").Enums("GoalStateEngine")
+	lockComponents = lock.Arg("components", "components to lockdown. Now support GoalStateEngine, Read, Write").
+			Enums("GoalStateEngine", "Read", "Write")
 	// command for unlock components
 	unlock           = admin.Command("unlock", "remove lock down components in peloton")
-	unlockComponents = unlock.Arg("components", "components to remove lockdown").Enums("GoalStateEngine")
+	unlockComponents = unlock.Arg("components", "components to remove lockdown. Now support GoalStateEngine, Read, Write").
+				Enums("GoalStateEngine", "Read", "Write")
 )
 
 // TaskRangeValue allows us to define a new target type for kingpin to allow specifying ranges of tasks with from:to syntax as a TaskRangeFlag

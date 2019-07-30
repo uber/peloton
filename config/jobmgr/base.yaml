@@ -83,3 +83,26 @@ rate_limit:
   default:
     rate: 100
     burst: 100
+
+# TODO: need to find a way to auto generate the list
+api_lock:
+  read_apis:
+    - '*:Get*'
+    - '*:Query*'
+    - '*:List*'
+    - '*:Browse*'
+    - 'peloton.api.v1alpha.watch.svc.WatchService:*'
+  write_apis:
+    - '*:Create*'
+    - '*:Delete*'
+    - '*:Start*'
+    - '*:Stop*'
+    - '*:Restart*'
+    - '*:Refresh*'
+    - '*:Update*'
+    - '*:Pause*'
+    - '*:Resume*'
+    - '*:Rollback*'
+    - '*:Abort*'
+    - '*:Replace*'
+    - '*:Patch*'

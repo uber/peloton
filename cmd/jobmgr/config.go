@@ -35,4 +35,7 @@ type Config struct {
 	SentryConfig logging.SentryConfig    `yaml:"sentry"`
 	Auth         auth.Config             `yaml:"auth"`
 	RateLimit    inbound.RateLimitConfig `yaml:"rate_limit"`
+	// APILock defines which APIs are read/write APIs,
+	// so when lockdown is requested, the correct APIs are locked.
+	APILock inbound.APILockConfig `yaml:"api_lock"`
 }

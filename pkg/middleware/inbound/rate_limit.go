@@ -177,6 +177,10 @@ func (m *RateLimitInboundMiddleware) allow(procedure string) bool {
 }
 
 func matchRule(method string, rule string) bool {
+	if len(rule) == 0 {
+		return false
+	}
+
 	if rule == _matchAllRule {
 		return true
 	}
