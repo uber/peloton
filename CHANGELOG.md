@@ -3,6 +3,14 @@
 0.9.0 (unreleased)
 ------------------
 
+0.8.9.6
+------------------
+* 2019-06-25    Use LOCAL_SERIAL for CAS operations on Cassandra                                       varung@uber.com
+* 2019-06-31    Revert "Remove task_config table"                                                      avyas@uber.com
+* 2019-06-25    Drop 0030_drop_mv_job schema migration and rename 0031_add_host_infos                  kevinxu@uber.com    
+* 2019-06-23    Skip default task config not found error due task_config deprecation                   kevinxu@uber.com
+* 2019-06-19    Fix hostmgr out of index                                                               zhixin@uber.com
+
 0.8.9.1
 ------------------
 * 2019-07-17    Fix delay due to lock contention in job cache                                          sachins@uber.com
