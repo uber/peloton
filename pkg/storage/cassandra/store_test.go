@@ -210,6 +210,43 @@ func createTaskConfigs(ctx context.Context, id *peloton.JobID, jobConfig *job.Jo
 	return nil
 }
 
+// createTaskConfigsLegacy creates task configs in task_config table, and not
+// task_config_v2 table. This will help in testing legacy jobs which don't have
+// entries in the task_config table.
+func createTaskConfigsLegacy(
+	ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig) error {
+	version := jobConfig.GetChangeLog().GetVersion()
+
+	configBuffer, err := proto.Marshal(jobConfig.GetDefaultConfig())
+	if err != nil {
+		return err
+	}
+	queryBuilder := store.DataStore.NewQuery()
+	stmt := queryBuilder.Insert(taskConfigTable).
+		Columns("job_id", "version", "instance_id", "creation_time", "config").
+		Values(id.GetValue(), version, common.DefaultTaskConfigID,
+			time.Now().UTC(), configBuffer)
+	if err = store.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+		return err
+	}
+	for instanceID, cfg := range jobConfig.GetInstanceConfig() {
+		merged := taskconfig.Merge(jobConfig.GetDefaultConfig(), cfg)
+		mergedBuffer, err := proto.Marshal(merged)
+		if err != nil {
+			return err
+		}
+		stmt := queryBuilder.Insert(taskConfigTable).
+			Columns("job_id", "version", "instance_id",
+				"creation_time", "config").
+			Values(id.GetValue(), version, int64(instanceID),
+				time.Now().UTC(), mergedBuffer)
+		if err = store.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // updateJobIndex creates/updates job_index row for a job. This method
 // is provided for tests related to QueryJobs(), and should not be used
 // for anything else.
@@ -2420,7 +2457,6 @@ func createTaskInfo(
 			Revision: &peloton.ChangeLog{
 				Version: 1,
 			},
-			ConfigVersion: 1,
 		},
 		Config:     jobConfig.GetDefaultConfig(),
 		InstanceId: uint32(i),
@@ -3331,4 +3367,48 @@ func (suite *CassandraStoreTestSuite) TestCreateGetPodSpec() {
 	)
 	suite.NoError(err)
 	suite.Nil(spec)
+}
+
+// TestTaskConfigsForLegacyJobs tests if a legacy task config be retrieved
+// successfully using GetTaskConfig and GetTaskConfigs call
+func (suite *CassandraStoreTestSuite) TestTaskConfigsForLegacyJobs() {
+	var numTasks = 5
+	instanceConfig := make(map[uint32]*task.TaskConfig)
+	var jobID = peloton.JobID{Value: uuid.New()}
+	for i := 0; i < numTasks; i++ {
+		taskConfig := &task.TaskConfig{
+			Resource: &task.ResourceConfig{
+				CpuLimit:    0.8,
+				MemLimitMb:  800,
+				DiskLimitMb: 1500,
+				FdLimit:     1000 + uint32(i),
+			},
+		}
+		instanceConfig[uint32(i)] = taskConfig
+	}
+	var jobConfig = job.JobConfig{
+		Name:           fmt.Sprintf("TestTaskConfigLegacy"),
+		DefaultConfig:  &task.TaskConfig{},
+		InstanceCount:  10,
+		Type:           job.JobType_BATCH,
+		InstanceConfig: instanceConfig,
+	}
+	// Manually create entries for the task configs in the task_config table
+	// to simulate legacy jobs which don't use task_config_v2
+	err := createTaskConfigsLegacy(context.Background(), &jobID, &jobConfig)
+	suite.NoError(err)
+
+	taskConfigs, _, err := store.GetTaskConfigs(
+		context.Background(), &jobID, []uint32{0, 1, 2, 3, 4}, 0)
+	suite.Equal(len(taskConfigs), 5)
+	suite.NoError(err)
+
+	for i := 0; i < numTasks; i++ {
+		taskConfig, _, err := store.GetTaskConfig(
+			context.Background(), &jobID, uint32(i), 0)
+		suite.NoError(err)
+		expectedCfg, ok := instanceConfig[uint32(i)]
+		suite.True(ok)
+		suite.Equal(*taskConfig, *expectedCfg)
+	}
 }

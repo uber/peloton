@@ -68,6 +68,7 @@ const (
 	jobConfigTable         = "job_config"
 	jobRuntimeTable        = "job_runtime"
 	jobIndexTable          = "job_index"
+	taskConfigTable        = "task_config"
 	taskConfigV2Table      = "task_config_v2"
 	taskRuntimeTable       = "task_runtime"
 	podEventsTable         = "pod_events"
@@ -75,6 +76,7 @@ const (
 	podWorkflowEventsTable = "pod_workflow_events"
 	frameworksTable        = "frameworks"
 	updatesByJobView       = "mv_updates_by_job"
+	resPoolsTable          = "respools"
 	volumeTable            = "persistent_volumes"
 
 	// DB field names
@@ -1273,8 +1275,30 @@ func (s *Store) GetTaskConfig(ctx context.Context, id *peloton.JobID,
 	taskID := fmt.Sprintf(taskIDFmt, id.GetValue(), int(instanceID))
 
 	if len(allResults) == 0 {
-		return nil, nil, yarpcerrors.NotFoundErrorf(
-			"task:%s not found", taskID)
+		// Try to get task configs from legacy task_config table
+		stmt = queryBuilder.Select("*").From(taskConfigTable).
+			Where(
+				qb.Eq{
+					"job_id":  id.GetValue(),
+					"version": version,
+					"instance_id": []interface{}{
+						instanceID, common.DefaultTaskConfigID},
+				})
+		allResults, err = s.executeRead(ctx, stmt)
+		if err != nil {
+			log.WithField("job_id", id.GetValue()).
+				WithField("instance_id", instanceID).
+				WithField("version", version).
+				WithError(err).
+				Error("Fail to get task config")
+			s.metrics.TaskMetrics.TaskGetConfigFail.Inc(1)
+			return nil, nil, err
+		}
+		if len(allResults) == 0 {
+			return nil, nil, yarpcerrors.NotFoundErrorf(
+				"task:%s not found", taskID)
+		}
+		s.metrics.TaskMetrics.TaskGetConfigLegacy.Inc(1)
 	}
 
 	// Use last result (the most specific).
@@ -1328,6 +1352,31 @@ func (s *Store) GetTaskConfigs(ctx context.Context, id *peloton.JobID,
 			Error("Failed to get task configs")
 		s.metrics.TaskMetrics.TaskGetConfigsFail.Inc(1)
 		return taskConfigMap, nil, err
+	}
+
+	if len(allResults) == 0 {
+		// Try to get task configs from legacy task_config table
+		stmt := s.DataStore.NewQuery().Select("*").From(taskConfigTable).
+			Where(
+				qb.Eq{
+					"job_id":      id.GetValue(),
+					"version":     version,
+					"instance_id": dbInstanceIDs,
+				})
+		allResults, err = s.executeRead(ctx, stmt)
+		if err != nil {
+			log.WithField("job_id", id.GetValue()).
+				WithField("instance_ids", instanceIDs).
+				WithField("version", version).
+				WithError(err).
+				Error("Failed to get task configs")
+			s.metrics.TaskMetrics.TaskGetConfigsFail.Inc(1)
+			return taskConfigMap, nil, err
+		}
+		if len(allResults) == 0 {
+			return taskConfigMap, nil, nil
+		}
+		s.metrics.TaskMetrics.TaskGetConfigLegacy.Inc(1)
 	}
 
 	var defaultConfig *task.TaskConfig
@@ -1841,6 +1890,12 @@ func (s *Store) DeleteJob(ctx context.Context, jobID string) error {
 
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Delete(taskRuntimeTable).Where(qb.Eq{"job_id": jobID})
+	if err := s.applyStatement(ctx, stmt, jobID); err != nil {
+		s.metrics.JobMetrics.JobDeleteFail.Inc(1)
+		return err
+	}
+
+	stmt = queryBuilder.Delete(taskConfigTable).Where(qb.Eq{"job_id": jobID})
 	if err := s.applyStatement(ctx, stmt, jobID); err != nil {
 		s.metrics.JobMetrics.JobDeleteFail.Inc(1)
 		return err
@@ -2762,8 +2817,19 @@ func (s *Store) deleteJobConfigVersion(
 	version uint64) error {
 	queryBuilder := s.DataStore.NewQuery()
 
+	// first delete the task configurations
+	stmt := queryBuilder.Delete(taskConfigTable).Where(qb.Eq{
+		"job_id": jobID.GetValue(), "version": version})
+	if err := s.applyStatement(ctx, stmt, jobID.GetValue()); err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID.GetValue()).
+			WithField("version", version).
+			Info("failed to delete the task configurations")
+		return err
+	}
+
 	// next delete the job configuration
-	stmt := queryBuilder.Delete(jobConfigTable).Where(qb.Eq{
+	stmt = queryBuilder.Delete(jobConfigTable).Where(qb.Eq{
 		"job_id": jobID.GetValue(), "version": version})
 	err := s.applyStatement(ctx, stmt, jobID.GetValue())
 	if err != nil {
