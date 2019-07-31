@@ -1,7 +1,7 @@
 package statusupdate
 
 import (
-	"errors"
+	"fmt"
 	"time"
 
 	pbmesos "github.com/uber/peloton/.gen/mesos/v1"
@@ -13,6 +13,7 @@ import (
 	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/common/util"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -31,7 +32,7 @@ func NewV0(event *pbeventstream.Event) (*Event, error) {
 }
 
 // New an Event from a v1 event.
-func NewV1(event *v1pbevent.Event) *Event {
+func NewV1(event *v1pbevent.Event) (*Event, error) {
 	return convertV1Event(event)
 }
 
@@ -157,10 +158,12 @@ func convertV0Event(event *pbeventstream.Event) (*Event, error) {
 		mesosTaskID := event.MesosTaskStatus.GetTaskId().GetValue()
 		updateEvent.taskID, err = util.ParseTaskIDFromMesosTaskID(mesosTaskID)
 		if err != nil {
-			log.WithError(err).
-				WithField("task_id", mesosTaskID).
-				Error("Fail to parse TaskID for mesosTaskID")
-			return nil, err
+			return nil, errors.Wrap(err,
+				fmt.Sprintf(
+					"failed to parse taskID from mesosTaskID: %v",
+					mesosTaskID,
+				),
+			)
 		}
 		updateEvent.state = util.MesosStateToPelotonState(event.MesosTaskStatus.GetState())
 
@@ -203,11 +206,29 @@ func parsePodState(s string) pbpod.PodState {
 	return pbpod.PodState_POD_STATE_INVALID
 }
 
-func convertV1Event(event *v1pbevent.Event) *Event {
-	podEvent := event.PodEvent
-	return &Event{
-		taskID:  podEvent.PodId.Value,
-		state:   api.ConvertPodStateToTaskState(parsePodState(podEvent.ActualState)),
-		v1event: event,
+func convertV1Event(event *v1pbevent.Event) (*Event, error) {
+	podEvent := event.GetPodEvent()
+	// At this point, podID and mesosTaskID look the same. So we can just
+	// extract taskID from podID using the same way as we do for mesos in
+	// case of v0 event.
+	taskID, err := util.ParseTaskIDFromMesosTaskID(
+		podEvent.GetPodId().GetValue(),
+	)
+	if err != nil {
+		return nil, errors.Wrap(err,
+			fmt.Sprintf(
+				"failed to parse taskID from podID: %v",
+				podEvent.GetPodId().GetValue(),
+			),
+		)
 	}
+
+	return &Event{
+		taskID: taskID,
+		state: api.ConvertPodStateToTaskState(
+			parsePodState(
+				podEvent.ActualState),
+		),
+		v1event: event,
+	}, nil
 }

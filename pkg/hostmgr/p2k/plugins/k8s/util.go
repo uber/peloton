@@ -106,9 +106,9 @@ func toK8SContainerSpec(c *pbpod.ContainerSpec) corev1.Container {
 		},
 	}
 
-	if entrypoint := c.GetEntrypoint().GetValue(); entrypoint != "" {
-		k8sSpec.Command = []string{"-c", "/bin/sh", entrypoint}
-		k8sSpec.Args = c.Command.Arguments
+	if c.GetEntrypoint().GetValue() != "" {
+		k8sSpec.Command = []string{c.GetEntrypoint().GetValue()}
+		k8sSpec.Args = c.GetEntrypoint().GetArguments()
 	}
 
 	return k8sSpec

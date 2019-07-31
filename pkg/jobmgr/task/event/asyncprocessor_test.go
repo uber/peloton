@@ -358,7 +358,7 @@ func (suite *BucketEventProcessorTestSuite) TestV1Event() {
 	applier := newBucketEventProcessor(suite.statusProcessor, 3, 1)
 	applier.start()
 
-	podID := uuid.New()
+	podID := fmt.Sprintf("%s-1-1", uuid.New())
 	for i := 0; i < n; i++ {
 		ev := newV1EventPb(podID, 1+uint64(i), pbpod.PodState_POD_STATE_RUNNING.String())
 		err := applier.addV1Event(ev)

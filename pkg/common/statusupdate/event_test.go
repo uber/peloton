@@ -108,18 +108,29 @@ func newV1EventPb(
 
 func TestV1Event(t *testing.T) {
 	offset := uint64(2)
-	podID := uuid.NewUUID().String()
+	internalTaskID := uuid.NewUUID().String() + "-1"
+	podID := fmt.Sprintf("%s-1", internalTaskID)
+
 	state := pbpod.PodState_POD_STATE_RUNNING.String()
 	now := time.Now()
 	hostname := "localhost"
 	msg := "runningmsg"
 	reason := "ok"
 	healthy := true
-	event := NewV1(newV1EventPb(podID, offset, state, now, hostname, msg, reason, healthy))
-	assert.Equal(t, podID, event.TaskID())
+	event, err := NewV1(newV1EventPb(
+		podID,
+		offset,
+		state,
+		now,
+		hostname,
+		msg,
+		reason,
+		healthy,
+	))
+	assert.NoError(t, err)
+	assert.Equal(t, internalTaskID, event.TaskID())
 	assert.Equal(t, pbtask.TaskState_RUNNING, event.State())
 	assert.Equal(t, msg, event.StatusMsg())
-	assert.Equal(t, podID, event.MesosTaskID().GetValue())
 	assert.Equal(t, hostname, event.AgentID().GetValue())
 	assert.Nil(t, event.MesosTaskStatus())
 	assert.Equal(t, offset, event.Offset())
@@ -127,4 +138,18 @@ func TestV1Event(t *testing.T) {
 	assert.Equal(t, healthy, event.Healthy())
 	assert.Equal(t, msg, event.Message())
 	assert.Equal(t, now.UnixNano()/1e9, int64(*event.Timestamp()))
+
+	// podID doesn't conform to peloton podID convention.
+	// This should result in error.
+	event, err = NewV1(newV1EventPb(
+		internalTaskID,
+		offset,
+		state,
+		now,
+		hostname,
+		msg,
+		reason,
+		healthy,
+	))
+	assert.Error(t, err)
 }

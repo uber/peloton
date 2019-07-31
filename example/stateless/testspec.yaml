@@ -22,3 +22,8 @@ defaultspec:
     command:
       shell: true
       value: 'while :; do echo running 3; sleep 10; done'
+    entrypoint:
+      value: '/bin/sh'
+      arguments:
+        - "-c"
+        - "while :; do echo running 3; sleep 10; done"

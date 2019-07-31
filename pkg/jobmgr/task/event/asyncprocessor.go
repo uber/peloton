@@ -28,6 +28,7 @@ import (
 	"github.com/uber/peloton/pkg/common/lifecycle"
 	"github.com/uber/peloton/pkg/common/statusupdate"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber/peloton/pkg/common/util"
 )
@@ -168,10 +169,8 @@ func newBucketEventProcessor(t StatusProcessor, bucketNum int,
 func (t *asyncEventProcessor) addV0Event(event *pbeventstream.Event) error {
 	updateEvent, err := statusupdate.NewV0(event)
 	if err != nil {
-		log.WithError(err).
-			WithField("event", event).
-			Error("Failed to convert v0 event to StatusUpdateEvent")
-		return err
+		return errors.Wrap(
+			err, "failed to convert v0 event to StatusUpdateEvent")
 	}
 
 	var taskID string
@@ -205,8 +204,11 @@ func (t *asyncEventProcessor) addV0Event(event *pbeventstream.Event) error {
 }
 
 func (t *asyncEventProcessor) addV1Event(event *v1pbevent.Event) error {
-	updateEvent := statusupdate.NewV1(event)
-
+	updateEvent, err := statusupdate.NewV1(event)
+	if err != nil {
+		return errors.Wrap(
+			err, "failed to convert v1 event to StatusUpdateEvent")
+	}
 	// shard event to buckets based on podID
 	podID := event.GetPodEvent().GetPodId().GetValue()
 	h := fnv.New32()
