@@ -24,11 +24,15 @@ import (
 	pb_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
+	pbeventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
+	v1pbevent "github.com/uber/peloton/.gen/peloton/private/eventstream/v1alpha/event"
 
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/common/eventstream"
+	"github.com/uber/peloton/pkg/common/statusupdate"
 	"github.com/uber/peloton/pkg/common/util"
+	v1eventstream "github.com/uber/peloton/pkg/common/v1alpha/eventstream"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	"github.com/uber/peloton/pkg/jobmgr/goalstate"
 	jobmgr_task "github.com/uber/peloton/pkg/jobmgr/task"
@@ -37,7 +41,6 @@ import (
 	"github.com/uber/peloton/pkg/storage"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
@@ -68,7 +71,7 @@ type StatusUpdate interface {
 
 // Listener is the interface for StatusUpdate listener
 type Listener interface {
-	eventstream.EventHandler
+	OnV0Events(events []*pbeventstream.Event)
 
 	Start()
 	Stop()
@@ -79,7 +82,7 @@ type statusUpdate struct {
 	jobStore        storage.JobStore
 	taskStore       storage.TaskStore
 	volumeStore     storage.PersistentVolumeStore
-	eventClients    map[string]*eventstream.Client
+	eventClients    map[string]StatusUpdate
 	lm              lifecyclemgr.Manager
 	applier         *asyncEventProcessor
 	jobFactory      cached.JobFactory
@@ -108,7 +111,7 @@ func NewTaskStatusUpdate(
 		volumeStore:     volumeStore,
 		rootCtx:         context.Background(),
 		metrics:         NewMetrics(parentScope.SubScope("status_updater")),
-		eventClients:    make(map[string]*eventstream.Client),
+		eventClients:    make(map[string]StatusUpdate),
 		jobFactory:      jobFactory,
 		goalStateDriver: goalStateDriver,
 		listeners:       listeners,
@@ -117,13 +120,23 @@ func NewTaskStatusUpdate(
 	// TODO: add config for BucketEventProcessor
 	statusUpdater.applier = newBucketEventProcessor(statusUpdater, 100, 10000)
 
-	eventClient := eventstream.NewEventStreamClient(
-		d,
-		common.PelotonJobManager,
-		common.PelotonHostManager,
-		statusUpdater,
-		parentScope.SubScope("HostmgrEventStreamClient"))
-	statusUpdater.eventClients[common.PelotonHostManager] = eventClient
+	if hmVersion.IsV1() {
+		v1eventClient := v1eventstream.NewEventStreamClient(
+			d,
+			common.PelotonJobManager,
+			common.PelotonHostManager,
+			statusUpdater,
+			parentScope.SubScope("HostmgrV1EventStreamClient"))
+		statusUpdater.eventClients[common.PelotonV1HostManager] = v1eventClient
+	} else {
+		eventClient := eventstream.NewEventStreamClient(
+			d,
+			common.PelotonJobManager,
+			common.PelotonHostManager,
+			statusUpdater,
+			parentScope.SubScope("HostmgrEventStreamClient"))
+		statusUpdater.eventClients[common.PelotonHostManager] = eventClient
+	}
 
 	eventClientRM := eventstream.NewEventStreamClient(
 		d,
@@ -135,10 +148,16 @@ func NewTaskStatusUpdate(
 	return statusUpdater
 }
 
-// OnEvent is the callback function notifying an event
-func (p *statusUpdate) OnEvent(event *pb_eventstream.Event) {
-	log.WithField("event_offset", event.Offset).Debug("JobMgr receiving event")
-	p.applier.addEvent(event)
+// OnV0Event is the callback function notifying an event
+func (p *statusUpdate) OnV0Event(event *pb_eventstream.Event) {
+	log.WithField("event_offset", event.Offset).Debug("JobMgr receiving v0 event")
+	p.applier.addV0Event(event)
+}
+
+// OnV1Event is the callback function notifying an event
+func (p *statusUpdate) OnV1Event(event *v1pbevent.Event) {
+	log.WithField("event_offset", event.Offset).Debug("JobMgr receiving v1 event")
+	p.applier.addV1Event(event)
 }
 
 // GetEventProgress returns the progress of the event progressing
@@ -147,13 +166,11 @@ func (p *statusUpdate) GetEventProgress() uint64 {
 }
 
 // ProcessStatusUpdate processes the actual task status
-func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_eventstream.Event) error {
+func (p *statusUpdate) ProcessStatusUpdate(
+	ctx context.Context,
+	updateEvent *statusupdate.Event,
+) error {
 	var currTaskResourceUsage map[string]float64
-	updateEvent, err := convertEvent(event)
-	if err != nil {
-		return err
-	}
-
 	p.logTaskMetrics(updateEvent)
 
 	isOrphanTask, taskInfo, err := p.isOrphanTaskEvent(ctx, updateEvent)
@@ -165,9 +182,9 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		p.metrics.SkipOrphanTasksTotal.Inc(1)
 		taskInfo := &pb_task.TaskInfo{
 			Runtime: &pb_task.RuntimeInfo{
-				State:       updateEvent.state,
-				MesosTaskId: event.MesosTaskStatus.GetTaskId(),
-				AgentID:     event.MesosTaskStatus.GetAgentId(),
+				State:       updateEvent.State(),
+				MesosTaskId: updateEvent.MesosTaskID(),
+				AgentID:     updateEvent.AgentID(),
 			},
 		}
 
@@ -183,14 +200,11 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	}
 
 	// whether to skip or not if instance state is similar before and after
-	if isDuplicateStateUpdate(
-		taskInfo,
-		event,
-		updateEvent.state) {
+	if isDuplicateStateUpdate(taskInfo, updateEvent) {
 		return nil
 	}
 
-	if updateEvent.state == pb_task.TaskState_RUNNING &&
+	if updateEvent.State() == pb_task.TaskState_RUNNING &&
 		taskInfo.GetConfig().GetVolume() != nil &&
 		len(taskInfo.GetRuntime().GetVolumeID().GetValue()) != 0 {
 		// Update volume state to be CREATED upon task RUNNING.
@@ -202,59 +216,60 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	newRuntime := proto.Clone(taskInfo.GetRuntime()).(*pb_task.RuntimeInfo)
 
 	// Persist the reason and message for mesos updates
-	newRuntime.Message = updateEvent.statusMsg
+	newRuntime.Message = updateEvent.StatusMsg()
 	newRuntime.Reason = ""
 
 	// Persist healthy field if health check is enabled
 	if taskInfo.GetConfig().GetHealthCheck() != nil {
-		reason := event.GetMesosTaskStatus().GetReason()
-		healthy := event.GetMesosTaskStatus().GetHealthy()
-		p.persistHealthyField(updateEvent.state, reason, healthy, newRuntime)
+		reason := updateEvent.Reason()
+		healthy := updateEvent.Healthy()
+		p.persistHealthyField(updateEvent.State(), reason, healthy, newRuntime)
 	}
 
 	// Update FailureCount
-	updateFailureCount(updateEvent.state, taskInfo.GetRuntime(), newRuntime)
+	updateFailureCount(updateEvent.State(), taskInfo.GetRuntime(), newRuntime)
 
-	switch updateEvent.state {
+	switch updateEvent.State() {
 	case pb_task.TaskState_FAILED:
-		reason := event.GetMesosTaskStatus().GetReason()
-		msg := event.GetMesosTaskStatus().GetMessage()
-		if reason == mesos.TaskStatus_REASON_TASK_INVALID &&
+		reason := updateEvent.Reason()
+		msg := updateEvent.Message()
+		if reason == mesos.TaskStatus_REASON_TASK_INVALID.String() &&
 			strings.Contains(msg, _msgMesosDuplicateID) {
-			log.WithField("task_id", updateEvent.taskID).
+			log.WithField("task_id", updateEvent.TaskID()).
 				Info("ignoring duplicate task id failure")
 			return nil
 		}
-		newRuntime.Reason = reason.String()
-		newRuntime.State = updateEvent.state
+		newRuntime.Reason = reason
+		newRuntime.State = updateEvent.State()
 		newRuntime.Message = msg
+		// TODO p2k: can we build TerminationStatus from PodEvent?
 		termStatus := &pb_task.TerminationStatus{
 			Reason: pb_task.TerminationStatus_TERMINATION_STATUS_REASON_FAILED,
 		}
 		if code, err := taskutil.GetExitStatusFromMessage(msg); err == nil {
 			termStatus.ExitCode = code
 		} else if yarpcerrors.IsNotFound(err) == false {
-			log.WithField("task_id", updateEvent.taskID).
+			log.WithField("task_id", updateEvent.TaskID()).
 				WithField("error", err).
 				Debug("Failed to extract exit status from message")
 		}
 		if sig, err := taskutil.GetSignalFromMessage(msg); err == nil {
 			termStatus.Signal = sig
 		} else if yarpcerrors.IsNotFound(err) == false {
-			log.WithField("task_id", updateEvent.taskID).
+			log.WithField("task_id", updateEvent.TaskID()).
 				WithField("error", err).
 				Debug("Failed to extract termination signal from message")
 		}
 		newRuntime.TerminationStatus = termStatus
 
 	case pb_task.TaskState_LOST:
-		newRuntime.Reason = event.GetMesosTaskStatus().GetReason().String()
+		newRuntime.Reason = updateEvent.Reason()
 		if util.IsPelotonStateTerminal(taskInfo.GetRuntime().GetState()) {
 			// Skip LOST status update if current state is terminal state.
 			log.WithFields(log.Fields{
-				"task_id":           updateEvent.taskID,
+				"task_id":           updateEvent.TaskID(),
 				"db_task_runtime":   taskInfo.GetRuntime(),
-				"task_status_event": event.GetMesosTaskStatus(),
+				"task_status_event": updateEvent.MesosTaskStatus(),
 			}).Debug("skip reschedule lost task as it is already in terminal state")
 			return nil
 		}
@@ -262,12 +277,12 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			// Do not take any action for killed tasks, just mark it killed.
 			// Same message will go to resource manager which will release the placement.
 			log.WithFields(log.Fields{
-				"task_id":           updateEvent.taskID,
+				"task_id":           updateEvent.TaskID(),
 				"db_task_runtime":   taskInfo.GetRuntime(),
-				"task_status_event": event.GetMesosTaskStatus(),
+				"task_status_event": updateEvent.MesosTaskStatus(),
 			}).Debug("mark stopped task as killed due to LOST")
 			newRuntime.State = pb_task.TaskState_KILLED
-			newRuntime.Message = "Stopped task LOST event: " + updateEvent.statusMsg
+			newRuntime.Message = "Stopped task LOST event: " + updateEvent.StatusMsg()
 			break
 		}
 
@@ -280,30 +295,30 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		}
 
 		log.WithFields(log.Fields{
-			"task_id":           updateEvent.taskID,
+			"task_id":           updateEvent.TaskID(),
 			"db_task_runtime":   taskInfo.GetRuntime(),
-			"task_status_event": event.GetMesosTaskStatus(),
+			"task_status_event": updateEvent.MesosTaskStatus(),
 		}).Info("reschedule lost task if needed")
 
 		newRuntime.State = pb_task.TaskState_LOST
-		newRuntime.Message = "Task LOST: " + updateEvent.statusMsg
-		newRuntime.Reason = event.GetMesosTaskStatus().GetReason().String()
+		newRuntime.Message = "Task LOST: " + updateEvent.StatusMsg()
+		newRuntime.Reason = updateEvent.Reason()
 
 		// Calculate resource usage for TaskState_LOST using time.Now() as
 		// completion time
 		currTaskResourceUsage = getCurrTaskResourceUsage(
-			updateEvent.taskID, updateEvent.state, taskInfo.GetConfig().GetResource(),
+			updateEvent.TaskID(), updateEvent.State(), taskInfo.GetConfig().GetResource(),
 			taskInfo.GetRuntime().GetStartTime(),
 			now().UTC().Format(time.RFC3339Nano))
 
 	default:
-		newRuntime.State = updateEvent.state
+		newRuntime.State = updateEvent.State()
 	}
 
 	cachedJob := p.jobFactory.AddJob(taskInfo.GetJobId())
 	// Update task start and completion timestamps
 	if newRuntime.GetState() == pb_task.TaskState_RUNNING {
-		if updateEvent.state != taskInfo.GetRuntime().GetState() {
+		if updateEvent.State() != taskInfo.GetRuntime().GetState() {
 			// StartTime is set at the time of first RUNNING event
 			// CompletionTime may have been set (e.g. task has been set),
 			// which could make StartTime larger than CompletionTime.
@@ -334,7 +349,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		newRuntime.CompletionTime = completionTime
 
 		currTaskResourceUsage = getCurrTaskResourceUsage(
-			updateEvent.taskID, updateEvent.state, taskInfo.GetConfig().GetResource(),
+			updateEvent.TaskID(), updateEvent.State(), taskInfo.GetConfig().GetResource(),
 			taskInfo.GetRuntime().GetStartTime(), completionTime)
 
 		if len(currTaskResourceUsage) > 0 {
@@ -355,7 +370,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	}
 
 	// Update the task update times in job cache and then update the task runtime in cache and DB
-	cachedJob.SetTaskUpdateTime(event.MesosTaskStatus.Timestamp)
+	cachedJob.SetTaskUpdateTime(updateEvent.Timestamp())
 	if _, err = cachedJob.CompareAndSetTask(
 		ctx,
 		taskInfo.GetInstanceId(),
@@ -364,8 +379,8 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	); err != nil {
 		log.WithError(err).
 			WithFields(log.Fields{
-				"task_id": updateEvent.taskID,
-				"state":   updateEvent.state.String()}).
+				"task_id": updateEvent.TaskID(),
+				"state":   updateEvent.State().String()}).
 			Error("Fail to update runtime for taskID")
 		return err
 	}
@@ -389,75 +404,25 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	return nil
 }
 
-type statusUpateEvent struct {
-	taskID    string
-	state     pb_task.TaskState
-	statusMsg string
-
-	isMesosStatus   bool
-	mesosTaskStatus *mesos.TaskStatus
-}
-
-// convertEvent converts pb_eventstream.Event to statusUpateEvent
-// so it is easier for statusUpdate to process
-func convertEvent(event *pb_eventstream.Event) (*statusUpateEvent, error) {
-	var err error
-
-	updateEvent := &statusUpateEvent{mesosTaskStatus: &mesos.TaskStatus{}}
-	if event.Type == pb_eventstream.Event_MESOS_TASK_STATUS {
-		mesosTaskID := event.MesosTaskStatus.GetTaskId().GetValue()
-		updateEvent.taskID, err = util.ParseTaskIDFromMesosTaskID(mesosTaskID)
-		if err != nil {
-			log.WithError(err).
-				WithField("task_id", mesosTaskID).
-				Error("Fail to parse taskID for mesostaskID")
-			return nil, err
-		}
-		updateEvent.state = util.MesosStateToPelotonState(event.MesosTaskStatus.GetState())
-		updateEvent.statusMsg = event.MesosTaskStatus.GetMessage()
-
-		updateEvent.isMesosStatus = true
-		updateEvent.mesosTaskStatus = event.MesosTaskStatus
-		log.WithFields(log.Fields{
-			"task_id": updateEvent.taskID,
-			"state":   updateEvent.state.String(),
-		}).Debug("Adding Mesos Event ")
-
-	} else if event.Type == pb_eventstream.Event_PELOTON_TASK_EVENT {
-		// Peloton task event is used for task status update from resmgr.
-		updateEvent.taskID = event.PelotonTaskEvent.TaskId.Value
-		updateEvent.state = event.PelotonTaskEvent.State
-		updateEvent.statusMsg = event.PelotonTaskEvent.Message
-		log.WithFields(log.Fields{
-			"task_id": updateEvent.taskID,
-			"state":   updateEvent.state.String(),
-		}).Debug("Adding Peloton Event ")
-	} else {
-		log.WithFields(log.Fields{
-			"task_id": updateEvent.taskID,
-			"state":   updateEvent.state.String(),
-		}).Error("Unknown Event ")
-		return nil, errors.New("Unknown Event ")
-	}
-	return updateEvent, nil
-}
-
 // logTaskMetrics logs events metrics
-func (p *statusUpdate) logTaskMetrics(event *statusUpateEvent) {
+func (p *statusUpdate) logTaskMetrics(event *statusupdate.Event) {
+	if event.V0() == nil {
+		return
+	}
 	// Update task state counter for non-reconcilication update.
-	if event.isMesosStatus && event.mesosTaskStatus.GetReason() !=
-		mesos.TaskStatus_REASON_RECONCILIATION {
-		switch event.state {
+	reason := event.MesosTaskStatus().GetReason()
+	if reason != mesos.TaskStatus_REASON_RECONCILIATION {
+		switch event.State() {
 		case pb_task.TaskState_RUNNING:
 			p.metrics.TasksRunningTotal.Inc(1)
 		case pb_task.TaskState_SUCCEEDED:
 			p.metrics.TasksSucceededTotal.Inc(1)
 		case pb_task.TaskState_FAILED:
 			p.metrics.TasksFailedTotal.Inc(1)
-			p.metrics.TasksFailedReason[int32(event.mesosTaskStatus.GetReason())].Inc(1)
+			p.metrics.TasksFailedReason[int32(reason)].Inc(1)
 			log.WithFields(log.Fields{
-				"task_id":       event.taskID,
-				"failed_reason": mesos.TaskStatus_Reason_name[int32(event.mesosTaskStatus.GetReason())],
+				"task_id":       event.TaskID(),
+				"failed_reason": mesos.TaskStatus_Reason_name[int32(reason)],
 			}).Debug("received failed task")
 		case pb_task.TaskState_KILLED:
 			p.metrics.TasksKilledTotal.Inc(1)
@@ -468,8 +433,7 @@ func (p *statusUpdate) logTaskMetrics(event *statusUpateEvent) {
 		case pb_task.TaskState_STARTING:
 			p.metrics.TasksStartingTotal.Inc(1)
 		}
-	} else if event.isMesosStatus && event.mesosTaskStatus.GetReason() ==
-		mesos.TaskStatus_REASON_RECONCILIATION {
+	} else {
 		p.metrics.TasksReconciledTotal.Inc(1)
 	}
 }
@@ -478,38 +442,40 @@ func (p *statusUpdate) logTaskMetrics(event *statusUpateEvent) {
 // it returns the TaskInfo if task is not orphan
 func (p *statusUpdate) isOrphanTaskEvent(
 	ctx context.Context,
-	event *statusUpateEvent,
+	event *statusupdate.Event,
 ) (bool, *pb_task.TaskInfo, error) {
-	taskInfo, err := p.taskStore.GetTaskByID(ctx, event.taskID)
+	taskInfo, err := p.taskStore.GetTaskByID(ctx, event.TaskID())
 	if err != nil {
 		if yarpcerrors.IsNotFound(err) {
 			// if task runtime or config is not present in the DB,
 			// then the task is orphan
 			log.WithFields(log.Fields{
-				"mesos_task_id":      event.mesosTaskStatus,
-				"task_status_event≠": event.state.String(),
+				"mesos_task_id":      event.MesosTaskStatus(),
+				"task_status_event≠": event.State().String(),
 			}).Info("received status update for task not found in DB")
 			return true, nil, nil
 		}
 
 		log.WithError(err).
-			WithField("task_id", event.taskID).
-			WithField("task_status_event", event.mesosTaskStatus).
-			WithField("state", event.state.String()).
+			WithField("task_id", event.TaskID()).
+			WithField("task_status_event", event.MesosTaskStatus()).
+			WithField("state", event.State().String()).
 			Error("fail to find taskInfo for taskID for mesos event")
 		return false, nil, err
 	}
 
-	dbTaskID := taskInfo.GetRuntime().GetMesosTaskId().GetValue()
-	if event.isMesosStatus && dbTaskID !=
-		event.mesosTaskStatus.GetTaskId().GetValue() {
-		log.WithFields(log.Fields{
-			"orphan_task_id":        event.mesosTaskStatus.GetTaskId().GetValue(),
-			"db_task_id":            dbTaskID,
-			"db_task_runtime_state": taskInfo.GetRuntime().GetState().String(),
-			"mesos_event_state":     event.state.String(),
-		}).Info("received status update for orphan mesos task")
-		return true, nil, nil
+	// TODO p2k: verify v1 pod id in taskInfo
+	if event.V0() != nil {
+		dbTaskID := taskInfo.GetRuntime().GetMesosTaskId().GetValue()
+		if dbTaskID != event.MesosTaskStatus().GetTaskId().GetValue() {
+			log.WithFields(log.Fields{
+				"orphan_task_id":        event.MesosTaskStatus().GetTaskId().GetValue(),
+				"db_task_id":            dbTaskID,
+				"db_task_runtime_state": taskInfo.GetRuntime().GetState().String(),
+				"mesos_event_state":     event.State().String(),
+			}).Info("received status update for orphan mesos task")
+			return true, nil, nil
+		}
 	}
 
 	return false, taskInfo, nil
@@ -544,14 +510,20 @@ func (p *statusUpdate) updatePersistentVolumeState(ctx context.Context, taskInfo
 	return p.volumeStore.UpdatePersistentVolume(ctx, volumeInfo)
 }
 
-func (p *statusUpdate) ProcessListeners(event *pb_eventstream.Event) {
+// ProcessListeners is for v0 only as we will remove the eventforwarder in v1.
+func (p *statusUpdate) ProcessListeners(event *statusupdate.Event) {
+	if event != nil && event.V1() != nil {
+		return
+	}
 	for _, listener := range p.listeners {
-		listener.OnEvents([]*pb_eventstream.Event{event})
+		listener.OnV0Events([]*pb_eventstream.Event{event.V0()})
 	}
 }
 
 // OnEvents is the callback function notifying a batch of events
-func (p *statusUpdate) OnEvents(events []*pb_eventstream.Event) {}
+func (p *statusUpdate) OnV0Events(events []*pb_eventstream.Event) {}
+
+func (p *statusUpdate) OnV1Events(events []*v1pbevent.Event) {}
 
 // Start starts processing status update events
 func (p *statusUpdate) Start() {
@@ -597,7 +569,7 @@ func getCurrTaskResourceUsage(taskID string, state pb_task.TaskState,
 // persistHealthyField update the healthy field in runtimeDiff
 func (p *statusUpdate) persistHealthyField(
 	state pb_task.TaskState,
-	reason mesos.TaskStatus_Reason,
+	reason string,
 	healthy bool,
 	newRuntime *pb_task.RuntimeInfo) {
 
@@ -608,8 +580,8 @@ func (p *statusUpdate) persistHealthyField(
 	case state == pb_task.TaskState_RUNNING:
 		// Only record the health check result when
 		// the reason for the event is TASK_HEALTH_CHECK_STATUS_UPDATED
-		if reason == mesos.TaskStatus_REASON_TASK_HEALTH_CHECK_STATUS_UPDATED {
-			newRuntime.Reason = reason.String()
+		if reason == mesos.TaskStatus_REASON_TASK_HEALTH_CHECK_STATUS_UPDATED.String() {
+			newRuntime.Reason = reason
 			if healthy {
 				newRuntime.Healthy = pb_task.HealthState_HEALTHY
 				p.metrics.TasksHealthyTotal.Inc(1)
@@ -665,17 +637,20 @@ func updateFailureCount(
 // Each unhealthy state needs to be logged into the pod events table.
 func isDuplicateStateUpdate(
 	taskInfo *pb_task.TaskInfo,
-	event *pb_eventstream.Event,
-	newState pb_task.TaskState) bool {
-
-	if newState != taskInfo.GetRuntime().GetState() {
+	updateEvent *statusupdate.Event,
+) bool {
+	if updateEvent.State() != taskInfo.GetRuntime().GetState() {
 		return false
 	}
 
-	if newState != pb_task.TaskState_RUNNING {
+	mesosTaskStatus := updateEvent.MesosTaskStatus()
+	podEvent := updateEvent.PodEvent()
+
+	if updateEvent.State() != pb_task.TaskState_RUNNING {
 		log.WithFields(log.Fields{
 			"db_task_runtime":   taskInfo.GetRuntime(),
-			"task_status_event": event.GetMesosTaskStatus(),
+			"task_status_event": mesosTaskStatus,
+			"pod_event":         podEvent,
 		}).Debug("skip same status update if state is not RUNNING")
 		return true
 	}
@@ -684,17 +659,19 @@ func isDuplicateStateUpdate(
 		!taskInfo.GetConfig().GetHealthCheck().GetEnabled() {
 		log.WithFields(log.Fields{
 			"db_task_runtime":   taskInfo.GetRuntime(),
-			"task_status_event": event.GetMesosTaskStatus(),
+			"task_status_event": mesosTaskStatus,
+			"pod_event":         podEvent,
 		}).Debug("skip same status update if health check is not configured or " +
 			"disabled")
 		return true
 	}
 
-	newStateReason := event.GetMesosTaskStatus().GetReason()
-	if newStateReason != mesos.TaskStatus_REASON_TASK_HEALTH_CHECK_STATUS_UPDATED {
+	newStateReason := updateEvent.Reason()
+	if newStateReason != mesos.TaskStatus_REASON_TASK_HEALTH_CHECK_STATUS_UPDATED.String() {
 		log.WithFields(log.Fields{
 			"db_task_runtime":   taskInfo.GetRuntime(),
-			"task_status_event": event.GetMesosTaskStatus(),
+			"task_status_event": mesosTaskStatus,
+			"pod_event":         podEvent,
 		}).Debug("skip same status update if status update reason is not from health check")
 		return true
 	}
@@ -705,15 +682,17 @@ func isDuplicateStateUpdate(
 	if !isPreviousStateHealthy {
 		log.WithFields(log.Fields{
 			"db_task_runtime":   taskInfo.GetRuntime(),
-			"task_status_event": event.GetMesosTaskStatus(),
+			"task_status_event": mesosTaskStatus,
+			"pod_event":         podEvent,
 		}).Debug("log each negative health check result")
 		return false
 	}
 
-	if event.GetMesosTaskStatus().GetHealthy() == isPreviousStateHealthy {
+	if updateEvent.Healthy() == isPreviousStateHealthy {
 		log.WithFields(log.Fields{
 			"db_task_runtime":   taskInfo.GetRuntime(),
-			"task_status_event": event.GetMesosTaskStatus(),
+			"task_status_event": mesosTaskStatus,
+			"pod_event":         podEvent,
 		}).Debug("skip same status update if health check result is positive consecutively")
 		return true
 	}

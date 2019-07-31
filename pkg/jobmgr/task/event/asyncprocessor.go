@@ -16,13 +16,17 @@ package event
 
 import (
 	"context"
+	"hash/fnv"
+	"io"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	pbeventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
+	v1pbevent "github.com/uber/peloton/.gen/peloton/private/eventstream/v1alpha/event"
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/lifecycle"
+	"github.com/uber/peloton/pkg/common/statusupdate"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber/peloton/pkg/common/util"
@@ -39,8 +43,8 @@ const (
 
 // StatusProcessor is the interface to process a task status update
 type StatusProcessor interface {
-	ProcessStatusUpdate(ctx context.Context, event *pbeventstream.Event) error
-	ProcessListeners(event *pbeventstream.Event)
+	ProcessStatusUpdate(ctx context.Context, event *statusupdate.Event) error
+	ProcessListeners(event *statusupdate.Event)
 }
 
 // asyncEventProcessor maps events to a list of buckets; and each bucket would
@@ -63,7 +67,7 @@ type asyncEventProcessor struct {
 // up in one bucket in order; a bucket can hold status updates for multiple
 // tasks.
 type eventBucket struct {
-	eventCh chan *pbeventstream.Event
+	eventCh chan *statusupdate.Event
 	// index is used to identify the bucket in eventBuckets
 	index           int
 	processedCount  *int32
@@ -72,7 +76,7 @@ type eventBucket struct {
 
 // Creates a new event bucket of specified size
 func newEventBucket(size int, index int) *eventBucket {
-	updates := make(chan *pbeventstream.Event, size)
+	updates := make(chan *statusupdate.Event, size)
 	var processedCount int32
 	var processedOffset uint64
 	return &eventBucket{
@@ -107,8 +111,11 @@ func (t *eventBucket) getProcessedOffset() uint64 {
 
 // Loop to process events queued up in a bucket. Terminates when
 // stopCh is notified/closed.
-func dequeuEventsFromBucket(t StatusProcessor, bucket *eventBucket,
-	stopCh <-chan struct{}) {
+func dequeueEventsFromBucket(
+	t StatusProcessor,
+	bucket *eventBucket,
+	stopCh <-chan struct{},
+) {
 	for {
 		select {
 		case event := <-bucket.eventCh:
@@ -133,7 +140,7 @@ func dequeuEventsFromBucket(t StatusProcessor, bucket *eventBucket,
 			t.ProcessListeners(event)
 
 			atomic.AddInt32(bucket.processedCount, 1)
-			atomic.StoreUint64(bucket.processedOffset, event.Offset)
+			atomic.StoreUint64(bucket.processedOffset, event.Offset())
 		case <-stopCh:
 			log.WithField("bucket_num", bucket.index).Info(
 				"Received bucket shutdown")
@@ -158,9 +165,16 @@ func newBucketEventProcessor(t StatusProcessor, bucketNum int,
 }
 
 // Enqueue an event for asynchronous processing
-func (t *asyncEventProcessor) addEvent(event *pbeventstream.Event) error {
+func (t *asyncEventProcessor) addV0Event(event *pbeventstream.Event) error {
+	updateEvent, err := statusupdate.NewV0(event)
+	if err != nil {
+		log.WithError(err).
+			WithField("event", event).
+			Error("Failed to convert v0 event to StatusUpdateEvent")
+		return err
+	}
+
 	var taskID string
-	var err error
 	if event.Type == pbeventstream.Event_MESOS_TASK_STATUS {
 		mesosTaskID := event.MesosTaskStatus.GetTaskId().GetValue()
 		taskID, err = util.ParseTaskIDFromMesosTaskID(mesosTaskID)
@@ -171,8 +185,9 @@ func (t *asyncEventProcessor) addEvent(event *pbeventstream.Event) error {
 			return err
 		}
 	} else if event.Type == pbeventstream.Event_PELOTON_TASK_EVENT {
+		// Note: Event_PELOTON_TASK_EVENT is not used
 		taskID = event.PelotonTaskEvent.TaskId.Value
-		log.WithField("Task ID", taskID).Debug("Received Event " +
+		log.WithField("Task ID", taskID).Error("Received Event " +
 			"from resmgr")
 	}
 
@@ -184,7 +199,21 @@ func (t *asyncEventProcessor) addEvent(event *pbeventstream.Event) error {
 		return err
 	}
 	index := instanceID % uint32(len(t.eventBuckets))
-	t.eventBuckets[index].eventCh <- event
+
+	t.eventBuckets[index].eventCh <- updateEvent
+	return nil
+}
+
+func (t *asyncEventProcessor) addV1Event(event *v1pbevent.Event) error {
+	updateEvent := statusupdate.NewV1(event)
+
+	// shard event to buckets based on podID
+	podID := event.GetPodEvent().GetPodId().GetValue()
+	h := fnv.New32()
+	io.WriteString(h, podID)
+	index := h.Sum32() % uint32(len(t.eventBuckets))
+
+	t.eventBuckets[index].eventCh <- updateEvent
 	return nil
 }
 
@@ -198,7 +227,7 @@ func (t *asyncEventProcessor) start() {
 	for _, bucket := range t.eventBuckets {
 		t.bucketsWg.Add(1)
 		go func(b *eventBucket) {
-			dequeuEventsFromBucket(t.eventProcessor, b, stopCh)
+			dequeueEventsFromBucket(t.eventProcessor, b, stopCh)
 			t.bucketsWg.Done()
 		}(bucket)
 	}

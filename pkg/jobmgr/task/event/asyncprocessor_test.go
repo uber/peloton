@@ -30,7 +30,10 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	v1pbpeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	pbeventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
+	v1pbevent "github.com/uber/peloton/.gen/peloton/private/eventstream/v1alpha/event"
 
 	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
 	goalstatemocks "github.com/uber/peloton/pkg/jobmgr/goalstate/mocks"
@@ -128,7 +131,7 @@ func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_MesosEvents
 		}
 
 		offset++
-		applier.addEvent(&pbeventstream.Event{
+		applier.addV0Event(&pbeventstream.Event{
 			Offset:          offset,
 			MesosTaskStatus: status,
 			Type:            pbeventstream.Event_MESOS_TASK_STATUS,
@@ -146,7 +149,7 @@ func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_MesosEvents
 		}
 
 		offset++
-		applier.addEvent(&pbeventstream.Event{
+		applier.addV0Event(&pbeventstream.Event{
 			Offset:          offset,
 			MesosTaskStatus: status,
 			Type:            pbeventstream.Event_MESOS_TASK_STATUS,
@@ -164,7 +167,7 @@ func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_MesosEvents
 		}
 
 		offset++
-		applier.addEvent(&pbeventstream.Event{
+		applier.addV0Event(&pbeventstream.Event{
 			Offset:          offset,
 			MesosTaskStatus: status,
 			Type:            pbeventstream.Event_MESOS_TASK_STATUS,
@@ -195,7 +198,7 @@ func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_GetEventPro
 	for i := uint32(0); i < n; i++ {
 
 		offset++
-		applier.addEvent(&pbeventstream.Event{
+		applier.addV0Event(&pbeventstream.Event{
 			Offset: offset,
 			Type:   pbeventstream.Event_MESOS_TASK_STATUS,
 			MesosTaskStatus: &mesos.TaskStatus{
@@ -228,7 +231,7 @@ func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_TransientEr
 	applier := newBucketEventProcessor(suite.statusProcessor, 15, 100)
 	applier.start()
 
-	applier.addEvent(&pbeventstream.Event{
+	applier.addV0Event(&pbeventstream.Event{
 		Type: pbeventstream.Event_MESOS_TASK_STATUS,
 		MesosTaskStatus: &mesos.TaskStatus{
 			TaskId: &mesos.TaskID{
@@ -253,7 +256,7 @@ func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_NonTransien
 	applier := newBucketEventProcessor(suite.statusProcessor, 15, 100)
 	applier.start()
 
-	applier.addEvent(&pbeventstream.Event{
+	applier.addV0Event(&pbeventstream.Event{
 		Type: pbeventstream.Event_PELOTON_TASK_EVENT,
 		PelotonTaskEvent: &task.TaskEvent{
 			TaskId: &peloton.TaskID{
@@ -271,7 +274,7 @@ func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_AddEventFai
 	corruptedID := "corrupted-id"
 	applier := newBucketEventProcessor(suite.statusProcessor, 15, 100)
 	applier.start()
-	err := applier.addEvent(&pbeventstream.Event{
+	err := applier.addV0Event(&pbeventstream.Event{
 		Type: pbeventstream.Event_MESOS_TASK_STATUS,
 		MesosTaskStatus: &mesos.TaskStatus{
 			TaskId: &mesos.TaskID{
@@ -281,7 +284,7 @@ func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_AddEventFai
 	})
 	suite.Error(err)
 
-	err = applier.addEvent(&pbeventstream.Event{
+	err = applier.addV0Event(&pbeventstream.Event{
 		Type: pbeventstream.Event_PELOTON_TASK_EVENT,
 		PelotonTaskEvent: &task.TaskEvent{
 			TaskId: &peloton.TaskID{
@@ -308,7 +311,7 @@ func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_StartStop()
 	addEvents := func() {
 		for i := 0; i < 8; i++ {
 			offset++
-			applier.addEvent(&pbeventstream.Event{
+			applier.addV0Event(&pbeventstream.Event{
 				Offset: offset,
 				Type:   pbeventstream.Event_MESOS_TASK_STATUS,
 				MesosTaskStatus: &mesos.TaskStatus{
@@ -329,4 +332,38 @@ func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_StartStop()
 	addEvents()
 	applier.drainAndShutdown()
 	suite.Equal(applier.GetEventProgress(), offset)
+}
+
+func newV1EventPb(podID string, offset uint64, state string) *v1pbevent.Event {
+	return &v1pbevent.Event{
+		Offset: offset,
+		PodEvent: &pbpod.PodEvent{
+			PodId:       &v1pbpeloton.PodID{Value: podID},
+			ActualState: state,
+			Timestamp:   time.Now().Format(time.RFC3339),
+			Hostname:    "localhost",
+			Healthy:     pbpod.HealthState_HEALTH_STATE_HEALTHY.String(),
+		},
+	}
+}
+
+func (suite *BucketEventProcessorTestSuite) TestV1Event() {
+	n := 9
+	suite.statusProcessor.EXPECT().ProcessListeners(
+		gomock.Any()).Return().AnyTimes()
+	suite.statusProcessor.EXPECT().
+		ProcessStatusUpdate(gomock.Any(), gomock.Any()).
+		Return(nil).MinTimes(6)
+
+	applier := newBucketEventProcessor(suite.statusProcessor, 3, 1)
+	applier.start()
+
+	podID := uuid.New()
+	for i := 0; i < n; i++ {
+		ev := newV1EventPb(podID, 1+uint64(i), pbpod.PodState_POD_STATE_RUNNING.String())
+		err := applier.addV1Event(ev)
+		suite.NoError(err)
+	}
+
+	applier.drainAndShutdown()
 }

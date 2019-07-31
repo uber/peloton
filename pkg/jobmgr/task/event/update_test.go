@@ -39,6 +39,7 @@ import (
 
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/api"
+	"github.com/uber/peloton/pkg/common/statusupdate"
 	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
 	goalstatemocks "github.com/uber/peloton/pkg/jobmgr/goalstate/mocks"
 	jobmgrtask "github.com/uber/peloton/pkg/jobmgr/task"
@@ -254,6 +255,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 
 	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_RUNNING)
+	updateEvent, err := statusupdate.NewV0(event)
+	suite.NoError(err)
 	timeNow := float64(time.Now().UnixNano())
 	event.MesosTaskStatus.Timestamp = &timeNow
 	taskInfo := createTestTaskInfo(task.TaskState_INITIALIZED)
@@ -289,7 +292,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 	)
 
 	now = nowMock
-	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), updateEvent))
 
 	suite.Equal(
 		int64(1),
@@ -308,6 +311,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateInPlaceUpdateTask() {
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_RUNNING)
 	timeNow := float64(time.Now().UnixNano())
 	event.MesosTaskStatus.Timestamp = &timeNow
+	updateEvent, err := statusupdate.NewV0(event)
+	suite.NoError(err)
 	taskInfo := createTestTaskInfo(task.TaskState_INITIALIZED)
 	taskInfo.Runtime.Host = hostname1
 	taskInfo.Runtime.DesiredHost = hostname1
@@ -342,7 +347,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateInPlaceUpdateTask() {
 	)
 
 	now = nowMock
-	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), updateEvent))
 
 	suite.Equal(
 		int64(1),
@@ -354,6 +359,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateInPlaceUpdateTask() {
 	// the task is not placed on the desired host
 	event = createTestTaskUpdateEvent(mesos.TaskState_TASK_RUNNING)
 	event.MesosTaskStatus.Timestamp = &timeNow
+	updateEvent, err = statusupdate.NewV0(event)
+	suite.NoError(err)
 	taskInfo = createTestTaskInfo(task.TaskState_INITIALIZED)
 	taskInfo.Runtime.Host = hostname1
 	taskInfo.Runtime.DesiredHost = hostname2
@@ -389,7 +396,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateInPlaceUpdateTask() {
 	)
 
 	now = nowMock
-	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), updateEvent))
 
 	// success count does not increase, while total count increases
 	suite.Equal(
@@ -496,6 +503,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateHealthy() {
 		event := createTestTaskUpdateHealthCheckEvent(
 			t.newState,
 			t.newHealthState)
+		updateEvent, err := statusupdate.NewV0(event)
+		suite.NoError(err)
 		timeNow := float64(time.Now().UnixNano())
 		event.MesosTaskStatus.Timestamp = &timeNow
 
@@ -526,7 +535,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateHealthy() {
 			cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return(),
 		)
 
-		suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+		suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), updateEvent))
 		suite.Equal(
 			t.healthyCounter,
 			suite.testScope.Snapshot().Counters()["status_updater.tasks_healthy_total+"].Value(),
@@ -621,7 +630,6 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipSameStateWithHealt
 	}
 
 	for _, t := range tt {
-
 		var taskInfo *task.TaskInfo
 		var event *pb_eventstream.Event
 
@@ -637,10 +645,11 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipSameStateWithHealt
 			event = createTestTaskUpdateHealthCheckEvent(
 				t.newState, t.newHealthState)
 		}
-
 		if t.newStateByReconciliation {
 			event = createTestTaskUpdateEvent(t.newState)
 		}
+		updateEvent, err := statusupdate.NewV0(event)
+		suite.NoError(err)
 
 		gomock.InOrder(
 			suite.mockTaskStore.EXPECT().
@@ -648,7 +657,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipSameStateWithHealt
 				Return(taskInfo, nil),
 		)
 		now = nowMock
-		suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+		suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), updateEvent))
 
 		if t.newState == mesos.TaskState_TASK_RUNNING {
 			suite.NotZero(suite.testScope.Snapshot().Counters()["status_updater.tasks_running_total+"].Value())
@@ -705,6 +714,8 @@ func (suite *TaskUpdaterTestSuite) doTestProcessTaskFailedStatusUpdate(
 
 	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_FAILED)
+	updateEvent, err := statusupdate.NewV0(event)
+	suite.NoError(err)
 	event.MesosTaskStatus.Message = &failureMsg
 	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
 
@@ -736,7 +747,7 @@ func (suite *TaskUpdaterTestSuite) doTestProcessTaskFailedStatusUpdate(
 		Return(1 * time.Second)
 	suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return()
 
-	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), updateEvent))
 	suite.Equal(
 		int64(1),
 		suite.testScope.Snapshot().Counters()["status_updater.tasks_failed_total+"].Value())
@@ -749,6 +760,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateWithRetry() {
 
 	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_LOST)
+	updateEvent, err := statusupdate.NewV0(event)
+	suite.NoError(err)
 	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
 
 	rescheduleMsg := "Task LOST: testFailure"
@@ -778,7 +791,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateWithRetry() {
 		Return(1 * time.Second)
 	suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return()
 
-	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), updateEvent))
 	time.Sleep(_waitTime)
 }
 
@@ -787,12 +800,14 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateWithoutRetry()
 	defer suite.ctrl.Finish()
 
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_LOST)
+	updateEvent, err := statusupdate.NewV0(event)
+	suite.NoError(err)
 	taskInfo := createTestTaskInfo(task.TaskState_FAILED)
 
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(context.Background(), _pelotonTaskID).
 		Return(taskInfo, nil)
-	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), updateEvent))
 	time.Sleep(_waitTime)
 }
 
@@ -803,6 +818,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedDuplicateTask() {
 	failureReason := mesos.TaskStatus_REASON_TASK_INVALID
 	failureMsg := "Task has duplicate ID"
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_FAILED)
+	updateEvent, err := statusupdate.NewV0(event)
+	suite.NoError(err)
 	event.MesosTaskStatus.Reason = &failureReason
 	event.MesosTaskStatus.Message = &failureMsg
 	taskInfo := createTestTaskInfo(task.TaskState_LAUNCHED)
@@ -810,7 +827,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedDuplicateTask() {
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(context.Background(), _pelotonTaskID).
 		Return(taskInfo, nil)
-	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), updateEvent))
 	time.Sleep(_waitTime)
 }
 
@@ -854,6 +871,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailureCountUpdate() {
 	for _, t := range tt {
 		cachedJob := cachedmocks.NewMockJob(suite.ctrl)
 		event := createTestTaskUpdateEvent(t.mesosState)
+		updateEvent, err := statusupdate.NewV0(event)
+		suite.NoError(err)
 		taskInfo := createTestTaskInfoWithHealth(
 			task.TaskState_RUNNING,
 			task.HealthState_HEALTHY,
@@ -889,7 +908,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailureCountUpdate() {
 			Return(1 * time.Second)
 		suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return()
 
-		suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+		suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), updateEvent))
 		time.Sleep(_waitTime)
 	}
 }
@@ -900,6 +919,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateNoRetryForStat
 
 	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_LOST)
+	updateEvent, err := statusupdate.NewV0(event)
+	suite.NoError(err)
 	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
 	taskInfo.GetConfig().Volume = &task.PersistentVolumeConfig{}
 	taskInfo.GetRuntime().VolumeID = &peloton.VolumeID{
@@ -932,7 +953,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateNoRetryForStat
 		Return(1 * time.Second)
 	suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return()
 
-	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), updateEvent))
 	time.Sleep(_waitTime)
 }
 
@@ -944,6 +965,9 @@ func (suite *TaskUpdaterTestSuite) TestProcessStoppedTaskLostStatusUpdate() {
 	failureReason := mesos.TaskStatus_REASON_RECONCILIATION
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_LOST)
 	event.MesosTaskStatus.Reason = &failureReason
+	updateEvent, err := statusupdate.NewV0(event)
+	suite.NoError(err)
+
 	taskInfo := createTestTaskInfoWithHealth(
 		task.TaskState_RUNNING,
 		task.HealthState_HEALTHY,
@@ -982,7 +1006,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStoppedTaskLostStatusUpdate() {
 		cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return(),
 	)
 
-	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), updateEvent))
 	time.Sleep(_waitTime)
 }
 
@@ -1003,6 +1027,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateResourceUsageError() {
 	}
 	for _, state := range states {
 		event := createTestTaskUpdateEvent(state)
+		updateEvent, err := statusupdate.NewV0(event)
+		suite.NoError(err)
 
 		gomock.InOrder(
 			suite.mockTaskStore.EXPECT().
@@ -1032,7 +1058,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateResourceUsageError() {
 		// This should be only logged and ProcessStatusUpdate should still
 		// succeed
 		suite.NoError(suite.updater.ProcessStatusUpdate(
-			context.Background(), event))
+			context.Background(), updateEvent))
 	}
 }
 
@@ -1044,6 +1070,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateWithTerminalStateEvent
 	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
 
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_KILLED)
+	updateEvent, err := statusupdate.NewV0(event)
+	suite.NoError(err)
 
 	gomock.InOrder(
 		suite.mockTaskStore.EXPECT().
@@ -1071,7 +1099,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateWithTerminalStateEvent
 	)
 
 	suite.NoError(suite.updater.ProcessStatusUpdate(
-		context.Background(), event))
+		context.Background(), updateEvent))
 }
 
 // Test processing task status update when there is a task with resource usage
@@ -1086,6 +1114,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateResourceUsageNil() {
 	taskInfo.Runtime.ResourceUsage = nil
 
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_LOST)
+	updateEvent, err := statusupdate.NewV0(event)
+	suite.NoError(err)
 
 	gomock.InOrder(
 		suite.mockTaskStore.EXPECT().
@@ -1113,7 +1143,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateResourceUsageNil() {
 	)
 
 	suite.NoError(suite.updater.ProcessStatusUpdate(
-		context.Background(), event))
+		context.Background(), updateEvent))
 }
 
 // Test processing orphan RUNNING task status update.
@@ -1121,6 +1151,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskRunningStatusUpdate() {
 	defer suite.ctrl.Finish()
 
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_RUNNING)
+	updateEvent, err := statusupdate.NewV0(event)
+	suite.NoError(err)
 	taskInfo := createTestTaskInfo(task.TaskState_FAILED)
 	// generates new mesos task id that is different with the one in the
 	// task status update.
@@ -1140,7 +1172,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskRunningStatusUpdate() {
 		"",
 		nil,
 	).Return(nil)
-	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), updateEvent))
 }
 
 // TestProcessOrphanTaskKillError tests getting an error on trying to kill orphan task
@@ -1148,6 +1180,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskKillError() {
 	defer suite.ctrl.Finish()
 
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_RUNNING)
+	updateEvent, err := statusupdate.NewV0(event)
+	suite.NoError(err)
 	taskInfo := createTestTaskInfo(task.TaskState_FAILED)
 	// generates new mesos task id that is different with the one in the
 	// task status update.
@@ -1168,7 +1202,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskKillError() {
 	).Return(fmt.Errorf("fake db error")).
 		Times(_numOrphanTaskKillAttempts)
 
-	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), updateEvent))
 }
 
 // Test processing orphan task LOST status update.
@@ -1176,6 +1210,9 @@ func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskLostStatusUpdate() {
 	defer suite.ctrl.Finish()
 
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_LOST)
+	updateEvent, err := statusupdate.NewV0(event)
+	suite.NoError(err)
+
 	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
 	// generates new mesos task id that is different with the one in the
 	// task status update.
@@ -1185,7 +1222,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskLostStatusUpdate() {
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(context.Background(), _pelotonTaskID).
 		Return(taskInfo, nil)
-	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), updateEvent))
 }
 
 // Test processing status update for a task failed to be fetched frmm DB.
@@ -1193,10 +1230,13 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskIDFetchError() {
 	defer suite.ctrl.Finish()
 
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_LOST)
+	updateEvent, err := statusupdate.NewV0(event)
+	suite.NoError(err)
+
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(context.Background(), _pelotonTaskID).
 		Return(nil, fmt.Errorf("fake db error"))
-	suite.Error(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	suite.Error(suite.updater.ProcessStatusUpdate(context.Background(), updateEvent))
 }
 
 // Test processing status update for a task missing from DB.
@@ -1204,13 +1244,15 @@ func (suite *TaskUpdaterTestSuite) TestProcessMissingTaskStatusUpdate() {
 	defer suite.ctrl.Finish()
 
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_RUNNING)
+	updateEvent, err := statusupdate.NewV0(event)
+	suite.NoError(err)
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(context.Background(), _pelotonTaskID).
 		Return(nil, yarpcerrors.NotFoundErrorf("task:%s not found", _pelotonTaskID))
 	suite.lmMock.EXPECT().
 		Kill(gomock.Any(), gomock.Any(), gomock.Any(), nil).
 		Return(nil)
-	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), updateEvent))
 }
 
 func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateVolumeUponRunning() {
@@ -1218,6 +1260,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateVolumeUponRunning() {
 
 	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_RUNNING)
+	updateEvent, err := statusupdate.NewV0(event)
+	suite.NoError(err)
 	taskInfo := createTestTaskInfo(task.TaskState_LAUNCHED)
 	taskInfo.GetConfig().Volume = &task.PersistentVolumeConfig{}
 	testVolumeID := &peloton.VolumeID{
@@ -1265,7 +1309,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateVolumeUponRunning() {
 		cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return(),
 	)
 
-	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), updateEvent))
 	suite.Equal(
 		int64(1),
 		suite.testScope.Snapshot().Counters()["status_updater.tasks_running_total+"].Value())
@@ -1276,6 +1320,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipVolumeUponRunningI
 
 	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_RUNNING)
+	updateEvent, err := statusupdate.NewV0(event)
+	suite.NoError(err)
 	taskInfo := createTestTaskInfo(task.TaskState_LAUNCHED)
 	taskInfo.GetConfig().Volume = &task.PersistentVolumeConfig{}
 	testVolumeID := &peloton.VolumeID{
@@ -1321,7 +1367,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipVolumeUponRunningI
 		cachedJob.EXPECT().UpdateResourceUsage(gomock.Any()).Return(),
 	)
 
-	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), updateEvent))
 	suite.Equal(
 		int64(1),
 		suite.testScope.Snapshot().Counters()["status_updater.tasks_running_total+"].Value())
@@ -1332,6 +1378,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessFailedTaskRunningStatusUpdate() {
 
 	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_RUNNING)
+	updateEvent, err := statusupdate.NewV0(event)
+	suite.NoError(err)
 	taskInfo := createTestTaskInfo(task.TaskState_FAILED)
 	taskInfo.GetRuntime().CompletionTime = _currentTime
 
@@ -1358,7 +1406,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessFailedTaskRunningStatusUpdate() {
 		JobRuntimeDuration(job.JobType_BATCH).
 		Return(1 * time.Second)
 	suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return()
-	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), updateEvent))
 }
 
 // Test case of processing status update for lost event.
@@ -1369,6 +1417,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessLostEventStatusUpdate() {
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_LOST)
 	timeNow := float64(time.Now().UnixNano())
 	event.MesosTaskStatus.Timestamp = &timeNow
+	updateEvent, err := statusupdate.NewV0(event)
+	suite.NoError(err)
 	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
 
 	gomock.InOrder(
@@ -1398,14 +1448,14 @@ func (suite *TaskUpdaterTestSuite) TestProcessLostEventStatusUpdate() {
 	)
 
 	now = nowMock
-	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), updateEvent))
 }
 
 func (suite *TaskUpdaterTestSuite) TestUpdaterProcessListeners() {
 	defer suite.ctrl.Finish()
 
-	suite.mockListener1.EXPECT().OnEvents([]*pb_eventstream.Event{nil})
-	suite.mockListener2.EXPECT().OnEvents([]*pb_eventstream.Event{nil})
+	suite.mockListener1.EXPECT().OnV0Events([]*pb_eventstream.Event{nil})
+	suite.mockListener2.EXPECT().OnV0Events([]*pb_eventstream.Event{nil})
 
 	suite.updater.ProcessListeners(nil)
 }

@@ -89,13 +89,13 @@ type TestEventProcessor struct {
 	events []*pbevent.Event
 }
 
-func (p *TestEventProcessor) OnEvent(event *pbevent.Event) {
+func (p *TestEventProcessor) OnV1Event(event *pbevent.Event) {
 	p.Lock()
 	defer p.Unlock()
 	p.events = append(p.events, event)
 }
 
-func (p *TestEventProcessor) OnEvents(events []*pbevent.Event) {
+func (p *TestEventProcessor) OnV1Events(events []*pbevent.Event) {
 
 }
 

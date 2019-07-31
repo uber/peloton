@@ -38,6 +38,8 @@ const (
 	PelotonResourceManager = "peloton-resmgr"
 	// PelotonHostManager application name
 	PelotonHostManager = "peloton-hostmgr"
+	// PelotonV1HostManager application name
+	PelotonV1HostManager = "peloton-v1-hostmgr"
 	// PelotonPlacement application name
 	PelotonPlacement = "peloton-placement"
 	// PelotonCLI application name

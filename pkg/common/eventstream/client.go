@@ -39,10 +39,10 @@ var (
 // EventHandler is the interface for handling task update events
 type EventHandler interface {
 	// The event notification callback
-	OnEvent(event *pbeventstream.Event)
+	OnV0Event(event *pbeventstream.Event)
 
 	// The events notification callback
-	OnEvents(events []*pbeventstream.Event)
+	OnV0Events(events []*pbeventstream.Event)
 
 	// Returns the event progress the handler has processed. The value
 	// will be used by the client to determine the purgeOffset
@@ -268,10 +268,10 @@ func (c *Client) waitEventsLoop(stopCh <-chan struct{}) {
 
 			for _, event := range response.Events {
 				c.log.WithField("event_offset", event.GetOffset()).Debug("Processing event")
-				c.eventHandler.OnEvent(event)
+				c.eventHandler.OnV0Event(event)
 				c.beginOffset = event.GetOffset() + 1
 			}
-			c.eventHandler.OnEvents(response.Events)
+			c.eventHandler.OnV0Events(response.Events)
 			c.metrics.EventsConsumed.Inc(int64(len(response.Events)))
 		}
 	}

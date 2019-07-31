@@ -369,14 +369,14 @@ func (h *eventHandler) Update(ctx context.Context, body *sched.Event) error {
 	return nil
 }
 
-// OnEvent callback
-func (f *eventForwarder) OnEvent(event *pb_eventstream.Event) {
+// OnV0Event callback
+func (f *eventForwarder) OnV0Event(event *pb_eventstream.Event) {
 	//Not implemented
 }
 
-// OnEvents callback. In this callback, a batch of events are forwarded to
+// OnV0Events callback. In this callback, a batch of events are forwarded to
 // resource manager.
-func (f *eventForwarder) OnEvents(events []*pb_eventstream.Event) {
+func (f *eventForwarder) OnV0Events(events []*pb_eventstream.Event) {
 	if len(events) == 0 {
 		return
 	}

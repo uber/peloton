@@ -19,7 +19,7 @@ import (
 	"encoding/base64"
 	"time"
 
-	"github.com/uber/peloton/.gen/mesos/v1"
+	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
