@@ -326,11 +326,18 @@ func (s *HostMgrOfferHandlerTestSuite) TestStatusUpdateDedupe() {
 
 	s.store.EXPECT().
 		GetFrameworkID(gomock.Any(), gomock.Eq(_frameworkName)).
-		Return(value, nil).AnyTimes()
+		Return(value, nil).
+		AnyTimes()
 	s.store.EXPECT().
 		GetMesosStreamID(gomock.Any(), gomock.Eq(_frameworkName)).
-		Return(_streamID, nil).AnyTimes()
-	s.schedulerClient.EXPECT().Call(_streamID, msg).Return(nil)
+		Return(_streamID, nil).
+		AnyTimes()
+	// Acknowledge call can happen multiple times, as multiple go-routines
+	// process simultaneously
+	s.schedulerClient.EXPECT().
+		Call(_streamID, msg).
+		Return(nil).
+		MinTimes(1)
 
 	handler.EventPurged(items)
 	handler.UpdateCounters()
