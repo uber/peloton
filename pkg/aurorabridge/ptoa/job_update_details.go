@@ -113,7 +113,7 @@ func JoinRollbackJobUpdateDetails(d1, d2 *api.JobUpdateDetails) *api.JobUpdateDe
 	}
 
 	// Stitch together the events of the two updates in descending order.
-	var updateEvents []*api.JobUpdateEvent
+	updateEvents := []*api.JobUpdateEvent{}
 	for _, e := range d1.GetUpdateEvents() {
 		if _rollbackAndTerminalStatuses.Has(e.GetStatus()) {
 			// Ignore any rollback / terminal statuses from the first
@@ -129,7 +129,7 @@ func JoinRollbackJobUpdateDetails(d1, d2 *api.JobUpdateDetails) *api.JobUpdateDe
 	}
 
 	// Stitch together the instance events of the two updates in descending order.
-	var instanceEvents []*api.JobInstanceUpdateEvent
+	instanceEvents := []*api.JobInstanceUpdateEvent{}
 	for _, e := range d1.GetInstanceEvents() {
 		instanceEvents = append(instanceEvents, e)
 	}
