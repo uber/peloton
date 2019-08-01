@@ -667,6 +667,8 @@ func isDuplicateStateUpdate(
 	}
 
 	newStateReason := updateEvent.Reason()
+	// TODO p2k: not sure which kubelet reason matches this.
+	// Should we skip some status updates from kubelets?
 	if newStateReason != mesos.TaskStatus_REASON_TASK_HEALTH_CHECK_STATUS_UPDATED.String() {
 		log.WithFields(log.Fields{
 			"db_task_runtime":   taskInfo.GetRuntime(),
