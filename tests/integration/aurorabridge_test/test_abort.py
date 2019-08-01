@@ -233,15 +233,17 @@ def test__manual_rollback_abort(client):
                         "unexpected metadata %s for affected instances" % m
                     )
         elif run_id == "2":
-            for m in t.assignedTask.task.metadata:
-                if m.key == "test_key_11":
-                    assert m.value == "test_value_11"
-                elif m.key == "test_key_22":
-                    assert m.value == "test_value_22"
-                else:
-                    assert False, (
-                        "unexpected metadata %s for affected instances" % m
-                    )
+            # Preference to update instances has changed.
+            # Previously behavior, start to update instance from instance_0.
+            # run_1 (config_1) -> on_update run_2 (config_2) -> rollback run_3 (config_1)
+            #
+            # Current behavior, start with instance which is not available or killed,
+            # thereby instances which were on-going update will be rolled back first.
+            # If an instance was in KILLED state (run-id=1) when it was picked up for rollback,
+            # the run-id will be bumped up to 2 and move the config to the original one. 
+            # An instance with run-id=2 can either be on config_1 or config_2 (due to first update)
+            # run_1 (config_1) -> (instance is in KILLED state, rollback runs first on it) rollback run_2 (config_1)
+            continue
         else:
             assert False, (
                 "unexpected run id %s" % t.assignedTask.taskId
