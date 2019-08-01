@@ -240,7 +240,7 @@ def test__manual_rollback_abort(client):
             # Current behavior, start with instance which is not available or killed,
             # thereby instances which were on-going update will be rolled back first.
             # If an instance was in KILLED state (run-id=1) when it was picked up for rollback,
-            # the run-id will be bumped up to 2 and move the config to the original one. 
+            # the run-id will be bumped up to 2 and move the config to the original one.
             # An instance with run-id=2 can either be on config_1 or config_2 (due to first update)
             # run_1 (config_1) -> (instance is in KILLED state, rollback runs first on it) rollback run_2 (config_1)
             continue

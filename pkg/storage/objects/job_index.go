@@ -17,6 +17,7 @@ package objects
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 var (
@@ -239,29 +241,30 @@ func (j *JobIndexObject) ToJobSummary() (*job.JobSummary, error) {
 		RespoolID:     &peloton.ResourcePoolID{Value: j.RespoolID},
 	}
 
-	err := json.Unmarshal([]byte(j.RuntimeInfo), &summary.Runtime)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"job_id": j.JobID,
-		}).WithError(err).Info("JobIndexObject: failed to unmarshal runtime info")
-		return nil, err
-	}
-
-	err = json.Unmarshal([]byte(j.Labels), &summary.Labels)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"job_id": j.JobID,
-		}).WithError(err).Info("JobIndexObject: failed to unmarshal labels")
-		return nil, err
-	}
-
-	if len(j.SLA) != 0 {
-		err = json.Unmarshal([]byte(j.SLA), &summary.SLA)
+	if len(j.RuntimeInfo) > 0 {
+		err := json.Unmarshal([]byte(j.RuntimeInfo), &summary.Runtime)
 		if err != nil {
-			log.WithFields(log.Fields{
-				"job_id": j.JobID,
-			}).WithError(err).Info("JobIndexObject: failed to unmarshal sla config")
-			return nil, err
+			return nil,
+				yarpcerrors.InternalErrorf(fmt.Sprintf(
+					"JobIndexObject: failed to unmarshal runtime info: %s", err.Error()))
+		}
+	}
+
+	if len(j.Labels) > 0 {
+		err := json.Unmarshal([]byte(j.Labels), &summary.Labels)
+		if err != nil {
+			return nil,
+				yarpcerrors.InternalErrorf(fmt.Sprintf(
+					"JobIndexObject: failed to unmarshal labels: %s", err.Error()))
+		}
+	}
+
+	if len(j.SLA) > 0 {
+		err := json.Unmarshal([]byte(j.SLA), &summary.SLA)
+		if err != nil {
+			return nil,
+				yarpcerrors.InternalErrorf(fmt.Sprintf(
+					"JobIndexObject: failed to unmarshal sla config: %s", err.Error()))
 		}
 	}
 
@@ -356,8 +359,7 @@ func (d *jobIndexOps) GetSummary(
 		return nil, err
 	}
 
-	jobSummary, err := jobIndexObject.ToJobSummary()
-	return jobSummary, nil
+	return jobIndexObject.ToJobSummary()
 }
 
 // Update updates a JobIndexObject in db

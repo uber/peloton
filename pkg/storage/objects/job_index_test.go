@@ -422,6 +422,21 @@ func (s *JobIndexObjectTestSuite) TestToJobSummary() {
 	expectedSummary.Labels = nil
 	summary, err = obj.ToJobSummary()
 	s.Error(err)
+
+	// job index with all default value
+	defaultJobIndex := &JobIndexObject{JobID: &base.OptionalString{Value: jobID.GetValue()}}
+	summary, err = defaultJobIndex.ToJobSummary()
+	s.NoError(err)
+	s.Empty(summary.Labels)
+	s.Empty(summary.Name)
+	s.Nil(summary.Runtime)
+
+	// job index with data in bad format intentionally
+	jobIndexWithBadData := &JobIndexObject{JobID: &base.OptionalString{Value: jobID.GetValue()}}
+	jobIndexWithBadData.Labels = "abc"
+	summary, err = jobIndexWithBadData.ToJobSummary()
+	s.Error(err)
+	s.Nil(summary)
 }
 
 // Tests the failure scenarios for new job index object
