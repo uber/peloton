@@ -17,11 +17,16 @@ package binpacking
 import (
 	"testing"
 
+	cqosmocks "github.com/uber/peloton/.gen/qos/v1alpha1/mocks"
+
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
 )
 
 type BinPackingTestSuite struct {
 	suite.Suite
+	mockCtrl         *gomock.Controller
+	mockedCQosClient *cqosmocks.MockQoSAdvisorServiceYARPCClient
 }
 
 func TestBinPackingTestSuiteTestSuite(t *testing.T) {
@@ -29,16 +34,19 @@ func TestBinPackingTestSuiteTestSuite(t *testing.T) {
 }
 
 func (suite *BinPackingTestSuite) SetupTest() {
-	Init()
+	suite.mockedCQosClient = cqosmocks.NewMockQoSAdvisorServiceYARPCClient(suite.mockCtrl)
+	Init(suite.mockedCQosClient)
 }
 
 // TestInit tests the Init() function
 func (suite *BinPackingTestSuite) TestInit() {
-	suite.Equal(2, len(rankers))
+	suite.Equal(3, len(rankers))
 	suite.NotNil(rankers[DeFrag])
 	suite.Equal(rankers[DeFrag].Name(), DeFrag)
 	suite.NotNil(rankers[FirstFit])
 	suite.Equal(rankers[FirstFit].Name(), FirstFit)
+	suite.NotNil(rankers[LoadAware])
+	suite.Equal(rankers[LoadAware].Name(), LoadAware)
 }
 
 // TestRegister tests the register() function
@@ -66,8 +74,9 @@ func (suite *BinPackingTestSuite) TestGetRankerByName() {
 // TestGetRankers tests the GetRankers() function
 func (suite *BinPackingTestSuite) TestGetRankers() {
 	result := GetRankers()
-	suite.Equal(2, len(result))
-	expectedNames := []string{DeFrag, FirstFit}
+	suite.Equal(3, len(result))
+	expectedNames := []string{DeFrag, FirstFit, LoadAware}
 	suite.Contains(expectedNames, result[0].Name())
 	suite.Contains(expectedNames, result[1].Name())
+	suite.Contains(expectedNames, result[2].Name())
 }

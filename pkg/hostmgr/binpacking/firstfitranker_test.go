@@ -15,6 +15,7 @@
 package binpacking
 
 import (
+	"context"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -27,6 +28,7 @@ import (
 )
 
 type FirstFitRankerTestSuite struct {
+	ctx context.Context
 	suite.Suite
 	firstfitRanker Ranker
 	ctrl           *gomock.Controller
@@ -50,7 +52,9 @@ func (suite *FirstFitRankerTestSuite) TestName() {
 }
 
 func (suite *FirstFitRankerTestSuite) TestGetRankedHostList() {
-	sortedList := suite.firstfitRanker.GetRankedHostList(suite.offerIndex)
+	sortedList := suite.firstfitRanker.GetRankedHostList(
+		suite.ctx,
+		suite.offerIndex)
 	suite.EqualValues(len(sortedList), 5)
 	for _, sum := range sortedList {
 		switch sum.(summary.HostSummary).GetHostname() {
@@ -79,9 +83,17 @@ func (suite *FirstFitRankerTestSuite) TestGetRankedHostList() {
 	// Checking by adding new host to ranker it does not effect any thing
 	// for the firstfit ranker
 	AddHostToIndex(5, suite.offerIndex, suite.watchProcessor)
-	sortedListNew := suite.firstfitRanker.GetRankedHostList(suite.offerIndex)
+	sortedListNew := suite.firstfitRanker.GetRankedHostList(
+		suite.ctx,
+		suite.offerIndex,
+	)
 	suite.EqualValues(len(sortedListNew), 6)
-	suite.firstfitRanker.RefreshRanking(suite.offerIndex)
-	sortedListNew = suite.firstfitRanker.GetRankedHostList(suite.offerIndex)
+	suite.firstfitRanker.RefreshRanking(
+		suite.ctx,
+		suite.offerIndex)
+	sortedListNew = suite.firstfitRanker.GetRankedHostList(
+		suite.ctx,
+		suite.offerIndex,
+	)
 	suite.EqualValues(len(sortedListNew), 6)
 }

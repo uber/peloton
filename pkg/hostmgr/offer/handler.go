@@ -36,7 +36,7 @@ import (
 	"github.com/uber/peloton/pkg/common/cirbuf"
 	"github.com/uber/peloton/pkg/common/eventstream"
 	"github.com/uber/peloton/pkg/hostmgr/binpacking"
-	config "github.com/uber/peloton/pkg/hostmgr/config"
+	"github.com/uber/peloton/pkg/hostmgr/config"
 	hostmgr_mesos "github.com/uber/peloton/pkg/hostmgr/mesos"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
 	"github.com/uber/peloton/pkg/hostmgr/offer/offerpool"

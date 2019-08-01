@@ -15,6 +15,8 @@
 package binpacking
 
 import (
+	cqos "github.com/uber/peloton/.gen/qos/v1alpha1"
+
 	log "github.com/sirupsen/logrus"
 )
 
@@ -24,6 +26,9 @@ const (
 
 	// FirstFit is the name of the First Fit policy
 	FirstFit = "FIRST_FIT"
+
+	// LoadAware is the name of the Load Aware policy
+	LoadAware = "LOAD_AWARE"
 )
 
 // map of ranker name to Ranker. Not thread-safe -> should be
@@ -31,9 +36,12 @@ const (
 // initialization.
 var rankers = make(map[string]Ranker)
 
-// register creates a ranker and keeps it in the
+// register creates all the rankers and keeps it in the
 // ranker map.
-func register(name string, rankerFunc func() Ranker) {
+func register(
+	name string,
+	rankerFunc func() Ranker,
+) {
 	log.WithField("name", name).Info("Registering ranker")
 	if rankerFunc == nil {
 		log.WithField("name", name).Error("invalid ranker creator function")
@@ -44,6 +52,7 @@ func register(name string, rankerFunc func() Ranker) {
 		return
 	}
 	ranker := rankerFunc()
+
 	if ranker == nil {
 		log.WithField("name", name).Error("nil ranker created")
 		return
@@ -52,9 +61,20 @@ func register(name string, rankerFunc func() Ranker) {
 }
 
 // Init registers all the rankers
-func Init() {
+func Init(cqosClient cqos.QoSAdvisorServiceYARPCClient) {
 	register(DeFrag, NewDeFragRanker)
 	register(FirstFit, NewFirstFitRanker)
+
+	// if QosAdivsorService discovery address is not set
+	if cqosClient == nil {
+		return
+	}
+	if _, registered := rankers[LoadAware]; registered {
+		log.WithField("name", LoadAware).Error("ranker already registered")
+		return
+	}
+	log.WithField("name", LoadAware).Info("Registering ranker")
+	rankers[LoadAware] = NewLoadAwareRanker(cqosClient)
 }
 
 // GetRankerByName returns a ranker with specified name
@@ -69,4 +89,9 @@ func GetRankers() []Ranker {
 		result = append(result, r)
 	}
 	return result
+}
+
+// CleanUpRanker is for testing purpose only.
+func CleanUpRanker() {
+	rankers = make(map[string]Ranker)
 }

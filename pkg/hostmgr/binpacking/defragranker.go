@@ -15,13 +15,12 @@
 package binpacking
 
 import (
+	"context"
 	"sync"
 
 	"github.com/uber/peloton/pkg/common/sorter"
 	"github.com/uber/peloton/pkg/hostmgr/summary"
 	"github.com/uber/peloton/pkg/hostmgr/util"
-
-	log "github.com/sirupsen/logrus"
 )
 
 // defragRanker is the struct for implementation of
@@ -54,10 +53,10 @@ func (d *defragRanker) Name() string {
 // This checks if there is already a list present pass that
 // and it depends on RefreshRanking to refresh the list
 func (d *defragRanker) GetRankedHostList(
+	ctx context.Context,
 	offerIndex map[string]summary.HostSummary) []interface{} {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	log.Debugf(" %s ranker GetRankedHostList is been called", d.Name())
 	// if d.summaryList is not initilized , call the getRankedHostList
 	if len(d.summaryList) == 0 {
 		d.summaryList = d.getRankedHostList(offerIndex)
@@ -67,7 +66,9 @@ func (d *defragRanker) GetRankedHostList(
 
 // RefreshRanking refreshes the hostlist based on new host summary index
 // This function has to be called periodically to refresh the list
-func (d *defragRanker) RefreshRanking(offerIndex map[string]summary.HostSummary) {
+func (d *defragRanker) RefreshRanking(
+	ctx context.Context,
+	offerIndex map[string]summary.HostSummary) {
 	summaryList := d.getRankedHostList(offerIndex)
 	d.mu.Lock()
 	defer d.mu.Unlock()

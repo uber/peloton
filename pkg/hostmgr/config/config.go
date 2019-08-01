@@ -82,4 +82,7 @@ type Config struct {
 
 	// Watch API specific configuration
 	Watch watchevent.Config `yaml:"watch"`
+
+	//Cqos advisor specific configuration
+	QoSAdvisorService CqosAdvisorConfig `yaml:"qos_advisor"`
 }

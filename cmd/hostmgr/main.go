@@ -22,6 +22,7 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
+	cqos "github.com/uber/peloton/.gen/qos/v1alpha1"
 	"github.com/uber/peloton/pkg/auth"
 	auth_impl "github.com/uber/peloton/pkg/auth/impl"
 	"github.com/uber/peloton/pkg/common"
@@ -63,6 +64,7 @@ import (
 	_ "go.uber.org/automaxprocs"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
+	"go.uber.org/yarpc/transport/grpc"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -188,6 +190,12 @@ var (
 	binPacking = app.Flag(
 		"bin_packing", "Bin Packing enable/disable, by default disabled.").
 		Envar("BIN_PACKING").
+		String()
+
+	qoSAdvisorServiceAddress = app.Flag(
+		"qos_advisor_service_address", "Qos advisor service address.").
+		Default("").
+		Envar("QOS_ADVISOR_SERVICE_ADDRESS").
 		String()
 
 	authType = app.Flag(
@@ -337,6 +345,10 @@ func main() {
 		cfg.K8s.Kubeconfig = *kubeConfigFile
 	}
 
+	if *qoSAdvisorServiceAddress != "" {
+		cfg.HostManager.QoSAdvisorService.Address = *qoSAdvisorServiceAddress
+	}
+
 	log.WithField("config", cfg).Info("Loaded Host Manager configuration")
 
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(
@@ -449,6 +461,18 @@ func main() {
 		},
 	}
 
+	if cfg.HostManager.QoSAdvisorService.Address != "" {
+		var cqosOutbound *grpc.Outbound
+		// Setup the discovery service to detect QoSAdvisorService
+		cqosTransport := grpc.NewTransport()
+		cqosOutbound = cqosTransport.NewSingleOutbound(cfg.HostManager.
+			QoSAdvisorService.Address)
+		outbounds[common.QoSAdvisorService] =
+			transport.Outbounds{
+				Unary: cqosOutbound,
+			}
+	}
+
 	securityManager, err := auth_impl.CreateNewSecurityManager(&cfg.Auth)
 	if err != nil {
 		log.WithError(err).
@@ -504,6 +528,11 @@ func main() {
 		store, // store implements FrameworkInfoStore
 	)
 
+	var cQosClient cqos.QoSAdvisorServiceYARPCClient
+	if cfg.HostManager.QoSAdvisorService.Address != "" {
+		cQosClient = cqos.NewQoSAdvisorServiceYARPCClient(
+			dispatcher.ClientConfig(common.QoSAdvisorService))
+	}
 	log.WithFields(log.Fields{
 		"http_port": cfg.HostManager.HTTPPort,
 		"url_path":  common.PelotonEndpointPath,
@@ -568,8 +597,12 @@ func main() {
 	if err != nil {
 		log.WithError(err).Fatal("Cannot register reconciler background worker.")
 	}
+	if cfg.HostManager.QoSAdvisorService.Address != "" {
+		bin_packing.Init(cQosClient)
+	} else {
+		bin_packing.Init(nil)
+	}
 
-	bin_packing.Init()
 	log.WithField("ranker_name", cfg.HostManager.BinPacking).
 		Info("Bin packing is enabled")
 	defaultRanker := bin_packing.GetRankerByName(cfg.HostManager.BinPacking)

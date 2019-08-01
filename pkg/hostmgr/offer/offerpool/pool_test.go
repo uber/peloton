@@ -30,8 +30,10 @@ import (
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
-
+	cqos "github.com/uber/peloton/.gen/qos/v1alpha1"
+	cqosmocks "github.com/uber/peloton/.gen/qos/v1alpha1/mocks"
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/hostmgr/binpacking"
@@ -97,11 +99,13 @@ func (r goroutineReporter) Fatalf(format string, args ...interface{}) {
 
 type OfferPoolTestSuite struct {
 	suite.Suite
+	ctx context.Context
 
 	ctrl                 *gomock.Controller
 	pool                 *offerPool
 	schedulerClient      *mpb_mocks.MockSchedulerClient
 	masterOperatorClient *mpb_mocks.MockMasterOperatorClient
+	mockedCQosClient     *cqosmocks.MockQoSAdvisorServiceYARPCClient
 	provider             *hostmgr_mesos_mocks.MockFrameworkInfoProvider
 	agent1Offers         []*mesos.Offer
 	agent2Offers         []*mesos.Offer
@@ -129,11 +133,14 @@ func (suite *OfferPoolTestSuite) SetupSuite() {
 			suite.agent4Offers = append(suite.agent4Offers, offers...)
 		}
 	}
-	binpacking.Init()
+	binpacking.Init(nil)
 }
 
 func (suite *OfferPoolTestSuite) SetupTest() {
+	suite.ctx = context.Background()
 	suite.ctrl = gomock.NewController(goroutineReporter{})
+	suite.mockedCQosClient = cqosmocks.
+		NewMockQoSAdvisorServiceYARPCClient(suite.ctrl)
 	suite.schedulerClient = mpb_mocks.NewMockSchedulerClient(suite.ctrl)
 	suite.masterOperatorClient = mpb_mocks.NewMockMasterOperatorClient(suite.ctrl)
 	suite.provider = hostmgr_mesos_mocks.NewMockFrameworkInfoProvider(suite.ctrl)
@@ -149,7 +156,7 @@ func (suite *OfferPoolTestSuite) SetupTest() {
 		watchProcessor:             suite.watchProcessor,
 	}
 	// reset the ranker state before use
-	suite.pool.binPackingRanker.RefreshRanking(nil)
+	suite.pool.binPackingRanker.RefreshRanking(suite.ctx, nil)
 
 	suite.pool.timedOffers.Range(func(key interface{}, value interface{}) bool {
 		suite.pool.timedOffers.Delete(key)
@@ -218,7 +225,7 @@ func (suite *OfferPoolTestSuite) TestClaimForLaunch() {
 	}
 	for i := 0; i < nClients; i++ {
 		go func(i int) {
-			hostOffers, _, err := suite.pool.ClaimForPlace(filter)
+			hostOffers, _, err := suite.pool.ClaimForPlace(suite.ctx, filter)
 			suite.NoError(err)
 			suite.Equal(int(limit), len(hostOffers))
 			mutex.Lock()
@@ -241,7 +248,7 @@ func (suite *OfferPoolTestSuite) TestClaimForLaunch() {
 	}
 	wg.Wait()
 
-	_, resultCount, _ := suite.pool.ClaimForPlace(filter)
+	_, resultCount, _ := suite.pool.ClaimForPlace(suite.ctx, filter)
 	suite.Equal(len(resultCount), 1)
 
 	// Launch Tasks for successful case.
@@ -280,7 +287,7 @@ func (suite *OfferPoolTestSuite) TestClaimForLaunch() {
 	suite.NoError(err)
 
 	suite.pool.AddOffers(context.Background(), suite.agent3Offers)
-	suite.pool.ClaimForPlace(filter)
+	suite.pool.ClaimForPlace(suite.ctx, filter)
 
 	// Launch Task on Host, who are set from Placing -> Ready
 	hostnames := suite.pool.ResetExpiredPlacingHostSummaries(time.Now().Add(2 * time.Hour))
@@ -519,7 +526,7 @@ func (suite *OfferPoolTestSuite) TestAddGetRemoveOffers() {
 	}
 	for i := 0; i < nClients; i++ {
 		go func(i int) {
-			hostOffers, _, err := suite.pool.ClaimForPlace(filter)
+			hostOffers, _, err := suite.pool.ClaimForPlace(suite.ctx, filter)
 			suite.NoError(err)
 			suite.Equal(int(limit), len(hostOffers))
 			mutex.Lock()
@@ -558,13 +565,13 @@ func (suite *OfferPoolTestSuite) TestAddGetRemoveOffers() {
 	suite.pool.RefreshGaugeMaps()
 
 	// All the hosts are in PlacingOffer status, ClaimForPlace should return err.
-	hostOffers, resultCount, _ := suite.pool.ClaimForPlace(filter)
+	hostOffers, resultCount, _ := suite.pool.ClaimForPlace(suite.ctx, filter)
 	suite.Equal(len(hostOffers), 0)
 	suite.Equal(resultCount["mismatch_status"], uint32(10))
 
 	// Return unused offers for a host and let other task be placed on that host.
 	suite.pool.ReturnUnusedOffers(_testAgent1)
-	hostOffers, _, _ = suite.pool.ClaimForPlace(filter)
+	hostOffers, _, _ = suite.pool.ClaimForPlace(suite.ctx, filter)
 	suite.Equal(len(hostOffers), 1)
 
 	// Remove Expired Offers,
@@ -796,6 +803,8 @@ func (suite *OfferPoolTestSuite) TestDeclineOffers() {
 }
 
 func (suite *OfferPoolTestSuite) TestOfferSorting() {
+	binpacking.CleanUpRanker()
+	binpacking.Init(suite.mockedCQosClient)
 	// Verify offer pool is empty
 	suite.Equal(suite.GetTimedOfferLen(), 0)
 
@@ -826,12 +835,29 @@ func (suite *OfferPoolTestSuite) TestOfferSorting() {
 		hostsvc.FilterHint_FILTER_HINT_RANKING_INVALID,
 		hostsvc.FilterHint_FILTER_HINT_RANKING_LEAST_AVAILABLE_FIRST,
 		hostsvc.FilterHint_FILTER_HINT_RANKING_RANDOM,
+		hostsvc.FilterHint_FILTER_HINT_RANKING_LOAD_AWARE,
 	}
-	for _, rh := range rankHints {
-		sortedList := suite.pool.getRankedHostSummaryList(
-			rh,
-			suite.pool.hostOfferIndex)
 
+	for _, rh := range rankHints {
+		if rh == hostsvc.FilterHint_FILTER_HINT_RANKING_LOAD_AWARE {
+			suite.mockedCQosClient.EXPECT().
+				GetHostMetrics(
+					suite.ctx,
+					gomock.Any()).Return(
+				&cqos.GetHostMetricsResponse{
+					Hosts: map[string]*cqos.Metrics{
+						"hostname0": {Score: 0},
+						"hostname1": {Score: 10},
+						"hostname2": {Score: 80},
+						"hostname3": {Score: 20},
+						"hostname4": {Score: 100},
+					}}, nil).Times(3)
+		}
+		sortedList := suite.pool.getRankedHostSummaryList(
+			suite.ctx,
+			rh,
+			suite.pool.hostOfferIndex,
+		)
 		if rh == hostsvc.FilterHint_FILTER_HINT_RANKING_RANDOM {
 			hosts := []string{
 				hostName0,
@@ -843,6 +869,20 @@ func (suite *OfferPoolTestSuite) TestOfferSorting() {
 				h := s.(summary.HostSummary).GetHostname()
 				suite.Contains(hosts, h)
 			}
+			continue
+		}
+
+		if rh == hostsvc.FilterHint_FILTER_HINT_RANKING_LOAD_AWARE {
+			suite.Equal(sortedList[0].(summary.HostSummary).GetHostname(),
+				"hostname0")
+			suite.Equal(sortedList[1].(summary.HostSummary).GetHostname(),
+				"hostname1")
+			suite.Equal(sortedList[2].(summary.HostSummary).GetHostname(),
+				"hostname3")
+			suite.Equal(sortedList[3].(summary.HostSummary).GetHostname(),
+				"hostname2")
+			suite.Equal(sortedList[4].(summary.HostSummary).GetHostname(),
+				"hostname4")
 			continue
 		}
 		suite.EqualValues(hmutil.GetResourcesFromOffers(
@@ -1041,10 +1081,73 @@ func (suite *OfferPoolTestSuite) TestClaimForPlaceWithFilterHint() {
 		Hint:     &hostsvc.FilterHint{HostHint: []*hostsvc.FilterHint_Host{{Hostname: hostname2}}},
 		Quantity: &hostsvc.QuantityControl{MaxHosts: 1},
 	}
-	result, _, err := suite.pool.ClaimForPlace(filter)
+	result, _, err := suite.pool.ClaimForPlace(suite.ctx, filter)
 	suite.NoError(err)
 	suite.Len(result, 1)
 	suite.NotNil(result[hostname2])
+}
+
+// TestClaimForPlaceWithFilterHint tests ClaimForPlace would
+// honor rank hint load aware
+// hostname0 is the least loaded but not fit the resource constraint
+// hostname1 will be picked
+func (suite *OfferPoolTestSuite) TestClaimForPlaceWithRankHintLoadAware() {
+	binpacking.CleanUpRanker()
+	binpacking.Init(suite.mockedCQosClient)
+	// Verify offer pool is empty
+	suite.Equal(suite.GetTimedOfferLen(), 0)
+
+	hostName0 := "hostname0"
+	offer0 := suite.createOffer(hostName0,
+		scalar.Resources{CPU: 1, Mem: 1, Disk: 1, GPU: 1})
+
+	hostName1 := "hostname1"
+	offer1 := suite.createOffer(hostName1,
+		scalar.Resources{CPU: 2, Mem: 1, Disk: 1, GPU: 4})
+
+	hostName2 := "hostname2"
+	offer2 := suite.createOffer(hostName2,
+		scalar.Resources{CPU: 2, Mem: 2, Disk: 2, GPU: 4})
+
+	hostName3 := "hostname3"
+	offer3 := suite.createOffer(hostName3,
+		scalar.Resources{CPU: 3, Mem: 3, Disk: 3, GPU: 2})
+
+	hostName4 := "hostname4"
+	offer4 := suite.createOffer(hostName4,
+		scalar.Resources{CPU: 3, Mem: 3, Disk: 3, GPU: 2})
+
+	suite.pool.AddOffers(context.Background(),
+		[]*mesos.Offer{offer2, offer3, offer1, offer0, offer4})
+
+	suite.mockedCQosClient.EXPECT().
+		GetHostMetrics(
+			suite.ctx,
+			gomock.Any()).Return(
+		&cqos.GetHostMetricsResponse{
+			Hosts: map[string]*cqos.Metrics{
+				"hostname0": {Score: 0},
+				"hostname1": {Score: 10},
+				"hostname2": {Score: 80},
+				"hostname3": {Score: 20},
+				"hostname4": {Score: 100},
+			}}, nil).Times(3)
+
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()).AnyTimes()
+
+	filter := &hostsvc.HostFilter{
+		Hint:     &hostsvc.FilterHint{RankHint: hostsvc.FilterHint_FILTER_HINT_RANKING_LOAD_AWARE},
+		Quantity: &hostsvc.QuantityControl{MaxHosts: 1},
+		ResourceConstraint: &hostsvc.ResourceConstraint{
+			Minimum: &task.ResourceConfig{
+				CpuLimit: 2,
+			},
+		},
+	}
+	result, _, err := suite.pool.ClaimForPlace(suite.ctx, filter)
+	suite.NoError(err)
+	suite.Len(result, 1)
+	suite.NotNil(result[hostName1])
 }
 
 func TestOfferPoolTestSuite(t *testing.T) {

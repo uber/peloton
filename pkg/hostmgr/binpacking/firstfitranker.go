@@ -15,9 +15,9 @@
 package binpacking
 
 import (
-	"github.com/uber/peloton/pkg/hostmgr/summary"
+	"context"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/uber/peloton/pkg/hostmgr/summary"
 )
 
 // firstFitRanker is the struct for implementation of
@@ -39,8 +39,9 @@ func (f *firstFitRanker) Name() string {
 // GetRankedHostList is implementation of Ranker.GetRankedHostList
 // This returns the list ordered by Map.
 // FirstFit implementation would be first host which can be fit
-func (f *firstFitRanker) GetRankedHostList(offerIndex map[string]summary.HostSummary) []interface{} {
-	log.Debugf(" %s ranker GetRankedHostList is been called", f.Name())
+func (f *firstFitRanker) GetRankedHostList(
+	ctx context.Context,
+	offerIndex map[string]summary.HostSummary) []interface{} {
 	var summaryList []interface{}
 	for _, summary := range offerIndex {
 		summaryList = append(summaryList, summary)
@@ -50,6 +51,8 @@ func (f *firstFitRanker) GetRankedHostList(offerIndex map[string]summary.HostSum
 
 // RefreshRanking is implementation of Ranker.RefreshRanking
 // This is no op for first fitranker
-func (f *firstFitRanker) RefreshRanking(offerIndex map[string]summary.HostSummary) {
+func (f *firstFitRanker) RefreshRanking(
+	ctx context.Context,
+	offerIndex map[string]summary.HostSummary) {
 	return
 }

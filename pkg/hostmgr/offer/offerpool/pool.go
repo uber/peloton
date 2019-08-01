@@ -67,6 +67,7 @@ type Pool interface {
 	// First return value is returned offers, grouped by hostname as key,
 	// Second return value is a map from hostsvc.HostFilterResult to count.
 	ClaimForPlace(
+		ctx context.Context,
 		constraint *hostsvc.HostFilter) (
 		map[string]*summary.Offer,
 		map[string]uint32, error)
@@ -230,8 +231,7 @@ type offerPool struct {
 
 	mSchedulerClient           mpb.SchedulerClient
 	mesosFrameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider
-
-	metrics *Metrics
+	metrics                    *Metrics
 
 	// The default ranker for hosts during filtering
 	binPackingRanker binpacking.Ranker
@@ -247,7 +247,10 @@ type offerPool struct {
 // Results are grouped by hostname as key. Here, offers are not cleared from
 // the offer pool. First return value is returned offers, grouped by hostname
 // as key, Second return value is a map from hostsvc.HostFilterResult to count.
-func (p *offerPool) ClaimForPlace(hostFilter *hostsvc.HostFilter) (
+func (p *offerPool) ClaimForPlace(
+	ctx context.Context,
+	hostFilter *hostsvc.HostFilter,
+) (
 	map[string]*summary.Offer,
 	map[string]uint32,
 	error) {
@@ -280,8 +283,10 @@ func (p *offerPool) ClaimForPlace(hostFilter *hostsvc.HostFilter) (
 	var sortedSummaryList []interface{}
 	if !matcher.HasEnoughHosts() {
 		sortedSummaryList = p.getRankedHostSummaryList(
+			ctx,
 			hostFilter.GetHint().GetRankHint(),
-			p.hostOfferIndex)
+			p.hostOfferIndex,
+		)
 	}
 	for _, s := range sortedSummaryList {
 		matcher.tryMatch(s.(summary.HostSummary).GetHostname(), s.(summary.HostSummary))
@@ -308,8 +313,10 @@ func (p *offerPool) ClaimForPlace(hostFilter *hostsvc.HostFilter) (
 }
 
 func (p *offerPool) getRankedHostSummaryList(
+	ctx context.Context,
 	rankHint hostsvc.FilterHint_Ranking,
-	offerIndex map[string]summary.HostSummary) []interface{} {
+	offerIndex map[string]summary.HostSummary,
+) []interface{} {
 
 	ranker := p.binPackingRanker
 	switch rankHint {
@@ -323,8 +330,12 @@ func (p *offerPool) getRankedHostSummaryList(
 		// DeFrag orders hosts from lowest offered resources to most
 		// offered resources
 		ranker = binpacking.GetRankerByName(binpacking.DeFrag)
+
+	case hostsvc.FilterHint_FILTER_HINT_RANKING_LOAD_AWARE:
+		// Load aware orders hosts from lowest loaded to highest loaded
+		ranker = binpacking.GetRankerByName(binpacking.LoadAware)
 	}
-	return ranker.GetRankedHostList(offerIndex)
+	return ranker.GetRankedHostList(ctx, offerIndex)
 }
 
 // ClaimForLaunch takes offers from pool (removes from hostsummary) for launch.

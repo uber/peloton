@@ -36,6 +36,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	hostsvcmocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
+	cqosmocks "github.com/uber/peloton/.gen/qos/v1alpha1/mocks"
 	"github.com/uber/peloton/pkg/common/queue"
 	"github.com/uber/peloton/pkg/common/util"
 	bin_packing "github.com/uber/peloton/pkg/hostmgr/binpacking"
@@ -208,6 +209,7 @@ type HostMgrHandlerTestSuite struct {
 	watchEventStreamServer *hostsvcmocks.MockInternalHostServiceServiceWatchEventStreamEventYARPCServer
 	watchHostSummaryServer *hostsvcmocks.MockInternalHostServiceServiceWatchHostSummaryEventYARPCServer
 	topicsSupported        []watchevent.Topic
+	mockedCQosClient       *cqosmocks.MockQoSAdvisorServiceYARPCClient
 }
 
 func (suite *HostMgrHandlerTestSuite) SetupSuite() {
@@ -227,7 +229,9 @@ func (suite *HostMgrHandlerTestSuite) SetupSuite() {
 	}
 
 	suite.downMachines = append(suite.downMachines, downMachine)
-	bin_packing.Init()
+	suite.mockedCQosClient = cqosmocks.NewMockQoSAdvisorServiceYARPCClient(
+		suite.ctrl)
+	bin_packing.Init(suite.mockedCQosClient)
 }
 
 func (suite *HostMgrHandlerTestSuite) SetupTest() {

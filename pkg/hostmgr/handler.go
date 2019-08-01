@@ -488,7 +488,7 @@ func (h *ServiceHandler) AcquireHostOffers(
 		}, errors.Wrap(err, "invalid filter")
 	}
 
-	result, resultCount, err := h.offerPool.ClaimForPlace(body.GetFilter())
+	result, resultCount, err := h.offerPool.ClaimForPlace(ctx, body.GetFilter())
 	if err != nil {
 		h.metrics.AcquireHostOffersFail.Inc(1)
 		log.WithField("filter", body.GetFilter()).

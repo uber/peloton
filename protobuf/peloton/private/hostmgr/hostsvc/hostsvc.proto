@@ -150,6 +150,9 @@ message FilterHint {
 
       // Rank hosts with least available resources first
       FILTER_HINT_RANKING_LEAST_AVAILABLE_FIRST = 2;
+
+      // Rank hosts with load aware
+      FILTER_HINT_RANKING_LOAD_AWARE = 3;
     }
 
     repeated Host hostHint = 1;
