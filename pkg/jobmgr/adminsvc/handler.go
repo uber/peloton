@@ -168,5 +168,8 @@ func createLockableComponents(goalStateDriver goalstate.Driver, apiLock inbound.
 	result = append(result, &goalStateComponent{driver: goalStateDriver})
 	result = append(result, &readAPILockComponent{apiLock: apiLock})
 	result = append(result, &writeAPILockComponent{apiLock: apiLock})
+	result = append(result, &killLockComponent{lockable: goalStateDriver.GetLockable()})
+	result = append(result, &launchLockComponent{lockable: goalStateDriver.GetLockable()})
+
 	return result
 }

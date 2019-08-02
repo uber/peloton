@@ -34,12 +34,13 @@ import (
 const _defaultKillTaskActionTimeout = 5 * time.Second
 
 type v0LifecycleMgr struct {
+	*lockState
 	// v0 client for hostmgr task operations.
 	hostManagerV0 v0_hostsvc.InternalHostServiceYARPCClient
 }
 
-// New returns an instance of the v0 lifecycle manager.
-func New(
+// newV0LifecycleMgr returns an instance of the v0 lifecycle manager.
+func newV0LifecycleMgr(
 	dispatcher *yarpc.Dispatcher,
 ) *v0LifecycleMgr {
 	return &v0LifecycleMgr{
@@ -47,6 +48,7 @@ func New(
 			dispatcher.ClientConfig(
 				common.PelotonHostManager),
 		),
+		lockState: &lockState{state: 0},
 	}
 }
 
@@ -116,6 +118,11 @@ func (l *v0LifecycleMgr) Kill(
 	hostToReserve string,
 	rateLimiter *rate.Limiter,
 ) error {
+	// check lock
+	if l.lockState.hasKillLock() {
+		return yarpcerrors.InternalErrorf("kill op is locked")
+	}
+
 	// enforce rate limit
 	if rateLimiter != nil && !rateLimiter.Allow() {
 		return yarpcerrors.ResourceExhaustedErrorf(
@@ -145,6 +152,11 @@ func (l *v0LifecycleMgr) ShutdownExecutor(
 	agentID string,
 	rateLimiter *rate.Limiter,
 ) error {
+	// check lock
+	if l.lockState.hasKillLock() {
+		return yarpcerrors.InternalErrorf("shutdown executor op is locked")
+	}
+
 	// enforce rate limit
 	if rateLimiter != nil && !rateLimiter.Allow() {
 		return yarpcerrors.ResourceExhaustedErrorf(

@@ -21,6 +21,7 @@ import (
 	adminsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/admin/svc"
 
 	goalstatemocks "github.com/uber/peloton/pkg/jobmgr/goalstate/mocks"
+	lifecyclemgrmocks "github.com/uber/peloton/pkg/jobmgr/task/lifecyclemgr/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
@@ -38,6 +39,8 @@ type adminServiceHandlerTestSuite struct {
 func (suite *adminServiceHandlerTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.goalStateDriver = goalstatemocks.NewMockDriver(suite.ctrl)
+	lockable := lifecyclemgrmocks.NewMockLockable(suite.ctrl)
+	suite.goalStateDriver.EXPECT().GetLockable().Return(lockable).AnyTimes()
 	suite.handler = createServiceHandler(suite.goalStateDriver, nil)
 }
 

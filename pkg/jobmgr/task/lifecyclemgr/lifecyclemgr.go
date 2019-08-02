@@ -17,9 +17,6 @@ package lifecyclemgr
 import (
 	"context"
 
-	v0_lifecyclemgr "github.com/uber/peloton/pkg/jobmgr/task/lifecyclemgr/v0"
-	v1_lifecyclemgr "github.com/uber/peloton/pkg/jobmgr/task/lifecyclemgr/v1"
-
 	"github.com/uber/peloton/pkg/common/api"
 
 	"go.uber.org/yarpc"
@@ -28,6 +25,8 @@ import (
 
 // Manager interface defines methods to kill workloads.
 type Manager interface {
+	Lockable
+
 	// Kill will kill tasks/pods using their ID.
 	Kill(
 		ctx context.Context,
@@ -45,14 +44,14 @@ type Manager interface {
 	) error
 }
 
-// New gets hostmgr API specific task/pod lifecycle mgr instance.
+// New gets hostmgr API specific task/pod lifecycle mgr instance
 func New(
 	version api.Version,
 	dispatcher *yarpc.Dispatcher,
 ) Manager {
 	if version.IsV1() {
-		return v1_lifecyclemgr.New(dispatcher)
+		return newV1LifecycleMgr(dispatcher)
 	} else {
-		return v0_lifecyclemgr.New(dispatcher)
+		return newV0LifecycleMgr(dispatcher)
 	}
 }

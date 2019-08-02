@@ -30,7 +30,6 @@ import (
 	"github.com/uber/peloton/pkg/common/goalstate"
 	"github.com/uber/peloton/pkg/common/recovery"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
-	"github.com/uber/peloton/pkg/jobmgr/task/launcher"
 	"github.com/uber/peloton/pkg/jobmgr/task/lifecyclemgr"
 	"github.com/uber/peloton/pkg/storage"
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
@@ -104,6 +103,8 @@ type Driver interface {
 	Stop(cleanUpCache bool)
 	// Started returns true if goal state engine has finished start process
 	Started() bool
+	// GetLockable returns an interface which controls lock/unlock operations in goal state engine
+	GetLockable() lifecyclemgr.Lockable
 }
 
 // NewDriver returns a new goal state driver object.
@@ -115,7 +116,6 @@ func NewDriver(
 	updateStore storage.UpdateStore,
 	ormStore *ormobjects.Store,
 	jobFactory cached.JobFactory,
-	taskLauncher launcher.Launcher,
 	jobType job.JobType,
 	parentScope tally.Scope,
 	cfg Config,
@@ -157,7 +157,6 @@ func NewDriver(
 		jobRuntimeOps:   ormobjects.NewJobRuntimeOps(ormStore),
 		taskConfigV2Ops: ormobjects.NewTaskConfigV2Ops(ormStore),
 		jobFactory:      jobFactory,
-		taskLauncher:    taskLauncher,
 		mtx:             NewMetrics(scope),
 		cfg:             &cfg,
 		jobType:         jobType,
@@ -224,9 +223,6 @@ type driver struct {
 
 	// jobFactory is the in-memory cache object fpr jobs and tasks
 	jobFactory cached.JobFactory
-
-	// taskLauncher is used to launch tasks to host manager
-	taskLauncher launcher.Launcher
 
 	cfg        *Config  // goal state engine configuration
 	mtx        *Metrics // goal state metrics
@@ -501,6 +497,12 @@ func (d *driver) Stop(cleanUpCache bool) {
 
 	d.setState(stopped)
 	log.Info("goalstate driver stopped")
+}
+
+// GetLockable returns the lockable interface of goal state driver,
+// which defines the components that can be locked.
+func (d *driver) GetLockable() lifecyclemgr.Lockable {
+	return d.lm
 }
 
 func (d *driver) cleanUpJobFactory() {

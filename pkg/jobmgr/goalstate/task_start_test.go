@@ -32,7 +32,6 @@ import (
 	taskutil "github.com/uber/peloton/pkg/common/util/task"
 	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
-	launchermocks "github.com/uber/peloton/pkg/jobmgr/task/launcher/mocks"
 	storemocks "github.com/uber/peloton/pkg/storage/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -53,7 +52,6 @@ type TaskStartTestSuite struct {
 	cachedJob           *cachedmocks.MockJob
 	cachedConfig        *cachedmocks.MockJobConfigCache
 	cachedTask          *cachedmocks.MockTask
-	mockTaskLauncher    *launchermocks.MockLauncher
 	mockVolumeStore     *storemocks.MockPersistentVolumeStore
 	goalStateDriver     *driver
 	resmgrClient        *resmocks.MockResourceManagerServiceYARPCClient
@@ -78,7 +76,6 @@ func (suite *TaskStartTestSuite) SetupTest() {
 	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
 	suite.cachedConfig = cachedmocks.NewMockJobConfigCache(suite.ctrl)
 	suite.cachedTask = cachedmocks.NewMockTask(suite.ctrl)
-	suite.mockTaskLauncher = launchermocks.NewMockLauncher(suite.ctrl)
 	suite.mockVolumeStore = storemocks.NewMockPersistentVolumeStore(suite.ctrl)
 
 	suite.goalStateDriver = &driver{
@@ -89,7 +86,6 @@ func (suite *TaskStartTestSuite) SetupTest() {
 		jobFactory:   suite.jobFactory,
 		resmgrClient: suite.resmgrClient,
 		volumeStore:  suite.mockVolumeStore,
-		taskLauncher: suite.mockTaskLauncher,
 		mtx:          NewMetrics(tally.NoopScope),
 		cfg:          &Config{},
 	}

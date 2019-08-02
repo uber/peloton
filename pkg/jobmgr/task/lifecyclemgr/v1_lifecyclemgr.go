@@ -16,7 +16,6 @@ package lifecyclemgr
 
 import (
 	"context"
-	"time"
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	v1_hostsvc "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc"
@@ -28,16 +27,14 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// timeout for the kill call
-const _defaultKillPodActionTimeout = 5 * time.Second
-
 type v1LifecycleMgr struct {
+	*lockState
 	// v1 client hostmgr pod operations.
 	hostManagerV1 v1_hostsvc.HostManagerServiceYARPCClient
 }
 
-// New returns an instance of the v1 lifecycle manager.
-func New(
+// newV1LifecycleMgr returns an instance of the v1 lifecycle manager.
+func newV1LifecycleMgr(
 	dispatcher *yarpc.Dispatcher,
 ) *v1LifecycleMgr {
 	return &v1LifecycleMgr{
@@ -46,6 +43,7 @@ func New(
 				common.PelotonHostManager,
 			),
 		),
+		lockState: &lockState{state: 0},
 	}
 }
 
@@ -57,6 +55,11 @@ func (l *v1LifecycleMgr) Kill(
 	hostToReserve string,
 	rateLimiter *rate.Limiter,
 ) error {
+	// check lock
+	if l.lockState.hasKillLock() {
+		return yarpcerrors.InternalErrorf("kill op is locked")
+	}
+
 	// enforce rate limit
 	if rateLimiter != nil && !rateLimiter.Allow() {
 		return yarpcerrors.ResourceExhaustedErrorf(

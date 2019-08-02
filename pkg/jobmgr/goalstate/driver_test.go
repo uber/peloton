@@ -31,7 +31,7 @@ import (
 	goalstatemocks "github.com/uber/peloton/pkg/common/goalstate/mocks"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
-	launchermocks "github.com/uber/peloton/pkg/jobmgr/task/launcher/mocks"
+	lmmocks "github.com/uber/peloton/pkg/jobmgr/task/lifecyclemgr/mocks"
 	storemocks "github.com/uber/peloton/pkg/storage/mocks"
 	ormStore "github.com/uber/peloton/pkg/storage/objects"
 	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
@@ -82,6 +82,8 @@ func (suite *DriverTestSuite) SetupTest() {
 	suite.jobRuntimeOps = objectmocks.NewMockJobRuntimeOps(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
 	suite.mockedPodEventsOps = objectmocks.NewMockPodEventsOps(suite.ctrl)
+	lmMock := lmmocks.NewMockManager(suite.ctrl)
+
 	suite.goalStateDriver = &driver{
 		jobEngine:     suite.jobGoalStateEngine,
 		taskEngine:    suite.taskGoalStateEngine,
@@ -97,6 +99,7 @@ func (suite *DriverTestSuite) SetupTest() {
 		jobScope:      tally.NoopScope,
 		cfg:           &Config{},
 		jobType:       job.JobType_BATCH,
+		lm:            lmMock,
 	}
 	suite.goalStateDriver.cfg.normalize()
 	suite.goalStateDriver.setState(stopped)
@@ -111,7 +114,6 @@ func (suite *DriverTestSuite) SetupTest() {
 func (suite *DriverTestSuite) TestNewDriver() {
 	volumeStore := storemocks.NewMockPersistentVolumeStore(suite.ctrl)
 	updateStore := storemocks.NewMockUpdateStore(suite.ctrl)
-	taskLauncher := launchermocks.NewMockLauncher(suite.ctrl)
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name: common.PelotonJobManager,
 		Outbounds: yarpc.Outbounds{
@@ -136,7 +138,6 @@ func (suite *DriverTestSuite) TestNewDriver() {
 		updateStore,
 		&ormStore.Store{},
 		suite.jobFactory,
-		taskLauncher,
 		job.JobType_SERVICE,
 		tally.NoopScope,
 		config,
@@ -153,7 +154,6 @@ func (suite *DriverTestSuite) TestNewDriver() {
 		updateStore,
 		&ormStore.Store{},
 		suite.jobFactory,
-		taskLauncher,
 		job.JobType_SERVICE,
 		tally.NoopScope,
 		config,
@@ -824,4 +824,9 @@ func (suite *DriverTestSuite) TestEngineStopStoppedDriverWithCleanUpCache() {
 	suite.goalStateDriver.Stop(true)
 	suite.Equal(suite.goalStateDriver.getState(), stopped)
 	suite.Equal(suite.goalStateDriver.getCacheState(), cleaned)
+}
+
+// TestDriverGetLockable tests GetLockable returns a non-nil interface
+func (suite *DriverTestSuite) TestDriverGetLockable() {
+	suite.NotNil(suite.goalStateDriver.GetLockable())
 }

@@ -636,12 +636,14 @@ var (
 	admin = app.Command("admin", "administrative APIs")
 	// command for locking down components
 	lock           = admin.Command("lock", "lock down components in peloton")
-	lockComponents = lock.Arg("components", "components to lockdown. Now support GoalStateEngine, Read, Write").
-			Enums("GoalStateEngine", "Read", "Write")
+	lockComponents = lock.Arg("components", "components to lockdown. "+
+		"Now support GoalStateEngine, Read, Write, Kill").
+		Enums("GoalStateEngine", "Read", "Write", "Kill")
 	// command for unlock components
 	unlock           = admin.Command("unlock", "remove lock down components in peloton")
-	unlockComponents = unlock.Arg("components", "components to remove lockdown. Now support GoalStateEngine, Read, Write").
-				Enums("GoalStateEngine", "Read", "Write")
+	unlockComponents = unlock.Arg("components", "components to remove lockdown. "+
+		"Now support GoalStateEngine, Read, Write").
+		Enums("GoalStateEngine", "Read", "Write", "Kill")
 
 	// Top level hostcache commands
 	hostcache     = hostmgr.Command("hostcache", "manage hostcache")

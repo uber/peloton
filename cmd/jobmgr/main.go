@@ -553,7 +553,6 @@ func main() {
 		store, // store implements UpdateStore
 		ormStore,
 		jobFactory,
-		launcher.GetLauncher(),
 		job.JobType(job.JobType_value[*jobType]),
 		rootScope,
 		cfg.JobManager.GoalState,

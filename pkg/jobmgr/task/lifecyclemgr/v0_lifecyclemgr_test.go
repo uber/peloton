@@ -39,7 +39,7 @@ import (
 
 const randomErrorStr = "random error"
 
-type LifecycleTestSuite struct {
+type v0LifecycleTestSuite struct {
 	suite.Suite
 	ctrl        *gomock.Controller
 	ctx         context.Context
@@ -50,22 +50,23 @@ type LifecycleTestSuite struct {
 	lm          *v0LifecycleMgr
 }
 
-func (suite *LifecycleTestSuite) TearDownTest() {
+func (suite *v0LifecycleTestSuite) TearDownTest() {
 	suite.ctrl.Finish()
 }
 
-// TestLifecycleTestSuite tests functions covered in jobmgr/task/util.go
-func TestLifecycleTestSuite(t *testing.T) {
-	suite.Run(t, new(LifecycleTestSuite))
+// TestV0LifecycleTestSuite tests V0 LifecycleMgr
+func TestV0LifecycleTestSuite(t *testing.T) {
+	suite.Run(t, new(v0LifecycleTestSuite))
 }
 
-func (suite *LifecycleTestSuite) SetupTest() {
+func (suite *v0LifecycleTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.ctx = context.Background()
 	suite.mockHostMgr = v0_host_mocks.
 		NewMockInternalHostServiceYARPCClient(suite.ctrl)
 	suite.lm = &v0LifecycleMgr{
 		hostManagerV0: suite.mockHostMgr,
+		lockState:     &lockState{state: 0},
 	}
 	suite.jobID = "af647b98-0ae0-4dac-be42-c74a524dfe44"
 	suite.instanceID = 89
@@ -77,7 +78,7 @@ func (suite *LifecycleTestSuite) SetupTest() {
 
 }
 
-func (suite *LifecycleTestSuite,
+func (suite *v0LifecycleTestSuite,
 ) buildKillTasksReq() *v0_hostsvc.KillTasksRequest {
 	return &v0_hostsvc.KillTasksRequest{
 		TaskIds: []*mesos.TaskID{{Value: &suite.mesosTaskID}},
@@ -85,7 +86,7 @@ func (suite *LifecycleTestSuite,
 }
 
 // build a shutdown executor request
-func (suite *LifecycleTestSuite,
+func (suite *v0LifecycleTestSuite,
 ) buildShutdownExecutorsReq() *v0_hostsvc.ShutdownExecutorsRequest {
 	return &v0_hostsvc.ShutdownExecutorsRequest{
 		Executors: []*v0_hostsvc.ExecutorOnAgent{
@@ -98,7 +99,7 @@ func (suite *LifecycleTestSuite,
 }
 
 // TestNew tests creating an instance of v0 lifecyclemgr
-func (suite *LifecycleTestSuite) TestNew() {
+func (suite *v0LifecycleTestSuite) TestNew() {
 	t := rpc.NewTransport()
 	outbound := t.NewOutbound(nil)
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
@@ -114,11 +115,11 @@ func (suite *LifecycleTestSuite) TestNew() {
 		},
 	})
 
-	_ = New(dispatcher)
+	_ = newV0LifecycleMgr(dispatcher)
 }
 
 // TestKill tests successful lm.Kill
-func (suite *LifecycleTestSuite) TestKill() {
+func (suite *v0LifecycleTestSuite) TestKill() {
 	suite.mockHostMgr.EXPECT().
 		KillTasks(gomock.Any(), suite.buildKillTasksReq())
 	err := suite.lm.Kill(
@@ -130,8 +131,20 @@ func (suite *LifecycleTestSuite) TestKill() {
 	suite.Nil(err)
 }
 
+// TestKillLock tests lm.Kill is blocked as expected when it is locked
+func (suite *v0LifecycleTestSuite) TestKillLock() {
+	suite.lm.LockKill()
+	err := suite.lm.Kill(
+		suite.ctx,
+		suite.mesosTaskID,
+		"",
+		nil,
+	)
+	suite.Error(err)
+}
+
 // TestKillTaskInvalidTaskIDs tests InvalidTaskIDs error in KillTask
-func (suite *LifecycleTestSuite) TestKillInvalidTaskIDs() {
+func (suite *v0LifecycleTestSuite) TestKillInvalidTaskIDs() {
 	// Simulate InvalidTaskIDs error
 	resp := &v0_hostsvc.KillTasksResponse{
 		Error: &v0_hostsvc.KillTasksResponse_Error{
@@ -156,7 +169,7 @@ func (suite *LifecycleTestSuite) TestKillInvalidTaskIDs() {
 }
 
 // TestKillFailure tests KillFailure error in Kill
-func (suite *LifecycleTestSuite) TestKillFailure() {
+func (suite *v0LifecycleTestSuite) TestKillFailure() {
 	// Simulate KillFailure error
 	resp := &v0_hostsvc.KillTasksResponse{
 		Error: &v0_hostsvc.KillTasksResponse_Error{
@@ -181,7 +194,7 @@ func (suite *LifecycleTestSuite) TestKillFailure() {
 }
 
 // TestKillRateLimit tests task kill fails due to rate limit reached
-func (suite *LifecycleTestSuite) TestKillRateLimit() {
+func (suite *v0LifecycleTestSuite) TestKillRateLimit() {
 	err := suite.lm.Kill(
 		suite.ctx,
 		suite.mesosTaskID,
@@ -194,7 +207,7 @@ func (suite *LifecycleTestSuite) TestKillRateLimit() {
 
 // TestShutdownExecutorShutdownFailure tests ShutdownFailure error in
 // suite.lm.ShutdownExecutor
-func (suite *LifecycleTestSuite) TestShutdownExecutorShutdownFailure() {
+func (suite *v0LifecycleTestSuite) TestShutdownExecutorShutdownFailure() {
 	resp := &v0_hostsvc.ShutdownExecutorsResponse{
 		Error: &v0_hostsvc.ShutdownExecutorsResponse_Error{
 			ShutdownFailure: &v0_hostsvc.ShutdownFailure{
@@ -216,9 +229,21 @@ func (suite *LifecycleTestSuite) TestShutdownExecutorShutdownFailure() {
 	suite.True(strings.Contains(err.Error(), randomErrorStr))
 }
 
+// TestShutdownExecutorShutdownLock tests ShutdownFailure is blocked
+// as expected when kill is locked
+func (suite *v0LifecycleTestSuite) TestShutdownExecutorShutdownLock() {
+	suite.lm.LockKill()
+	err := suite.lm.ShutdownExecutor(
+		suite.ctx,
+		suite.mesosTaskID,
+		suite.mesosTaskID,
+		nil)
+	suite.Error(err)
+}
+
 // TestExecutorShutdownRateLimit tests executor shutdown fails due to
 // rate limit
-func (suite *LifecycleTestSuite) TestExecutorShutdownRateLimit() {
+func (suite *v0LifecycleTestSuite) TestExecutorShutdownRateLimit() {
 	err := suite.lm.ShutdownExecutor(
 		suite.ctx,
 		suite.mesosTaskID,
@@ -231,7 +256,7 @@ func (suite *LifecycleTestSuite) TestExecutorShutdownRateLimit() {
 
 // TestShutdownExecutorInvalidExecutors tests InvalidExecutors error in
 // lm.ShutdownExecutor
-func (suite *LifecycleTestSuite) TestShutdownExecutorInvalidExecutors() {
+func (suite *v0LifecycleTestSuite) TestShutdownExecutorInvalidExecutors() {
 	// Simulate InvalidExecutors error
 	resp := &v0_hostsvc.ShutdownExecutorsResponse{
 		Error: &v0_hostsvc.ShutdownExecutorsResponse_Error{

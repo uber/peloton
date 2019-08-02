@@ -35,9 +35,7 @@ import (
 	"golang.org/x/time/rate"
 )
 
-const randomErrorStr = "random error"
-
-type LifecycleTestSuite struct {
+type v1LifecycleTestSuite struct {
 	suite.Suite
 	ctrl        *gomock.Controller
 	ctx         context.Context
@@ -46,27 +44,28 @@ type LifecycleTestSuite struct {
 	lm          *v1LifecycleMgr
 }
 
-func (suite *LifecycleTestSuite) TearDownTest() {
+func (suite *v1LifecycleTestSuite) TearDownTest() {
 	suite.ctrl.Finish()
 }
 
-// TestLifecycleTestSuite tests functions covered in jobmgr/task/util.go
-func TestLifecycleTestSuite(t *testing.T) {
-	suite.Run(t, new(LifecycleTestSuite))
+// TestV1LifecycleTestSuite tests functions covered in jobmgr/task/util.go
+func TestV1LifecycleTestSuite(t *testing.T) {
+	suite.Run(t, new(v1LifecycleTestSuite))
 }
 
-func (suite *LifecycleTestSuite) SetupTest() {
+func (suite *v1LifecycleTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.ctx = context.Background()
 	suite.mockHostMgr = v1_host_mocks.
 		NewMockHostManagerServiceYARPCClient(suite.ctrl)
 	suite.lm = &v1LifecycleMgr{
 		hostManagerV1: suite.mockHostMgr,
+		lockState:     &lockState{state: 0},
 	}
 	suite.podID = "af647b98-0ae0-4dac-be42-c74a524dfe44-0"
 }
 
-func (suite *LifecycleTestSuite,
+func (suite *v1LifecycleTestSuite,
 ) buildKillPodsReq() *v1_hostsvc.KillPodsRequest {
 	return &v1_hostsvc.KillPodsRequest{
 		PodIds: []*peloton.PodID{{Value: suite.podID}},
@@ -74,7 +73,7 @@ func (suite *LifecycleTestSuite,
 }
 
 // TestNew tests creating an instance of v1 lifecyclemgr
-func (suite *LifecycleTestSuite) TestNew() {
+func (suite *v1LifecycleTestSuite) TestNew() {
 	t := rpc.NewTransport()
 	outbound := t.NewOutbound(nil)
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
@@ -90,11 +89,11 @@ func (suite *LifecycleTestSuite) TestNew() {
 		},
 	})
 
-	_ = New(dispatcher)
+	_ = newV1LifecycleMgr(dispatcher)
 }
 
 // TestKill tests Kill pods.
-func (suite *LifecycleTestSuite) TestKill() {
+func (suite *v1LifecycleTestSuite) TestKill() {
 	suite.mockHostMgr.EXPECT().
 		KillPods(gomock.Any(), suite.buildKillPodsReq())
 	err := suite.lm.Kill(
@@ -106,8 +105,20 @@ func (suite *LifecycleTestSuite) TestKill() {
 	suite.Nil(err)
 }
 
+// TestKillLock tests Kill pods is blocked when kill is locked
+func (suite *v1LifecycleTestSuite) TestKillLock() {
+	suite.lm.LockKill()
+	err := suite.lm.Kill(
+		suite.ctx,
+		suite.podID,
+		"",
+		nil,
+	)
+	suite.Error(err)
+}
+
 // TestKillFailure tests KillFailure error in Kill
-func (suite *LifecycleTestSuite) TestKillFailure() {
+func (suite *v1LifecycleTestSuite) TestKillFailure() {
 	suite.mockHostMgr.EXPECT().KillPods(
 		gomock.Any(),
 		suite.buildKillPodsReq()).
@@ -124,7 +135,7 @@ func (suite *LifecycleTestSuite) TestKillFailure() {
 }
 
 // TestKillRateLimit tests task kill fails due to rate limit reached
-func (suite *LifecycleTestSuite) TestKillRateLimit() {
+func (suite *v1LifecycleTestSuite) TestKillRateLimit() {
 	err := suite.lm.Kill(
 		suite.ctx,
 		suite.podID,
@@ -136,7 +147,19 @@ func (suite *LifecycleTestSuite) TestKillRateLimit() {
 }
 
 // TestShutdownExecutor tests lm.ShutdownExecutor.
-func (suite *LifecycleTestSuite) TestShutdownExecutor() {
+func (suite *v1LifecycleTestSuite) TestShutdownExecutor() {
+	err := suite.lm.ShutdownExecutor(
+		suite.ctx,
+		suite.podID,
+		"",
+		nil)
+	suite.NoError(err)
+}
+
+// TestShutdownExecutor tests lm.ShutdownExecutor when kill is locked.
+// Lock has no effect, since v1 does not support executor shutdown
+func (suite *v1LifecycleTestSuite) TestShutdownExecutorLock() {
+	suite.lm.LockKill()
 	err := suite.lm.ShutdownExecutor(
 		suite.ctx,
 		suite.podID,
