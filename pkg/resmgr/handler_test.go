@@ -947,6 +947,7 @@ func (s *handlerTestSuite) TestNotifyTaskStatusUpdate() {
 		event := pb_eventstream.Event{
 			Offset:          uint64(1000 + i),
 			MesosTaskStatus: status,
+			Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
 		}
 		events = append(events, &event)
 		ptask := &peloton.TaskID{
@@ -996,6 +997,7 @@ func (s *handlerTestSuite) TestHandleEventError() {
 		event := pb_eventstream.Event{
 			Offset:          uint64(1000 + i),
 			MesosTaskStatus: status,
+			Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
 		}
 		events = append(events, &event)
 	}
@@ -1117,6 +1119,7 @@ func (s *handlerTestSuite) TestHandleRunningEventError() {
 		event := pb_eventstream.Event{
 			Offset:          uint64(1000 + i),
 			MesosTaskStatus: status,
+			Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
 		}
 		events = append(events, &event)
 	}

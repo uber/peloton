@@ -150,13 +150,15 @@ func NewTaskStatusUpdate(
 
 // OnV0Event is the callback function notifying an event
 func (p *statusUpdate) OnV0Event(event *pb_eventstream.Event) {
-	log.WithField("event_offset", event.Offset).Debug("JobMgr receiving v0 event")
-	p.applier.addV0Event(event)
+	log.WithField("event_offset", event.Offset).Debug("JobMgr received v0 event")
+	if event.GetType() != pbeventstream.Event_HOST_EVENT {
+		p.applier.addV0Event(event)
+	}
 }
 
 // OnV1Event is the callback function notifying an event
 func (p *statusUpdate) OnV1Event(event *v1pbevent.Event) {
-	log.WithField("event_offset", event.Offset).Debug("JobMgr receiving v1 event")
+	log.WithField("event_offset", event.Offset).Debug("JobMgr received v1 event")
 	p.applier.addV1Event(event)
 }
 

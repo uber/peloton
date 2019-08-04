@@ -9,6 +9,7 @@ package peloton.private.eventstream;
 option go_package = "peloton/private/eventstream";
 
 import "mesos/v1/mesos.proto";
+import "peloton/api/v0/host/host.proto";
 import "peloton/api/v0/task/task.proto";
 
 message Event {
@@ -20,11 +21,13 @@ message Event {
     UNKNOWN_EVENT_TYPE = 0;
     MESOS_TASK_STATUS = 1;
     PELOTON_TASK_EVENT = 2;
+    HOST_EVENT = 3;
   }
 
   Type type = 2;
   mesos.v1.TaskStatus mesosTaskStatus = 3;
   peloton.api.v0.task.TaskEvent pelotonTaskEvent = 4;
+  peloton.api.v0.host.HostEvent hostEvent = 5;
 }
 
 

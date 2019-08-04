@@ -20,6 +20,7 @@ import (
 	"time"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	pbhost "github.com/uber/peloton/.gen/peloton/api/v0/host"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
@@ -90,6 +91,21 @@ func TestV0Event(t *testing.T) {
 	assert.Equal(t, healthy, event.Healthy())
 	assert.Equal(t, msg, event.Message())
 	assert.Equal(t, now.UnixNano()/1e9, int64(*event.Timestamp()))
+}
+
+func makeHostEvent(hostname string) *pbeventstream.Event {
+	ev := &pbeventstream.Event{
+		Type:      pbeventstream.Event_HOST_EVENT,
+		HostEvent: &pbhost.HostEvent{Hostname: hostname},
+	}
+	return ev
+}
+
+// TestV0EventHostEvent tests NewV0 for HostEvent
+func TestV0EventHostEvent(t *testing.T) {
+	event, err := NewV0(makeHostEvent("h1"))
+	assert.Nil(t, event)
+	assert.Error(t, err)
 }
 
 func newV1EventPb(

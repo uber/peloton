@@ -100,10 +100,13 @@ func (h *Handler) AddEvent(event *pb_eventstream.Event) error {
 	h.Lock()
 	defer h.Unlock()
 
-	uid := uuid.UUID(event.GetMesosTaskStatus().GetUuid()).String()
-	if _, ok := h.eventIndex[uid]; ok {
-		h.metrics.AddEventDeDupe.Inc(1)
-		return nil
+	var uid string
+	if event.GetType() == pb_eventstream.Event_MESOS_TASK_STATUS {
+		uid = uuid.UUID(event.GetMesosTaskStatus().GetUuid()).String()
+		if _, ok := h.eventIndex[uid]; ok {
+			h.metrics.AddEventDeDupe.Inc(1)
+			return nil
+		}
 	}
 	item, err := h.circularBuffer.AddItem(event)
 	if err != nil {
@@ -142,6 +145,7 @@ func (h *Handler) GetEvents() ([]*pb_eventstream.Event, error) {
 				Type:             event.Type,
 				MesosTaskStatus:  event.MesosTaskStatus,
 				PelotonTaskEvent: event.PelotonTaskEvent,
+				HostEvent:        event.HostEvent,
 				Offset:           item.SequenceID,
 			}
 			events = append(events, e)
@@ -240,6 +244,7 @@ func (h *Handler) WaitForEvents(
 				Type:             event.Type,
 				MesosTaskStatus:  event.MesosTaskStatus,
 				PelotonTaskEvent: event.PelotonTaskEvent,
+				HostEvent:        event.HostEvent,
 				Offset:           item.SequenceID,
 			}
 			events = append(events, e)
@@ -285,8 +290,10 @@ func (h *Handler) purgeEvents(clientName string, purgeOffset uint64) {
 		} else {
 			for _, item := range purgedItems {
 				if event, ok := item.Value.(*pb_eventstream.Event); ok {
-					uid := uuid.UUID(event.GetMesosTaskStatus().GetUuid()).String()
-					delete(h.eventIndex, uid)
+					if event.GetType() == pb_eventstream.Event_MESOS_TASK_STATUS {
+						uid := uuid.UUID(event.GetMesosTaskStatus().GetUuid()).String()
+						delete(h.eventIndex, uid)
+					}
 				}
 			}
 

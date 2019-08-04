@@ -169,7 +169,9 @@ func convertV0Event(event *pbeventstream.Event) (*Event, error) {
 	var err error
 
 	updateEvent := &Event{v0event: event}
-	if event.Type == pbeventstream.Event_MESOS_TASK_STATUS {
+	if event.Type == pbeventstream.Event_HOST_EVENT {
+		return nil, fmt.Errorf("cannot convert host-event to statusupdate event")
+	} else if event.Type == pbeventstream.Event_MESOS_TASK_STATUS {
 		mesosTaskID := event.MesosTaskStatus.GetTaskId().GetValue()
 		updateEvent.taskID, err = util.ParseTaskIDFromMesosTaskID(mesosTaskID)
 		if err != nil {

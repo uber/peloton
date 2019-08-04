@@ -17,7 +17,11 @@ package manager
 import (
 	"sync"
 
+	pb_host "github.com/uber/peloton/.gen/peloton/api/v0/host"
+	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
+
 	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/common/eventstream"
 	"github.com/uber/peloton/pkg/hostmgr/hostpool"
 
 	"github.com/pkg/errors"
@@ -44,7 +48,7 @@ type HostPoolManager interface {
 
 	// ChangeHostPool changes host pool of given host from source pool to
 	// destination pool.
-	ChangeHostPool(host string, srcPool, destPool string) ([]string, error)
+	ChangeHostPool(host, srcPool, destPool string) error
 
 	// Start starts the host pool cache go routine that reconciles host pools.
 	Start()
@@ -64,6 +68,9 @@ type HostPoolManager interface {
 type hostPoolManager struct {
 	mu sync.RWMutex
 
+	// event stream handler
+	eventStreamHandler *eventstream.Handler
+
 	// poolIndex is map from host pool id to host pool
 	poolIndex map[string]hostpool.HostPool
 	// hostToPoolMap is map from hostname to id of host pool it belongs to
@@ -73,10 +80,11 @@ type hostPoolManager struct {
 // New returns a host pool manager instance.
 // TODO: Decide if we need to register a list of pre-configured
 //  host pools at start-up.
-func New() HostPoolManager {
+func New(eventStreamHandler *eventstream.Handler) HostPoolManager {
 	manager := &hostPoolManager{
-		poolIndex:     make(map[string]hostpool.HostPool),
-		hostToPoolMap: make(map[string]string),
+		eventStreamHandler: eventStreamHandler,
+		poolIndex:          make(map[string]hostpool.HostPool),
+		hostToPoolMap:      make(map[string]string),
 	}
 
 	// Always register default host pool when constructing new host pool manager.
@@ -166,12 +174,55 @@ func (m *hostPoolManager) DeregisterPool(poolID string) {
 	}
 }
 
-// ChangeHostPool changes host pool of given host from source pool to destination pool.
+// ChangeHostPool changes host pool of given host from source pool to
+// destination pool.
 // If either source pool or destination pool doesn't exist, it returns error.
 // If host is not in source pool, fails the move attempt for that host.
-// TODO: Add implementation after required hostInfo store change is done.
-func (m *hostPoolManager) ChangeHostPool(host string, srcPool, destPool string) ([]string, error) {
-	return nil, yarpcerrors.UnimplementedErrorf("change host pool is not supported")
+func (m *hostPoolManager) ChangeHostPool(
+	host, srcPoolID, destPoolID string,
+) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	poolID, ok := m.hostToPoolMap[host]
+	if !ok {
+		return yarpcerrors.NotFoundErrorf("host not found")
+	}
+	if poolID != srcPoolID {
+		return yarpcerrors.InvalidArgumentErrorf("source pool mismatch")
+	}
+	srcPool, ok := m.poolIndex[poolID]
+	if !ok {
+		return yarpcerrors.InternalErrorf("src pool not found")
+	}
+	if srcPoolID == destPoolID {
+		return nil
+	}
+	destPool, ok := m.poolIndex[destPoolID]
+	if !ok {
+		return yarpcerrors.InvalidArgumentErrorf("invalid dest pool")
+	}
+
+	srcPool.Delete(host)
+	destPool.Add(host)
+	m.hostToPoolMap[host] = destPoolID
+
+	m.publishPoolEvent(host, destPoolID)
+	return nil
+}
+
+func (m *hostPoolManager) publishPoolEvent(hostname, poolID string) {
+	poolEvent := &pb_eventstream.Event{
+		Type: pb_eventstream.Event_HOST_EVENT,
+		HostEvent: &pb_host.HostEvent{
+			Hostname: hostname,
+			Type:     pb_host.HostEvent_TYPE_HOST_POOL,
+			HostPoolEvent: &pb_host.HostPoolEvent{
+				Pool: poolID,
+			},
+		},
+	}
+	m.eventStreamHandler.AddEvent(poolEvent)
 }
 
 // Start starts the host pool cache go routine that reconciles host pools.

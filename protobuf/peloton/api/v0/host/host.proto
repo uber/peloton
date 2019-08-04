@@ -39,3 +39,35 @@ message HostInfo {
     // Goal state of the host
     HostState goal_state = 4;
 }
+
+/**
+ * Events for host changes.
+ */
+message HostEvent {
+    // Describes the type of host event.
+    enum Type {
+        // Invalid event type.
+        TYPE_UNKNOWN = 0;
+
+        // Host-pool event.
+        TYPE_HOST_POOL = 1;
+    }
+
+    // Hostname of the host.
+    string hostname = 1;
+
+    // Type of event.
+    Type type = 2;
+
+    // Details of host-pool event.
+    HostPoolEvent hostPoolEvent = 3;
+}
+
+/**
+ * Event for host-pool change of a host.
+ */
+message HostPoolEvent {
+    // ID of the pool that the host belongs to. If unset, indicates that the
+    // host is removed or not part of any pool.
+    string pool = 1;
+}

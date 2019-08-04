@@ -36,6 +36,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/api/v0/volume"
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
+	pbeventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
 
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/api"
@@ -1472,4 +1473,14 @@ func (suite *TaskUpdaterTestSuite) TestUpdaterStartStop() {
 	suite.mockListener2.EXPECT().Stop()
 
 	suite.updater.Stop()
+}
+
+// TestOnV0EventHostEvent tests that OnV0Event for a HostEvent is a no-op
+func (suite *TaskUpdaterTestSuite) TestOnV0EventHostEvent() {
+	defer suite.ctrl.Finish()
+
+	ev := &pbeventstream.Event{
+		Type: pb_eventstream.Event_HOST_EVENT,
+	}
+	suite.updater.OnV0Event(ev)
 }

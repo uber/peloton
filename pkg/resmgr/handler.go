@@ -724,6 +724,10 @@ func (h *ServiceHandler) NotifyTaskUpdates(
 func (h *ServiceHandler) handleEvent(event *pb_eventstream.Event) {
 	defer h.acknowledgeEvent(event.Offset)
 
+	if event.GetType() != pb_eventstream.Event_MESOS_TASK_STATUS {
+		return
+	}
+
 	taskState := util.MesosStateToPelotonState(
 		event.MesosTaskStatus.GetState())
 	if taskState != t.TaskState_RUNNING &&

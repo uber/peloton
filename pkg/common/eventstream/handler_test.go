@@ -19,13 +19,15 @@ import (
 	"sync"
 	"testing"
 
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	pb_host "github.com/uber/peloton/.gen/peloton/api/v0/host"
+	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
+
+	"github.com/uber/peloton/pkg/common/cirbuf"
+
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
-
-	mesos "github.com/uber/peloton/.gen/mesos/v1"
-	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
-	"github.com/uber/peloton/pkg/common/cirbuf"
 )
 
 type PurgeEventCollector struct {
@@ -352,4 +354,79 @@ func TestDeDupeEvent(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, int64(2), testScope.Snapshot().Counters()["EventStreamHandler.api.addEventDeDupe+"].Value())
 	assert.Equal(t, 2, len(handler.eventIndex))
+}
+
+func makeHostEvent(hostname string) *pb_eventstream.Event {
+	ev := &pb_eventstream.Event{
+		Type:      pb_eventstream.Event_HOST_EVENT,
+		HostEvent: &pb_host.HostEvent{Hostname: hostname},
+	}
+	return ev
+}
+
+// TestGetEventsHostEvent tests GetEvents for HostEvent
+func TestGetEventsHostEvent(t *testing.T) {
+	testScope := tally.NewTestScope("", map[string]string{})
+	bufferSize := 10
+	eventStreamHandler := NewEventStreamHandler(
+		bufferSize,
+		[]string{"jobMgr", "resMgr"},
+		nil,
+		testScope,
+	)
+
+	// Add partial events to the buffer
+	for i := 0; i < bufferSize/2; i++ {
+		eventStreamHandler.AddEvent(makeHostEvent("h1"))
+	}
+	items, _ := eventStreamHandler.GetEvents()
+	assert.Equal(t, bufferSize/2, len(items))
+	for i := 0; i < bufferSize/2; i++ {
+		assert.Equal(t, pb_eventstream.Event_HOST_EVENT, items[i].GetType())
+	}
+
+	// Add some data into the circular buffer
+	for i := 0; i < bufferSize; i++ {
+		eventStreamHandler.AddEvent(makeHostEvent("h2"))
+	}
+
+	items, _ = eventStreamHandler.GetEvents()
+	assert.Equal(t, bufferSize, len(items))
+	for i := 0; i < bufferSize; i++ {
+		assert.Equal(t, pb_eventstream.Event_HOST_EVENT, items[i].GetType())
+	}
+}
+
+// TestWaitForEventHostEvent tests TestWaitForEvent for HostEvent
+func TestWaitForEventHostEvent(t *testing.T) {
+	testScope := tally.NewTestScope("", map[string]string{})
+	bufferSize := 5
+	eventStreamHandler := NewEventStreamHandler(
+		bufferSize,
+		[]string{"jobMgr", "resMgr"},
+		nil,
+		testScope,
+	)
+
+	streamID := eventStreamHandler.streamID
+
+	// Add some data into the circular buffer
+	for i := 0; i < bufferSize; i++ {
+		eventStreamHandler.AddEvent(makeHostEvent("h1"))
+	}
+	// start and end within head tail range
+	request := makeWaitForEventsRequest(
+		"jobMgr",
+		streamID,
+		uint64(1),
+		int32(3),
+		uint64(1))
+	response, _ := eventStreamHandler.WaitForEvents(
+		context.Background(),
+		request)
+	events := response.Events
+	assert.Equal(t, 3, len(events))
+	for i := 0; i < len(events); i++ {
+		assert.Equal(t, pb_eventstream.Event_HOST_EVENT, events[i].GetType())
+	}
 }

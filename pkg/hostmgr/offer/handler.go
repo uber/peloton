@@ -426,6 +426,9 @@ func (h *eventHandler) EventPurged(events []*cirbuf.CircularBufferItem) {
 			continue
 		}
 
+		if event.GetType() != pb_eventstream.Event_MESOS_TASK_STATUS {
+			continue
+		}
 		uid := uuid.UUID(event.GetMesosTaskStatus().GetUuid()).String()
 		if uid == "" {
 			continue
