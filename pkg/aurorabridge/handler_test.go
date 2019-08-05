@@ -1702,6 +1702,233 @@ func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_QueryPreviousRu
 	}
 }
 
+// TestGetTasksWithoutConfigs_MultiJobsSuccess tests parallel fetching of
+// multiple jobs on GetTasksWithoutConfig success scenario
+func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_MultiJobsSuccess() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
+	query := &api.TaskQuery{Role: ptr.String("role")}
+	jobKeys := []*api.JobKey{
+		{Role: ptr.String("role"), Environment: ptr.String("env"), Name: ptr.String("name1")},
+		{Role: ptr.String("role"), Environment: ptr.String("env"), Name: ptr.String("name2")},
+		{Role: ptr.String("role"), Environment: ptr.String("env"), Name: ptr.String("name3")},
+	}
+	jobIDs := []*peloton.JobID{
+		fixture.PelotonJobID(),
+		fixture.PelotonJobID(),
+		fixture.PelotonJobID(),
+	}
+	var labels [][]*peloton.Label
+	for _, jobKey := range jobKeys {
+		labels = append(labels, fixture.DefaultPelotonJobLabels(jobKey))
+	}
+	var jobCache []*jobmgrsvc.QueryJobCacheResponse_JobCache
+	for i := range jobIDs {
+		jobCache = append(jobCache, &jobmgrsvc.QueryJobCacheResponse_JobCache{
+			JobId: jobIDs[i],
+			Name:  atop.NewJobName(jobKeys[i]),
+		})
+	}
+	entityVersion := fixture.PelotonEntityVersion()
+
+	suite.jobmgrClient.EXPECT().
+		QueryJobCache(gomock.Any(), &jobmgrsvc.QueryJobCacheRequest{
+			Spec: &jobmgrsvc.QueryJobCacheRequest_CacheQuerySpec{
+				Labels: []*peloton.Label{
+					label.NewAuroraJobKeyRole("role"),
+					common.BridgeJobLabel,
+				},
+			},
+		}).
+		Return(&jobmgrsvc.QueryJobCacheResponse{
+			Result: jobCache,
+		}, nil)
+
+	for i, jobID := range jobIDs {
+		if i == 1 {
+			// Expect handler to skip jobs with "not found error"
+			suite.jobClient.EXPECT().
+				GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+					SummaryOnly: true,
+					JobId:       jobID,
+				}).
+				Return(nil, yarpcerrors.NotFoundErrorf("job not found"))
+		} else {
+			suite.jobClient.EXPECT().
+				GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+					SummaryOnly: true,
+					JobId:       jobID,
+				}).
+				Return(&statelesssvc.GetJobResponse{
+					Summary: &stateless.JobSummary{
+						JobId:         jobID,
+						Name:          atop.NewJobName(jobKeys[i]),
+						InstanceCount: 1000,
+					},
+				}, nil)
+		}
+	}
+
+	for i, jobID := range jobIDs {
+		if i == 1 {
+			continue
+		}
+
+		label := labels[i]
+		var podNames []*peloton.PodName
+		for j := 0; j < 1000; j++ {
+			podName := &peloton.PodName{
+				Value: util.CreatePelotonTaskID(jobID.GetValue(), uint32(j)),
+			}
+			podID := &peloton.PodID{Value: podName.GetValue() + "-1"}
+			podNames = append(podNames, podName)
+
+			suite.podClient.EXPECT().
+				GetPodEvents(gomock.Any(), &podsvc.GetPodEventsRequest{
+					PodName: podName,
+				}).
+				Return(&podsvc.GetPodEventsResponse{
+					Events: []*pod.PodEvent{
+						{
+							PodId:       podID,
+							Timestamp:   "2019-01-03T22:14:58Z",
+							Message:     "",
+							ActualState: pod.PodState_POD_STATE_RUNNING.String(),
+							Hostname:    "peloton-host-0",
+						},
+					},
+				}, nil)
+		}
+
+		suite.expectQueryPods(jobID, podNames, label, entityVersion, 1)
+	}
+
+	resp, err := suite.handler.GetTasksWithoutConfigs(suite.ctx, query)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
+	suite.Len(resp.GetResult().GetScheduleStatusResult().GetTasks(), 2000)
+}
+
+// TestGetTasksWithoutConfigs_MultiJobsFailure tests parallel fetching of
+// multiple jobs on GetTasksWithoutConfig failure scenario
+func (suite *ServiceHandlerTestSuite) TestGetTasksWithoutConfigs_MultiJobsFailure() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
+	query := &api.TaskQuery{Role: ptr.String("role")}
+	jobKeys := []*api.JobKey{
+		{Role: ptr.String("role"), Environment: ptr.String("env"), Name: ptr.String("name1")},
+		{Role: ptr.String("role"), Environment: ptr.String("env"), Name: ptr.String("name2")},
+		{Role: ptr.String("role"), Environment: ptr.String("env"), Name: ptr.String("name3")},
+	}
+	jobIDs := []*peloton.JobID{
+		fixture.PelotonJobID(),
+		fixture.PelotonJobID(),
+		fixture.PelotonJobID(),
+	}
+	var labels [][]*peloton.Label
+	for _, jobKey := range jobKeys {
+		labels = append(labels, fixture.DefaultPelotonJobLabels(jobKey))
+	}
+	var jobCache []*jobmgrsvc.QueryJobCacheResponse_JobCache
+	for i := range jobIDs {
+		jobCache = append(jobCache, &jobmgrsvc.QueryJobCacheResponse_JobCache{
+			JobId: jobIDs[i],
+			Name:  atop.NewJobName(jobKeys[i]),
+		})
+	}
+	entityVersion := fixture.PelotonEntityVersion()
+
+	suite.jobmgrClient.EXPECT().
+		QueryJobCache(gomock.Any(), &jobmgrsvc.QueryJobCacheRequest{
+			Spec: &jobmgrsvc.QueryJobCacheRequest_CacheQuerySpec{
+				Labels: []*peloton.Label{
+					label.NewAuroraJobKeyRole("role"),
+					common.BridgeJobLabel,
+				},
+			},
+		}).
+		Return(&jobmgrsvc.QueryJobCacheResponse{
+			Result: jobCache,
+		}, nil)
+
+	for i, jobID := range jobIDs {
+		if i == 1 {
+			// Expect handler to skip jobs with "not found error"
+			suite.jobClient.EXPECT().
+				GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+					SummaryOnly: true,
+					JobId:       jobID,
+				}).
+				Return(nil, yarpcerrors.NotFoundErrorf("job not found"))
+		} else {
+			suite.jobClient.EXPECT().
+				GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+					SummaryOnly: true,
+					JobId:       jobID,
+				}).
+				Return(&statelesssvc.GetJobResponse{
+					Summary: &stateless.JobSummary{
+						JobId:         jobID,
+						Name:          atop.NewJobName(jobKeys[i]),
+						InstanceCount: 1000,
+					},
+				}, nil)
+		}
+	}
+
+	for i, jobID := range jobIDs {
+		if i == 1 {
+			continue
+		}
+
+		label := labels[i]
+		var podNames []*peloton.PodName
+		for j := 0; j < 1000; j++ {
+			podName := &peloton.PodName{
+				Value: util.CreatePelotonTaskID(jobID.GetValue(), uint32(j)),
+			}
+			podID := &peloton.PodID{Value: podName.GetValue() + "-1"}
+			podNames = append(podNames, podName)
+
+			if i%100 == 0 {
+				suite.podClient.EXPECT().
+					GetPodEvents(gomock.Any(), &podsvc.GetPodEventsRequest{
+						PodName: podName,
+					}).
+					Return(&podsvc.GetPodEventsResponse{},
+						errors.New("failed to get pod events")).
+					MaxTimes(1)
+				continue
+			}
+
+			suite.podClient.EXPECT().
+				GetPodEvents(gomock.Any(), &podsvc.GetPodEventsRequest{
+					PodName: podName,
+				}).
+				Return(&podsvc.GetPodEventsResponse{
+					Events: []*pod.PodEvent{
+						{
+							PodId:       podID,
+							Timestamp:   "2019-01-03T22:14:58Z",
+							Message:     "",
+							ActualState: pod.PodState_POD_STATE_RUNNING.String(),
+							Hostname:    "peloton-host-0",
+						},
+					},
+				}, nil).
+				MaxTimes(1)
+		}
+
+		suite.expectQueryPods(jobID, podNames, label, entityVersion, 1)
+	}
+
+	resp, err := suite.handler.GetTasksWithoutConfigs(suite.ctx, query)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeError, resp.GetResponseCode())
+	suite.Len(resp.GetResult().GetScheduleStatusResult().GetTasks(), 0)
+	suite.NotEmpty(resp.GetDetails())
+}
+
 // Ensures that KillTasks maps to StopPods correctly.
 func (suite *ServiceHandlerTestSuite) TestKillTasks_Success() {
 	defer goleak.VerifyNoLeaks(suite.T())
