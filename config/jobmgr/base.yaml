@@ -78,11 +78,11 @@ rate_limit:
   - name: 'peloton.api.v1alpha.job.stateless.svc.JobService:List*'
     rate: -1 # if either burst or rate is < 0, no rate limit
 
-  # if a user calls a method not listed in methods list,
-  # it would fall through to this branch
-  default:
-    rate: 100
-    burst: 100
+#  # if a user calls a method not listed in methods list,
+#  # it would fall through to this branch
+#  default:
+#    rate: -1
+#    burst: -1
 
 # TODO: need to find a way to auto generate the list
 api_lock:

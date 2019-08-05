@@ -67,7 +67,8 @@ type RateLimitConfig struct {
 	}
 	// Default is the default rate limit config,
 	// if the method called is not defined in Methods field.
-	Default TokenBucket
+	// If not set, there is no rate limit.
+	Default *TokenBucket `yaml:",omitempty"`
 }
 
 func NewRateLimitInboundMiddleware(config RateLimitConfig) (*RateLimitInboundMiddleware, error) {
@@ -93,7 +94,12 @@ func NewRateLimitInboundMiddleware(config RateLimitConfig) (*RateLimitInboundMid
 
 	}
 
-	result.defaultRateLimit = createLimiter(config.Default.Rate, config.Default.Burst)
+	if config.Default == nil {
+		// if default is not set, no rate limit for default
+		result.defaultRateLimit = createLimiter(rate.Inf, 0)
+	} else {
+		result.defaultRateLimit = createLimiter(config.Default.Rate, config.Default.Burst)
+	}
 	return result, nil
 }
 

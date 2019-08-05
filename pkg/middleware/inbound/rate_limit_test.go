@@ -58,7 +58,7 @@ func (suite *RateLimitInboundMiddlewareTestSuite) TestAllow() {
 			{Name: "testService1:*", TokenBucket: TokenBucket{Rate: rate.Inf, Burst: 1}},
 		},
 		// anything fall into default would be rejected
-		Default: TokenBucket{Rate: 0, Burst: 0},
+		Default: &TokenBucket{Rate: 0, Burst: 0},
 	}
 
 	tests := []struct {
@@ -130,7 +130,8 @@ func (suite *RateLimitInboundMiddlewareTestSuite) TestHandleSuccess() {
 
 // TestHandleFailure tests handle method passing rate limit check failed
 func (suite *RateLimitInboundMiddlewareTestSuite) TestHandleFailure() {
-	mw, err := NewRateLimitInboundMiddleware(RateLimitConfig{Enabled: true})
+	mw, err := NewRateLimitInboundMiddleware(
+		RateLimitConfig{Enabled: true, Default: &TokenBucket{Rate: 0, Burst: 0}})
 	suite.NoError(err)
 
 	h := transporttest.NewMockUnaryHandler(suite.ctrl)
@@ -139,7 +140,7 @@ func (suite *RateLimitInboundMiddlewareTestSuite) TestHandleFailure() {
 
 // TestHandleOnewaySuccess tests handleOneWay method passes rate limit check successfully
 func (suite *RateLimitInboundMiddlewareTestSuite) TestHandleOnewaySuccess() {
-	mw, err := NewRateLimitInboundMiddleware(RateLimitConfig{})
+	mw, err := NewRateLimitInboundMiddleware(RateLimitConfig{Enabled: true})
 	suite.NoError(err)
 
 	h := transporttest.NewMockOnewayHandler(suite.ctrl)
@@ -150,7 +151,8 @@ func (suite *RateLimitInboundMiddlewareTestSuite) TestHandleOnewaySuccess() {
 
 // TestHandleOnewayFailure tests handleOneWay method passing rate limit check failed
 func (suite *RateLimitInboundMiddlewareTestSuite) TestHandleOnewayFailure() {
-	mw, err := NewRateLimitInboundMiddleware(RateLimitConfig{Enabled: true})
+	mw, err := NewRateLimitInboundMiddleware(
+		RateLimitConfig{Enabled: true, Default: &TokenBucket{Rate: 0, Burst: 0}})
 	suite.NoError(err)
 
 	h := transporttest.NewMockOnewayHandler(suite.ctrl)
@@ -178,7 +180,8 @@ func (suite *RateLimitInboundMiddlewareTestSuite) TestHandleStreamSuccess() {
 
 // TestHandleStreamFailure tests handleOneWay method passing rate limit check failed
 func (suite *RateLimitInboundMiddlewareTestSuite) TestHandleStreamFailure() {
-	mw, err := NewRateLimitInboundMiddleware(RateLimitConfig{Enabled: true})
+	mw, err := NewRateLimitInboundMiddleware(
+		RateLimitConfig{Enabled: true, Default: &TokenBucket{Rate: 0, Burst: 0}})
 	suite.NoError(err)
 
 	h := transporttest.NewMockStreamHandler(suite.ctrl)
