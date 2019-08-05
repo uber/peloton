@@ -40,7 +40,7 @@ type AuthInboundMiddleware struct {
 
 // Handle authenticates user and invokes the underlying handler
 func (m *AuthInboundMiddleware) Handle(ctx context.Context, req *transport.Request, resw transport.ResponseWriter, h transport.UnaryHandler) error {
-	permitted, err := m.isPermitted(req.Headers, req.Service, req.Procedure)
+	permitted, err := m.isPermitted(req.Headers, req.Service, req.Procedure, req.Caller)
 	if err != nil {
 		return err
 	}
@@ -54,7 +54,7 @@ func (m *AuthInboundMiddleware) Handle(ctx context.Context, req *transport.Reque
 
 // HandleOneway authenticates user and invokes the underlying handler
 func (m *AuthInboundMiddleware) HandleOneway(ctx context.Context, req *transport.Request, h transport.OnewayHandler) error {
-	permitted, err := m.isPermitted(req.Headers, req.Service, req.Procedure)
+	permitted, err := m.isPermitted(req.Headers, req.Service, req.Procedure, req.Caller)
 	if err != nil {
 		return err
 	}
@@ -71,7 +71,7 @@ func (m *AuthInboundMiddleware) HandleStream(s *transport.ServerStream, h transp
 	service := s.Request().Meta.Service
 	procedure := s.Request().Meta.Procedure
 
-	permitted, err := m.isPermitted(s.Request().Meta.Headers, service, procedure)
+	permitted, err := m.isPermitted(s.Request().Meta.Headers, service, procedure, s.Request().Meta.Caller)
 	if err != nil {
 		return err
 	}
@@ -83,15 +83,11 @@ func (m *AuthInboundMiddleware) HandleStream(s *transport.ServerStream, h transp
 	return h.HandleStream(s)
 }
 
-func (m *AuthInboundMiddleware) isPermitted(headers transport.Headers, service string, procedure string) (permitted bool, err error) {
-	defer func() {
-		if !permitted {
-			log.WithFields(log.Fields{
-				"headers": headers,
-			}).Info("procedure called not permitted for user")
-		}
-	}()
-
+func (m *AuthInboundMiddleware) isPermitted(
+	headers transport.Headers,
+	service string,
+	procedure string,
+	caller string) (permitted bool, err error) {
 	// check the service name and authenticate only peloton services.
 	// Other services such as Mesos callback (service name: Scheduler)
 	// cannot be authenticated by peloton auth mechanism for now.
@@ -106,7 +102,16 @@ func (m *AuthInboundMiddleware) isPermitted(headers transport.Headers, service s
 
 	m.RedactToken(headers)
 
-	return user.IsPermitted(procedure), nil
+	permitted, err = user.IsPermitted(procedure), nil
+	if !permitted {
+		log.WithFields(log.Fields{
+			"procedure": procedure,
+			"headers":   headers,
+			"caller":    caller,
+		}).Info("procedure called not permitted for user")
+	}
+
+	return permitted, err
 }
 
 // NewAuthInboundMiddleware returns AuthInboundMiddleware with auth check
