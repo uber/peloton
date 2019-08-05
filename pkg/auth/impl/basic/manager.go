@@ -15,13 +15,15 @@
 package basic
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"io"
 	"strings"
 
 	"github.com/uber/peloton/pkg/auth"
 	"github.com/uber/peloton/pkg/common/config"
 
 	"go.uber.org/yarpc/yarpcerrors"
-	"golang.org/x/crypto/bcrypt"
 )
 
 const (
@@ -89,10 +91,7 @@ func (m *SecurityManager) Authenticate(token auth.Token) (auth.User, error) {
 		return nil, authErr
 	}
 
-	if err := bcrypt.CompareHashAndPassword(
-		user.hashedPassword,
-		[]byte(password),
-	); err != nil {
+	if !compareHashedPassword(user.hashedPassword, password) {
 		return nil, authErr
 	}
 
@@ -416,17 +415,22 @@ func constructUsers(mConfig *authConfig, roles map[string]*role) (
 			}
 		}
 
-		// bcrypt is designed to be slow, using MinCost for now to avoid the perf overhead.
-		hashedBytes, err := bcrypt.GenerateFromPassword([]byte(userConfig.Password), bcrypt.MinCost)
-		if err != nil {
-			return nil, nil, err
-		}
 		users[userConfig.Username] = &user{
 			username:       userConfig.Username,
 			role:           role,
-			hashedPassword: hashedBytes,
+			hashedPassword: generateHashByte(userConfig.Password),
 		}
 	}
 
 	return defaultUser, users, nil
+}
+
+func generateHashByte(password string) []byte {
+	h := sha256.New()
+	io.WriteString(h, password)
+	return h.Sum(nil)
+}
+
+func compareHashedPassword(hashedPassword []byte, password string) bool {
+	return bytes.Equal(hashedPassword, generateHashByte(password))
 }
