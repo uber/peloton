@@ -36,7 +36,7 @@ func TestLaunchAndKillPod(t *testing.T) {
 	podEventCh := make(chan *scalar.PodEvent, 1000)
 	hostEventCh := make(chan *scalar.HostEvent, 1000)
 	fakeClient := testclient.NewSimpleClientset()
-	testManager := NewK8sManagerWithClient(
+	testManager := newK8sManagerWithClient(
 		fakeClient,
 		podEventCh,
 		hostEventCh,
@@ -72,7 +72,7 @@ func TestPodEventHandlers(t *testing.T) {
 	podEventCh := make(chan *scalar.PodEvent, 1000)
 	hostEventCh := make(chan *scalar.HostEvent, 1000)
 	fakeClient := testclient.NewSimpleClientset()
-	testManager := NewK8sManagerWithClient(
+	testManager := newK8sManagerWithClient(
 		fakeClient,
 		podEventCh,
 		hostEventCh,
@@ -124,7 +124,7 @@ func TestHostEventHandlers(t *testing.T) {
 	podEventCh := make(chan *scalar.PodEvent, 1000)
 	hostEventCh := make(chan *scalar.HostEvent, 1000)
 	fakeClient := testclient.NewSimpleClientset()
-	testManager := NewK8sManagerWithClient(
+	testManager := newK8sManagerWithClient(
 		fakeClient,
 		podEventCh,
 		hostEventCh,

@@ -29,8 +29,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/informers"
-	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
+	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
@@ -46,8 +46,9 @@ type K8SManager struct {
 	// Internal K8S client structs that provide pod and node watch
 	// functionality.
 	informerFactory informers.SharedInformerFactory
-	nodeInformer    coreinformers.NodeInformer
-	podInformer     coreinformers.PodInformer
+	nodeInformer    cache.SharedIndexInformer
+	podInformer     cache.SharedIndexInformer
+	nodeLister      corelisters.NodeLister
 
 	// Pod events channel.
 	podEventCh chan<- *scalar.PodEvent
@@ -79,25 +80,34 @@ func NewK8sManager(
 		return nil, fmt.Errorf("error creating kube client: %v", err)
 	}
 
-	return NewK8sManagerWithClient(kubeClient, podEventCh, hostEventCh), nil
+	return newK8sManagerWithClient(
+		kubeClient,
+		podEventCh,
+		hostEventCh,
+	), nil
 }
 
-// NewK8sManagerWithClient returns a new instance of K8SManager with given k8s
+// newK8sManagerWithClient returns a new instance of K8SManager with given k8s
 // client.
-func NewK8sManagerWithClient(
+func newK8sManagerWithClient(
 	kubeClient kubernetes.Interface,
 	podEventCh chan<- *scalar.PodEvent,
 	hostEventCh chan<- *scalar.HostEvent,
 ) *K8SManager {
 	// Initialize informers.
-	informerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
-	nodeInformer := informerFactory.Core().V1().Nodes()
-	podInformer := informerFactory.Core().V1().Pods()
+	informerFactory := informers.NewSharedInformerFactory(
+		kubeClient,
+		_defaultResyncInterval,
+	)
+	nodeInformer := informerFactory.Core().V1().Nodes().Informer()
+	podInformer := informerFactory.Core().V1().Pods().Informer()
+	nodeLister := informerFactory.Core().V1().Nodes().Lister()
 
 	return &K8SManager{
 		kubeClient:      kubeClient,
 		informerFactory: informerFactory,
 		nodeInformer:    nodeInformer,
+		nodeLister:      nodeLister,
 		podInformer:     podInformer,
 		podEventCh:      podEventCh,
 		hostEventCh:     hostEventCh,
@@ -113,12 +123,12 @@ func (k *K8SManager) Start() {
 	}
 
 	// Add event callbacks to nodeInformer and podInformer.
-	k.nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	k.nodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    k.addNode,
 		UpdateFunc: k.updateNode,
 		DeleteFunc: k.deleteNode,
 	})
-	k.podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	k.podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    k.addPod,
 		UpdateFunc: k.updatePod,
 		DeleteFunc: k.deletePod,
@@ -128,7 +138,13 @@ func (k *K8SManager) Start() {
 	k.informerFactory.Start(k.lifecycle.StopCh())
 
 	// Wait for all started informers cache were synced before scheduling.
-	k.informerFactory.WaitForCacheSync(k.lifecycle.StopCh())
+	if !cache.WaitForCacheSync(
+		k.lifecycle.StopCh(),
+		k.nodeInformer.HasSynced,
+		k.podInformer.HasSynced,
+	) {
+		log.Warn("Timed out waiting for cache to sync.")
+	}
 }
 
 // Stop stops the K8SManager.
@@ -171,7 +187,7 @@ func (k *K8SManager) AckPodEvent(ctx context.Context, event *scalar.PodEvent) {
 
 // use K8s node lister to get the current list of nodes from K8s API server.
 func (k *K8SManager) listNodes() ([]*corev1.Node, error) {
-	return k.nodeInformer.Lister().List(labels.Everything())
+	return k.nodeLister.List(labels.Everything())
 }
 
 // K8s NodeInformer callbacks.
@@ -249,7 +265,7 @@ func (k *K8SManager) addPod(obj interface{}) {
 	evt := scalar.BuildPodEventFromPod(pod, scalar.AddPod)
 	log.WithFields(log.Fields{
 		"pod": pod,
-	}).Debug("add node event")
+	}).Debug("add pod event")
 	k.podEventCh <- evt
 }
 
@@ -267,7 +283,7 @@ func (k *K8SManager) updatePod(obj interface{}, obj2 interface{}) {
 	evt := scalar.BuildPodEventFromPod(pod, scalar.UpdatePod)
 	log.WithFields(log.Fields{
 		"pod": pod,
-	}).Debug("update node event")
+	}).Debug("update pod event")
 	k.podEventCh <- evt
 }
 
@@ -285,7 +301,7 @@ func (k *K8SManager) deletePod(obj interface{}) {
 	evt := scalar.BuildPodEventFromPod(pod, scalar.DeletePod)
 	log.WithFields(log.Fields{
 		"pod": pod,
-	}).Debug("delete node event")
+	}).Debug("delete pod event")
 	k.podEventCh <- evt
 }
 

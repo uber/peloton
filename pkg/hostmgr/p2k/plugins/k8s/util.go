@@ -15,6 +15,8 @@
 package k8s
 
 import (
+	"time"
+
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 
 	"github.com/pborman/uuid"
@@ -30,6 +32,10 @@ const (
 	// this limit as 100MB.
 	_defaultMinMemMb = 100.0
 )
+
+// K8S node and pod informers will resync all nodes and pods at this
+// interval. This will be used for reconciliation of pods and hostcache.
+var _defaultResyncInterval = 30 * time.Second
 
 // Convert peloton container specs to k8s container specs
 func toK8SContainerSpecs(
