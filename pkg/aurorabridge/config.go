@@ -67,7 +67,7 @@ func (c *ServiceHandlerConfig) normalize() {
 		c.GetJobSummaryWorkers = 25
 	}
 	if c.GetTasksWithoutConfigsWorkers == 0 {
-		c.GetTasksWithoutConfigsWorkers = 25
+		c.GetTasksWithoutConfigsWorkers = 100
 	}
 	if c.StopPodWorkers == 0 {
 		c.StopPodWorkers = 25

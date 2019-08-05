@@ -286,40 +286,67 @@ func (h *ServiceHandler) getTasksWithoutConfigs(
 		return nil, auroraErrorf("get job ids from task query: %s", err)
 	}
 
-	tasks := []*api.ScheduledTask{}
+	// concurrency.Map in nested setup leaks goroutines, thus using
+	// a custom worker pool implementation.
+	mapOutputs := make([]struct {
+		ts  []*api.ScheduledTask
+		err error
+	}, len(jobIDs))
+	mapWait := sync.WaitGroup{}
+	for i, jobID := range jobIDs {
+		mapWait.Add(1)
+		go func(i int, j *peloton.JobID) {
+			defer mapWait.Done()
 
-	// TODO(kevinxu): Factor out to seperate function.
-	for _, jobID := range jobIDs {
-		jobSummary, err := h.getJobInfoSummary(ctx, jobID)
-		if err != nil {
-			if yarpcerrors.IsNotFound(err) {
-				continue
+			jobSummary, err := h.getJobInfoSummary(ctx, j)
+			if err != nil {
+				if yarpcerrors.IsNotFound(err) {
+					return
+				}
+				mapOutputs[i].err = fmt.Errorf(
+					"get job info for job id %q: %s",
+					j.GetValue(), err)
+				return
 			}
-			return nil, auroraErrorf("get job info for job id %q: %s",
-				jobID.GetValue(), err)
-		}
 
-		pods, err := h.queryPods(
-			ctx,
-			jobID,
-			jobSummary.GetInstanceCount(),
-		)
-		if err != nil {
-			return nil, auroraErrorf(
-				"query pods for job id %q: %s", jobID.GetValue(), err)
-		}
+			pods, err := h.queryPods(
+				ctx,
+				j,
+				jobSummary.GetInstanceCount(),
+			)
+			if err != nil {
+				mapOutputs[i].err = fmt.Errorf(
+					"query pods for job id %q: %s",
+					j.GetValue(), err)
+				return
+			}
 
-		ts, err := h.getScheduledTasks(
-			ctx,
-			jobSummary,
-			pods,
-			&taskFilter{statuses: query.GetStatuses()},
-		)
-		if err != nil {
-			return nil, auroraErrorf("get tasks without configs: %s", err)
-		}
+			ts, err := h.getScheduledTasks(
+				ctx,
+				jobSummary,
+				pods,
+				&taskFilter{statuses: query.GetStatuses()},
+			)
+			if err != nil {
+				mapOutputs[i].err = fmt.Errorf("get tasks without configs: %s", err)
+				return
+			}
 
-		tasks = append(tasks, ts...)
+			mapOutputs[i].ts = ts
+			return
+		}(i, jobID)
+	}
+	mapWait.Wait()
+
+	tasks := []*api.ScheduledTask{}
+	for _, o := range mapOutputs {
+		if o.err != nil {
+			return nil, auroraErrorf(o.err.Error())
+		}
+		if o.ts == nil {
+			continue
+		}
+		tasks = append(tasks, o.ts...)
 	}
 
 	return &api.Result{
