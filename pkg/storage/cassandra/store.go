@@ -28,7 +28,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/uber/peloton/.gen/mesos/v1"
+	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/query"
@@ -873,10 +873,10 @@ func (s *Store) addPodEvent(
 	return nil
 }
 
-// getPodEvents returns pod events for a Job + Instance + PodID (optional)
+// GetPodEvents returns pod events for a Job + Instance + PodID (optional)
 // Pod events are sorted by PodID + Timestamp
 // only is called from this file
-func (s *Store) getPodEvents(
+func (s *Store) GetPodEvents(
 	ctx context.Context,
 	jobID string,
 	instanceID uint32,
@@ -1612,7 +1612,7 @@ func (s *Store) deletePodEventsOnDeleteJob(
 		// 2) read pod events if instance_id (shrunk instances) % 100 = 0
 		if instanceCount > jobConfig.InstanceCount &&
 			instanceCount%_defaultPodEventsLimit == 0 {
-			events, err := s.getPodEvents(
+			events, err := s.GetPodEvents(
 				ctx,
 				jobID,
 				instanceCount)
