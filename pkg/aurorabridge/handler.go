@@ -28,7 +28,6 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
-	pbquery "github.com/uber/peloton/.gen/peloton/api/v1alpha/query"
 	"github.com/uber/peloton/.gen/peloton/private/jobmgrsvc"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
 	"github.com/uber/peloton/pkg/common/util"
@@ -2162,24 +2161,59 @@ func (h *ServiceHandler) getJobAndWorkflow(
 func (h *ServiceHandler) queryPods(
 	ctx context.Context,
 	jobID *peloton.JobID,
-	limit uint32,
+	instanceCount uint32,
 ) ([]*pod.PodInfo, error) {
-	req := &statelesssvc.QueryPodsRequest{
-		JobId: jobID,
-		Spec: &pod.QuerySpec{
-			Pagination: &pbquery.PaginationSpec{
-				Limit: limit,
-			},
-		},
-		Pagination: &pbquery.PaginationSpec{
-			Limit: limit,
-		},
+
+	var inputs []interface{}
+	for i := uint32(0); i < instanceCount; i++ {
+		inputs = append(inputs, fmt.Sprintf("%s-%d", jobID.GetValue(), i))
 	}
-	resp, err := h.jobClient.QueryPods(ctx, req)
+
+	f := func(ctx context.Context, input interface{}) (interface{}, error) {
+		podName := input.(string)
+		req := &podsvc.GetPodRequest{
+			PodName: &peloton.PodName{
+				Value: podName,
+			},
+			StatusOnly: false,
+			Limit:      1,
+		}
+
+		resp, err := h.podClient.GetPod(ctx, req)
+		if err != nil {
+			// If TaskRuntime does not exist, return nil PodInfo
+			if yarpcerrors.IsNotFound(err) {
+				return nil, nil
+			}
+
+			return nil, err
+		}
+
+		return resp.GetCurrent(), nil
+	}
+
+	outputs, err := concurrency.Map(
+		ctx,
+		concurrency.MapperFunc(f),
+		inputs,
+		h.config.GetTasksWithoutConfigsWorkers)
 	if err != nil {
 		return nil, err
 	}
-	return resp.GetPods(), nil
+
+	podInfos := []*pod.PodInfo{}
+	for _, o := range outputs {
+		if o == nil {
+			continue
+		}
+		podInfo := o.(*pod.PodInfo)
+		if podInfo == nil {
+			continue
+		}
+		podInfos = append(podInfos, podInfo)
+	}
+
+	return podInfos, nil
 }
 
 // getPodEvents calls jobmgr to get a list of PodEvent based on PodName.
