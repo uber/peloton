@@ -16,17 +16,52 @@ package lifecyclemgr
 
 import (
 	"context"
+	"time"
+
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 
 	"github.com/uber/peloton/pkg/common/api"
 
+	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/yarpcerrors"
 	"golang.org/x/time/rate"
 )
+
+// hostmgr API timeout
+const _defaultHostmgrAPITimeout = 10 * time.Second
+
+var (
+	errEmptyTasks = yarpcerrors.InvalidArgumentErrorf(
+		"empty tasks infos")
+	errEmptyPods = yarpcerrors.InvalidArgumentErrorf(
+		"empty pods info")
+	errLaunchInvalidOffer = yarpcerrors.InternalErrorf(
+		"invalid offer to launch tasks")
+)
+
+// LaunchableTaskInfo contains the info of a task to be launched
+type LaunchableTaskInfo struct {
+	*task.TaskInfo
+	// Spec is the pod spec for the pod to be launched
+	Spec *pbpod.PodSpec
+}
 
 // Manager interface defines methods to kill workloads.
 type Manager interface {
 	Lockable
 
+	// Launch will launch tasks/pods using their config/spec on the specified
+	// host using the acquired leaseID.
+	Launch(
+		ctx context.Context,
+		leaseID string,
+		hostname string,
+		agentID string,
+		tasks map[string]*LaunchableTaskInfo,
+		rateLimiter *rate.Limiter,
+	) error
 	// Kill will kill tasks/pods using their ID.
 	Kill(
 		ctx context.Context,
@@ -48,10 +83,11 @@ type Manager interface {
 func New(
 	version api.Version,
 	dispatcher *yarpc.Dispatcher,
+	parent tally.Scope,
 ) Manager {
 	if version.IsV1() {
-		return newV1LifecycleMgr(dispatcher)
+		return newV1LifecycleMgr(dispatcher, parent)
 	} else {
-		return newV0LifecycleMgr(dispatcher)
+		return newV0LifecycleMgr(dispatcher, parent)
 	}
 }

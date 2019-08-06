@@ -16,10 +16,13 @@ package lifecyclemgr
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+	pbhostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
 	v1_hostsvc "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc"
 	v1_host_mocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc/mocks"
 
@@ -27,6 +30,7 @@ import (
 	"github.com/uber/peloton/pkg/common/rpc"
 
 	"github.com/golang/mock/gomock"
+	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
@@ -61,6 +65,7 @@ func (suite *v1LifecycleTestSuite) SetupTest() {
 	suite.lm = &v1LifecycleMgr{
 		hostManagerV1: suite.mockHostMgr,
 		lockState:     &lockState{state: 0},
+		metrics:       NewMetrics(tally.NoopScope),
 	}
 	suite.podID = "af647b98-0ae0-4dac-be42-c74a524dfe44-0"
 }
@@ -89,7 +94,7 @@ func (suite *v1LifecycleTestSuite) TestNew() {
 		},
 	})
 
-	_ = newV1LifecycleMgr(dispatcher)
+	_ = newV1LifecycleMgr(dispatcher, tally.NoopScope)
 }
 
 // TestKill tests Kill pods.
@@ -166,4 +171,94 @@ func (suite *v1LifecycleTestSuite) TestShutdownExecutorLock() {
 		"",
 		nil)
 	suite.NoError(err)
+}
+
+// TestLaunch tests the task launcher Launch API to launch pods.
+func (suite *v1LifecycleTestSuite) TestLaunch() {
+	// generate 25 test tasks
+	numTasks := 25
+	var launchablePods []*pbhostmgr.LaunchablePod
+	taskInfos := make(map[string]*LaunchableTaskInfo)
+	expectedPodSpecs := make(map[string]*pbpod.PodSpec)
+
+	for i := 0; i < numTasks; i++ {
+		tmp := createTestTask(i)
+		launchablePod := pbhostmgr.LaunchablePod{
+			PodId: &peloton.PodID{
+				Value: tmp.GetRuntime().GetMesosTaskId().GetValue()},
+			Spec: tmp.Spec,
+		}
+
+		launchablePods = append(launchablePods, &launchablePod)
+		taskID := tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId)
+		taskInfos[taskID] = tmp
+		expectedPodSpecs[tmp.GetRuntime().GetMesosTaskId().GetValue()] =
+			tmp.Spec
+	}
+
+	expectedHostname := "host-1"
+	expectedLeaseID := uuid.New()
+
+	// Capture LaunchPods calls
+	launchedPodSpecMap := make(map[string]*pbpod.PodSpec)
+
+	gomock.InOrder(
+		// Mock LaunchPods call.
+		suite.mockHostMgr.EXPECT().
+			LaunchPods(
+				gomock.Any(),
+				gomock.Any()).
+			Do(func(_ context.Context, reqBody interface{}) {
+				req := reqBody.(*v1_hostsvc.LaunchPodsRequest)
+				suite.Equal(req.GetHostname(), expectedHostname)
+				suite.Equal(req.GetLeaseId().GetValue(), expectedLeaseID)
+				for _, lp := range req.GetPods() {
+					launchedPodSpecMap[lp.PodId.GetValue()] = lp.Spec
+				}
+			}).
+			Return(&v1_hostsvc.LaunchPodsResponse{}, nil).
+			Times(1),
+	)
+
+	err := suite.lm.Launch(
+		context.Background(),
+		expectedLeaseID,
+		expectedHostname,
+		expectedHostname,
+		taskInfos,
+		nil,
+	)
+
+	suite.NoError(err)
+	suite.Equal(launchedPodSpecMap, expectedPodSpecs)
+}
+
+// TestLaunchErrors tests Launch errors.
+func (suite *v1LifecycleTestSuite) TestLaunchErrors() {
+	taskInfos := make(map[string]*LaunchableTaskInfo)
+	tmp := createTestTask(1)
+	taskID := tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId)
+	taskInfos[taskID] = tmp
+
+	err := suite.lm.Launch(
+		context.Background(),
+		"",
+		"host",
+		"host",
+		nil,
+		nil,
+	)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsInvalidArgument(err))
+
+	err = suite.lm.Launch(
+		context.Background(),
+		"",
+		"host",
+		"host",
+		taskInfos,
+		rate.NewLimiter(0, 0),
+	)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsResourceExhausted(err))
 }

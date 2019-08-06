@@ -143,7 +143,7 @@ func NewDriver(
 			cfg.FailureRetryDelay,
 			cfg.MaxRetryDelay,
 			workflowScope),
-		lm: lifecyclemgr.New(hmVersion, d),
+		lm: lifecyclemgr.New(hmVersion, d, scope),
 		resmgrClient: resmgrsvc.NewResourceManagerServiceYARPCClient(
 			d.ClientConfig(common.PelotonResourceManager)),
 		jobStore:        jobStore,

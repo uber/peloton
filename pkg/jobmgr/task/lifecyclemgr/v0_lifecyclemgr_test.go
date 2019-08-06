@@ -21,6 +21,9 @@ import (
 	"testing"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	v0_hostsvc "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	v0_host_mocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 
@@ -38,6 +41,16 @@ import (
 )
 
 const randomErrorStr = "random error"
+
+const (
+	taskIDFmt            = _testJobID + "-%d-%d"
+	testPort             = uint32(100)
+	testSecretPath       = "/tmp/secret"
+	testSecretStr        = "test-data"
+	testTaskConfigData   = "../../../../example/thermos-executor-task-config.bin"
+	testAssignedTaskData = "../../../../example/thermos-executor-assigned-task.bin"
+	_testJobID           = "bca875f5-322a-4439-b0c9-63e3cf9f982e"
+)
 
 type v0LifecycleTestSuite struct {
 	suite.Suite
@@ -67,6 +80,7 @@ func (suite *v0LifecycleTestSuite) SetupTest() {
 	suite.lm = &v0LifecycleMgr{
 		hostManagerV0: suite.mockHostMgr,
 		lockState:     &lockState{state: 0},
+		metrics:       NewMetrics(tally.NoopScope),
 	}
 	suite.jobID = "af647b98-0ae0-4dac-be42-c74a524dfe44"
 	suite.instanceID = 89
@@ -76,6 +90,57 @@ func (suite *v0LifecycleTestSuite) SetupTest() {
 		suite.instanceID,
 		uuid.New())
 
+}
+
+func createTestTask(instanceID int) *LaunchableTaskInfo {
+	tid := fmt.Sprintf(taskIDFmt, instanceID, 2)
+
+	return &LaunchableTaskInfo{
+		TaskInfo: &task.TaskInfo{
+			JobId: &peloton.JobID{
+				Value: _testJobID,
+			},
+			InstanceId: uint32(instanceID),
+			Config: &task.TaskConfig{
+				Name: _testJobID,
+				Resource: &task.ResourceConfig{
+					CpuLimit:    10,
+					MemLimitMb:  10,
+					DiskLimitMb: 10,
+					FdLimit:     10,
+				},
+				Ports: []*task.PortConfig{
+					{
+						Name:    "port",
+						EnvName: "PORT",
+					},
+				},
+			},
+			Runtime: &task.RuntimeInfo{
+				MesosTaskId: &mesos.TaskID{
+					Value: &tid,
+				},
+			},
+		},
+		Spec: &pbpod.PodSpec{
+			Containers: []*pbpod.ContainerSpec{
+				{
+					Name: tid,
+					Resource: &pbpod.ResourceSpec{
+						CpuLimit:   1.0,
+						MemLimitMb: 100.0,
+					},
+					Ports: []*pbpod.PortSpec{
+						{
+							Name:  "http",
+							Value: 8080,
+						},
+					},
+					Image: "test_image",
+				},
+			},
+		},
+	}
 }
 
 func (suite *v0LifecycleTestSuite,
@@ -115,7 +180,7 @@ func (suite *v0LifecycleTestSuite) TestNew() {
 		},
 	})
 
-	_ = newV0LifecycleMgr(dispatcher)
+	_ = newV0LifecycleMgr(dispatcher, tally.NoopScope)
 }
 
 // TestKill tests successful lm.Kill
@@ -277,4 +342,92 @@ func (suite *v0LifecycleTestSuite) TestShutdownExecutorInvalidExecutors() {
 	suite.Error(err)
 	suite.True(yarpcerrors.IsInternal(err))
 	suite.True(strings.Contains(err.Error(), randomErrorStr))
+}
+
+// TestLaunch ensures that multiple tasks can be launched in hostmgr.
+func (suite *v0LifecycleTestSuite) TestLaunch() {
+	// generate 25 test tasks
+	numTasks := 25
+	var launchableTasks []*v0_hostsvc.LaunchableTask
+	taskInfos := make(map[string]*LaunchableTaskInfo)
+	expectedTaskConfigs := make(map[string]*task.TaskConfig)
+	for i := 0; i < numTasks; i++ {
+		tmp := createTestTask(i)
+		launchableTask := v0_hostsvc.LaunchableTask{
+			TaskId: tmp.GetRuntime().GetMesosTaskId(),
+			Config: tmp.GetConfig(),
+			Ports:  tmp.GetRuntime().GetPorts(),
+		}
+		launchableTasks = append(launchableTasks, &launchableTask)
+		taskID := tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId)
+		taskInfos[taskID] = tmp
+		expectedTaskConfigs[tmp.GetRuntime().GetMesosTaskId().GetValue()] =
+			tmp.Config
+	}
+
+	expectedHostname := "host-1"
+	expectedOfferID := uuid.New()
+
+	// Capture LaunchTasks calls
+	launchedTasks := make(map[string]*task.TaskConfig)
+
+	gomock.InOrder(
+		// Mock LaunchTasks call.
+		suite.mockHostMgr.EXPECT().
+			LaunchTasks(
+				gomock.Any(),
+				gomock.Any()).
+			Do(func(_ context.Context, reqBody interface{}) {
+				req := reqBody.(*v0_hostsvc.LaunchTasksRequest)
+				suite.Equal(req.GetHostname(), expectedHostname)
+				suite.Equal(req.GetId().GetValue(), expectedOfferID)
+				for _, lt := range req.Tasks {
+					launchedTasks[lt.TaskId.GetValue()] = lt.Config
+				}
+			}).
+			Return(&v0_hostsvc.LaunchTasksResponse{}, nil).
+			Times(1),
+	)
+
+	err := suite.lm.Launch(
+		context.Background(),
+		expectedOfferID,
+		expectedHostname,
+		expectedHostname,
+		taskInfos,
+		nil,
+	)
+
+	suite.NoError(err)
+	suite.Equal(launchedTasks, expectedTaskConfigs)
+}
+
+// TestLaunchErrors tests Launch errors.
+func (suite *v0LifecycleTestSuite) TestLaunchErrors() {
+	taskInfos := make(map[string]*LaunchableTaskInfo)
+	tmp := createTestTask(1)
+	taskID := tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId)
+	taskInfos[taskID] = tmp
+
+	err := suite.lm.Launch(
+		context.Background(),
+		"",
+		"host",
+		"host",
+		nil,
+		nil,
+	)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsInvalidArgument(err))
+
+	err = suite.lm.Launch(
+		context.Background(),
+		"",
+		"host",
+		"host",
+		taskInfos,
+		rate.NewLimiter(0, 0),
+	)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsResourceExhausted(err))
 }

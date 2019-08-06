@@ -44,12 +44,12 @@ func TestNew(t *testing.T) {
 		},
 	})
 
-	lm := New(api.V1Alpha, dispatcher)
+	lm := New(api.V1Alpha, dispatcher, tally.NoopScope)
 
 	_, ok := lm.(Manager)
 	assert.True(t, ok)
 
-	lm = New(api.V0, dispatcher)
+	lm = New(api.V0, dispatcher, tally.NoopScope)
 	_, ok = lm.(Manager)
 	assert.True(t, ok)
 }

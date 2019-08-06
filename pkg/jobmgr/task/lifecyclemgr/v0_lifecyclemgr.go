@@ -19,12 +19,16 @@ import (
 	"time"
 
 	"github.com/uber/peloton/.gen/mesos/v1"
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	v0_hostsvc "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/common/backoff"
 	"github.com/uber/peloton/pkg/common/util"
 
+	log "github.com/sirupsen/logrus"
+	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/yarpcerrors"
 	"golang.org/x/time/rate"
@@ -37,18 +41,23 @@ type v0LifecycleMgr struct {
 	*lockState
 	// v0 client for hostmgr task operations.
 	hostManagerV0 v0_hostsvc.InternalHostServiceYARPCClient
+	metrics       *Metrics
+	retryPolicy   backoff.RetryPolicy
 }
 
 // newV0LifecycleMgr returns an instance of the v0 lifecycle manager.
 func newV0LifecycleMgr(
 	dispatcher *yarpc.Dispatcher,
+	parent tally.Scope,
 ) *v0LifecycleMgr {
 	return &v0LifecycleMgr{
 		hostManagerV0: v0_hostsvc.NewInternalHostServiceYARPCClient(
 			dispatcher.ClientConfig(
 				common.PelotonHostManager),
 		),
-		lockState: &lockState{state: 0},
+		lockState:   &lockState{state: 0},
+		retryPolicy: backoff.NewRetryPolicy(3, 15*time.Second),
+		metrics:     NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
 	}
 }
 
@@ -109,6 +118,119 @@ func (l *v0LifecycleMgr) killAndReserve(
 	return nil
 }
 
+// Launch launches the task using taskConfig. pod spec is ignored in this impl.
+func (l *v0LifecycleMgr) Launch(
+	ctx context.Context,
+	leaseID string,
+	hostname string,
+	agentID string,
+	tasks map[string]*LaunchableTaskInfo,
+	rateLimiter *rate.Limiter,
+) error {
+	if len(tasks) == 0 {
+		return errEmptyTasks
+	}
+	// enforce rate limit
+	if rateLimiter != nil && !rateLimiter.Allow() {
+		l.metrics.LaunchRateLimit.Inc(1)
+		return yarpcerrors.ResourceExhaustedErrorf(
+			"rate limit reached for kill")
+	}
+
+	log.WithField("tasks", tasks).Debug("Launching Tasks")
+	callStart := time.Now()
+
+	err := backoff.Retry(
+		func() error {
+			return l.launchBatchTasks(
+				ctx,
+				leaseID,
+				hostname,
+				agentID,
+				tasks,
+			)
+		}, l.retryPolicy, l.isRetryableError)
+
+	callDuration := time.Since(callStart)
+
+	if err != nil {
+		l.metrics.LaunchFail.Inc(int64(len(tasks)))
+		return err
+	}
+
+	l.metrics.Launch.Inc(int64(len(tasks)))
+	log.WithFields(log.Fields{
+		"num_tasks": len(tasks),
+		"hostname":  hostname,
+		"duration":  callDuration.Seconds(),
+	}).Debug("Launched tasks")
+	l.metrics.LaunchDuration.Record(callDuration)
+	return nil
+}
+
+func (l *v0LifecycleMgr) isRetryableError(err error) bool {
+	switch err {
+	case errLaunchInvalidOffer:
+		return false
+	}
+
+	log.WithError(err).Warn("task launch need to be retried")
+	l.metrics.LaunchRetry.Inc(1)
+	return true
+}
+
+func (l *v0LifecycleMgr) launchBatchTasks(
+	ctx context.Context,
+	leaseID string,
+	hostname string,
+	agentID string,
+	tasks map[string]*LaunchableTaskInfo,
+) error {
+
+	// convert LaunchableTaskInfo to v0 Hostsvc LaunchableTask
+	var launchableTasks []*v0_hostsvc.LaunchableTask
+	for _, launchableTaskInfo := range tasks {
+		launchableTask := v0_hostsvc.LaunchableTask{
+			TaskId: launchableTaskInfo.Runtime.GetMesosTaskId(),
+			Config: launchableTaskInfo.Config,
+			Ports:  launchableTaskInfo.Runtime.GetPorts(),
+			Id: &peloton.TaskID{Value: util.CreatePelotonTaskID(
+				launchableTaskInfo.GetJobId().GetValue(),
+				launchableTaskInfo.GetInstanceId(),
+			),
+			},
+		}
+		launchableTasks = append(launchableTasks, &launchableTask)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, _defaultHostmgrAPITimeout)
+	defer cancel()
+	var request = &v0_hostsvc.LaunchTasksRequest{
+		Hostname: hostname,
+		Tasks:    launchableTasks,
+		AgentId:  &mesos.AgentID{Value: &agentID},
+		Id:       &peloton.HostOfferID{Value: leaseID},
+	}
+
+	log.WithField("request", request).Debug("LaunchTasks Called")
+
+	response, err := l.hostManagerV0.LaunchTasks(ctx, request)
+	if err != nil {
+		return err
+	}
+	if response.GetError() != nil {
+		log.WithFields(log.Fields{
+			"response": response,
+			"hostname": hostname,
+		}).Error("hostmgr launch tasks got error resp")
+		if response.GetError().GetInvalidOffers() != nil {
+			return errLaunchInvalidOffer
+		}
+		return yarpcerrors.InternalErrorf(response.Error.String())
+	}
+	return nil
+}
+
 // Kill does one of two things:
 // if a host is not provided, it tries to kill the task using taskID.
 // if a host is provided, it kills the task and reserves the host.
@@ -125,6 +247,7 @@ func (l *v0LifecycleMgr) Kill(
 
 	// enforce rate limit
 	if rateLimiter != nil && !rateLimiter.Allow() {
+		l.metrics.KillRateLimit.Inc(1)
 		return yarpcerrors.ResourceExhaustedErrorf(
 			"rate limit reached for kill")
 	}

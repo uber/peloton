@@ -115,7 +115,7 @@ func NewTaskStatusUpdate(
 		jobFactory:      jobFactory,
 		goalStateDriver: goalStateDriver,
 		listeners:       listeners,
-		lm:              lifecyclemgr.New(hmVersion, d),
+		lm:              lifecyclemgr.New(hmVersion, d, parentScope),
 	}
 	// TODO: add config for BucketEventProcessor
 	statusUpdater.applier = newBucketEventProcessor(statusUpdater, 100, 10000)
