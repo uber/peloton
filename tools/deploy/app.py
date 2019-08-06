@@ -118,6 +118,7 @@ class App(object):
         self.slack_resource_types = None
         self.enable_revocable_resources = None
         self.bin_packing = None
+        self.qos_advisor_service_address = None
         self.stream_only_mode = True
         self.task_preemption_period = "60s"
         self.enable_sla_tracking = False
@@ -302,6 +303,9 @@ class App(object):
                 ] = self.enable_revocable_resources
             if self.bin_packing:
                 env_vars["BIN_PACKING"] = self.bin_packing
+            if self.qos_advisor_service_address:
+                env_vars["QOS_ADVISOR_SERVICE_ADDRESS"] \
+                    = self.qos_advisor_service_address
 
         if self.name == "aurorabridge":
             if self.respool_path:

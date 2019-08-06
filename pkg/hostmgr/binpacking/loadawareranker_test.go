@@ -16,12 +16,11 @@ package binpacking
 
 import (
 	"context"
-	"testing"
-
 	cqos "github.com/uber/peloton/.gen/qos/v1alpha1"
 	cqosmocks "github.com/uber/peloton/.gen/qos/v1alpha1/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/summary"
 	watchmocks "github.com/uber/peloton/pkg/hostmgr/watchevent/mocks"
+	"testing"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
@@ -35,6 +34,7 @@ type LoadAwareRankerTestSuite struct {
 	mockedCQosClient *cqosmocks.MockQoSAdvisorServiceYARPCClient
 	mockCtrl         *gomock.Controller
 	watchProcessor   *watchmocks.MockWatchProcessor
+	cancelFunc       context.CancelFunc
 }
 
 func TestLoadAwareRankerTestSuite(t *testing.T) {
@@ -42,7 +42,10 @@ func TestLoadAwareRankerTestSuite(t *testing.T) {
 }
 
 func (suite *LoadAwareRankerTestSuite) SetupTest() {
-	suite.ctx = context.Background()
+	suite.ctx, suite.cancelFunc = context.WithTimeout(
+		context.Background(),
+		_rpcTimeout)
+	//defer suite.cancelFunc()
 	suite.mockCtrl = gomock.NewController(suite.T())
 	suite.mockedCQosClient = cqosmocks.NewMockQoSAdvisorServiceYARPCClient(suite.mockCtrl)
 	suite.loadAwareRanker = NewLoadAwareRanker(suite.mockedCQosClient)
@@ -51,6 +54,7 @@ func (suite *LoadAwareRankerTestSuite) SetupTest() {
 
 func (suite *LoadAwareRankerTestSuite) TearDownTest() {
 	suite.mockCtrl.Finish()
+	suite.cancelFunc()
 }
 
 func (suite *LoadAwareRankerTestSuite) TestName() {
@@ -124,7 +128,7 @@ func (suite *LoadAwareRankerTestSuite) TestGetRankedHostListWithRefresh() {
 	AddHostToIndex(5, suite.offerIndex, suite.watchProcessor)
 	suite.mockedCQosClient.EXPECT().
 		GetHostMetrics(
-			suite.ctx,
+			gomock.Any(),
 			gomock.Any()).Return(
 		&cqos.GetHostMetricsResponse{
 			Hosts: map[string]*cqos.Metrics{
@@ -163,7 +167,7 @@ func (suite *LoadAwareRankerTestSuite) TestGetRankedHostListWithRefresh() {
 func (suite *LoadAwareRankerTestSuite) setupMocks() {
 	suite.mockedCQosClient.EXPECT().
 		GetHostMetrics(
-			suite.ctx,
+			gomock.Any(),
 			gomock.Any()).Return(
 		&cqos.GetHostMetricsResponse{
 			Hosts: map[string]*cqos.Metrics{

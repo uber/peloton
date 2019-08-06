@@ -17,11 +17,16 @@ package binpacking
 import (
 	"context"
 	"sync"
+	"time"
 
 	cqos "github.com/uber/peloton/.gen/qos/v1alpha1"
 	"github.com/uber/peloton/pkg/hostmgr/summary"
 
 	log "github.com/sirupsen/logrus"
+)
+
+const (
+	_rpcTimeout = 15 * time.Second
 )
 
 // loadAwareRanker is the struct for implementation of
@@ -146,6 +151,11 @@ func (l *loadAwareRanker) bucketSortByLoad(
 func (l *loadAwareRanker) pollFromCQos(ctx context.Context) (*cqos.
 	GetHostMetricsResponse, error) {
 	req := &cqos.GetHostMetricsRequest{}
+	ctx, cancelFunc := context.WithTimeout(
+		ctx,
+		_rpcTimeout,
+	)
+	defer cancelFunc()
 	result, err := l.cqosClient.GetHostMetrics(
 		ctx, req)
 	if err != nil {

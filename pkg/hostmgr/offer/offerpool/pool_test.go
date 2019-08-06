@@ -57,6 +57,7 @@ const (
 	_streamID       = "streamID"
 	_dummyOfferID   = "dummyOfferID"
 	_dummyTestAgent = "dummyTestAgent"
+	_rpcTimeout     = 15 * time.Second
 )
 
 func getMesosOffer(hostName string, offerID string) *mesos.Offer {
@@ -112,6 +113,7 @@ type OfferPoolTestSuite struct {
 	agent3Offers         []*mesos.Offer
 	agent4Offers         []*mesos.Offer
 	watchProcessor       *watchmocks.MockWatchProcessor
+	cancelFunc           context.CancelFunc
 }
 
 func (suite *OfferPoolTestSuite) SetupSuite() {
@@ -137,7 +139,9 @@ func (suite *OfferPoolTestSuite) SetupSuite() {
 }
 
 func (suite *OfferPoolTestSuite) SetupTest() {
-	suite.ctx = context.Background()
+	suite.ctx, suite.cancelFunc = context.WithTimeout(
+		context.Background(),
+		_rpcTimeout)
 	suite.ctrl = gomock.NewController(goroutineReporter{})
 	suite.mockedCQosClient = cqosmocks.
 		NewMockQoSAdvisorServiceYARPCClient(suite.ctrl)
@@ -842,7 +846,7 @@ func (suite *OfferPoolTestSuite) TestOfferSorting() {
 		if rh == hostsvc.FilterHint_FILTER_HINT_RANKING_LOAD_AWARE {
 			suite.mockedCQosClient.EXPECT().
 				GetHostMetrics(
-					suite.ctx,
+					gomock.Any(),
 					gomock.Any()).Return(
 				&cqos.GetHostMetricsResponse{
 					Hosts: map[string]*cqos.Metrics{
@@ -1122,7 +1126,7 @@ func (suite *OfferPoolTestSuite) TestClaimForPlaceWithRankHintLoadAware() {
 
 	suite.mockedCQosClient.EXPECT().
 		GetHostMetrics(
-			suite.ctx,
+			gomock.Any(),
 			gomock.Any()).Return(
 		&cqos.GetHostMetricsResponse{
 			Hosts: map[string]*cqos.Metrics{
