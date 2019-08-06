@@ -33,7 +33,7 @@ def test__simple_auto_rolled_back(client):
         get_job_update_request("test_dc_labrat_bad_config.yaml"),
         "rollout bad config",
     )
-    wait_for_rolled_back(client, res.key, timeout_secs=120)
+    wait_for_rolled_back(client, res.key)
 
     # validate job is rolled back to previous config
     res = client.get_tasks_without_configs(

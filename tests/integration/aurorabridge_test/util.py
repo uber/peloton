@@ -38,7 +38,7 @@ def wait_for_auto_rolling_back(client, job_update_key, timeout_secs=120):
     )
 
 
-def wait_for_rolled_back(client, job_update_key, timeout_secs=120):
+def wait_for_rolled_back(client, job_update_key, timeout_secs=600):
     wait_for_update_status(
         client,
         job_update_key,
