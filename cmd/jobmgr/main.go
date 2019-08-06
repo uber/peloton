@@ -699,9 +699,6 @@ func main() {
 	volumesvc.InitServiceHandler(
 		dispatcher,
 		rootScope,
-		store, // store implements JobStore
-		store, // store implements TaskStore
-		store, // store implements VolumeStore
 	)
 
 	updatesvc.InitServiceHandler(

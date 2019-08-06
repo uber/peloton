@@ -62,6 +62,7 @@ const (
 	testSecretStr        = "test-data"
 	testTaskConfigData   = "../../../../example/thermos-executor-task-config.bin"
 	testAssignedTaskData = "../../../../example/thermos-executor-assigned-task.bin"
+	_testJobID           = "bca875f5-322a-4439-b0c9-63e3cf9f982e"
 )
 
 var (
