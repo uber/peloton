@@ -769,7 +769,7 @@ func (h *ServiceHandler) handleEvent(event *pb_eventstream.Event) {
 	}
 
 	// TODO: We probably want to terminate all the tasks in gang
-	err = h.rmTracker.MarkItDone(taskID, *event.MesosTaskStatus.TaskId.Value)
+	err = h.rmTracker.MarkItDone(event.GetMesosTaskStatus().GetTaskId().GetValue())
 	if err != nil {
 		log.WithField("event", event).WithError(err).Error(
 			"Could not be updated")
@@ -978,9 +978,7 @@ func (h *ServiceHandler) KillTasks(
 			continue
 		}
 
-		err := h.rmTracker.MarkItInvalid(
-			taskTobeKilled,
-			*(rmTaskToKill.Task().TaskId.Value))
+		err := h.rmTracker.MarkItInvalid(rmTaskToKill.Task().GetTaskId().GetValue())
 		if err != nil {
 			tasksNotKilled = append(tasksNotKilled, taskTobeKilled)
 			continue
@@ -1125,7 +1123,7 @@ func (h *ServiceHandler) UpdateTasksState(
 
 		// Checking if the state for the task is in terminal state
 		if util.IsPelotonStateTerminal(updateEntry.GetState()) {
-			err := h.rmTracker.MarkItDone(id, *updateEntry.MesosTaskId.Value)
+			err := h.rmTracker.MarkItDone(updateEntry.GetMesosTaskId().GetValue())
 			if err != nil {
 				log.WithError(err).WithFields(log.Fields{
 					"task_id":      id,

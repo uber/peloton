@@ -60,6 +60,11 @@ const (
 	timeout = 1 * time.Second
 )
 
+var (
+	jobID    = "bca875f5-322a-4439-b0c9-63e3cf9f982e"
+	newJobID = uuid.New()
+)
+
 type handlerTestSuite struct {
 	suite.Suite
 
@@ -1049,7 +1054,7 @@ func (s *handlerTestSuite) TestHandleEventError() {
 	s.NoError(err)
 
 	tracker.EXPECT().GetTask(gomock.Any()).Return(rmTask)
-	tracker.EXPECT().MarkItDone(gomock.Any(), gomock.Any()).Return(nil)
+	tracker.EXPECT().MarkItDone(gomock.Any()).Return(nil)
 	response, _ = s.handler.NotifyTaskUpdates(context.Background(), req)
 	s.EqualValues(uint64(1000), response.PurgeOffset)
 	s.Nil(response.Error)
@@ -1087,7 +1092,7 @@ func (s *handlerTestSuite) TestHandleEventError() {
 
 	// Testing with markitdone error
 	tracker.EXPECT().GetTask(gomock.Any()).Return(rmTask)
-	tracker.EXPECT().MarkItDone(gomock.Any(), gomock.Any()).Return(errors.New("error"))
+	tracker.EXPECT().MarkItDone(gomock.Any()).Return(errors.New("error"))
 	response, _ = s.handler.NotifyTaskUpdates(context.Background(), req)
 	s.EqualValues(uint64(1000), response.PurgeOffset)
 	s.Nil(response.Error)
@@ -1448,11 +1453,11 @@ func (s *handlerTestSuite) TestRequeueInvalidatedTasks() {
 	})
 
 	// Marking this task to Invalidate
-	// It will not invalidate as its in Lunching state
-	s.rmTaskTracker.MarkItInvalid(s.pendingGang0().Tasks[0].Id, *s.pendingGang0().Tasks[0].TaskId.Value)
+	// It will not invalidate as its in Launching state
+	s.rmTaskTracker.MarkItInvalid(s.pendingGang0().Tasks[0].GetTaskId().GetValue())
 
 	// Tasks should be removed from Tracker
-	taskget := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
+	taskget := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].GetId())
 	s.Nil(taskget)
 
 	// Testing to see if we can send same task in the enqueue
@@ -1656,10 +1661,8 @@ func (s *handlerTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConf
 
 func (s *handlerTestSuite) pendingGang0() *resmgrsvc.Gang {
 	var gang resmgrsvc.Gang
-	uuidStr := "uuidstr-1"
-	jobID := "job1"
 	instance := 1
-	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
+	mesosTaskID := fmt.Sprintf("%s-%d-%d", jobID, instance, 1)
 	gang.Tasks = []*resmgr.Task{
 		{
 			Name:     "job1-1",
@@ -1685,16 +1688,14 @@ func (s *handlerTestSuite) pendingGang0() *resmgrsvc.Gang {
 
 func (s *handlerTestSuite) pendingGang1() *resmgrsvc.Gang {
 	var gang resmgrsvc.Gang
-	uuidStr := "uuidstr-1"
-	jobID := "job1"
 	instance := 2
-	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
+	mesosTaskID := fmt.Sprintf("%s-%d-%d", jobID, instance, 1)
 	gang.Tasks = []*resmgr.Task{
 		{
 			Name:     "job1-1",
 			Priority: 1,
-			JobId:    &peloton.JobID{Value: "job1"},
-			Id:       &peloton.TaskID{Value: "job1-2"},
+			JobId:    &peloton.JobID{Value: jobID},
+			Id:       &peloton.TaskID{Value: fmt.Sprintf("%s-%d", jobID, instance)},
 			Resource: &task.ResourceConfig{
 				CpuLimit:    1,
 				DiskLimitMb: 10,
@@ -1714,17 +1715,15 @@ func (s *handlerTestSuite) pendingGang1() *resmgrsvc.Gang {
 
 func (s *handlerTestSuite) pendingGang2() *resmgrsvc.Gang {
 	var gang resmgrsvc.Gang
-	uuidStr := "uuidstr-1"
-	jobID := "job1"
-	instance := 2
-	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
+	mesosTaskID1 := fmt.Sprintf("%s-%d-%d", jobID, 1, 1)
+	mesosTaskID2 := fmt.Sprintf("%s-%d-%d", jobID, 2, 1)
 	gang.Tasks = []*resmgr.Task{
 		{
 			Name:         "job2-1",
 			Priority:     2,
 			MinInstances: 2,
-			JobId:        &peloton.JobID{Value: "job2"},
-			Id:           &peloton.TaskID{Value: "job2-1"},
+			JobId:        &peloton.JobID{Value: newJobID},
+			Id:           &peloton.TaskID{Value: fmt.Sprintf("%s-%d", newJobID, 1)},
 			Resource: &task.ResourceConfig{
 				CpuLimit:    1,
 				DiskLimitMb: 10,
@@ -1732,7 +1731,7 @@ func (s *handlerTestSuite) pendingGang2() *resmgrsvc.Gang {
 				MemLimitMb:  100,
 			},
 			TaskId: &mesos.TaskID{
-				Value: &mesosTaskID,
+				Value: &mesosTaskID1,
 			},
 			Preemptible:             true,
 			PlacementTimeoutSeconds: 60,
@@ -1742,8 +1741,8 @@ func (s *handlerTestSuite) pendingGang2() *resmgrsvc.Gang {
 			Name:         "job2-2",
 			Priority:     2,
 			MinInstances: 2,
-			JobId:        &peloton.JobID{Value: "job2"},
-			Id:           &peloton.TaskID{Value: "job2-2"},
+			JobId:        &peloton.JobID{Value: newJobID},
+			Id:           &peloton.TaskID{Value: fmt.Sprintf("%s-%d", newJobID, 2)},
 			Resource: &task.ResourceConfig{
 				CpuLimit:    1,
 				DiskLimitMb: 10,
@@ -1751,7 +1750,7 @@ func (s *handlerTestSuite) pendingGang2() *resmgrsvc.Gang {
 				MemLimitMb:  100,
 			},
 			TaskId: &mesos.TaskID{
-				Value: &mesosTaskID,
+				Value: &mesosTaskID2,
 			},
 			Preemptible:             true,
 			PlacementTimeoutSeconds: 60,
@@ -1763,15 +1762,14 @@ func (s *handlerTestSuite) pendingGang2() *resmgrsvc.Gang {
 
 func (s *handlerTestSuite) reservingGang0() *resmgrsvc.Gang {
 	var gang resmgrsvc.Gang
-	uuidStr := "uuidstr-10"
-	jobID := "job10"
+	jobID := uuid.New()
 	instance := 1
-	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
+	mesosTaskID := fmt.Sprintf("%s-%d-%d", jobID, instance, 1)
 	gang.Tasks = []*resmgr.Task{
 		{
 			Name:     "job10-1",
 			Priority: 0,
-			JobId:    &peloton.JobID{Value: "job10"},
+			JobId:    &peloton.JobID{Value: jobID},
 			Id:       &peloton.TaskID{Value: fmt.Sprintf("%s-%d", jobID, instance)},
 			Resource: &task.ResourceConfig{
 				CpuLimit:    1,
@@ -1794,15 +1792,14 @@ func (s *handlerTestSuite) reservingGang0() *resmgrsvc.Gang {
 
 func (s *handlerTestSuite) reservingGang1() *resmgrsvc.Gang {
 	var gang resmgrsvc.Gang
-	uuidStr := "uuidstr-11"
-	jobID := "job11"
+	jobID := uuid.New()
 	instance := 1
-	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
+	mesosTaskID := fmt.Sprintf("%s-%d-%d", jobID, instance, 1)
 	gang.Tasks = []*resmgr.Task{
 		{
 			Name:     "job11-1",
 			Priority: 0,
-			JobId:    &peloton.JobID{Value: "job11"},
+			JobId:    &peloton.JobID{Value: jobID},
 			Id:       &peloton.TaskID{Value: fmt.Sprintf("%s-%d", jobID, instance)},
 			Resource: &task.ResourceConfig{
 				CpuLimit:    1,
@@ -1825,15 +1822,14 @@ func (s *handlerTestSuite) reservingGang1() *resmgrsvc.Gang {
 
 func (s *handlerTestSuite) pendingGangWithoutPlacement() *resmgrsvc.Gang {
 	var gang resmgrsvc.Gang
-	uuidStr := "uuidstr-1"
-	jobID := "job9"
+	jobID := uuid.New()
 	instance := 1
-	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
+	mesosTaskID := fmt.Sprintf("%s-%d-%d", jobID, instance, 1)
 	gang.Tasks = []*resmgr.Task{
 		{
 			Name:     "job9-1",
 			Priority: 0,
-			JobId:    &peloton.JobID{Value: "job9"},
+			JobId:    &peloton.JobID{Value: jobID},
 			Id:       &peloton.TaskID{Value: fmt.Sprintf("%s-%d", jobID, instance)},
 			Resource: &task.ResourceConfig{
 				CpuLimit:    1,

@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/uber/peloton/.gen/mesos/v1"
+	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	resp "github.com/uber/peloton/.gen/peloton/api/v0/respool"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
@@ -41,7 +41,11 @@ import (
 	"github.com/uber-go/tally"
 )
 
-type TrackerTestSuite struct {
+var (
+	unknownMesosTaskID = "941ff353-ba82-49fe-8f80-fb5bc649b04d-1-2"
+)
+
+type trackerTestSuite struct {
 	suite.Suite
 	mockCtrl *gomock.Controller
 
@@ -53,13 +57,13 @@ type TrackerTestSuite struct {
 	mockHostmgr        *hostsvc_mocks.MockInternalHostServiceYARPCClient
 }
 
-func (suite *TrackerTestSuite) SetupTest() {
+func (suite *trackerTestSuite) SetupTest() {
 	suite.setup(&Config{
 		EnablePlacementBackoff: true,
 	}, false)
 }
 
-func (suite *TrackerTestSuite) setup(conf *Config, invalid bool) {
+func (suite *trackerTestSuite) setup(conf *Config, invalid bool) {
 	InitTaskTracker(tally.NoopScope, conf)
 	suite.tracker = GetTracker()
 	suite.eventStreamHandler = eventstream.NewEventStreamHandler(
@@ -83,21 +87,21 @@ func (suite *TrackerTestSuite) setup(conf *Config, invalid bool) {
 	suite.addTaskToTracker(suite.task)
 }
 
-func (suite *TrackerTestSuite) SetupSuite() {
+func (suite *trackerTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
 }
 
-func (suite *TrackerTestSuite) TearDownTest() {
+func (suite *trackerTestSuite) TearDownTest() {
 	suite.tracker.Clear()
 }
 
-func (suite *TrackerTestSuite) addTaskToTracker(task *resmgr.Task) {
+func (suite *trackerTestSuite) addTaskToTracker(task *resmgr.Task) {
 	suite.addTaskToTrackerWithTimeoutConfig(task, &Config{
 		PolicyName: ExponentialBackOffPolicy,
 	})
 }
 
-func (suite *TrackerTestSuite) addTaskToTrackerWithTimeoutConfig(task *resmgr.
+func (suite *trackerTestSuite) addTaskToTrackerWithTimeoutConfig(task *resmgr.
 	Task, cfg *Config) {
 	rootID := peloton.ResourcePoolID{Value: common.RootResPoolID}
 	policy := resp.SchedulingPolicy_PriorityFIFO
@@ -113,7 +117,7 @@ func (suite *TrackerTestSuite) addTaskToTrackerWithTimeoutConfig(task *resmgr.
 }
 
 // Returns resource configs
-func (suite *TrackerTestSuite) getResourceConfig() []*resp.ResourceConfig {
+func (suite *trackerTestSuite) getResourceConfig() []*resp.ResourceConfig {
 
 	resConfigs := []*resp.ResourceConfig{
 		{
@@ -144,7 +148,7 @@ func (suite *TrackerTestSuite) getResourceConfig() []*resp.ResourceConfig {
 	return resConfigs
 }
 
-func (suite *TrackerTestSuite) createTask(instance int) *resmgr.Task {
+func (suite *trackerTestSuite) createTask(instance int) *resmgr.Task {
 	jobID := uuid.New()
 	taskID := fmt.Sprintf("%s-%d", jobID, instance)
 	mesosID := fmt.Sprintf("%s-%d-1", jobID, instance)
@@ -167,17 +171,17 @@ func (suite *TrackerTestSuite) createTask(instance int) *resmgr.Task {
 }
 
 func TestTracker(t *testing.T) {
-	suite.Run(t, new(TrackerTestSuite))
+	suite.Run(t, new(trackerTestSuite))
 }
 
-func (suite *TrackerTestSuite) TestTasksByHosts() {
+func (suite *trackerTestSuite) TestTasksByHosts() {
 	result := suite.tracker.TasksByHosts([]string{suite.hostname}, suite.task.Type)
 	suite.Equal(1, len(result))
 	suite.Equal(1, len(result[suite.hostname]))
 	suite.Equal(suite.task, result[suite.hostname][0].task)
 }
 
-func (suite *TrackerTestSuite) TestTransition() {
+func (suite *trackerTestSuite) TestTransition() {
 	rmTask := suite.tracker.GetTask(suite.task.Id)
 	err := rmTask.TransitTo(task.TaskState_PENDING.String())
 	suite.NoError(err)
@@ -185,7 +189,7 @@ func (suite *TrackerTestSuite) TestTransition() {
 	suite.NoError(err)
 }
 
-func (suite *TrackerTestSuite) TestSetPlacement() {
+func (suite *trackerTestSuite) TestSetPlacement() {
 	for i := 0; i < 5; i++ {
 		newHostname := fmt.Sprintf("new-hostname-%v", i)
 		suite.tracker.SetPlacement(&resmgr.Placement{
@@ -205,7 +209,7 @@ func (suite *TrackerTestSuite) TestSetPlacement() {
 	}
 }
 
-func (suite *TrackerTestSuite) TestSetPlacementHost() {
+func (suite *trackerTestSuite) TestSetPlacementHost() {
 	suite.tracker.Clear()
 	var tasks []*resmgr.Placement_Task
 	for i := 0; i < 5; i++ {
@@ -225,7 +229,7 @@ func (suite *TrackerTestSuite) TestSetPlacementHost() {
 	suite.tracker.Clear()
 }
 
-func (suite *TrackerTestSuite) TestDelete() {
+func (suite *trackerTestSuite) TestDelete() {
 	suite.tracker.DeleteTask(suite.task.Id)
 	rmTask := suite.tracker.GetTask(suite.task.Id)
 	suite.Nil(rmTask)
@@ -233,12 +237,12 @@ func (suite *TrackerTestSuite) TestDelete() {
 	suite.Equal(0, len(result))
 }
 
-func (suite *TrackerTestSuite) TestClear() {
+func (suite *trackerTestSuite) TestClear() {
 	suite.tracker.Clear()
 	suite.Equal(suite.tracker.GetSize(), int64(0))
 }
 
-func (suite *TrackerTestSuite) TestAddResources() {
+func (suite *trackerTestSuite) TestAddResources() {
 	res := suite.respool.GetTotalAllocatedResources()
 	suite.Equal(res.GetCPU(), float64(0))
 	suite.tracker.AddResources(suite.task.GetId())
@@ -246,7 +250,7 @@ func (suite *TrackerTestSuite) TestAddResources() {
 	suite.Equal(res.GetCPU(), float64(1))
 }
 
-func (suite *TrackerTestSuite) TestGetTaskStates() {
+func (suite *trackerTestSuite) TestGetTaskStates() {
 	result := suite.tracker.GetActiveTasks("", "", nil)
 	suite.Equal(1, len(result))
 
@@ -271,7 +275,7 @@ func (suite *TrackerTestSuite) TestGetTaskStates() {
 }
 
 // TestGetActiveTasksOrphanTasks tests fetching the task state map for orphan tasks
-func (suite *TrackerTestSuite) TestGetActiveTasksOrphanTasks() {
+func (suite *trackerTestSuite) TestGetActiveTasksOrphanTasks() {
 	tr := suite.tracker.(*tracker)
 
 	// move tasks to orphan tasks
@@ -309,7 +313,7 @@ func (suite *TrackerTestSuite) TestGetActiveTasksOrphanTasks() {
 	}
 }
 
-func (suite *TrackerTestSuite) TestMarkItDone_Allocation() {
+func (suite *trackerTestSuite) TestMarkItDone_Allocation() {
 	suite.tracker.Clear()
 	var tasks []*resmgr.Task
 	for i := 0; i < 5; i++ {
@@ -337,8 +341,7 @@ func (suite *TrackerTestSuite) TestMarkItDone_Allocation() {
 
 	suite.Equal(res, resources)
 
-	deleteTask := tasks[0].GetId()
-	suite.tracker.MarkItDone(deleteTask, *rmTask.task.TaskId.Value)
+	suite.tracker.MarkItDone(rmTask.Task().GetTaskId().GetValue())
 
 	res = rmTask.respool.GetTotalAllocatedResources()
 	suite.Equal(res, resources)
@@ -359,8 +362,7 @@ func (suite *TrackerTestSuite) TestMarkItDone_Allocation() {
 	err := rmTask.TransitTo(task.TaskState_PENDING.String())
 	suite.NoError(err)
 
-	deleteTask = tasks[1].GetId()
-	suite.tracker.MarkItDone(deleteTask, *rmTask.task.TaskId.Value)
+	suite.tracker.MarkItDone(rmTask.Task().GetTaskId().GetValue())
 
 	res = rmTask.respool.GetTotalAllocatedResources()
 
@@ -382,8 +384,7 @@ func (suite *TrackerTestSuite) TestMarkItDone_Allocation() {
 	err = rmTask.TransitTo(task.TaskState_READY.String())
 	suite.NoError(err)
 
-	deleteTask = tasks[2].GetId()
-	suite.tracker.MarkItDone(deleteTask, *rmTask.task.TaskId.Value)
+	suite.tracker.MarkItDone(rmTask.Task().GetTaskId().GetValue())
 
 	res = rmTask.respool.GetTotalAllocatedResources()
 
@@ -398,19 +399,19 @@ func (suite *TrackerTestSuite) TestMarkItDone_Allocation() {
 	suite.tracker.Clear()
 }
 
-func (suite *TrackerTestSuite) TestMarkItDone_WithDifferentMesosTaskID() {
+func (suite *trackerTestSuite) TestMarkItDone_WithDifferentMesosTaskID() {
 	rmTask := suite.tracker.GetTask(suite.task.GetId())
 	suite.NotNil(rmTask)
 
 	// transit to a timeout state
 	rmTask.TransitTo(task.TaskState_LAUNCHING.String())
 
-	err := suite.tracker.MarkItDone(suite.task.GetId(), "MesosDifferentTaskID")
+	err := suite.tracker.MarkItDone(unknownMesosTaskID)
 	suite.NoError(err)
 }
 
 // TestMarkItDoneOrphanTask tests the action of MarkItDone for an orphan RMTask
-func (suite *TrackerTestSuite) TestMarkItDoneOrphanTask() {
+func (suite *trackerTestSuite) TestMarkItDoneOrphanTask() {
 	testTracker := &tracker{
 		tasks:         make(map[string]*RMTask),
 		placements:    map[string]map[resmgr.TaskType]map[string]*RMTask{},
@@ -427,15 +428,46 @@ func (suite *TrackerTestSuite) TestMarkItDoneOrphanTask() {
 
 	orphanRMTask, err := CreateRMTask(tally.NoopScope, tt, suite.eventStreamHandler, suite.respool, &Config{})
 	suite.NoError(err)
-	testTracker.orphanTasks["MesosDifferentTaskID"] = orphanRMTask
+	testTracker.orphanTasks[unknownMesosTaskID] = orphanRMTask
 
-	err = testTracker.MarkItDone(t.GetId(), "MesosDifferentTaskID")
+	err = testTracker.MarkItDone(unknownMesosTaskID)
 	suite.NoError(err)
 
-	suite.Nil(testTracker.orphanTasks["MesosDifferentTaskID"])
+	suite.Nil(testTracker.orphanTasks[unknownMesosTaskID])
 }
 
-func (suite *TrackerTestSuite) TestMarkItDone_StateMachine() {
+// TestMarkItDoneOrphanTaskNoTaskInTracker tests the action of MarkItDone for an
+// old run of a task after the newer run has been cleaned up
+func (suite *trackerTestSuite) TestMarkItDoneOrphanTaskNoTaskInTracker() {
+	testTracker := &tracker{
+		tasks:         make(map[string]*RMTask),
+		placements:    map[string]map[resmgr.TaskType]map[string]*RMTask{},
+		orphanTasks:   make(map[string]*RMTask),
+		metrics:       NewMetrics(tally.NoopScope),
+		counters:      make(map[task.TaskState]float64),
+		hostMgrClient: suite.mockHostmgr,
+		scope:         tally.NoopScope,
+	}
+	t := suite.createTask(1)
+	testTracker.AddTask(t, suite.eventStreamHandler, suite.respool, &Config{})
+
+	tt := proto.Clone(t).(*resmgr.Task)
+
+	orphanRMTask, err := CreateRMTask(tally.NoopScope, tt, suite.eventStreamHandler, suite.respool, &Config{})
+	suite.NoError(err)
+	testTracker.orphanTasks[unknownMesosTaskID] = orphanRMTask
+
+	err = testTracker.MarkItDone(t.GetTaskId().GetValue())
+	suite.NoError(err)
+	suite.Nil(testTracker.GetTask(t.GetId()))
+
+	err = testTracker.MarkItDone(unknownMesosTaskID)
+	suite.NoError(err)
+
+	suite.Nil(testTracker.orphanTasks[unknownMesosTaskID])
+}
+
+func (suite *trackerTestSuite) TestMarkItDone_StateMachine() {
 	suite.addTaskToTrackerWithTimeoutConfig(suite.createTask(1), &Config{
 		LaunchingTimeout: 1 * time.Second,
 	})
@@ -445,7 +477,7 @@ func (suite *TrackerTestSuite) TestMarkItDone_StateMachine() {
 	// transit to a timeout state
 	rmTask.TransitTo(task.TaskState_LAUNCHING.String())
 
-	suite.tracker.MarkItDone(suite.task.GetId(), *rmTask.Task().TaskId.Value)
+	suite.tracker.MarkItDone(rmTask.Task().GetTaskId().GetValue())
 
 	// wait for LaunchingTimeout
 	time.Sleep(1 * time.Second)
@@ -455,24 +487,24 @@ func (suite *TrackerTestSuite) TestMarkItDone_StateMachine() {
 		rmTask.GetCurrentState().State)
 }
 
-func (suite *TrackerTestSuite) TestMarkItInvalid() {
+func (suite *trackerTestSuite) TestMarkItInvalid() {
 	rmTask := suite.tracker.GetTask(suite.task.GetId())
 	suite.NotNil(rmTask)
 
 	// transit to a timeout state
 	rmTask.TransitTo(task.TaskState_LAUNCHING.String())
 
-	err := suite.tracker.MarkItInvalid(suite.task.GetId(), "MesosDifferentTaskID")
+	err := suite.tracker.MarkItInvalid(unknownMesosTaskID)
 	suite.NoError(err)
 
-	err = suite.tracker.MarkItInvalid(suite.task.GetId(), *rmTask.Task().TaskId.Value)
+	err = suite.tracker.MarkItInvalid(rmTask.Task().GetTaskId().GetValue())
 	suite.NoError(err)
 }
 
 // TestAddDeleteTasks tests the concurrency issues between add task and delete
 // task from tracker this happens when add tasks and MarkItDone been called at
 // the same time
-func (suite *TrackerTestSuite) TestAddDeleteTasks() {
+func (suite *trackerTestSuite) TestAddDeleteTasks() {
 	suite.tracker.Clear()
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -485,8 +517,7 @@ func (suite *TrackerTestSuite) TestAddDeleteTasks() {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 1000; i++ {
-			taskID := fmt.Sprintf("job1-%d", i)
-			suite.tracker.MarkItDone(&peloton.TaskID{Value: taskID}, "mesosTaskID")
+			suite.tracker.MarkItDone("mesosTaskID")
 		}
 
 	}()
@@ -495,7 +526,7 @@ func (suite *TrackerTestSuite) TestAddDeleteTasks() {
 	suite.tracker.Clear()
 }
 
-func (suite *TrackerTestSuite) TestBackoffDisabled() {
+func (suite *trackerTestSuite) TestBackoffDisabled() {
 	suite.tracker.Clear()
 	rmtracker = nil
 	suite.setup(&Config{
@@ -508,15 +539,15 @@ func (suite *TrackerTestSuite) TestBackoffDisabled() {
 	// transit to a timeout state
 	rmTask.TransitTo(task.TaskState_LAUNCHING.String())
 
-	err := suite.tracker.MarkItInvalid(suite.task.GetId(), "MesosDifferentTaskID")
+	err := suite.tracker.MarkItInvalid(unknownMesosTaskID)
 	suite.NoError(err)
 
-	err = suite.tracker.MarkItInvalid(suite.task.GetId(), *rmTask.Task().TaskId.Value)
+	err = suite.tracker.MarkItInvalid(rmTask.Task().GetTaskId().GetValue())
 	suite.NoError(err)
 	suite.tracker.Clear()
 }
 
-func (suite *TrackerTestSuite) TestInitializeError() {
+func (suite *trackerTestSuite) TestInitializeError() {
 	suite.tracker.Clear()
 	rmtracker = nil
 	suite.setup(&Config{
@@ -543,7 +574,7 @@ Tests the following scenario to check it doesn't result in a deadlock
 
 This test should complete if there is no deadlock
 */
-func (suite *TrackerTestSuite) TestGetActiveTasksDeadlock() {
+func (suite *trackerTestSuite) TestGetActiveTasksDeadlock() {
 	testTracker := &tracker{
 		tasks:         make(map[string]*RMTask),
 		placements:    map[string]map[resmgr.TaskType]map[string]*RMTask{},
@@ -654,7 +685,7 @@ func (suite *TrackerTestSuite) TestGetActiveTasksDeadlock() {
 }
 
 // TestGetOrphanTask tests getting an orphan rm task
-func (suite *TrackerTestSuite) TestGetOrphanTask() {
+func (suite *trackerTestSuite) TestGetOrphanTask() {
 	tr := suite.tracker.(*tracker)
 
 	// move tasks to orphan tasks
@@ -673,7 +704,7 @@ func (suite *TrackerTestSuite) TestGetOrphanTask() {
 }
 
 // TestGetOrphanTaskNoTask tests getting an unknown orphan rm Task
-func (suite *TrackerTestSuite) TestGetOrphanTaskNoTask() {
+func (suite *trackerTestSuite) TestGetOrphanTaskNoTask() {
 	tr := suite.tracker.(*tracker)
 
 	var mesosTasks []string
@@ -692,7 +723,7 @@ func (suite *TrackerTestSuite) TestGetOrphanTaskNoTask() {
 }
 
 // TestGetOrphanTasks tests getting all orphan rm tasks
-func (suite *TrackerTestSuite) TestGetOrphanTasks() {
+func (suite *trackerTestSuite) TestGetOrphanTasks() {
 	tr := suite.tracker.(*tracker)
 
 	var mesosTasks []string
