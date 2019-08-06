@@ -95,6 +95,9 @@ func New(
 }
 
 func (c *hostCache) GetSummaries() []HostSummary {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	summaries := make([]HostSummary, 0, len(c.hostIndex))
 	for _, summary := range c.hostIndex {
 		summaries = append(summaries, summary)
