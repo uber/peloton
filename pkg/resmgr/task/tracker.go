@@ -35,6 +35,7 @@ import (
 
 // Tracker is the interface for resource manager to
 // track all the tasks
+// TODO: Get rid of peloton-task-id from tracker
 type Tracker interface {
 
 	// AddTask adds the task to state machine
@@ -55,11 +56,11 @@ type Tracker interface {
 
 	// MarkItDone marks the task done and add back those
 	// resources to respool
-	MarkItDone(taskID *peloton.TaskID, mesosTaskID string) error
+	MarkItDone(mesosTaskID string) error
 
 	// MarkItInvalid marks the task done and invalidate them
 	// in to respool by that they can be removed from the queue
-	MarkItInvalid(taskID *peloton.TaskID, mesosTaskID string) error
+	MarkItInvalid(mesosTaskID string) error
 
 	// TasksByHosts returns all tasks of the given type running on the given hosts.
 	TasksByHosts(hosts []string, taskType resmgr.TaskType) map[string][]*RMTask
@@ -88,6 +89,7 @@ type Tracker interface {
 
 // tracker is the rmtask tracker
 // map[taskid]*rmtask
+// TODO: Get rid of peloton-task-id from tracker
 type tracker struct {
 	lock sync.RWMutex
 
@@ -302,33 +304,34 @@ func (tr *tracker) deleteTask(t *peloton.TaskID) {
 // MarkItDone updates the resources in resmgr and removes the task
 // from the tracker
 func (tr *tracker) MarkItDone(
-	tID *peloton.TaskID,
 	mesosTaskID string) error {
 	tr.lock.Lock()
 	defer tr.lock.Unlock()
 
-	t := tr.getTask(tID)
-	if t == nil {
-		return errors.Errorf("task %s is not in tracker", tID)
-	}
-	return tr.markItDone(t, mesosTaskID)
+	return tr.markItDone(mesosTaskID)
 }
 
 // MarkItInvalid marks the task done and invalidate them
 // in to respool by that they can be removed from the queue
-func (tr *tracker) MarkItInvalid(tID *peloton.TaskID, mesosTaskID string) error {
+func (tr *tracker) MarkItInvalid(mesosTaskID string) error {
 	tr.lock.Lock()
 	defer tr.lock.Unlock()
 
-	t := tr.getTask(tID)
-	if t == nil {
-		return errors.Errorf("task %s is not in tracker", tID)
-	}
-
-	// remove from the tracker
-	err := tr.markItDone(t, mesosTaskID)
+	taskID, err := util.ParseTaskIDFromMesosTaskID(mesosTaskID)
 	if err != nil {
 		return err
+	}
+
+	tID := &peloton.TaskID{Value: taskID}
+	t := tr.getTask(tID)
+
+	// remove from the tracker
+	if err = tr.markItDone(mesosTaskID); err != nil {
+		return err
+	}
+
+	if t == nil {
+		return nil
 	}
 
 	switch t.GetCurrentState().State {
@@ -346,16 +349,24 @@ func (tr *tracker) MarkItInvalid(tID *peloton.TaskID, mesosTaskID string) error 
 }
 
 // tracker needs to be locked before calling this.
-func (tr *tracker) markItDone(t *RMTask, mesosTaskID string) error {
-	// Checking mesos ID again if thats not changed
-	tID := t.Task().GetId()
+func (tr *tracker) markItDone(mesosTaskID string) error {
+	taskID, err := util.ParseTaskIDFromMesosTaskID(mesosTaskID)
+	if err != nil {
+		return err
+	}
 
-	// Checking mesos ID again if that has not changed
-	if t.Task().GetTaskId().GetValue() != mesosTaskID {
-		// If the mesos ID has changed, clear the placement.
-		// This can happen when jobmgr processes the mesos event faster than resmgr
-		// causing EnqueueGangs to be called before the task termination event
-		// is processed by resmgr.
+	tID := &peloton.TaskID{Value: taskID}
+	t := tr.getTask(tID)
+
+	if t == nil || t.Task().GetTaskId().GetValue() != mesosTaskID {
+		// If task is not in tracker or if the mesos ID has changed, clear the
+		// placement and free up the held resources.
+		// 1. `task not in tracker` - This can happen if resource manager receives
+		//     the task event for an older run after the latest run of the task
+		//     has been cleaned up from tracker.
+		// 2. `mesos ID has changed` - This can happen when jobmgr processes the
+		//     mesos event faster than resmgr causing EnqueueGangs to be called
+		//     before the task termination event is processed by resmgr.
 		return tr.deleteOrphanTask(mesosTaskID)
 	}
 
@@ -365,7 +376,7 @@ func (tr *tracker) markItDone(t *RMTask, mesosTaskID string) error {
 		t.GetCurrentState().State == task.TaskState_INITIALIZED) {
 		err := t.respool.SubtractFromAllocation(scalar.GetTaskAllocation(t.Task()))
 		if err != nil {
-			return errors.Errorf("failed update task %s ", tID)
+			return errors.Errorf("failed update task %s ", taskID)
 		}
 	}
 
