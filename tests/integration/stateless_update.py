@@ -70,6 +70,9 @@ class StatelessUpdate(object):
         get config version and retry until version is correct.
         :return: the update ID
         """
+        # wait for job manager leader
+        self.job.wait_for_jobmgr_available()
+
         respool_id = self.pool.ensure_exists()
         self.updated_job_spec.respool_id.value = respool_id
 
@@ -126,6 +129,9 @@ class StatelessUpdate(object):
         """
         aborts the given update
         """
+        # wait for job manager leader
+        self.job.wait_for_jobmgr_available()
+
         job_entity_version = (
             entity_version
             or self.job.entity_version
@@ -177,6 +183,9 @@ class StatelessUpdate(object):
         """
         pause the given update
         """
+        # wait for job manager leader
+        self.job.wait_for_jobmgr_available()
+
         job_entity_version = (
             entity_version
             or self.job.entity_version
@@ -218,6 +227,9 @@ class StatelessUpdate(object):
         """
         resume the given update
         """
+        # wait for job manager leader
+        self.job.wait_for_jobmgr_available()
+
         job_entity_version = (
             entity_version
             or self.job.entity_version
