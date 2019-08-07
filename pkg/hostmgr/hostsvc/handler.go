@@ -24,9 +24,11 @@ import (
 	hpb "github.com/uber/peloton/.gen/peloton/api/v0/host"
 	host_svc "github.com/uber/peloton/.gen/peloton/api/v0/host/svc"
 
+	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/stringset"
 	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/hostmgr/host"
+	hostpool_mgr "github.com/uber/peloton/pkg/hostmgr/hostpool/manager"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
 	"github.com/uber/peloton/pkg/hostmgr/queue"
 
@@ -43,6 +45,7 @@ type serviceHandler struct {
 	metrics                *Metrics
 	operatorMasterClient   mpb.MasterOperatorClient
 	maintenanceHostInfoMap host.MaintenanceHostInfoMap
+	hostPoolManager        hostpool_mgr.HostPoolManager
 }
 
 // InitServiceHandler initializes the HostService
@@ -51,12 +54,14 @@ func InitServiceHandler(
 	parent tally.Scope,
 	operatorMasterClient mpb.MasterOperatorClient,
 	maintenanceQueue queue.MaintenanceQueue,
-	hostInfoMap host.MaintenanceHostInfoMap) {
+	hostInfoMap host.MaintenanceHostInfoMap,
+	hostPoolManager hostpool_mgr.HostPoolManager) {
 	handler := &serviceHandler{
 		maintenanceQueue:       maintenanceQueue,
 		metrics:                NewMetrics(parent.SubScope("hostsvc")),
 		operatorMasterClient:   operatorMasterClient,
 		maintenanceHostInfoMap: hostInfoMap,
+		hostPoolManager:        hostPoolManager,
 	}
 	d.Register(host_svc.BuildHostServiceYARPCProcedures(handler))
 	log.Info("Hostsvc handler initialized")
@@ -296,6 +301,97 @@ func (m *serviceHandler) completeMaintenance(
 
 	m.metrics.CompleteMaintenanceSuccess.Inc(1)
 	return nil
+}
+
+// List all host pools
+func (m *serviceHandler) ListHostPools(
+	ctx context.Context,
+	request *host_svc.ListHostPoolsRequest,
+) (response *host_svc.ListHostPoolsResponse, err error) {
+	if m.hostPoolManager == nil {
+		err = yarpcerrors.UnimplementedErrorf("host pools not enabled")
+		return
+	}
+	allPools := m.hostPoolManager.Pools()
+	response = &host_svc.ListHostPoolsResponse{
+		Pools: make([]*hpb.HostPoolInfo, 0, len(allPools)),
+	}
+	for _, pool := range allPools {
+		poolHosts := pool.Hosts()
+		info := &hpb.HostPoolInfo{
+			Name:  pool.ID(),
+			Hosts: make([]string, 0, len(poolHosts)),
+		}
+		for h := range poolHosts {
+			info.Hosts = append(info.Hosts, h)
+		}
+		response.Pools = append(response.Pools, info)
+	}
+	return
+}
+
+// Create a host pool
+func (m *serviceHandler) CreateHostPool(
+	ctx context.Context,
+	request *host_svc.CreateHostPoolRequest,
+) (response *host_svc.CreateHostPoolResponse, err error) {
+	if m.hostPoolManager == nil {
+		err = yarpcerrors.UnimplementedErrorf("host pools not enabled")
+		return
+	}
+	name := request.GetName()
+	if name == "" {
+		err = yarpcerrors.InvalidArgumentErrorf("name")
+		return
+	}
+	if _, err1 := m.hostPoolManager.GetPool(name); err1 != nil {
+		m.hostPoolManager.RegisterPool(name)
+		response = &host_svc.CreateHostPoolResponse{}
+	} else {
+		err = yarpcerrors.AlreadyExistsErrorf("")
+	}
+	return
+}
+
+// Delete a host pool
+func (m *serviceHandler) DeleteHostPool(
+	ctx context.Context,
+	request *host_svc.DeleteHostPoolRequest,
+) (response *host_svc.DeleteHostPoolResponse, err error) {
+	if m.hostPoolManager == nil {
+		err = yarpcerrors.UnimplementedErrorf("host pools not enabled")
+		return
+	}
+	name := request.GetName()
+	if name == common.DefaultHostPoolID {
+		err = yarpcerrors.InvalidArgumentErrorf("default pool")
+	} else if _, err1 := m.hostPoolManager.GetPool(name); err1 != nil {
+		err = yarpcerrors.NotFoundErrorf("")
+	} else {
+		m.hostPoolManager.DeregisterPool(name)
+		response = &host_svc.DeleteHostPoolResponse{}
+	}
+	return
+}
+
+// Change the pool of a host
+func (m *serviceHandler) ChangeHostPool(
+	ctx context.Context,
+	request *host_svc.ChangeHostPoolRequest,
+) (response *host_svc.ChangeHostPoolResponse, err error) {
+	if m.hostPoolManager == nil {
+		err = yarpcerrors.UnimplementedErrorf("host pools not enabled")
+		return
+	}
+	err = m.hostPoolManager.ChangeHostPool(
+		request.GetHostname(),
+		request.GetSourcePool(),
+		request.GetDestinationPool(),
+	)
+	if err == nil {
+		response = &host_svc.ChangeHostPoolResponse{}
+	}
+	return
 }
 
 // Build host info for registered agents

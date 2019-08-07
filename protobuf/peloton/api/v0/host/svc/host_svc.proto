@@ -60,6 +60,59 @@ message CompleteMaintenanceResponse {
     string hostname = 1;
 }
 
+// Request message for HostService.ListHostPools method.
+message ListHostPoolsRequest {}
+
+// Response message for HostService.ListHostPoolsRequest method.
+// Return errors:
+message ListHostPoolsResponse {
+    // Information about all pools
+    repeated host.HostPoolInfo pools = 1;
+}
+
+// Request message for HostService.CreateHostPool method.
+message CreateHostPoolRequest {
+    // Name of the pool to create.
+    string name = 1;
+}
+
+// Response message for HostService.CreateHostPool method.
+// Return errors:
+//    ALREADY_EXISTS: If a pool with the specified name already exists
+//    INVALID_ARGUMENT: If pool name is invalid
+message CreateHostPoolResponse {}
+
+// Request message for HostService.DeleteHostPool method.
+message DeleteHostPoolRequest {
+    // Name of the pool to delete.
+    string name = 1;
+}
+
+// Response message for HostService.DeleteHostPool method.
+// Return errors:
+//    NOT_FOUND: If a pool with the specified name does not exist
+//    INVALID_ARGUMENT: If you try to delete the default pool
+message DeleteHostPoolResponse {}
+
+// Request message for HostService.ChangeHostPool method.
+message ChangeHostPoolRequest {
+    // Hostname of host to move.
+    string hostname = 1;
+
+    // Name of source host-pool of given host.
+    string sourcePool = 2;
+
+    // Name of destination host-pool of given host.
+    string destinationPool = 3;
+}
+
+// Response message for HostService.DeleteHostPool method.
+// Return errors:
+//    NOT_FOUND: If host doesn't exist
+//    INVALID_ARGUMENT: If host is not in the specified source pool, or
+//                      destination pool doesn't exist
+message ChangeHostPoolResponse {}
+
 /**
  *  HostService defines the host related methods such as query hosts, start maintenance,
  *  complete maintenance etc.
@@ -74,4 +127,21 @@ service HostService
 
     // Complete maintenance on the specified hosts
     rpc CompleteMaintenance(CompleteMaintenanceRequest) returns (CompleteMaintenanceResponse);
+
+    // Get information about all host pools
+    rpc ListHostPools(ListHostPoolsRequest)
+    returns (ListHostPoolsResponse);
+
+    // Create a host pool
+    rpc CreateHostPool(CreateHostPoolRequest)
+    returns (CreateHostPoolResponse);
+
+    // Delete a host pool. Hosts in the pool are moved to a
+    // default pool.
+    rpc DeleteHostPool(DeleteHostPoolRequest)
+    returns (DeleteHostPoolResponse);
+
+    // Change the pool to which a host belongs
+    rpc ChangeHostPool(ChangeHostPoolRequest)
+    returns (ChangeHostPoolResponse);
 }

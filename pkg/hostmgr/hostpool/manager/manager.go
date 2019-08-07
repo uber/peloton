@@ -177,16 +177,30 @@ func (m *hostPoolManager) RegisterPool(poolID string) {
 }
 
 // DeregisterPool deletes existing host pool with given ID.
-// If a host pool with given pool id already exists, it deletes the pool.
+// If a host pool with given pool id already exists, it deletes the pool
+// and moves hosts in the deleted pool to default pool.
 // If a host pool with given pool id doesn't exist, it is a no-op.
 func (m *hostPoolManager) DeregisterPool(poolID string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if _, ok := m.poolIndex[poolID]; !ok {
+	if pool, ok := m.poolIndex[poolID]; !ok {
 		log.WithField(hostpool.HostPoolKey, poolID).
 			Warn("Host pool not found")
 	} else {
+		// move hosts to default pool
+		defaultPool, ok := m.poolIndex[common.DefaultHostPoolID]
+		if !ok {
+			log.Warn("Default host pool not found in Deregister")
+		}
+		for h := range pool.Hosts() {
+			m.hostToPoolMap[h] = common.DefaultHostPoolID
+			pool.Delete(h)
+			if defaultPool != nil {
+				defaultPool.Add(h)
+			}
+			m.publishPoolEvent(h, common.DefaultHostPoolID)
+		}
 		delete(m.poolIndex, poolID)
 		log.WithField(hostpool.HostPoolKey, poolID).
 			Info("Deleted existing host pool")
@@ -288,10 +302,10 @@ func (m *hostPoolManager) Stop() {
 
 	// Clean up host pool manager in-memory cache
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	m.poolIndex = map[string]hostpool.HostPool{}
 	m.hostToPoolMap = map[string]string{}
+	// Release lock before Wait() to avoid deadlock with reconcile goroutine
+	m.mu.Unlock()
 
 	m.lifecycle.Wait()
 	log.Info("Host pool manager stopped")

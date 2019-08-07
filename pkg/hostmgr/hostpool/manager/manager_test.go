@@ -383,6 +383,41 @@ func (suite *HostPoolManagerTestSuite) TestReconcile() {
 	}
 }
 
+// TestDeregisterPoolWithHosts tests removing a pool that has hosts associated
+func (suite *HostPoolManagerTestSuite) TestDeregisterPoolWithHosts() {
+	hostToPoolMap := map[string]string{
+		"host0": "pool0",
+		"host1": "pool0",
+		"host2": "pool0",
+	}
+	poolIndex := map[string][]string{
+		"pool0": {"host0", "host1", "host2"},
+	}
+	manager := setupTestManager(
+		poolIndex,
+		hostToPoolMap,
+		suite.eventStreamHandler)
+	manager.RegisterPool("default")
+
+	manager.DeregisterPool("pool0")
+
+	for h := range hostToPoolMap {
+		p, err := manager.GetPoolByHostname(h)
+		suite.NoError(err)
+		suite.Equal("default", p.ID())
+	}
+	defpool, err := manager.GetPool("default")
+	suite.NoError(err)
+	defpoolHosts := defpool.Hosts()
+	suite.Contains(defpoolHosts, "host0")
+	suite.Contains(defpoolHosts, "host1")
+	suite.Contains(defpoolHosts, "host2")
+
+	events, err := suite.eventStreamHandler.GetEvents()
+	suite.NoError(err)
+	suite.Equal(3, len(events))
+}
+
 // TestChangeHostPool tests various cases of changing pool for a host.
 func (suite *HostPoolManagerTestSuite) TestChangeHostPool() {
 

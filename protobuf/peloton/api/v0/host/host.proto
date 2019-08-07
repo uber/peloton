@@ -71,3 +71,12 @@ message HostPoolEvent {
     // host is removed or not part of any pool.
     string pool = 1;
 }
+
+// HostPoolInfo describes a host-pool
+message HostPoolInfo {
+  // Name of the pool. Pool names are unique.
+  string name = 1;
+
+  // Hosts that belong to the pool
+  repeated string hosts = 2;
+}

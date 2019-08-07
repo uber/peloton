@@ -238,14 +238,6 @@ func (h *ServiceHandler) TerminateLeases(
 	return &svc.TerminateLeasesResponse{}, nil
 }
 
-func (h *ServiceHandler) ChangeHostPool(
-	ctx context.Context,
-	req *svc.ChangeHostPoolRequest,
-) (resp *svc.ChangeHostPoolResponse, err error) {
-	return nil, yarpcerrors.UnimplementedErrorf(
-		"ChangeHostPool not implemented")
-}
-
 // GetHostCache returns a dump of the host cache.
 func (h *ServiceHandler) GetHostCache(
 	ctx context.Context,

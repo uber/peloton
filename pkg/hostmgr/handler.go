@@ -1581,13 +1581,6 @@ func (h *ServiceHandler) releaseHostsHeldForTasks(taskIDs []*peloton.TaskID) err
 	return multierr.Combine(errs...)
 }
 
-func (h *ServiceHandler) ChangeHostPool(
-	ctx context.Context,
-	req *hostsvc.ChangeHostPoolRequest,
-) (*hostsvc.ChangeHostPoolResponse, error) {
-	return nil, yarpcerrors.UnimplementedErrorf("ChangeHostPool not implemented")
-}
-
 // Helper function to convert scalar.Resource into hostsvc format.
 func toHostSvcResources(rs *scalar.Resources) []*hostsvc.Resource {
 	return []*hostsvc.Resource{

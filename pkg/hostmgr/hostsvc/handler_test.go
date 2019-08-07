@@ -28,6 +28,8 @@ import (
 	"github.com/uber/peloton/pkg/common/stringset"
 	"github.com/uber/peloton/pkg/hostmgr/host"
 	hm "github.com/uber/peloton/pkg/hostmgr/host/mocks"
+	"github.com/uber/peloton/pkg/hostmgr/hostpool"
+	hpm_mock "github.com/uber/peloton/pkg/hostmgr/hostpool/manager/mocks"
 	ym "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
 	qm "github.com/uber/peloton/pkg/hostmgr/queue/mocks"
 
@@ -52,6 +54,7 @@ type HostSvcHandlerTestSuite struct {
 	mockMasterOperatorClient *ym.MockMasterOperatorClient
 	mockMaintenanceQueue     *qm.MockMaintenanceQueue
 	mockMaintenanceMap       *hm.MockMaintenanceHostInfoMap
+	mockHostPoolManager      *hpm_mock.MockHostPoolManager
 }
 
 func (suite *HostSvcHandlerTestSuite) SetupSuite() {
@@ -90,9 +93,13 @@ func (suite *HostSvcHandlerTestSuite) SetupTest() {
 	suite.mockMasterOperatorClient = ym.NewMockMasterOperatorClient(suite.mockCtrl)
 	suite.mockMaintenanceQueue = qm.NewMockMaintenanceQueue(suite.mockCtrl)
 	suite.mockMaintenanceMap = hm.NewMockMaintenanceHostInfoMap(suite.mockCtrl)
+	suite.mockHostPoolManager = hpm_mock.NewMockHostPoolManager(
+		suite.mockCtrl,
+	)
 	suite.handler.operatorMasterClient = suite.mockMasterOperatorClient
 	suite.handler.maintenanceQueue = suite.mockMaintenanceQueue
 	suite.handler.maintenanceHostInfoMap = suite.mockMaintenanceMap
+	suite.handler.hostPoolManager = suite.mockHostPoolManager
 
 	response := suite.makeAgentsResponse()
 	loader := &host.Loader{
@@ -487,4 +494,166 @@ func (suite *HostSvcHandlerTestSuite) TestQueryHostsError() {
 	})
 	suite.NoError(err)
 	suite.NotNil(resp)
+}
+
+// TestHostPoolsNotEnabled exercises the host-pools APIs when
+// host-pool is disabled
+func (suite *HostSvcHandlerTestSuite) TestHostPoolsNotEnabled() {
+	suite.handler.hostPoolManager = nil
+
+	_, err := suite.handler.ListHostPools(
+		suite.ctx,
+		&svcpb.ListHostPoolsRequest{},
+	)
+	suite.Error(err)
+
+	_, err = suite.handler.CreateHostPool(
+		suite.ctx,
+		&svcpb.CreateHostPoolRequest{Name: "foo"},
+	)
+	suite.Error(err)
+
+	_, err = suite.handler.DeleteHostPool(
+		suite.ctx,
+		&svcpb.DeleteHostPoolRequest{Name: "foo"},
+	)
+	suite.Error(err)
+
+	_, err = suite.handler.ChangeHostPool(
+		suite.ctx,
+		&svcpb.ChangeHostPoolRequest{},
+	)
+	suite.Error(err)
+}
+
+// TestListHostPools tests ListHostPools API method
+func (suite *HostSvcHandlerTestSuite) TestListHostPools() {
+	pool1 := hostpool.New("pool1")
+	pool1.Add("h1")
+	pool1.Add("h2")
+
+	pool2 := hostpool.New("pool2")
+	pool2.Add("h3")
+
+	pools := map[string]hostpool.HostPool{
+		pool1.ID(): pool1,
+		pool2.ID(): pool2,
+	}
+
+	suite.mockHostPoolManager.EXPECT().Pools().Return(pools)
+
+	resp, err := suite.handler.ListHostPools(
+		suite.ctx,
+		&svcpb.ListHostPoolsRequest{},
+	)
+	suite.NoError(err)
+	suite.NotNil(resp)
+
+	suite.Equal(2, len(resp.Pools))
+	for _, p := range resp.Pools {
+		if p.GetName() == "pool1" {
+			suite.ElementsMatch([]string{"h1", "h2"}, p.GetHosts())
+		} else if p.GetName() == "pool2" {
+			suite.ElementsMatch([]string{"h3"}, p.GetHosts())
+		} else {
+			suite.Fail("Unknown pool %s", p.GetName())
+		}
+	}
+}
+
+// TestCreateHostPools tests CreateHostPools API method
+func (suite *HostSvcHandlerTestSuite) TestCreateHostPool() {
+
+	// success case
+	suite.mockHostPoolManager.EXPECT().GetPool("new-pool").
+		Return(nil, fmt.Errorf("not found"))
+	suite.mockHostPoolManager.EXPECT().RegisterPool("new-pool")
+
+	resp, err := suite.handler.CreateHostPool(
+		suite.ctx,
+		&svcpb.CreateHostPoolRequest{Name: "new-pool"},
+	)
+	suite.NoError(err)
+	suite.NotNil(resp)
+
+	// exisiting pool
+	suite.mockHostPoolManager.EXPECT().GetPool("old-pool").
+		Return(nil, nil)
+	_, err = suite.handler.CreateHostPool(
+		suite.ctx,
+		&svcpb.CreateHostPoolRequest{Name: "old-pool"},
+	)
+	suite.Error(err)
+
+	// Bad pool name
+	_, err = suite.handler.CreateHostPool(
+		suite.ctx,
+		&svcpb.CreateHostPoolRequest{},
+	)
+	suite.Error(err)
+}
+
+// TestDeleteHostPools tests DeleteHostPools API method
+func (suite *HostSvcHandlerTestSuite) TestDeleteHostPool() {
+
+	// success case
+	suite.mockHostPoolManager.EXPECT().GetPool("old-pool").
+		Return(nil, nil)
+	suite.mockHostPoolManager.EXPECT().DeregisterPool("old-pool")
+
+	resp, err := suite.handler.DeleteHostPool(
+		suite.ctx,
+		&svcpb.DeleteHostPoolRequest{Name: "old-pool"},
+	)
+	suite.NoError(err)
+	suite.NotNil(resp)
+
+	// non-existing pool
+	suite.mockHostPoolManager.EXPECT().GetPool("bad-pool").
+		Return(nil, fmt.Errorf("not found"))
+	_, err = suite.handler.DeleteHostPool(
+		suite.ctx,
+		&svcpb.DeleteHostPoolRequest{Name: "bad-pool"},
+	)
+	suite.Error(err)
+
+	// delete default pool
+	_, err = suite.handler.DeleteHostPool(
+		suite.ctx,
+		&svcpb.DeleteHostPoolRequest{Name: "default"},
+	)
+	suite.Error(err)
+}
+
+// TestChangeHostPools tests ChangeHostPools API method
+func (suite *HostSvcHandlerTestSuite) TestChangeHostPool() {
+	// success case
+	suite.mockHostPoolManager.EXPECT().
+		ChangeHostPool("h1", "p1", "p2").
+		Return(nil)
+
+	resp, err := suite.handler.ChangeHostPool(
+		suite.ctx,
+		&svcpb.ChangeHostPoolRequest{
+			Hostname:        "h1",
+			SourcePool:      "p1",
+			DestinationPool: "p2",
+		},
+	)
+	suite.NoError(err)
+	suite.NotNil(resp)
+
+	// bad request
+	suite.mockHostPoolManager.EXPECT().
+		ChangeHostPool("h1-does-not-exist", "p1", "p2").
+		Return(fmt.Errorf("not found"))
+	_, err = suite.handler.ChangeHostPool(
+		suite.ctx,
+		&svcpb.ChangeHostPoolRequest{
+			Hostname:        "h1-does-not-exist",
+			SourcePool:      "p1",
+			DestinationPool: "p2",
+		},
+	)
+	suite.Error(err)
 }

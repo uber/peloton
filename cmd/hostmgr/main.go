@@ -648,7 +648,8 @@ func main() {
 	// Construct host pool manager if it is enabled.
 	var hostPoolManager manager.HostPoolManager
 	if cfg.HostManager.EnableHostPool {
-		hostPoolManager = manager.New(offer.GetEventHandler().GetEventStreamHandler())
+		hostPoolManager = manager.New(
+			offer.GetEventHandler().GetEventStreamHandler())
 		hostPoolManager.Start()
 		defer hostPoolManager.Stop()
 
@@ -726,6 +727,7 @@ func main() {
 		masterOperatorClient,
 		maintenanceQueue,
 		maintenanceHostInfoMap,
+		hostPoolManager,
 	)
 
 	recoveryHandler := hostmgr.NewRecoveryHandler(
