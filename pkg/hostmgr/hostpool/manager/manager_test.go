@@ -18,30 +18,60 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
+	mesospb "github.com/uber/peloton/.gen/mesos/v1"
+	masterpb "github.com/uber/peloton/.gen/mesos/v1/master"
 	pb_host "github.com/uber/peloton/.gen/peloton/api/v0/host"
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
-
+	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/eventstream"
+	"github.com/uber/peloton/pkg/common/lifecycle"
+	"github.com/uber/peloton/pkg/hostmgr/host"
+	hostmgr_host_mocks "github.com/uber/peloton/pkg/hostmgr/host/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/hostpool"
+	mpb_mocks "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
 
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
 
 const (
-	_testPoolIDTemplate = "pool%d"
+	_testPoolIDTemplate    = "pool%d"
+	_testReconcileInterval = time.Second
 )
 
 // HostPoolManagerTestSuite is test suite for host pool manager.
 type HostPoolManagerTestSuite struct {
 	suite.Suite
 
+	upMachines         []*mesospb.MachineID
+	drainingMachines   []*mesospb.MachineID
 	manager            HostPoolManager
 	eventStreamHandler *eventstream.Handler
 }
 
 // SetupTest is setup function for this suite.
+func (suite *HostPoolManagerTestSuite) SetupSuite() {
+	upHost := "host1"
+	upIP := "172.0.0.1"
+	upMachine := &mesospb.MachineID{
+		Hostname: &upHost,
+		Ip:       &upIP,
+	}
+	suite.upMachines = []*mesospb.MachineID{upMachine}
+
+	drainingHost := "host2"
+	drainingIP := "172.0.0.2"
+	drainingMachine := &mesospb.MachineID{
+		Hostname: &drainingHost,
+		Ip:       &drainingIP,
+	}
+	suite.drainingMachines = []*mesospb.MachineID{drainingMachine}
+}
+
+// SetupTest is setup function for each test in this suite.
 func (suite *HostPoolManagerTestSuite) SetupTest() {
 	testScope := tally.NewTestScope("", map[string]string{})
 	suite.eventStreamHandler = eventstream.NewEventStreamHandler(
@@ -77,9 +107,10 @@ func (suite *HostPoolManagerTestSuite) TestGetPoolByHostname() {
 			},
 		},
 		"host-not-found": {
-			poolIndex:      map[string][]string{},
-			hostToPoolMap:  map[string]string{},
-			expectedErrMsg: fmt.Sprintf("host %s not found", testHostname),
+			poolIndex:     map[string][]string{},
+			hostToPoolMap: map[string]string{},
+			expectedErrMsg: fmt.Sprintf(
+				"host %s not found", testHostname),
 		},
 		"host-pool-not-found": {
 			poolIndex: map[string][]string{
@@ -88,16 +119,26 @@ func (suite *HostPoolManagerTestSuite) TestGetPoolByHostname() {
 			hostToPoolMap: map[string]string{
 				testHostname: expectedPoolID,
 			},
-			expectedErrMsg: fmt.Sprintf("host pool %s not found", expectedPoolID),
+			expectedErrMsg: fmt.Sprintf(
+				"host pool %s not found", expectedPoolID),
 		},
 	}
 
 	for tcName, tc := range testCases {
-		manager := setupTestManager(tc.poolIndex, tc.hostToPoolMap, nil)
+		manager := setupTestManager(
+			tc.poolIndex,
+			tc.hostToPoolMap,
+			nil,
+		)
 
 		_, err := manager.GetPoolByHostname(testHostname)
 		if tc.expectedErrMsg != "" {
-			suite.EqualError(err, tc.expectedErrMsg, "test case %s", tcName)
+			suite.EqualError(
+				err,
+				tc.expectedErrMsg,
+				"test case %s",
+				tcName,
+			)
 		} else {
 			suite.NoErrorf(err, "test case %s", tcName)
 		}
@@ -106,7 +147,7 @@ func (suite *HostPoolManagerTestSuite) TestGetPoolByHostname() {
 
 // TestRegisterPool tests creating a host pool with given pool ID in parallel.
 // It pre-registers 10 test host pools to the host manager and tests with
-// another 20 host pool registration attempts, 10 of them were pre-registered already.
+// 20 more host pool registration attempts, 10 of them were pre-registered already.
 func (suite *HostPoolManagerTestSuite) TestRegisterPool() {
 	// Pre-register 10 test host pools to host pool manager.
 	numPools := 10
@@ -144,7 +185,8 @@ func (suite *HostPoolManagerTestSuite) TestDeregisterPool() {
 	for i := 0; i < nClients; i++ {
 		go func(i int) {
 			poolID := fmt.Sprintf(_testPoolIDTemplate, i)
-			notFoundErrMsg := fmt.Sprintf("host pool %s not found", poolID)
+			notFoundErrMsg := fmt.Sprintf(
+				"host pool %s not found", poolID)
 			suite.manager.DeregisterPool(poolID)
 			_, err := suite.manager.GetPool(poolID)
 			suite.EqualError(err, notFoundErrMsg)
@@ -153,6 +195,144 @@ func (suite *HostPoolManagerTestSuite) TestDeregisterPool() {
 	}
 
 	wg.Wait()
+}
+
+// TestReconcile tests Start, Stop and reconcile host pool manager.
+func (suite *HostPoolManagerTestSuite) TestReconcile() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	mockMasterOperatorClient := mpb_mocks.NewMockMasterOperatorClient(ctrl)
+	mockMaintenanceMap := hostmgr_host_mocks.NewMockMaintenanceHostInfoMap(ctrl)
+
+	response := suite.makeAgentsResponse()
+	mockMaintenanceMap.EXPECT().
+		GetDrainingHostInfos(gomock.Any()).
+		Return([]*pb_host.HostInfo{}).
+		Times(len(suite.upMachines) + len(suite.drainingMachines))
+	mockMasterOperatorClient.EXPECT().Agents().Return(response, nil)
+
+	loader := &host.Loader{
+		OperatorClient:         mockMasterOperatorClient,
+		Scope:                  tally.NewTestScope("", map[string]string{}),
+		MaintenanceHostInfoMap: mockMaintenanceMap,
+	}
+	loader.Load(nil)
+
+	testCases := map[string]struct {
+		poolIndex     map[string][]string
+		hostToPoolMap map[string]string
+		expectedCache map[string]string
+	}{
+		"host-pool-cache-in-sync": {
+			poolIndex: map[string][]string{
+				common.DefaultHostPoolID: {"host1", "host2"},
+			},
+			hostToPoolMap: map[string]string{
+				"host1": common.DefaultHostPoolID,
+				"host2": common.DefaultHostPoolID,
+			},
+			expectedCache: map[string]string{
+				"host1": common.DefaultHostPoolID,
+				"host2": common.DefaultHostPoolID,
+			},
+		},
+		"more-hosts-in-pool-index": {
+			poolIndex: map[string][]string{
+				common.DefaultHostPoolID: {"host1", "host2"},
+			},
+			hostToPoolMap: map[string]string{
+				"host1": common.DefaultHostPoolID,
+			},
+			expectedCache: map[string]string{
+				"host1": common.DefaultHostPoolID,
+				"host2": common.DefaultHostPoolID,
+			},
+		},
+		"more-hosts-in-host-to-pool-map": {
+			poolIndex: map[string][]string{
+				common.DefaultHostPoolID: {"host1"},
+			},
+			hostToPoolMap: map[string]string{
+				"host1": common.DefaultHostPoolID,
+				"host2": common.DefaultHostPoolID,
+			},
+			expectedCache: map[string]string{
+				"host1": common.DefaultHostPoolID,
+				"host2": common.DefaultHostPoolID,
+			},
+		},
+		"more-hosts-in-agent-map": {
+			poolIndex: map[string][]string{
+				common.DefaultHostPoolID: {"host1"},
+			},
+			hostToPoolMap: map[string]string{
+				"host1": common.DefaultHostPoolID,
+			},
+			expectedCache: map[string]string{
+				"host1": common.DefaultHostPoolID,
+				"host2": common.DefaultHostPoolID,
+			},
+		},
+		"more-hosts-in-host-pool-cache": {
+			poolIndex: map[string][]string{
+				common.DefaultHostPoolID: {
+					"host1",
+					"host2",
+					"host3",
+				},
+			},
+			hostToPoolMap: map[string]string{
+				"host1": common.DefaultHostPoolID,
+				"host2": common.DefaultHostPoolID,
+				"host3": common.DefaultHostPoolID,
+			},
+			expectedCache: map[string]string{
+				"host1": common.DefaultHostPoolID,
+				"host2": common.DefaultHostPoolID,
+			},
+		},
+		"host-in-multiple-host-pools": {
+			poolIndex: map[string][]string{
+				common.DefaultHostPoolID: {"host1", "host2"},
+				"pool1":                  {"host1"},
+			},
+			hostToPoolMap: map[string]string{
+				"host1": common.DefaultHostPoolID,
+				"host2": common.DefaultHostPoolID,
+			},
+			expectedCache: map[string]string{
+				"host1": common.DefaultHostPoolID,
+				"host2": common.DefaultHostPoolID,
+			},
+		},
+	}
+
+	for tcName, tc := range testCases {
+		manager := setupTestManager(
+			tc.poolIndex,
+			tc.hostToPoolMap,
+			nil,
+		)
+
+		manager.Start()
+
+		time.Sleep(2 * _testReconcileInterval)
+
+		cached := make(map[string]string)
+		poolIndex := manager.Pools()
+		for poolID, pool := range poolIndex {
+			for hostname := range pool.Hosts() {
+				p, err := manager.GetPoolByHostname(hostname)
+				suite.NoError(err, "test case: %s", tcName)
+				suite.Equal(poolID, p.ID(), "test case: %s", tcName)
+				cached[hostname] = poolID
+			}
+		}
+		suite.EqualValues(tc.expectedCache, cached, "test case: %s", tcName)
+
+		manager.Stop()
+	}
 }
 
 // TestChangeHostPool tests various cases of changing pool for a host.
@@ -264,6 +444,35 @@ func (suite *HostPoolManagerTestSuite) TestChangeHostPool() {
 	}
 }
 
+// makeAgentsResponse makes a fake GetAgents response from Mesos master.
+func (suite *HostPoolManagerTestSuite) makeAgentsResponse() *masterpb.Response_GetAgents {
+	response := &masterpb.Response_GetAgents{
+		Agents: []*masterpb.Response_GetAgents_Agent{},
+	}
+	pidUp := fmt.Sprintf("slave(0)@%s:0.0.0.0", suite.upMachines[0].GetIp())
+	hostnameUp := suite.upMachines[0].GetHostname()
+	agentUp := &masterpb.Response_GetAgents_Agent{
+		AgentInfo: &mesospb.AgentInfo{
+			Hostname: &hostnameUp,
+		},
+		Pid: &pidUp,
+	}
+	response.Agents = append(response.Agents, agentUp)
+
+	pidDraining := fmt.Sprintf(
+		"slave(0)@%s:0.0.0.0", suite.drainingMachines[0].GetIp())
+	hostnameDraining := suite.drainingMachines[0].GetHostname()
+	agentDraining := &masterpb.Response_GetAgents_Agent{
+		AgentInfo: &mesospb.AgentInfo{
+			Hostname: &hostnameDraining,
+		},
+		Pid: &pidDraining,
+	}
+	response.Agents = append(response.Agents, agentDraining)
+
+	return response
+}
+
 // setupTestManager set up test host manager by constructing
 // a new host pool manager with given pool index and host index.
 func setupTestManager(
@@ -272,9 +481,11 @@ func setupTestManager(
 	eventStreamHandler *eventstream.Handler,
 ) HostPoolManager {
 	manager := &hostPoolManager{
+		reconcileInternal:  _testReconcileInterval,
+		eventStreamHandler: eventStreamHandler,
 		poolIndex:          map[string]hostpool.HostPool{},
 		hostToPoolMap:      map[string]string{},
-		eventStreamHandler: eventStreamHandler,
+		lifecycle:          lifecycle.NewLifeCycle(),
 	}
 
 	for poolID, hosts := range poolIndex {
@@ -292,8 +503,8 @@ func setupTestManager(
 	return manager
 }
 
-// preRegisterTestPools creates given number of test host pools to given host pool manager
-// with ID following the pattern as 'poolX'.
+// preRegisterTestPools creates given number of test host pools to given
+// host pool manager with ID following the pattern as 'poolX'.
 func preRegisterTestPools(manager HostPoolManager, numPools int) {
 	for i := 0; i < numPools; i++ {
 		manager.RegisterPool(fmt.Sprintf(_testPoolIDTemplate, i))
