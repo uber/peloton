@@ -1,1 +1,1 @@
-TAGS='k8s' make stateless-integ-test
+TAGS='k8s' make stateless-integ-test || true
