@@ -17,10 +17,10 @@ package constraints
 import (
 	"strconv"
 
-	log "github.com/sirupsen/logrus"
-
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/pkg/common"
+
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -32,6 +32,31 @@ const (
 // First level key is label key, second level key is label value.
 // This is the subject of constraint evaluation process.
 type LabelValues map[string]map[string]uint32
+
+// Merge merges additional label values into current label values.
+// Values of the same label will be merged as well.
+func (lv LabelValues) Merge(additionalLV LabelValues) {
+	for label, origin := range additionalLV {
+		if origin == nil {
+			continue
+		}
+		copy := make(map[string]uint32)
+		for value, count := range origin {
+			copy[value] = count
+		}
+		if _, ok := lv[label]; !ok {
+			lv[label] = copy
+			continue
+		}
+		for v, c := range copy {
+			if current, ok := lv[label][v]; !ok {
+				lv[label][v] = c
+			} else {
+				lv[label][v] = current + c
+			}
+		}
+	}
+}
 
 // GetHostLabelValues returns label counts for a host and its attributes,
 // which can be used to evaluate a constraint.

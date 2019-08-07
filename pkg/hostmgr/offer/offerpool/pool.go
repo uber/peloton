@@ -20,24 +20,24 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
-	"go.uber.org/multierr"
-
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/pkg/common"
-
 	"github.com/uber/peloton/pkg/common/constraints"
 	"github.com/uber/peloton/pkg/hostmgr/binpacking"
+	"github.com/uber/peloton/pkg/hostmgr/hostpool/manager"
 	hostmgr_mesos "github.com/uber/peloton/pkg/hostmgr/mesos"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 	"github.com/uber/peloton/pkg/hostmgr/summary"
 	"github.com/uber/peloton/pkg/hostmgr/watchevent"
+
+	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
+	"go.uber.org/multierr"
 )
 
 // Pool caches a set of offers received from Mesos master. It is
@@ -130,6 +130,9 @@ type Pool interface {
 
 	// ReleaseHoldForTasks release the hold of host for the tasks specified
 	ReleaseHoldForTasks(hostname string, taskIDs []*peloton.TaskID) error
+
+	// SetHostPoolManager set host pool manager in the offer pool.
+	SetHostPoolManager(manager manager.HostPoolManager)
 }
 
 const (
@@ -160,7 +163,8 @@ func NewOfferPool(
 	slackResourceTypes []string,
 	binPackingRanker binpacking.Ranker,
 	hostPlacingOfferStatusTimeout time.Duration,
-	processor watchevent.WatchProcessor) Pool {
+	processor watchevent.WatchProcessor,
+	hostPoolManager manager.HostPoolManager) Pool {
 
 	// GPU is only supported scarce resource type.
 	if !reflect.DeepEqual(supportedScarceResourceTypes, scarceResourceTypes) {
@@ -195,6 +199,8 @@ func NewOfferPool(
 		binPackingRanker: binPackingRanker,
 
 		watchProcessor: processor,
+
+		hostPoolManager: hostPoolManager,
 	}
 
 	return p
@@ -241,6 +247,8 @@ type offerPool struct {
 	taskHeldIndex sync.Map
 
 	watchProcessor watchevent.WatchProcessor
+
+	hostPoolManager manager.HostPoolManager
 }
 
 // ClaimForPlace obtains offers from pool conforming to given constraints.
@@ -259,7 +267,8 @@ func (p *offerPool) ClaimForPlace(
 
 	matcher := NewMatcher(
 		hostFilter,
-		constraints.NewEvaluator(task.LabelConstraint_HOST))
+		constraints.NewEvaluator(task.LabelConstraint_HOST),
+		p.hostPoolManager)
 
 	// if host hint is provided, try to return the hosts in hints first
 	for _, filterHints := range hostFilter.GetHint().GetHostHint() {
@@ -819,6 +828,11 @@ func (p *offerPool) ReleaseHoldForTasks(hostname string, taskIDs []*peloton.Task
 	}
 
 	return nil
+}
+
+// SetHostPoolManager set host pool manager in the offer pool.
+func (p *offerPool) SetHostPoolManager(manager manager.HostPoolManager) {
+	p.hostPoolManager = manager
 }
 
 // addTaskHold update the index when a host is held for a task

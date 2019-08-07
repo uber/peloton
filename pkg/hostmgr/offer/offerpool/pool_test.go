@@ -22,11 +22,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/suite"
-	"github.com/uber-go/tally"
-	"go.uber.org/goleak"
-
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
@@ -44,6 +39,11 @@ import (
 	hostmgr_summary_mocks "github.com/uber/peloton/pkg/hostmgr/summary/mocks"
 	hmutil "github.com/uber/peloton/pkg/hostmgr/util"
 	watchmocks "github.com/uber/peloton/pkg/hostmgr/watchevent/mocks"
+
+	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
+	"go.uber.org/goleak"
 )
 
 const (
@@ -183,6 +183,7 @@ func (suite *OfferPoolTestSuite) TestSlackResourceTypes() {
 		binpacking.GetRankerByName(binpacking.DeFrag),
 		time.Duration(30*time.Second),
 		suite.watchProcessor,
+		nil,
 	)
 	suite.True(hmutil.IsSlackResourceType(
 		common.MesosCPU,

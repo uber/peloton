@@ -12,15 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package host
+package hostmgr
 
 import (
 	"errors"
 	"testing"
-
-	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/suite"
-	"github.com/uber-go/tally"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	mesos_master "github.com/uber/peloton/.gen/mesos/v1/master"
@@ -28,14 +24,21 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
-
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/constraints"
 	constraint_mocks "github.com/uber/peloton/pkg/common/constraints/mocks"
 	"github.com/uber/peloton/pkg/common/util"
+	"github.com/uber/peloton/pkg/hostmgr/host"
 	hm "github.com/uber/peloton/pkg/hostmgr/host/mocks"
+	"github.com/uber/peloton/pkg/hostmgr/hostpool/manager"
+	hostpool_manager_mocks "github.com/uber/peloton/pkg/hostmgr/hostpool/manager/mocks"
+	hostmgr_hostpool_mocks "github.com/uber/peloton/pkg/hostmgr/hostpool/mocks"
 	mock_mpb "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
+
+	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
 )
 
 var (
@@ -50,6 +53,7 @@ type MatcherTestSuite struct {
 	operatorClient     *mock_mpb.MockMasterOperatorClient
 	response           *mesos_master.Response_GetAgents
 	mockMaintenanceMap *hm.MockMaintenanceHostInfoMap
+	hostPoolManager    *hostpool_manager_mocks.MockHostPoolManager
 }
 
 func (suite *MatcherTestSuite) SetupTest() {
@@ -58,11 +62,12 @@ func (suite *MatcherTestSuite) SetupTest() {
 	suite.operatorClient = mock_mpb.NewMockMasterOperatorClient(suite.ctrl)
 	suite.mockMaintenanceMap = hm.NewMockMaintenanceHostInfoMap(suite.ctrl)
 	suite.InitializeHosts()
+	suite.hostPoolManager = hostpool_manager_mocks.NewMockHostPoolManager(suite.ctrl)
 }
 
 // InitializeHosts creates the host map for mesos agents
 func (suite *MatcherTestSuite) InitializeHosts() {
-	loader := &Loader{
+	loader := &host.Loader{
 		OperatorClient:         suite.operatorClient,
 		Scope:                  suite.testScope,
 		MaintenanceHostInfoMap: suite.mockMaintenanceMap,
@@ -83,14 +88,15 @@ func (suite *MatcherTestSuite) InitializeHosts() {
 
 func getNewMatcher(
 	filter *hostsvc.HostFilter,
-	evaluator constraints.Evaluator) *Matcher {
+	evaluator constraints.Evaluator,
+	hostPoolManager manager.HostPoolManager) *Matcher {
 	resourceTypeFilter := func(resourceType string) bool {
 		if resourceType == common.MesosCPU {
 			return true
 		}
 		return false
 	}
-	return NewMatcher(filter, evaluator, resourceTypeFilter)
+	return NewMatcher(filter, evaluator, hostPoolManager, resourceTypeFilter)
 }
 
 // getAgentResponse generates the agent response
@@ -153,8 +159,15 @@ func TestMatcherTestSuite(t *testing.T) {
 }
 
 // TestResourcesConstraint tests the different return codes from matchHostFilter
+// TODO: Need to test scheduling constraint.
 func (suite *MatcherTestSuite) TestResourcesConstraint() {
 	defer suite.ctrl.Finish()
+
+	// Set expectation on host pool manager
+	mockHostPool := hostmgr_hostpool_mocks.NewMockHostPool(suite.ctrl)
+	mockHostPool.EXPECT().ID().Return("pool1").AnyTimes()
+	suite.hostPoolManager.EXPECT().
+		GetPoolByHostname(gomock.Any()).Return(mockHostPool, nil).AnyTimes()
 
 	filter := &hostsvc.HostFilter{
 		Quantity: &hostsvc.QuantityControl{
@@ -169,7 +182,7 @@ func (suite *MatcherTestSuite) TestResourcesConstraint() {
 			Revocable: true,
 		},
 	}
-	matcher := getNewMatcher(filter, nil)
+	matcher := getNewMatcher(filter, nil, suite.hostPoolManager)
 	hostname := suite.response.Agents[0].AgentInfo.GetHostname()
 	agents, err := matcher.GetMatchingHosts()
 	suite.Equal(len(agents), 2)
@@ -281,7 +294,7 @@ func (suite *MatcherTestSuite) TestResourcesConstraint() {
 				tt.resources,
 				tt.filter,
 				nil,
-				GetAgentMap()),
+				host.GetAgentMap()),
 			tt.msg,
 		)
 	}
@@ -331,9 +344,9 @@ func (suite *MatcherTestSuite) TestHostConstraints() {
 				gomock.Eq(filter.SchedulingConstraint),
 				gomock.Eq(lv)).
 			Return(tt.evaluateRes, tt.evaluateErr)
-		matcher := getNewMatcher(filter, mockEvaluator)
+		matcher := getNewMatcher(filter, mockEvaluator, nil)
 		result := matcher.matchHostFilter(suite.response.Agents[0].AgentInfo.GetHostname(),
-			scalar.FromMesosResources(suite.response.Agents[0].AgentInfo.Resources), filter, mockEvaluator, GetAgentMap())
+			scalar.FromMesosResources(suite.response.Agents[0].AgentInfo.Resources), filter, mockEvaluator, host.GetAgentMap())
 		suite.Equal(result, tt.match, "test case is %s", ttName)
 	}
 }
@@ -342,6 +355,12 @@ func (suite *MatcherTestSuite) TestHostConstraints() {
 func (suite *MatcherTestSuite) TestMatchHostsFilter() {
 	res := createAgentResourceMap(nil, nil, nil)
 	suite.Nil(res)
+
+	// Set expectation on host pool manager
+	mockHostPool := hostmgr_hostpool_mocks.NewMockHostPool(suite.ctrl)
+	mockHostPool.EXPECT().ID().Return("hostpool1").AnyTimes()
+	suite.hostPoolManager.EXPECT().
+		GetPoolByHostname(gomock.Any()).Return(mockHostPool, nil).AnyTimes()
 
 	filter := &hostsvc.HostFilter{
 		Quantity: &hostsvc.QuantityControl{
@@ -357,16 +376,16 @@ func (suite *MatcherTestSuite) TestMatchHostsFilter() {
 			},
 		},
 	}
-	matcher := getNewMatcher(filter, nil)
+	matcher := getNewMatcher(filter, nil, suite.hostPoolManager)
 	// Checking with valid host filter
-	result := matcher.matchHostsFilter(matcher.agentMap, filter, nil, GetAgentMap())
+	result := matcher.matchHostsFilter(matcher.agentMap, filter, nil, host.GetAgentMap())
 	suite.Equal(result, hostsvc.HostFilterResult_MATCH)
 	hosts, err := matcher.GetMatchingHosts()
 	suite.Nil(err)
 	// hostfilter should return both the hosts
 	suite.Equal(len(hosts), 2)
 	// invalid agent Map
-	result = matcher.matchHostsFilter(nil, filter, nil, GetAgentMap())
+	result = matcher.matchHostsFilter(nil, filter, nil, host.GetAgentMap())
 	suite.Equal(result, hostsvc.HostFilterResult_INSUFFICIENT_RESOURCES)
 	// invalid agentInfoMap
 	result = matcher.matchHostsFilter(matcher.agentMap, filter, nil, nil)
@@ -375,8 +394,14 @@ func (suite *MatcherTestSuite) TestMatchHostsFilter() {
 
 // TestMatchHostsFilterWithDifferentosts tests with different kind of hosts
 func (suite *MatcherTestSuite) TestMatchHostsFilterWithDifferentHosts() {
+	// Set expectation on host pool manager
+	mockHostPool := hostmgr_hostpool_mocks.NewMockHostPool(suite.ctrl)
+	mockHostPool.EXPECT().ID().Return("hostpool1").AnyTimes()
+	suite.hostPoolManager.EXPECT().
+		GetPoolByHostname(gomock.Any()).Return(mockHostPool, nil).AnyTimes()
+
 	// Creating different resources hosts in the host map
-	loader := &Loader{
+	loader := &host.Loader{
 		OperatorClient:         suite.operatorClient,
 		Scope:                  suite.testScope,
 		SlackResourceTypes:     []string{common.MesosCPU},
@@ -409,9 +434,9 @@ func (suite *MatcherTestSuite) TestMatchHostsFilterWithDifferentHosts() {
 			},
 		},
 	}
-	matcher := getNewMatcher(filter, nil)
+	matcher := getNewMatcher(filter, nil, suite.hostPoolManager)
 	// one of the host should match with this filter
-	result := matcher.matchHostsFilter(matcher.agentMap, filter, nil, GetAgentMap())
+	result := matcher.matchHostsFilter(matcher.agentMap, filter, nil, host.GetAgentMap())
 	suite.Equal(result, hostsvc.HostFilterResult_MATCH)
 	hosts, err := matcher.GetMatchingHosts()
 	suite.Nil(err)
@@ -422,7 +447,7 @@ func (suite *MatcherTestSuite) TestMatchHostsFilterWithDifferentHosts() {
 // TestMatchHostsFilterWithZeroResourceHosts tests hosts with not sufficient resources
 func (suite *MatcherTestSuite) TestMatchHostsFilterWithZeroResourceHosts() {
 	// Creating host map with not sufficient resources
-	loader := &Loader{
+	loader := &host.Loader{
 		OperatorClient:         suite.operatorClient,
 		Scope:                  suite.testScope,
 		MaintenanceHostInfoMap: suite.mockMaintenanceMap,
@@ -454,8 +479,8 @@ func (suite *MatcherTestSuite) TestMatchHostsFilterWithZeroResourceHosts() {
 			},
 		},
 	}
-	matcher := getNewMatcher(filter, nil)
-	result := matcher.matchHostsFilter(matcher.agentMap, filter, nil, GetAgentMap())
+	matcher := getNewMatcher(filter, nil, suite.hostPoolManager)
+	result := matcher.matchHostsFilter(matcher.agentMap, filter, nil, host.GetAgentMap())
 	suite.Equal(result, hostsvc.HostFilterResult_INSUFFICIENT_RESOURCES)
 	hosts, err := matcher.GetMatchingHosts()
 	suite.NotNil(err)
@@ -466,7 +491,13 @@ func (suite *MatcherTestSuite) TestMatchHostsFilterWithZeroResourceHosts() {
 
 // TestMatchHostsFilterExclusiveHosts tests filtering of exclusive hosts
 func (suite *MatcherTestSuite) TestMatchHostsFilterExclusiveHosts() {
-	loader := &Loader{
+	// Set expectation on host pool manager
+	mockHostPool := hostmgr_hostpool_mocks.NewMockHostPool(suite.ctrl)
+	mockHostPool.EXPECT().ID().Return("hostpool1").AnyTimes()
+	suite.hostPoolManager.EXPECT().
+		GetPoolByHostname(gomock.Any()).Return(mockHostPool, nil).AnyTimes()
+
+	loader := &host.Loader{
 		OperatorClient:         suite.operatorClient,
 		Scope:                  suite.testScope,
 		MaintenanceHostInfoMap: suite.mockMaintenanceMap,
@@ -554,7 +585,7 @@ func (suite *MatcherTestSuite) TestMatchHostsFilterExclusiveHosts() {
 			}
 		}
 		evaluator := constraints.NewEvaluator(task.LabelConstraint_HOST)
-		matcher := getNewMatcher(filter, evaluator)
+		matcher := getNewMatcher(filter, evaluator, suite.hostPoolManager)
 		suite.Equal(
 			tt.expected,
 			matcher.matchHostFilter(
@@ -562,7 +593,7 @@ func (suite *MatcherTestSuite) TestMatchHostsFilterExclusiveHosts() {
 				resources,
 				filter,
 				evaluator,
-				GetAgentMap()),
+				host.GetAgentMap()),
 			tt.msg,
 		)
 	}

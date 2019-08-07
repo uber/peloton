@@ -24,7 +24,6 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	halphapb "github.com/uber/peloton/.gen/peloton/api/v1alpha/host"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
-
 	"github.com/uber/peloton/pkg/common/constraints"
 	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/hostmgr/host"
@@ -120,7 +119,8 @@ type HostSummary interface {
 	// given constraint.
 	TryMatch(
 		hostFilter *hostsvc.HostFilter,
-		evaluator constraints.Evaluator) Match
+		evaluator constraints.Evaluator,
+		labelValues constraints.LabelValues) Match
 
 	// AddMesosOffer adds a Mesos offers to the current HostSummary.
 	AddMesosOffers(ctx context.Context, offer []*mesos.Offer) HostStatus
@@ -284,12 +284,13 @@ type Match struct {
 	Offer *Offer
 }
 
-// matchConstraint determines whether given HostFilter matches
+// matchHostFilter determines whether given HostFilter matches
 // the given map of offers.
 func matchHostFilter(
 	offerMap map[string]*mesos.Offer,
 	c *hostsvc.HostFilter,
 	evaluator constraints.Evaluator,
+	labelValues constraints.LabelValues,
 	scalarAgentRes scalar.Resources,
 	scarceResourceTypes []string) hostsvc.HostFilterResult {
 
@@ -345,49 +346,8 @@ func matchHostFilter(
 	hostname := firstOffer.GetHostname()
 	hc := c.GetSchedulingConstraint()
 
-	// If constraints don't specify an exclusive host, then reject
-	// hosts that are designated as exclusive
-	if constraints.IsNonExclusiveConstraint(hc) &&
-		hmutil.HasExclusiveAttribute(firstOffer.GetAttributes()) {
-		log.WithField("hostname", hostname).Debug("Skipped exclusive host")
-		return hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS
-	}
-
-	if hc == nil {
-		// No scheduling constraint, we have a match
-		return hostsvc.HostFilterResult_MATCH
-	}
-
-	lv := constraints.GetHostLabelValues(
-		hostname,
-		firstOffer.GetAttributes(),
-	)
-	result, err := evaluator.Evaluate(hc, lv)
-	if err != nil {
-		log.WithError(err).
-			Error("Error when evaluating input constraint")
-		return hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS
-	}
-
-	switch result {
-	case constraints.EvaluateResultMatch:
-		fallthrough
-	case constraints.EvaluateResultNotApplicable:
-		log.WithFields(log.Fields{
-			"values":     lv,
-			"hostname":   hostname,
-			"constraint": hc,
-		}).Debug("Attributes match constraint")
-	default:
-		log.WithFields(log.Fields{
-			"values":     lv,
-			"hostname":   hostname,
-			"constraint": hc,
-		}).Debug("Attributes do not match constraint")
-		return hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS
-	}
-
-	return hostsvc.HostFilterResult_MATCH
+	return hmutil.MatchSchedulingConstraint(
+		hostname, labelValues, firstOffer.GetAttributes(), hc, evaluator)
 }
 
 // TryMatch atomically tries to match offers from the current host with given
@@ -399,7 +359,8 @@ func matchHostFilter(
 // (actual reason, empty-slice) and status will remain unchanged.
 func (a *hostSummary) TryMatch(
 	filter *hostsvc.HostFilter,
-	evaluator constraints.Evaluator) Match {
+	evaluator constraints.Evaluator,
+	labelValues constraints.LabelValues) Match {
 	a.Lock()
 	defer a.Unlock()
 
@@ -437,6 +398,7 @@ func (a *hostSummary) TryMatch(
 		a.unreservedOffers,
 		filter,
 		evaluator,
+		labelValues,
 		scalar.FromMesosResources(host.GetAgentInfo(a.GetHostname()).GetResources()),
 		a.scarceResourceTypes)
 

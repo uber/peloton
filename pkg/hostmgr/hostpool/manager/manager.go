@@ -21,6 +21,7 @@ import (
 	pb_host "github.com/uber/peloton/.gen/peloton/api/v0/host"
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
 	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/common/constraints"
 	"github.com/uber/peloton/pkg/common/eventstream"
 	"github.com/uber/peloton/pkg/common/lifecycle"
 	"github.com/uber/peloton/pkg/hostmgr/host"
@@ -32,6 +33,7 @@ import (
 )
 
 const (
+	_hostPoolKey              = "host_pool"
 	_defaultReconcileInterval = 10 * time.Second
 )
 
@@ -389,4 +391,24 @@ func (m *hostPoolManager) reconcile() error {
 	m.hostToPoolMap = newHostToPoolMap
 
 	return nil
+}
+
+// GetHostPoolLabelValues creates a LabelValues for host pool of a host.
+func GetHostPoolLabelValues(
+	manager HostPoolManager,
+	hostname string,
+) (constraints.LabelValues, error) {
+	lv := make(constraints.LabelValues)
+
+	pool, err := manager.GetPoolByHostname(hostname)
+	if err != nil {
+		return lv, errors.Wrapf(
+			err,
+			"error when getting host pool of host %s",
+			hostname,
+		)
+	}
+
+	lv[_hostPoolKey] = map[string]uint32{pool.ID(): 1}
+	return lv, nil
 }

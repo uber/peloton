@@ -25,6 +25,7 @@ import (
 	pb_host "github.com/uber/peloton/.gen/peloton/api/v0/host"
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
 	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/common/constraints"
 	"github.com/uber/peloton/pkg/common/eventstream"
 	"github.com/uber/peloton/pkg/common/lifecycle"
 	"github.com/uber/peloton/pkg/hostmgr/host"
@@ -195,6 +196,53 @@ func (suite *HostPoolManagerTestSuite) TestDeregisterPool() {
 	}
 
 	wg.Wait()
+}
+
+// TestGetHostPoolLabelValuesGetHostPoolLabelValues tests creating a LabelValues
+// for host pool of a host.
+func (suite *HostPoolManagerTestSuite) TestGetHostPoolLabelValues() {
+	testCases := map[string]struct {
+		poolIndex      map[string][]string
+		hostToPoolMap  map[string]string
+		hostname       string
+		expectedRes    constraints.LabelValues
+		expectedErrMsg string
+	}{
+		"success": {
+			poolIndex: map[string][]string{
+				"pool1": {"host1"},
+			},
+			hostToPoolMap: map[string]string{
+				"host1": "pool1",
+			},
+			hostname: "host1",
+			expectedRes: constraints.LabelValues{
+				_hostPoolKey: map[string]uint32{"pool1": 1},
+			},
+		},
+		"host-not-found": {
+			poolIndex:     map[string][]string{},
+			hostToPoolMap: map[string]string{},
+			hostname:      "host1",
+			expectedErrMsg: "error when getting host pool of " +
+				"host host1: host host1 not found",
+		},
+	}
+
+	for tcName, tc := range testCases {
+		manager := setupTestManager(
+			tc.poolIndex,
+			tc.hostToPoolMap,
+			nil,
+		)
+		res, err := GetHostPoolLabelValues(manager, tc.hostname)
+		if tc.expectedErrMsg != "" {
+			suite.EqualError(err, tc.expectedErrMsg, "test case: %s", tcName)
+		} else {
+			suite.NoError(err, "test case: %s", tcName)
+			suite.EqualValues(tc.expectedRes, res)
+		}
+	}
 }
 
 // TestReconcile tests Start, Stop and reconcile host pool manager.

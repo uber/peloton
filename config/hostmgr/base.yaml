@@ -58,6 +58,7 @@ host_manager:
   # bin packing refresh interval represents the time interval in which
   # we can refresh the list of hosts based on bin packing algorithm
   bin_packing_refresh_interval: 30s
+  enable_host_pool: false
 
 mesos:
   encoding: "x-protobuf"

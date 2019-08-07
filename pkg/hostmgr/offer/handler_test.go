@@ -136,7 +136,10 @@ func (s *HostMgrOfferHandlerTestSuite) SetupSuite() {
 		s.defragRanker,
 		hmConfig,
 		s.watchProcessor,
+		nil,
 	)
+	eh := GetEventHandler()
+	s.NotNil(eh.GetEventStreamHandler())
 
 	_uuid := "d2c41522-0216-4704-8903-2945414c414c"
 	state := mesos.TaskState_TASK_STARTING

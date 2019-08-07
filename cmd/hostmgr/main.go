@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
-
 	cqos "github.com/uber/peloton/.gen/qos/v1alpha1"
 	"github.com/uber/peloton/pkg/auth"
 	auth_impl "github.com/uber/peloton/pkg/auth/impl"
@@ -38,6 +37,7 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr"
 	bin_packing "github.com/uber/peloton/pkg/hostmgr/binpacking"
 	"github.com/uber/peloton/pkg/hostmgr/host"
+	"github.com/uber/peloton/pkg/hostmgr/hostpool/manager"
 	"github.com/uber/peloton/pkg/hostmgr/hostsvc"
 	"github.com/uber/peloton/pkg/hostmgr/mesos"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
@@ -224,6 +224,12 @@ var (
 		"Enable k8s plugin").
 		Envar("ENABLE_K8S").
 		Bool()
+
+	enableHostPool = app.Flag(
+		"enable-host-pool",
+		"Enable Host Pool Management").
+		Envar("ENABLE_HOST_POOL").
+		Bool()
 )
 
 func main() {
@@ -347,6 +353,11 @@ func main() {
 
 	if *qoSAdvisorServiceAddress != "" {
 		cfg.HostManager.QoSAdvisorService.Address = *qoSAdvisorServiceAddress
+	}
+
+	if *enableHostPool {
+		log.Info("Host Pool Management Enabled")
+		cfg.HostManager.EnableHostPool = *enableHostPool
 	}
 
 	log.WithField("config", cfg).Info("Loaded Host Manager configuration")
@@ -615,6 +626,11 @@ func main() {
 	watchevent.InitWatchProcessor(cfg.HostManager.Watch, metric)
 	watchProcessor := watchevent.GetWatchProcessor()
 
+	// Initialize offer pool event handler with nil host pool manager.
+	// TODO: Refactor event stream handler and move it out of offer package
+	//  to avoid circular dependency, since now offer pool event handler requires
+	//  host pool manager, and host pool manager requires event stream handler
+	//  which is part of offer pool event handler.
 	offer.InitEventHandler(
 		dispatcher,
 		rootScope,
@@ -625,7 +641,19 @@ func main() {
 		defaultRanker,
 		cfg.HostManager,
 		watchProcessor,
+		nil,
 	)
+
+	// Construct host pool manager if it is enabled.
+	var hostPoolManager manager.HostPoolManager
+	if cfg.HostManager.EnableHostPool {
+		hostPoolManager = manager.New(offer.GetEventHandler().GetEventStreamHandler())
+		hostPoolManager.Start()
+		defer hostPoolManager.Stop()
+
+		// Set host pool manager in offer pool event handler.
+		offer.GetEventHandler().SetHostPoolManager(hostPoolManager)
+	}
 
 	maintenanceQueue := queue.NewMaintenanceQueue()
 
@@ -688,6 +716,7 @@ func main() {
 		cfg.HostManager.SlackResourceTypes,
 		maintenanceHostInfoMap,
 		watchProcessor,
+		hostPoolManager,
 	)
 
 	hostsvc.InitServiceHandler(

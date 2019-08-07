@@ -25,7 +25,6 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
-
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/constraints"
 	constraint_mocks "github.com/uber/peloton/pkg/common/constraints/mocks"
@@ -524,6 +523,7 @@ func (suite *HostOfferSummaryTestSuite) TestScarceResourcesConstraint() {
 				offerMap,
 				tt.filter,
 				nil,
+				nil,
 				scalar.FromMesosResources(tt.agent.GetResources()),
 				tt.scarceResourceType),
 			tt.msg,
@@ -613,7 +613,7 @@ func (suite *HostOfferSummaryTestSuite) TestSlackResourcesConstraint() {
 			},
 		}
 
-		match := s.TryMatch(filter, nil)
+		match := s.TryMatch(filter, nil, nil)
 		suite.Equal(tt.wantResult, match.Result,
 			"test case is %s", ttName)
 
@@ -823,7 +823,7 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchSchedulingConstraint() {
 				Return(tt.evaluateRes, tt.evaluateErr)
 		}
 		mockProcessor.EXPECT().NotifyEventChange(gomock.Any())
-		match := s.TryMatch(filter, mockEvaluator)
+		match := s.TryMatch(filter, mockEvaluator, nil)
 		suite.Equal(tt.wantResult, match.Result,
 			"test case is %s", ttName)
 
@@ -947,7 +947,7 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchHostOnHeld() {
 				Return(tt.evaluateRes, tt.evaluateErr)
 		}
 		mockProcessor.EXPECT().NotifyEventChange(gomock.Any())
-		match := s.TryMatch(filter, mockEvaluator)
+		match := s.TryMatch(filter, mockEvaluator, nil)
 		suite.Equal(tt.wantResult, match.Result,
 			"test case is %s", ttName)
 

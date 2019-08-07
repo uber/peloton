@@ -34,7 +34,6 @@ import (
 	halphapb "github.com/uber/peloton/.gen/peloton/api/v1alpha/host"
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
-
 	hostsvcmocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	cqosmocks "github.com/uber/peloton/.gen/qos/v1alpha1/mocks"
 	"github.com/uber/peloton/pkg/common/queue"
@@ -43,6 +42,8 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/config"
 	"github.com/uber/peloton/pkg/hostmgr/host"
 	hm "github.com/uber/peloton/pkg/hostmgr/host/mocks"
+	hostpool_manager_mocks "github.com/uber/peloton/pkg/hostmgr/hostpool/manager/mocks"
+	hostmgr_hostpool_mocks "github.com/uber/peloton/pkg/hostmgr/hostpool/mocks"
 	hostmgr_mesos_mocks "github.com/uber/peloton/pkg/hostmgr/mesos/mocks"
 	mpb_mocks "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/metrics"
@@ -210,6 +211,7 @@ type HostMgrHandlerTestSuite struct {
 	watchHostSummaryServer *hostsvcmocks.MockInternalHostServiceServiceWatchHostSummaryEventYARPCServer
 	topicsSupported        []watchevent.Topic
 	mockedCQosClient       *cqosmocks.MockQoSAdvisorServiceYARPCClient
+	hostPoolManager        *hostpool_manager_mocks.MockHostPoolManager
 }
 
 func (suite *HostMgrHandlerTestSuite) SetupSuite() {
@@ -246,6 +248,7 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 	suite.watchEventStreamServer = hostsvcmocks.NewMockInternalHostServiceServiceWatchEventStreamEventYARPCServer(suite.ctrl)
 	suite.watchHostSummaryServer = hostsvcmocks.NewMockInternalHostServiceServiceWatchHostSummaryEventYARPCServer(suite.ctrl)
 	suite.topicsSupported = []watchevent.Topic{watchevent.EventStream, watchevent.HostSummary}
+	suite.hostPoolManager = hostpool_manager_mocks.NewMockHostPoolManager(suite.ctrl)
 
 	mockValidValue := new(string)
 	*mockValidValue = _frameworkID
@@ -264,6 +267,7 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 		bin_packing.GetRankerByName("FIRST_FIT"),
 		time.Duration(30*time.Second),
 		suite.watchProcessor,
+		suite.hostPoolManager,
 	)
 
 	suite.maintenanceQueue = qm.NewMockMaintenanceQueue(suite.ctrl)
@@ -278,6 +282,7 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 		maintenanceQueue:       suite.maintenanceQueue,
 		maintenanceHostInfoMap: suite.maintenanceHostInfoMap,
 		watchProcessor:         suite.watchProcessor,
+		hostPoolManager:        suite.hostPoolManager,
 	}
 	suite.handler.reserver = reserver.NewReserver(
 		metrics.NewMetrics(suite.testScope),
@@ -572,6 +577,12 @@ func (suite *HostMgrHandlerTestSuite) TestGetHostsByQueryNoHosts() {
 func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
 	defer suite.ctrl.Finish()
 
+	// Set expectation on host pool manager
+	mockHostPool := hostmgr_hostpool_mocks.NewMockHostPool(suite.ctrl)
+	mockHostPool.EXPECT().ID().Return("hostpool1").AnyTimes()
+	suite.hostPoolManager.EXPECT().
+		GetPoolByHostname(gomock.Any()).Return(mockHostPool, nil).AnyTimes()
+
 	numHosts := 5
 	for i := 0; i < numHosts; i++ {
 		suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
@@ -691,6 +702,12 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
 func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 	defer suite.ctrl.Finish()
 
+	// Set expectation on host pool manager
+	mockHostPool := hostmgr_hostpool_mocks.NewMockHostPool(suite.ctrl)
+	mockHostPool.EXPECT().ID().Return("hostpool1")
+	suite.hostPoolManager.EXPECT().
+		GetPoolByHostname(gomock.Any()).Return(mockHostPool, nil)
+
 	// only create one host offer in this test.
 	numHosts := 1
 	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
@@ -790,6 +807,12 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 // sequence when the target host is not the host held.
 func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunchOnNonHeldTask() {
 	defer suite.ctrl.Finish()
+
+	// Set expectation on host pool manager
+	mockHostPool := hostmgr_hostpool_mocks.NewMockHostPool(suite.ctrl)
+	mockHostPool.EXPECT().ID().Return("hostpool1")
+	suite.hostPoolManager.EXPECT().
+		GetPoolByHostname(gomock.Any()).Return(mockHostPool, nil)
 
 	numHosts := 1
 	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
@@ -1885,6 +1908,13 @@ func (suite *HostMgrHandlerTestSuite) TestGetHosts() {
 			},
 		},
 	}
+
+	// Set expectation on host pool and host pool manager
+	mockHostPool := hostmgr_hostpool_mocks.NewMockHostPool(suite.ctrl)
+	mockHostPool.EXPECT().ID().Return("hostpool1").AnyTimes()
+	suite.hostPoolManager.EXPECT().
+		GetPoolByHostname(gomock.Any()).Return(mockHostPool, nil).AnyTimes()
+
 	// Calling the GetHosts calls
 	acquiredResp, err := suite.handler.GetHosts(
 		rootCtx,
@@ -2085,6 +2115,13 @@ func (suite *HostMgrHandlerTestSuite) withHostOffers(numHosts int) []*hostsvc.
 func (suite *HostMgrHandlerTestSuite) TestLaunchTasksInvalidOfferError() {
 	// set expectation on watch processor
 	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
+
+	// Set expectation on host pool manager
+	mockHostPool := hostmgr_hostpool_mocks.NewMockHostPool(suite.ctrl)
+	mockHostPool.EXPECT().ID().Return("hostpool1").AnyTimes()
+	suite.hostPoolManager.EXPECT().
+		GetPoolByHostname(gomock.Any()).Return(mockHostPool, nil).AnyTimes()
+
 	acquiredHostOffers := suite.withHostOffers(1)
 
 	tt := []struct {
@@ -2134,13 +2171,21 @@ func (suite *HostMgrHandlerTestSuite) TestLaunchTasksInvalidOfferError() {
 func (suite *HostMgrHandlerTestSuite) TestLaunchTasksInvalidArgError() {
 	// set expectation on watch processor
 	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
+
+	// Set expectation on host pool manager
+	mockHostPool := hostmgr_hostpool_mocks.NewMockHostPool(suite.ctrl)
+	mockHostPool.EXPECT().ID().Return("hostpool1").AnyTimes()
+	suite.hostPoolManager.EXPECT().
+		GetPoolByHostname(gomock.Any()).Return(mockHostPool, nil).AnyTimes()
+
 	acquiredHostOffers := suite.withHostOffers(1)
 	tt := []struct {
 		test string
 		req  *hostsvc.LaunchTasksRequest
 		err  *hostsvc.InvalidArgument
 	}{
-		{test: "test empty tasks",
+		{
+			test: "test empty tasks",
 			req: &hostsvc.LaunchTasksRequest{
 				Hostname: acquiredHostOffers[0].GetHostname(),
 				AgentId:  acquiredHostOffers[0].GetAgentId(),
@@ -2206,6 +2251,13 @@ func (suite *HostMgrHandlerTestSuite) TestLaunchTasksInvalidArgError() {
 func (suite *HostMgrHandlerTestSuite) TestLaunchTasksSchedulerError() {
 	// set expectation on watch processor
 	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
+
+	// Set expectation on host pool manager
+	mockHostPool := hostmgr_hostpool_mocks.NewMockHostPool(suite.ctrl)
+	mockHostPool.EXPECT().ID().Return("hostpool1").AnyTimes()
+	suite.hostPoolManager.EXPECT().
+		GetPoolByHostname(gomock.Any()).Return(mockHostPool, nil).AnyTimes()
+
 	acquiredHostOffers := suite.withHostOffers(1)
 
 	// Test framework client error

@@ -12,15 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package host
+package hostmgr
 
 import (
 	"fmt"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
-
 	"github.com/uber/peloton/pkg/common/constraints"
+	"github.com/uber/peloton/pkg/hostmgr/host"
+	"github.com/uber/peloton/pkg/hostmgr/hostpool/manager"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 	"github.com/uber/peloton/pkg/hostmgr/util"
 
@@ -33,10 +34,12 @@ type Matcher struct {
 	hostFilter *hostsvc.HostFilter
 	// evaluator is evaluator for the constraints
 	evaluator constraints.Evaluator
+	// hostPoolManager is the manager maintains host to host pool map
+	hostPoolManager manager.HostPoolManager
 	// agentMap is the map of the hostname -> resources
 	agentMap map[string]scalar.Resources
 	// agentInfoMap is the map of hostname -> agent info
-	agentInfoMap *AgentMap
+	agentInfoMap *host.AgentMap
 	// Its the GetHosts result stored in the matcher object
 	resultHosts map[string]*mesos.AgentInfo
 }
@@ -49,15 +52,17 @@ type filterSlackResources func(resourceType string) bool
 func NewMatcher(
 	hostFilter *hostsvc.HostFilter,
 	evaluator constraints.Evaluator,
+	hostPoolManager manager.HostPoolManager,
 	filter filterSlackResources) *Matcher {
 	return &Matcher{
-		hostFilter: hostFilter,
-		evaluator:  evaluator,
+		hostFilter:      hostFilter,
+		evaluator:       evaluator,
+		hostPoolManager: hostPoolManager,
 		agentMap: createAgentResourceMap(
-			GetAgentMap(),
+			host.GetAgentMap(),
 			hostFilter.GetResourceConstraint(),
 			filter),
-		agentInfoMap: GetAgentMap(),
+		agentInfoMap: host.GetAgentMap(),
 		resultHosts:  make(map[string]*mesos.AgentInfo),
 	}
 }
@@ -88,7 +93,7 @@ func (m *Matcher) matchHostFilter(
 	resource scalar.Resources,
 	c *hostsvc.HostFilter,
 	evaluator constraints.Evaluator,
-	agentMap *AgentMap) hostsvc.HostFilterResult {
+	agentMap *host.AgentMap) hostsvc.HostFilterResult {
 	// tries to get the resource requirement from the host filter
 	if min := c.GetResourceConstraint().GetMinimum(); min != nil {
 		// Checks if the resources in the host are enough for the
@@ -101,49 +106,19 @@ func (m *Matcher) matchHostFilter(
 	hc := c.GetSchedulingConstraint()
 	agent := agentMap.RegisteredAgents[hostname].GetAgentInfo()
 
-	// If constraints don't specify an exclusive host, then reject
-	// hosts that are designated as exclusive
-	if constraints.IsNonExclusiveConstraint(hc) &&
-		util.HasExclusiveAttribute(agent.GetAttributes()) {
-		log.WithField("hostname", hostname).Debug("Skipped exclusive host")
-		return hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS
-	}
-
-	// tries to get the constraints from the host filter
-	if hc != nil {
-		lv := constraints.GetHostLabelValues(
-			hostname,
-			agent.GetAttributes(),
-		)
-		// evaluate the constraints
-		result, err := evaluator.Evaluate(hc, lv)
+	// Insert host pool into labels for evaluation.
+	var lv constraints.LabelValues
+	var err error
+	if m.hostPoolManager != nil {
+		lv, err = manager.GetHostPoolLabelValues(m.hostPoolManager, hostname)
 		if err != nil {
-			// constraints evaluation returns error
-			log.WithError(err).
-				Error("Error when evaluating input constraint")
-			return hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS
-		}
-		// evaluating result of constraints evaluator
-		switch result {
-		case constraints.EvaluateResultMatch:
-			fallthrough
-		case constraints.EvaluateResultNotApplicable:
-			log.WithFields(log.Fields{
-				"values":     lv,
-				"hostname":   hostname,
-				"constraint": hc,
-			}).Debug("Attributes match constraint")
-		default:
-			log.WithFields(log.Fields{
-				"values":     lv,
-				"hostname":   hostname,
-				"constraint": hc,
-			}).Debug("Attributes do not match constraint")
-			return hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS
+			log.WithField("host", hostname).
+				Error("Failed to get host pool label")
 		}
 	}
 
-	return hostsvc.HostFilterResult_MATCH
+	return util.MatchSchedulingConstraint(
+		hostname, lv, agent.GetAttributes(), hc, evaluator)
 }
 
 // matchHostsFilter goes through all the list of nodes
@@ -152,7 +127,7 @@ func (m *Matcher) matchHostsFilter(
 	agentMap map[string]scalar.Resources,
 	c *hostsvc.HostFilter,
 	evaluator constraints.Evaluator,
-	agentInfoMap *AgentMap) hostsvc.HostFilterResult {
+	agentInfoMap *host.AgentMap) hostsvc.HostFilterResult {
 
 	if agentMap == nil || agentInfoMap == nil {
 		return hostsvc.HostFilterResult_INSUFFICIENT_RESOURCES
@@ -182,7 +157,7 @@ func (m *Matcher) matchHostsFilter(
 // createAgentResourceMap takes the AgentMap, Resource Constraint
 // filter Slack Resources func and returns the host to resource map
 func createAgentResourceMap(
-	hostMap *AgentMap,
+	hostMap *host.AgentMap,
 	resourceConstraint *hostsvc.ResourceConstraint,
 	filter filterSlackResources) map[string]scalar.Resources {
 	if hostMap == nil || len(hostMap.RegisteredAgents) == 0 {

@@ -18,12 +18,12 @@ import (
 	"math"
 	"strings"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
-
 	"github.com/uber/peloton/pkg/common/constraints"
+	"github.com/uber/peloton/pkg/hostmgr/hostpool/manager"
 	"github.com/uber/peloton/pkg/hostmgr/summary"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // effectiveHostLimit is common helper function to determine effective limit on
@@ -40,6 +40,8 @@ func effectiveHostLimit(f *hostsvc.HostFilter) uint32 {
 type Matcher struct {
 	hostFilter *hostsvc.HostFilter
 	evaluator  constraints.Evaluator
+	// hostPoolManager is the manager maintains host to host pool map
+	hostPoolManager manager.HostPoolManager
 	// map of hostname to the host offer
 	hostOffers map[string]*summary.Offer
 
@@ -74,7 +76,18 @@ func (m *Matcher) tryMatchImpl(
 		return hostsvc.HostFilterResult_MATCH
 	}
 
-	match := s.TryMatch(m.hostFilter, m.evaluator)
+	// Insert host pool into labels for evaluation.
+	var lv constraints.LabelValues
+	var err error
+	if m.hostPoolManager != nil {
+		lv, err = manager.GetHostPoolLabelValues(m.hostPoolManager, hostname)
+		if err != nil {
+			log.WithField("host", hostname).
+				Error("Failed to get host pool label")
+		}
+	}
+
+	match := s.TryMatch(m.hostFilter, m.evaluator, lv)
 	log.WithFields(log.Fields{
 		"host_filter": m.hostFilter,
 		"host":        hostname,
@@ -108,10 +121,12 @@ func (m *Matcher) getHostOffers() (map[string]*summary.Offer, map[string]uint32)
 func NewMatcher(
 	hostFilter *hostsvc.HostFilter,
 	evaluator constraints.Evaluator,
+	hostPoolManager manager.HostPoolManager,
 ) *Matcher {
 	return &Matcher{
 		hostFilter:         hostFilter,
 		evaluator:          evaluator,
+		hostPoolManager:    hostPoolManager,
 		hostOffers:         make(map[string]*summary.Offer),
 		filterResultCounts: make(map[string]uint32),
 	}

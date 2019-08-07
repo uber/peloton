@@ -17,14 +17,61 @@ package constraints
 import (
 	"testing"
 
-	"github.com/stretchr/testify/suite"
-
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/pkg/common"
+
+	"github.com/stretchr/testify/suite"
 )
 
 type LabelValuesTestSuite struct {
 	suite.Suite
+}
+
+func (suite *LabelValuesTestSuite) TestMerge() {
+	originLV := LabelValues{
+		"label1": {},
+		"label2": map[string]uint32{
+			"value1": 1,
+		},
+		"label3": map[string]uint32{
+			"value1": 1,
+			"value2": 1,
+		},
+	}
+
+	additionalLV := LabelValues{
+		"label1": map[string]uint32{
+			"value1": 1,
+		},
+		"label2": {},
+		"label3": map[string]uint32{
+			"value1": 1,
+		},
+		"label4": map[string]uint32{
+			"value1": 1,
+			"value2": 1,
+		},
+	}
+
+	expectedResult := LabelValues{
+		"label1": map[string]uint32{
+			"value1": 1,
+		},
+		"label2": map[string]uint32{
+			"value1": 1,
+		},
+		"label3": map[string]uint32{
+			"value1": 2,
+			"value2": 1,
+		},
+		"label4": map[string]uint32{
+			"value1": 1,
+			"value2": 1,
+		},
+	}
+
+	originLV.Merge(additionalLV)
+	suite.EqualValues(expectedResult, originLV)
 }
 
 func (suite *LabelValuesTestSuite) TestGetHostLabelValues() {

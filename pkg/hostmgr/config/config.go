@@ -85,4 +85,7 @@ type Config struct {
 
 	//Cqos advisor specific configuration
 	QoSAdvisorService CqosAdvisorConfig `yaml:"qos_advisor"`
+
+	// EnableHostPool is the config switch to enable host pool logic in Host Manager
+	EnableHostPool bool `yaml:"enable_host_pool"`
 }

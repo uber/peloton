@@ -20,12 +20,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/pborman/uuid"
-	log "github.com/sirupsen/logrus"
-	uatomic "github.com/uber-go/atomic"
-	"github.com/uber-go/tally"
-	"go.uber.org/yarpc"
-
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
@@ -37,11 +31,18 @@ import (
 	"github.com/uber/peloton/pkg/common/eventstream"
 	"github.com/uber/peloton/pkg/hostmgr/binpacking"
 	"github.com/uber/peloton/pkg/hostmgr/config"
+	"github.com/uber/peloton/pkg/hostmgr/hostpool/manager"
 	hostmgr_mesos "github.com/uber/peloton/pkg/hostmgr/mesos"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
 	"github.com/uber/peloton/pkg/hostmgr/offer/offerpool"
 	"github.com/uber/peloton/pkg/hostmgr/prune"
 	"github.com/uber/peloton/pkg/hostmgr/watchevent"
+
+	"github.com/pborman/uuid"
+	log "github.com/sirupsen/logrus"
+	uatomic "github.com/uber-go/atomic"
+	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
 )
 
 const (
@@ -69,6 +70,13 @@ type EventHandler interface {
 
 	// GetOfferPool returns the underlying Pool holding the offers.
 	GetOfferPool() offerpool.Pool
+
+	// Get the handler for eventstream
+	GetEventStreamHandler() *eventstream.Handler
+
+	// SetHostPoolManager set host pool manager in the event handler.
+	// It should be called during event handler initialization.
+	SetHostPoolManager(manager manager.HostPoolManager)
 }
 
 // Singleton event handler for offers and mesos status update events
@@ -126,7 +134,8 @@ func InitEventHandler(
 	backgroundMgr background.Manager,
 	ranker binpacking.Ranker,
 	hostMgrConfig config.Config,
-	processor watchevent.WatchProcessor) {
+	processor watchevent.WatchProcessor,
+	hostPoolManager manager.HostPoolManager) {
 
 	if handler != nil {
 		log.Warning("Offer event handler has already been initialized")
@@ -144,6 +153,7 @@ func InitEventHandler(
 		ranker,
 		hostMgrConfig.HostPlacingOfferStatusTimeout,
 		processor,
+		hostPoolManager,
 	)
 
 	placingHostPruner := prune.NewPlacingHostPruner(
@@ -289,6 +299,17 @@ func GetEventHandler() EventHandler {
 		log.Fatal("Offer event handler is not initialized")
 	}
 	return handler
+}
+
+// Get the event stream handler.
+func (h *eventHandler) GetEventStreamHandler() *eventstream.Handler {
+	return handler.eventStreamHandler
+}
+
+// SetHostPoolManager set host pool manager in the event handler.
+// It should be called during event handler initialization.
+func (h *eventHandler) SetHostPoolManager(manager manager.HostPoolManager) {
+	h.offerPool.SetHostPoolManager(manager)
 }
 
 // Offers is the mesos callback that sends the offers from master
