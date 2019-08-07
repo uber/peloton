@@ -648,6 +648,52 @@ var (
 	// Top level hostcache commands
 	hostcache     = hostmgr.Command("hostcache", "manage hostcache")
 	hostcacheDump = hostcache.Command("dump", "dump hostcache contents")
+
+	// Top level hostpool commands
+	hostpool = hostmgr.Command("hostpool", "manage host pools")
+
+	hostpoolList = hostpool.Command("list", "list all pools")
+
+	hostpoolListHosts     = hostpool.Command("list-hosts", "list hosts in a pool")
+	hostpoolListHostsName = hostpoolListHosts.Arg(
+		"name",
+		"name of host pool").
+		Required().
+		String()
+
+	hostpoolCreate     = hostpool.Command("create", "create a host pool")
+	hostpoolCreateName = hostpoolCreate.Arg(
+		"name",
+		"name of host pool").
+		Required().
+		String()
+
+	hostpoolDelete     = hostpool.Command("delete", "delete a host pool")
+	hostpoolDeleteName = hostpoolDelete.Arg(
+		"name",
+		"name of host pool").
+		Required().
+		String()
+
+	hostpoolChangePool = hostpool.Command(
+		"change",
+		"change host pool of a host")
+	hostpoolChangePoolHost = hostpoolChangePool.Arg(
+		"host",
+		"name of host").
+		Required().
+		String()
+	hostpoolChangePoolDest = hostpoolChangePool.Arg(
+		"dest",
+		"destination pool of host").
+		Required().
+		String()
+	hostpoolChangePoolSource = hostpoolChangePool.Flag(
+		"source",
+		"source pool of host").
+		Short('s').
+		Default("").
+		String()
 )
 
 // TaskRangeValue allows us to define a new target type for kingpin to allow specifying ranges of tasks with from:to syntax as a TaskRangeFlag
@@ -1054,6 +1100,19 @@ func main() {
 		err = client.LockComponents(*lockComponents)
 	case unlock.FullCommand():
 		err = client.UnlockComponents(*unlockComponents)
+	case hostpoolList.FullCommand():
+		err = client.HostPoolList()
+	case hostpoolListHosts.FullCommand():
+		err = client.HostPoolListHosts(*hostpoolListHostsName)
+	case hostpoolCreate.FullCommand():
+		err = client.HostPoolCreate(*hostpoolCreateName)
+	case hostpoolDelete.FullCommand():
+		err = client.HostPoolDelete(*hostpoolDeleteName)
+	case hostpoolChangePool.FullCommand():
+		err = client.HostPoolChangePool(
+			*hostpoolChangePoolHost,
+			*hostpoolChangePoolSource,
+			*hostpoolChangePoolDest)
 	default:
 		app.Fatalf("Unknown command %s", cmd)
 	}

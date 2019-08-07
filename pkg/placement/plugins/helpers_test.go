@@ -77,7 +77,7 @@ func (suite *PluginsHelperTestSuite) TestGroupByPlacementNeeds() {
 
 	for tcName, tc := range testCases {
 		needs := GroupByPlacementNeeds(tc.tasks, tc.config)
-		suite.EqualValues(tc.expectedNeeds, needs, "test case: %s", tcName)
+		suite.ElementsMatch(tc.expectedNeeds, needs, "test case: %s", tcName)
 	}
 }
 
