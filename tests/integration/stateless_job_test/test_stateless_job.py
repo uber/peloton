@@ -757,7 +757,7 @@ def test__host_maintenance_violate_sla(stateless_job, maintenance):
     json_format.ParseDict(job_spec_dump, stateless_job.job_spec)
     stateless_job.job_spec.instance_count = 4
     stateless_job.create()
-    stateless_job.wait_for_state(goal_state='RUNNING')
+    stateless_job.wait_for_all_pods_running(num_pods=3)
 
     # Pick a host that is UP and start maintenance on it
     test_host1 = get_host_in_state(host_pb2.HOST_STATE_UP)
@@ -786,7 +786,7 @@ def test__kill_sla_violated_job():
     )
     job.job_spec.instance_count = 5
     job.create()
-    job.wait_for_state(goal_state='RUNNING')
+    job.wait_for_all_pods_running(num_pods=3)
 
     job.stop()
     job.wait_for_state(goal_state='KILLED')
@@ -805,7 +805,7 @@ def test__delete_sla_violated_job():
     )
     job.job_spec.instance_count = 5
     job.create()
-    job.wait_for_state(goal_state='RUNNING')
+    job.wait_for_all_pods_running(num_pods=3)
 
     job.delete(force_delete=True)
     time.sleep(10)
@@ -834,7 +834,7 @@ def test__host_maintenance_violate_sla_restart_jobmgr(stateless_job, maintenance
     json_format.ParseDict(job_spec_dump, stateless_job.job_spec)
     stateless_job.job_spec.instance_count = 4
     stateless_job.create()
-    stateless_job.wait_for_state(goal_state='RUNNING')
+    stateless_job.wait_for_all_pods_running(num_pods=3)
 
     # Pick a host that is UP and start maintenance on it
     test_host1 = get_host_in_state(host_pb2.HOST_STATE_UP)
@@ -866,7 +866,7 @@ def test__stop_start_pod_on_sla_violated_job(stateless_job):
     json_format.ParseDict(job_spec_dump, stateless_job.job_spec)
     stateless_job.job_spec.instance_count = 5
     stateless_job.create()
-    stateless_job.wait_for_state(goal_state='RUNNING')
+    stateless_job.wait_for_all_pods_running(num_pods=3)
 
     test_instance = None
     for i in range(0, stateless_job.job_spec.instance_count):
