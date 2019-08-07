@@ -21,11 +21,15 @@ class Kind(object):
         cmd = ["kind", "create", "cluster", "--name={}".format(self.name)]
         if self.config is not None:
             cmd.append("--config={}".format(self.config))
-        assert subprocess.call(cmd, stderr=subprocess.STDOUT) == 0
+        assert subprocess.call(cmd) == 0
 
     def teardown(self):
         cmd = ["kind", "delete", "cluster", "--name={}".format(self.name)]
-        return subprocess.call(cmd, stderr=subprocess.STDOUT) == 0
+        try:
+            return subprocess.call(cmd) == 0
+        except Exception as e:
+            print("Failed to delete kind cluster: {}".format(e))
+            return False
 
     def get_port(self):
         cmd = "docker port {}-control-plane 6443/tcp".format(self.name)
@@ -35,7 +39,7 @@ class Kind(object):
         ctn_name = "{}-control-plane".format(self.name)
         docker_cmd = "docker ps | grep {}".format(ctn_name)
         cmd = ["/bin/bash", "-c", docker_cmd]
-        return subprocess.call(cmd, stderr=subprocess.STDOUT) == 0
+        return subprocess.call(cmd) == 0
 
     def get_kubeconfig(self):
         if self.kubeconfig is not None:
