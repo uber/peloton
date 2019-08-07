@@ -231,24 +231,40 @@ func (suite *apiConverterTestSuite) TestConvertTaskConfigToPodSpecAndViceVersa()
 		podContainerType apachemesos.PodSpec_ContainerType
 		executorType     mesos.ExecutorInfo_Type
 		podExecutorType  apachemesos.PodSpec_ExecutorSpec_ExecutorType
+		executorCPU      float64
+		executorMemMB    float64
 	}{
 		{
 			containerType:    mesos.ContainerInfo_MESOS,
 			podContainerType: apachemesos.PodSpec_CONTAINER_TYPE_MESOS,
 			executorType:     mesos.ExecutorInfo_CUSTOM,
 			podExecutorType:  apachemesos.PodSpec_ExecutorSpec_EXECUTOR_TYPE_CUSTOM,
+			executorCPU:      float64(1),
+			executorMemMB:    float64(100),
+		},
+		{
+			containerType:    mesos.ContainerInfo_MESOS,
+			podContainerType: apachemesos.PodSpec_CONTAINER_TYPE_MESOS,
+			executorType:     mesos.ExecutorInfo_CUSTOM,
+			podExecutorType:  apachemesos.PodSpec_ExecutorSpec_EXECUTOR_TYPE_CUSTOM,
+			executorCPU:      float64(0),
+			executorMemMB:    float64(0),
 		},
 		{
 			containerType:    mesos.ContainerInfo_DOCKER,
 			podContainerType: apachemesos.PodSpec_CONTAINER_TYPE_DOCKER,
 			executorType:     mesos.ExecutorInfo_DEFAULT,
 			podExecutorType:  apachemesos.PodSpec_ExecutorSpec_EXECUTOR_TYPE_DEFAULT,
+			executorCPU:      float64(1),
+			executorMemMB:    float64(100),
 		},
 		{
 			containerType:    mesos.ContainerInfo_MESOS,
 			podContainerType: apachemesos.PodSpec_CONTAINER_TYPE_MESOS,
 			executorType:     mesos.ExecutorInfo_UNKNOWN,
 			podExecutorType:  apachemesos.PodSpec_ExecutorSpec_EXECUTOR_TYPE_INVALID,
+			executorCPU:      float64(1),
+			executorMemMB:    float64(100),
 		},
 	}
 
@@ -361,6 +377,9 @@ func (suite *apiConverterTestSuite) TestConvertTaskConfigToPodSpecAndViceVersa()
 			Value: &executorIDValue,
 		}
 
+		cpuName := cpuNameMesos
+		memName := memNameMesos
+
 		jobID := uuid.New()
 		instanceID := uint32(0)
 
@@ -428,6 +447,25 @@ func (suite *apiConverterTestSuite) TestConvertTaskConfigToPodSpecAndViceVersa()
 			Controller:             false,
 			KillGracePeriodSeconds: 5,
 			Revocable:              false,
+		}
+
+		if test.executorCPU > 0 {
+			taskConfig.Executor.Resources = []*mesos.Resource{
+				{
+					Name: &cpuName,
+					Type: mesos.Value_SCALAR.Enum(),
+					Scalar: &mesos.Value_Scalar{
+						Value: &test.executorCPU,
+					},
+				},
+				{
+					Name: &memName,
+					Type: mesos.Value_SCALAR.Enum(),
+					Scalar: &mesos.Value_Scalar{
+						Value: &test.executorMemMB,
+					},
+				},
+			}
 		}
 
 		if test.containerType == mesos.ContainerInfo_MESOS {
@@ -533,6 +571,14 @@ func (suite *apiConverterTestSuite) TestConvertTaskConfigToPodSpecAndViceVersa()
 					ExecutorId: executorIDValue,
 				},
 			},
+		}
+
+		if test.executorCPU > 0 {
+			podSpec.MesosSpec.ExecutorSpec.Resources =
+				&apachemesos.PodSpec_ExecutorSpec_Resources{
+					Cpu:   test.executorCPU,
+					MemMb: test.executorMemMB,
+				}
 		}
 
 		if test.containerType == mesos.ContainerInfo_DOCKER {

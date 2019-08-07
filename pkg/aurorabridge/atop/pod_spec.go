@@ -231,6 +231,13 @@ func newMesosPodSpec(
 		Data:       executorData,
 	}
 
+	if t.CPU > 0 || t.RAM > 0 {
+		result.ExecutorSpec.Resources = &apachemesos.PodSpec_ExecutorSpec_Resources{
+			Cpu:   t.CPU,
+			MemMb: float64(t.RAM),
+		}
+	}
+
 	return result
 }
 

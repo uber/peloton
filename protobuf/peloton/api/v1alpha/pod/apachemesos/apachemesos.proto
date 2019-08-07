@@ -77,6 +77,15 @@ message PodSpec {
       EXECUTOR_TYPE_CUSTOM = 2;
     }
 
+    // Resources to be given to the executor.
+    message Resources {
+      // CPU resources to be given to the executor.
+      double cpu = 1;
+
+      // Memory (in MB) to be given to the executor.
+      double mem_mb = 2;
+    }
+
     // Executor type. This is mandatory field, and if not provided,
     // executor type is set to EXECUTOR_TYPE_INVALID.
     ExecutorType type = 1;
@@ -86,6 +95,9 @@ message PodSpec {
 
     // Executor data
     bytes data = 3;
+
+    // Executor resources
+    Resources resources = 4;
   }
 
   // Type of containerizer to use.

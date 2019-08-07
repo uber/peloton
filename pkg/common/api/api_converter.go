@@ -38,6 +38,11 @@ import (
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
+const (
+	cpuNameMesos = "cpus"
+	memNameMesos = "mem"
+)
+
 // ConvertTaskStateToPodState converts v0 task.TaskState to v1alpha pod.PodState
 func ConvertTaskStateToPodState(state task.TaskState) pod.PodState {
 	switch state {
@@ -1092,6 +1097,23 @@ func ConvertMesosExecutorInfoToPodSpec(
 	if len(executorInfo.GetData()) > 0 {
 		spec.MesosSpec.ExecutorSpec.Data = executorInfo.GetData()
 	}
+
+	// populate executor resources
+	if len(executorInfo.GetResources()) > 0 {
+		executorResources := &apachemesos.PodSpec_ExecutorSpec_Resources{}
+		for _, resource := range executorInfo.GetResources() {
+			if resource.GetType() == mesosv1.Value_SCALAR {
+				if resource.GetName() == cpuNameMesos {
+					executorResources.Cpu = resource.GetScalar().GetValue()
+				}
+
+				if resource.GetName() == memNameMesos {
+					executorResources.MemMb = resource.GetScalar().GetValue()
+				}
+			}
+		}
+		spec.MesosSpec.ExecutorSpec.Resources = executorResources
+	}
 }
 
 // ConvertPodSpecToMesosExecutorInfo converts pod spec to mesos executor info
@@ -1132,6 +1154,35 @@ func ConvertPodSpecToMesosExecutorInfo(spec *pod.PodSpec) *mesosv1.ExecutorInfo 
 	if len(mesosExecutorSpec.GetData()) > 0 {
 		executorInfo.Data = mesosExecutorSpec.GetData()
 	}
+
+	// populate the executor resources
+	var resources []*mesosv1.Resource
+
+	cpuValue := mesosExecutorSpec.GetResources().GetCpu()
+	if cpuValue > 0 {
+		cpuName := cpuNameMesos
+		resources = append(resources, &mesosv1.Resource{
+			Type: mesosv1.Value_SCALAR.Enum(),
+			Name: &cpuName,
+			Scalar: &mesosv1.Value_Scalar{
+				Value: &cpuValue,
+			},
+		})
+	}
+
+	memValue := mesosExecutorSpec.GetResources().GetMemMb()
+	if memValue > 0 {
+		memName := memNameMesos
+		resources = append(resources, &mesosv1.Resource{
+			Type: mesosv1.Value_SCALAR.Enum(),
+			Name: &memName,
+			Scalar: &mesosv1.Value_Scalar{
+				Value: &memValue,
+			},
+		})
+	}
+
+	executorInfo.Resources = resources
 
 	return executorInfo
 }
