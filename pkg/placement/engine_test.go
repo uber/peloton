@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
-
 	"github.com/uber/peloton/pkg/common/async"
 	"github.com/uber/peloton/pkg/placement/config"
 	"github.com/uber/peloton/pkg/placement/models"
@@ -177,7 +176,7 @@ func TestEnginePlaceMultipleTasks(t *testing.T) {
 		gomock.Any()).
 		Return()
 
-	engine.strategy = batch.New()
+	engine.strategy = batch.New(&config.PlacementConfig{})
 	engine.Place(context.Background(), nil)
 	engine.pool.WaitUntilProcessed()
 
@@ -309,7 +308,7 @@ func TestEnginePlaceSubsetOfTasksDueToInsufficientResources(t *testing.T) {
 		gomock.Any()).
 		Return().AnyTimes()
 
-	engine.strategy = batch.New()
+	engine.strategy = batch.New(&config.PlacementConfig{})
 	engine.Place(context.Background(), nil)
 	engine.pool.WaitUntilProcessed()
 
@@ -581,7 +580,7 @@ func TestEnginePlaceReservedTasks(t *testing.T) {
 		Return()
 
 	// Test assignments ready for host reservation
-	engine.strategy = batch.New()
+	engine.strategy = batch.New(&config.PlacementConfig{})
 	engine.Place(context.Background(), nil)
 	engine.pool.WaitUntilProcessed()
 

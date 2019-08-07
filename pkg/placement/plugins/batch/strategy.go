@@ -17,17 +17,25 @@ package batch
 import (
 	log "github.com/sirupsen/logrus"
 
+	"github.com/uber/peloton/pkg/placement/config"
 	"github.com/uber/peloton/pkg/placement/plugins"
 )
 
 // New creates a new batch placement strategy.
-func New() plugins.Strategy {
+func New(config *config.PlacementConfig) plugins.Strategy {
 	log.Info("Using batch placement strategy.")
-	return &batch{}
+	return &batch{
+		config: &plugins.Config{
+			TaskType:    config.TaskType,
+			UseHostPool: config.UseHostPool,
+		},
+	}
 }
 
 // batch is the batch placement strategy which just fills up offers with tasks one at a time.
-type batch struct{}
+type batch struct {
+	config *plugins.Config
+}
 
 // GetTaskPlacements is an implementation of the placement.Strategy interface.
 func (batch *batch) GetTaskPlacements(
@@ -146,7 +154,7 @@ func (batch *batch) GroupTasksByPlacementNeeds(
 	}
 
 	// No alteration of the task needs.
-	tasksByNeeds := plugins.GroupByPlacementNeeds(tasks)
+	tasksByNeeds := plugins.GroupByPlacementNeeds(tasks, batch.config)
 	for _, group := range tasksByNeeds {
 		group.PlacementNeeds.MaxHosts = uint32(len(group.Tasks))
 	}

@@ -15,6 +15,7 @@
 package plugins
 
 import (
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/model/placement"
 )
@@ -111,4 +112,10 @@ type Host interface {
 
 	// Returns the mimir group representing the host lease or offer.
 	ToMimirGroup() *placement.Group
+}
+
+// Config contains strategy plugin configurations.
+type Config struct {
+	TaskType    resmgr.TaskType
+	UseHostPool bool
 }

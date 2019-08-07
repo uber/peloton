@@ -45,6 +45,8 @@ func New(placer algorithms.Placer, config *config.PlacementConfig) plugins.Strat
 }
 
 // mimir is a placement strategy that uses the mimir library to decide on how to assign tasks to offers.
+// TODO: mimir plugin should use plugins.Config as what batch plugin does,
+//  instead of directly using config.PlacementConfig.
 type mimir struct {
 	placer algorithms.Placer
 	config *config.PlacementConfig
@@ -152,7 +154,12 @@ func (mimir *mimir) GroupTasksByPlacementNeeds(
 		return nil
 	}
 
-	tasksByNeeds := plugins.GroupByPlacementNeeds(tasks)
+	pluginsConfig := &plugins.Config{
+		TaskType:    mimir.config.TaskType,
+		UseHostPool: mimir.config.UseHostPool,
+	}
+
+	tasksByNeeds := plugins.GroupByPlacementNeeds(tasks, pluginsConfig)
 	factor := _offersFactor[mimir.config.TaskType]
 	for _, group := range tasksByNeeds {
 		maxOffers := mimir.config.OfferDequeueLimit

@@ -33,7 +33,6 @@ import (
 )
 
 const (
-	_hostPoolKey              = "host_pool"
 	_defaultReconcileInterval = 10 * time.Second
 )
 
@@ -409,6 +408,6 @@ func GetHostPoolLabelValues(
 		)
 	}
 
-	lv[_hostPoolKey] = map[string]uint32{pool.ID(): 1}
+	lv[common.HostPoolKey] = map[string]uint32{pool.ID(): 1}
 	return lv, nil
 }

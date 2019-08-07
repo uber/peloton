@@ -217,7 +217,7 @@ func (suite *HostPoolManagerTestSuite) TestGetHostPoolLabelValues() {
 			},
 			hostname: "host1",
 			expectedRes: constraints.LabelValues{
-				_hostPoolKey: map[string]uint32{"pool1": 1},
+				common.HostPoolKey: map[string]uint32{"pool1": 1},
 			},
 		},
 		"host-not-found": {

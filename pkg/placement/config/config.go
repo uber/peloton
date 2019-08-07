@@ -108,6 +108,9 @@ type PlacementConfig struct {
 	// HostManagerAPIVersion is the API version that the placement engine
 	// should use to talk to host manager.
 	HostManagerAPIVersion api.Version `yaml:"hostmgr_api_version"`
+
+	// UseHostPool is the config switch to use host pool logic in placement engine
+	UseHostPool bool `yaml:"use_host_pool"`
 }
 
 // MaxRoundsConfig is the config of the maximal number of successful rounds

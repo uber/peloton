@@ -18,18 +18,27 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
-
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
+	"github.com/uber/peloton/pkg/placement/config"
 	"github.com/uber/peloton/pkg/placement/models/v0"
 	"github.com/uber/peloton/pkg/placement/plugins"
 	"github.com/uber/peloton/pkg/placement/plugins/v0"
 	"github.com/uber/peloton/pkg/placement/testutil"
+
+	"github.com/stretchr/testify/suite"
 )
 
-func TestBatchPlacePackLoadedHost(t *testing.T) {
+type BatchStrategyTestSuite struct {
+	suite.Suite
+}
+
+func TestBatchStrategyTestSuite(t *testing.T) {
+	suite.Run(t, new(BatchStrategyTestSuite))
+}
+
+func (suite *BatchStrategyTestSuite) TestBatchPlacePackLoadedHost() {
 	assignments := []*models_v0.Assignment{
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
@@ -39,16 +48,16 @@ func TestBatchPlacePackLoadedHost(t *testing.T) {
 		testutil.SetupHostOffers(),
 		testutil.SetupHostOffers(),
 	}
-	strategy := New()
+	strategy := New(&config.PlacementConfig{})
 	tasks := models_v0.AssignmentsToPluginsTasks(assignments)
 	placements := strategy.GetTaskPlacements(tasks, offers)
 
-	assert.Equal(t, 0, placements[0])
-	assert.Equal(t, 1, placements[1])
-	assert.Equal(t, -1, placements[2])
+	suite.Equal(0, placements[0])
+	suite.Equal(1, placements[1])
+	suite.Equal(-1, placements[2])
 }
 
-func TestBatchGetTaskPlacementsPackFreeHost(t *testing.T) {
+func (suite *BatchStrategyTestSuite) TestBatchGetTaskPlacementsPackFreeHost() {
 	assignments := []*models_v0.Assignment{
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
@@ -60,14 +69,14 @@ func TestBatchGetTaskPlacementsPackFreeHost(t *testing.T) {
 		testutil.SetupHostOffers(),
 	}
 
-	strategy := New()
+	strategy := New(&config.PlacementConfig{})
 	tasks := models_v0.AssignmentsToPluginsTasks(assignments)
 	placements := strategy.GetTaskPlacements(tasks, offers)
-	assert.Equal(t, 0, placements[0])
-	assert.Equal(t, 0, placements[1])
+	suite.Equal(0, placements[0])
+	suite.Equal(0, placements[1])
 }
 
-func TestBatchGetTaskPlacementsSpread(t *testing.T) {
+func (suite *BatchStrategyTestSuite) TestBatchGetTaskPlacementsSpread() {
 	assignments := make([]*models_v0.Assignment, 0)
 	for i := 0; i < 5; i++ {
 		a := testutil.SetupAssignment(time.Now().Add(10*time.Second), 1)
@@ -81,103 +90,151 @@ func TestBatchGetTaskPlacementsSpread(t *testing.T) {
 		testutil.SetupHostOffers(),
 	}
 
-	strategy := New()
+	strategy := New(&config.PlacementConfig{})
 	tasks := models_v0.AssignmentsToPluginsTasks(assignments)
 	placements := strategy.GetTaskPlacements(tasks, offers)
 
-	assert.Equal(t, 0, placements[0])
-	assert.Equal(t, 1, placements[1])
-	assert.Equal(t, 2, placements[2])
-	assert.Equal(t, -1, placements[3])
-	assert.Equal(t, -1, placements[4])
+	suite.Equal(0, placements[0])
+	suite.Equal(1, placements[1])
+	suite.Equal(2, placements[2])
+	suite.Equal(-1, placements[3])
+	suite.Equal(-1, placements[4])
 }
 
-func TestBatchFiltersWithResources(t *testing.T) {
-	assignments := []*models_v0.Assignment{
-		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
-		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
-		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
+// TODO: Add test cases for using host pool.
+func (suite *BatchStrategyTestSuite) TestBatchFiltersWithResources() {
+	testCases := map[string]struct {
+		useHostPool bool
+		taskType    resmgr.TaskType
+	}{
+		"not-use-host-pool": {
+			useHostPool: false,
+		},
 	}
-	assignments[2].GetTask().GetTask().Resource.CpuLimit += 1.0
 
-	strategy := New()
-	tasks := models_v0.AssignmentsToPluginsTasks(assignments)
-	tasksByNeeds := strategy.GroupTasksByPlacementNeeds(tasks)
-	assert.Equal(t, 2, len(tasksByNeeds))
-	for _, group := range tasksByNeeds {
-		filter := plugins_v0.PlacementNeedsToHostFilter(group.PlacementNeeds)
-		batch := group.Tasks
-		assert.Equal(t, uint32(len(batch)), filter.GetQuantity().GetMaxHosts())
-		switch filter.ResourceConstraint.Minimum.CpuLimit {
-		case 32.0:
-			assert.Equal(t, 2, len(batch))
-		case 33.0:
-			assert.Equal(t, 1, len(batch))
+	for tcName, tc := range testCases {
+		cfg := &config.PlacementConfig{
+			UseHostPool: tc.useHostPool,
+			TaskType:    tc.taskType,
+		}
+		assignments := []*models_v0.Assignment{
+			testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
+			testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
+			testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
+		}
+		assignments[2].GetTask().GetTask().Resource.CpuLimit += 1.0
+
+		strategy := New(cfg)
+		tasks := models_v0.AssignmentsToPluginsTasks(assignments)
+		tasksByNeeds := strategy.GroupTasksByPlacementNeeds(tasks)
+		suite.Equal(2, len(tasksByNeeds), "test case: %s", tcName)
+		for _, group := range tasksByNeeds {
+			filter := plugins_v0.PlacementNeedsToHostFilter(group.PlacementNeeds)
+			batch := group.Tasks
+			suite.Equal(
+				uint32(len(batch)), filter.GetQuantity().GetMaxHosts(),
+				"test case: %s", tcName)
+			switch filter.ResourceConstraint.Minimum.CpuLimit {
+			case 32.0:
+				suite.Equal(2, len(batch), "test case: %s", tcName)
+			case 33.0:
+				suite.Equal(1, len(batch), "test case: %s", tcName)
+			}
 		}
 	}
 }
 
-func TestBatchFiltersWithPorts(t *testing.T) {
-	assignments := []*models_v0.Assignment{
-		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
-		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
-		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
+func (suite *BatchStrategyTestSuite) TestBatchFiltersWithPorts() {
+	testCases := map[string]struct {
+		enableHostPool bool
+	}{
+		"host-pool-disabled": {
+			enableHostPool: false,
+		},
 	}
-	assignments[0].GetTask().GetTask().NumPorts = 1
-	assignments[1].GetTask().GetTask().NumPorts = 1
-	assignments[2].GetTask().GetTask().NumPorts = 2
 
-	strategy := New()
-	tasks := models_v0.AssignmentsToPluginsTasks(assignments)
-	tasksByNeeds := strategy.GroupTasksByPlacementNeeds(tasks)
+	for tcName, tc := range testCases {
+		cfg := &config.PlacementConfig{
+			UseHostPool: tc.enableHostPool,
+		}
+		assignments := []*models_v0.Assignment{
+			testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
+			testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
+			testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
+		}
+		assignments[0].GetTask().GetTask().NumPorts = 1
+		assignments[1].GetTask().GetTask().NumPorts = 1
+		assignments[2].GetTask().GetTask().NumPorts = 2
 
-	assert.Equal(t, 2, len(tasksByNeeds))
-	for _, group := range tasksByNeeds {
-		filter := plugins_v0.PlacementNeedsToHostFilter(group.PlacementNeeds)
-		batch := group.Tasks
-		assert.Equal(t, uint32(len(batch)), filter.GetQuantity().GetMaxHosts())
-		switch filter.ResourceConstraint.NumPorts {
-		case 1:
-			assert.Equal(t, 2, len(batch))
-		case 2:
-			assert.Equal(t, 1, len(batch))
+		strategy := New(cfg)
+		tasks := models_v0.AssignmentsToPluginsTasks(assignments)
+		tasksByNeeds := strategy.GroupTasksByPlacementNeeds(tasks)
+
+		suite.Equal(2, len(tasksByNeeds), "test case: %s", tcName)
+		for _, group := range tasksByNeeds {
+			filter := plugins_v0.PlacementNeedsToHostFilter(group.PlacementNeeds)
+			batch := group.Tasks
+			suite.Equal(
+				uint32(len(batch)),
+				filter.GetQuantity().GetMaxHosts(),
+				"test case: %s", tcName,
+			)
+			switch filter.ResourceConstraint.NumPorts {
+			case 1:
+				suite.Equal(2, len(batch), "test case: %s", tcName)
+			case 2:
+				suite.Equal(1, len(batch), "test case: %s", tcName)
+			}
 		}
 	}
 }
 
-func TestBatchFiltersWithPlacementHint(t *testing.T) {
-	assignments := make([]plugins.Task, 0)
-	for i := 0; i < 5; i++ {
-		a := testutil.SetupAssignment(time.Now().Add(10*time.Second), 1)
-		a.GetTask().GetTask().NumPorts = 2
-		if i < 2 {
-			a.GetTask().GetTask().PlacementStrategy = job.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD_JOB
-			a.GetTask().GetTask().NumPorts = 1
-		}
-		assignments = append(assignments, a)
+func (suite *BatchStrategyTestSuite) TestBatchFiltersWithPlacementHint() {
+	testCases := map[string]struct {
+		enableHostPool bool
+	}{
+		"host-pool-disabled": {
+			enableHostPool: false,
+		},
 	}
 
-	strategy := New()
-	tasksByNeeds := strategy.GroupTasksByPlacementNeeds(assignments)
-	assert.Equal(t, 2, len(tasksByNeeds))
+	for tcName, tc := range testCases {
+		cfg := &config.PlacementConfig{
+			UseHostPool: tc.enableHostPool,
+		}
+		assignments := make([]plugins.Task, 0)
+		for i := 0; i < 5; i++ {
+			a := testutil.SetupAssignment(time.Now().Add(10*time.Second), 1)
+			a.GetTask().GetTask().NumPorts = 2
+			if i < 2 {
+				a.GetTask().GetTask().PlacementStrategy = job.PlacementStrategy_PLACEMENT_STRATEGY_SPREAD_JOB
+				a.GetTask().GetTask().NumPorts = 1
+			}
+			assignments = append(assignments, a)
+		}
 
-	for _, group := range tasksByNeeds {
-		filter := plugins_v0.PlacementNeedsToHostFilter(group.PlacementNeeds)
-		batch := group.Tasks
-		assert.Equal(t, uint32(len(batch)), filter.GetQuantity().GetMaxHosts())
-		switch filter.ResourceConstraint.NumPorts {
-		case 1:
-			assert.Equal(t, 2, len(batch))
-			assert.Equal(
-				t,
-				hostsvc.FilterHint_FILTER_HINT_RANKING_RANDOM,
-				filter.GetHint().GetRankHint())
-		case 2:
-			assert.Equal(t, 3, len(batch))
-			assert.Equal(
-				t,
-				hostsvc.FilterHint_FILTER_HINT_RANKING_INVALID,
-				filter.GetHint().GetRankHint())
+		strategy := New(cfg)
+		tasksByNeeds := strategy.GroupTasksByPlacementNeeds(assignments)
+		suite.Equal(2, len(tasksByNeeds), "test case: %s", tcName)
+
+		for _, group := range tasksByNeeds {
+			filter := plugins_v0.PlacementNeedsToHostFilter(group.PlacementNeeds)
+			batch := group.Tasks
+			suite.Equal(
+				uint32(len(batch)), filter.GetQuantity().GetMaxHosts(),
+				"test case: %s", tcName)
+			switch filter.ResourceConstraint.NumPorts {
+			case 1:
+				suite.Equal(2, len(batch), "test case: %s", tcName)
+				suite.Equal(
+					hostsvc.FilterHint_FILTER_HINT_RANKING_RANDOM,
+					filter.GetHint().GetRankHint(), "test case: %s", tcName)
+			case 2:
+				suite.Equal(3, len(batch), "test case: %s", tcName)
+				suite.Equal(
+					hostsvc.FilterHint_FILTER_HINT_RANKING_INVALID,
+					filter.GetHint().GetRankHint(), "test case: %s", tcName)
+			}
 		}
 	}
 }

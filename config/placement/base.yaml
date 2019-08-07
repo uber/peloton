@@ -26,6 +26,7 @@ placement:
     daemon: 500s
     stateful: 60s
   max_desired_host_placement_duration: 120s
+  use_host_pool: false
 
 election:
   root: "/peloton"

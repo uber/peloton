@@ -462,7 +462,7 @@ func initPlacementStrategy(cfg config.Config) plugins.Strategy {
 	var strategy plugins.Strategy
 	switch cfg.Placement.Strategy {
 	case config.Batch:
-		strategy = batch.New()
+		strategy = batch.New(&cfg.Placement)
 	case config.Mimir:
 		// TODO avyas check mimir concurrency parameters
 		cfg.Placement.Concurrency = 1

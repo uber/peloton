@@ -54,6 +54,8 @@ func PlacementNeedsToHostFilter(needs plugins.PlacementNeeds) *hostsvc.HostFilte
 	}
 
 	if needs.Constraint != nil {
+		// TODO: It assumes PlacementNeeds.Constraint is
+		//  *peloton_api_v0_task.Constraint, though it is actually defined as interface{}
 		filter.SchedulingConstraint = needs.Constraint.(*peloton_api_v0_task.Constraint)
 	}
 	if needs.RankHint != nil {

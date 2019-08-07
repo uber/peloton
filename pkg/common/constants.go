@@ -151,6 +151,9 @@ const (
 
 	// DefaultHostPoolID is the ID of default host pool.
 	DefaultHostPoolID = "default"
+
+	// HostPoolKey is the key of host pool constraint.
+	HostPoolKey = "host_pool"
 )
 
 const (
