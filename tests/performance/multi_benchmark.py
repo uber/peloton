@@ -34,7 +34,7 @@ PERF_TEST_CONDUCTED = [
     ('JOB_GET', '_job_get.csv'),
     ('JOB_UPDATE', '_job_update.csv'),
     ('JOB_STATELESS_CREATE', '_job_stateless_create.csv'),
-    # ('JOB_STATELESS_UPDATE', '_job_stateless_update.csv'),
+    ('JOB_STATELESS_UPDATE', '_job_stateless_update.csv'),
     ('JOB_PARALLEL_STATELESS_UPDATE',
      '_job_parallel_stateless_update.csv'),
 ]
@@ -216,11 +216,10 @@ def main():
     if create_df is not None:
         create_df.to_csv(output_csv_files_list[3], sep='\t')
 
-    # TODO fix test
-    # # update one large stateless job (uses 90% of capacity)
-    # update_df = t.perf_test_stateless_job_update()
-    # if update_df is not None:
-    #     update_df.to_csv(output_csv_files_list[4], sep='\t')
+    # update one large stateless job (uses 90% of capacity)
+    update_df = t.perf_test_stateless_job_update()
+    if update_df is not None:
+        update_df.to_csv(output_csv_files_list[4], sep='\t')
 
     # update multiple smaller stateless jobs in parallel
     # (total use 90% of capacity)
