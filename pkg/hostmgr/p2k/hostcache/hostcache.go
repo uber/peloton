@@ -357,7 +357,7 @@ func (c *hostCache) updateHost(event *scalar.HostEvent) {
 		return
 	}
 
-	// Check if event has older resource version, ignore if it does
+	// Check if event has older resource version, ignore if it does.
 	currentVersion := hs.GetVersion()
 	if scalar.IsOldVersion(currentVersion, evtVersion) {
 		log.WithFields(log.Fields{
@@ -391,7 +391,7 @@ func (c *hostCache) deleteHost(event *scalar.HostEvent) {
 	if existing, ok := c.hostIndex[hostInfo.GetHostName()]; ok {
 		evtVersion := hostInfo.GetResourceVersion()
 
-		// Check if event has older resource version, ignore if it does
+		// Check if event has older resource version, ignore if it does.
 		currentVersion := existing.GetVersion()
 		if scalar.IsOldVersion(currentVersion, evtVersion) {
 			log.WithFields(log.Fields{
@@ -411,7 +411,7 @@ func (c *hostCache) deleteHost(event *scalar.HostEvent) {
 	}).Debug("delete host from cache")
 }
 
-// Start will start the goroutine that listens for host events
+// Start will start the goroutine that listens for host events.
 func (c *hostCache) Start() {
 	if !c.lifecycle.Start() {
 		log.Warn("hostCache is already started")
@@ -422,18 +422,19 @@ func (c *hostCache) Start() {
 	go c.waitForPodEvents()
 }
 
-// Stop will stop the host cache go routine that listens for host events
+// Stop will stop the host cache go routine that listens for host events.
 func (c *hostCache) Stop() {
 	if !c.lifecycle.Stop() {
 		log.Warn("hostCache already stopped")
 		return
 	}
+
 	// Wait for drainer to be stopped
 	c.lifecycle.Wait()
 	log.Info("hostCache stopped")
 }
 
-// Reconcile explicitly reconciles host cache
+// Reconcile explicitly reconciles host cache.
 func (c *hostCache) Reconcile() error {
 	// TODO: Implement
 	return nil
