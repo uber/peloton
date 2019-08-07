@@ -1594,6 +1594,13 @@ func (j *job) filterRuntimeDiffsBySLA(
 				delete(instanceAvailabilityInfo.killedInstances, i)
 				instanceAvailabilityInfo.unavailableInstances[i] = true
 
+			// If restart/kill is due to job update or if the instance has failed,
+			// mark the instance unavailable
+			case pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_UPDATE,
+				pbtask.TerminationStatus_TERMINATION_STATUS_REASON_FAILED:
+				delete(instanceAvailabilityInfo.killedInstances, i)
+				instanceAvailabilityInfo.unavailableInstances[i] = true
+
 			default:
 				delete(instanceAvailabilityInfo.unavailableInstances, i)
 				instanceAvailabilityInfo.killedInstances[i] = true
@@ -2089,7 +2096,9 @@ func getInstanceAvailability(
 	// the termination reason to determine whether to mark it UNAVAILABLE or KILLED.
 	if terminationStatus != nil {
 		switch terminationStatus.GetReason() {
-		case pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_HOST_MAINTENANCE:
+		case pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_HOST_MAINTENANCE,
+			pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_UPDATE,
+			pbtask.TerminationStatus_TERMINATION_STATUS_REASON_FAILED:
 			return jobmgrcommon.InstanceAvailability_UNAVAILABLE
 		default:
 			return jobmgrcommon.InstanceAvailability_KILLED
@@ -2099,7 +2108,7 @@ func getInstanceAvailability(
 	// If the current mesos-task-id/config-version do not match with desired
 	// mesos-task-id/config-version and the termination status is not set,
 	// mark the instance KILLED. This is because we always set termination status
-	// with the appropriate reason whenever it is SLA aware killed (host-maintenanace/update)
+	// with the appropriate reason whenever it is SLA aware killed (host-maintenance/update)
 	if currentState.MesosTaskID.GetValue() != goalState.MesosTaskID.GetValue() ||
 		currentState.ConfigVersion != goalState.ConfigVersion {
 		return jobmgrcommon.InstanceAvailability_KILLED

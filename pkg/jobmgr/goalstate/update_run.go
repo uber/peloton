@@ -590,6 +590,10 @@ func processInstancesInUpdate(
 	}
 
 	if len(runtimes) > 0 {
+		// we do not need to handle `instancesToBeRetried` here. Since all
+		// instances in `instancesToUpdate` are being enqueued into Task
+		// goalstate engine, their runtimes will be reloaded into cache when
+		// they are evaluated. The update will be retried in the next update cycle.
 		if _, _, err := cachedJob.PatchTasks(ctx, runtimes, false); err != nil {
 			return err
 		}
@@ -645,6 +649,10 @@ func removeInstancesInUpdate(
 	}
 
 	if len(runtimes) > 0 {
+		// we do not need to handle `instancesToBeRetried` here. Since the
+		// instances are being enqueued into Task goalstate engine, their runtimes
+		// will be reloaded into cache when they are evaluated. The update will
+		// be retried in the next update cycle.
 		if _, _, err := cachedJob.PatchTasks(ctx, runtimes, false); err != nil {
 			return err
 		}

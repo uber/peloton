@@ -2069,6 +2069,66 @@ func (suite *jobTestSuite) TestPatchTasksSLAAwareNoViolation() {
 	suite.Equal(testNewMesosTaskID, actRuntime.GetDesiredMesosTaskId().GetValue())
 }
 
+// TestPatchTasksForUpdate tests the success case of
+// patching tasks for update
+func (suite *jobTestSuite) TestPatchTasksForUpdate() {
+	suite.job.jobType = pbjob.JobType_SERVICE
+	suite.job.config.sla = &pbjob.SlaConfig{
+		MaximumUnavailableInstances: 1,
+	}
+
+	suite.job.instanceAvailabilityInfo = &instanceAvailabilityInfo{
+		unavailableInstances: map[uint32]bool{1: true},
+		killedInstances:      make(map[uint32]bool),
+	}
+
+	diffs := make(map[uint32]jobmgrcommon.RuntimeDiff)
+	diffs[0] = jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.DesiredMesosTaskIDField: &mesos.TaskID{
+			Value: &[]string{testNewMesosTaskID}[0],
+		},
+		jobmgrcommon.TerminationStatusField: &pbtask.TerminationStatus{
+			Reason: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_UPDATE,
+		},
+	}
+
+	oldRuntime := &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_RUNNING,
+		GoalState: pbtask.TaskState_RUNNING,
+		MesosTaskId: &mesos.TaskID{
+			Value: &[]string{testMesosTaskID}[0],
+		},
+		DesiredMesosTaskId: &mesos.TaskID{
+			Value: &[]string{testMesosTaskID}[0],
+		},
+	}
+	tt := suite.job.addTaskToJobMap(0)
+	tt.runtime = oldRuntime
+	tt.config = &taskConfigCache{}
+
+	// Update task runtime of only one task
+	suite.taskStore.EXPECT().
+		UpdateTaskRuntime(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any()).
+		Return(nil)
+	s, r, err := suite.job.PatchTasks(context.Background(), diffs, false)
+	suite.NoError(err)
+	suite.Nil(r)
+	suite.Len(s, 1)
+	suite.Equal(uint32(0), s[0])
+	suite.Len(suite.job.instanceAvailabilityInfo.unavailableInstances, 2)
+
+	// Validate the state of the task in cache is correct
+	t := suite.job.GetTask(0)
+	tRuntime, err := t.GetRuntime(context.Background())
+	suite.NoError(err)
+	suite.Equal(testNewMesosTaskID, tRuntime.GetDesiredMesosTaskId().GetValue())
+}
+
 // TestPatchTasksSLAAwareViolation tests the case of skipping
 // the patching tasks which violate the job SLA
 func (suite *jobTestSuite) TestPatchTasksSLAAwareViolation() {

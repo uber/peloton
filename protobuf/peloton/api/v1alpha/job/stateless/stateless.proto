@@ -34,6 +34,11 @@ message SlaSpec {
   bool revocable = 3;
 
   // Maximum number of job instances which can be unavailable at a given time.
+  // When job instances are to be moved from one host to another for host
+  // maintenance and/or load redistribution, Peloton ensures number of
+  // job instances unavailable at a given time doesn't exceed the number
+  // configured here. However, the instances that become unavailable due to
+  // job update can exceed this number.
   uint32 maximum_unavailable_instances = 4;
 }
 
