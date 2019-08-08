@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"sync"
 	"time"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
@@ -1370,6 +1371,13 @@ func (h *serviceHandler) ListJobs(
 	return nil
 }
 
+// updateInfoChan represents channel object for updateInfo
+type updateInfoChan struct {
+	updateInfo *stateless.WorkflowInfo
+	sequence   int
+	err        error
+}
+
 func (h *serviceHandler) ListJobWorkflows(
 	ctx context.Context,
 	req *svc.ListJobWorkflowsRequest) (resp *svc.ListJobWorkflowsResponse, err error) {
@@ -1403,44 +1411,84 @@ func (h *serviceHandler) ListJobWorkflows(
 		updateIDs = updateIDs[:util.Min(uint32(len(updateIDs)), req.GetUpdatesLimit())]
 	}
 
-	var updateInfos []*stateless.WorkflowInfo
 	pelotonJobID := &peloton.JobID{Value: req.GetJobId().GetValue()}
 
 	jobRuntime, err := h.jobRuntimeOps.Get(ctx, pelotonJobID)
 	if err != nil {
 		return nil, errors.Wrap(err, "fail to get job runtime")
 	}
+
+	var sequence int
+	var wg sync.WaitGroup
+	ch := make(chan updateInfoChan)
+	updateInfos := make([]*stateless.WorkflowInfo, len(updateIDs))
 	for _, updateID := range updateIDs {
-		updateModel, err := h.updateStore.GetUpdate(ctx, updateID)
-		if err != nil {
-			return nil, err
-		}
+		wg.Add(1)
 
-		workflowEvents, err := h.jobUpdateEventsOps.GetAll(
-			ctx,
-			updateID)
-		if err != nil {
-			return nil, errors.Wrap(err, "fail to get job workflow events")
-		}
+		go func(updateID *peloton.UpdateID, sequence int) {
+			defer wg.Done()
 
-		var instanceWorkflowEvents []*stateless.WorkflowInfoInstanceWorkflowEvents
-		if req.GetInstanceEvents() {
-			instanceWorkflowEvents, err = h.getInstanceWorkflowEvents(
-				ctx,
-				updateModel,
-				req.GetInstanceEventsLimit(),
-			)
+			updateModel, err := h.updateStore.GetUpdate(ctx, updateID)
 			if err != nil {
-				return nil, errors.Wrap(err, "fail to get instance workflow events")
+				ch <- updateInfoChan{
+					err: err,
+				}
+				return
 			}
-		}
 
-		updateInfos = append(updateInfos,
-			api.ConvertUpdateModelToWorkflowInfo(
-				jobRuntime,
-				updateModel,
-				workflowEvents,
-				instanceWorkflowEvents))
+			workflowEvents, err := h.jobUpdateEventsOps.GetAll(
+				ctx,
+				updateID)
+			if err != nil {
+				ch <- updateInfoChan{
+					err: errors.Wrap(err, "fail to get job workflow events"),
+				}
+				return
+			}
+
+			var instanceWorkflowEvents []*stateless.WorkflowInfoInstanceWorkflowEvents
+			if req.GetInstanceEvents() {
+				instanceWorkflowEvents, err = h.getInstanceWorkflowEvents(
+					ctx,
+					updateModel,
+					req.GetInstanceEventsLimit(),
+				)
+				if err != nil {
+					ch <- updateInfoChan{
+						err: errors.Wrap(err, "fail to get instance workflow events"),
+					}
+					return
+				}
+			}
+
+			ch <- updateInfoChan{
+				updateInfo: api.ConvertUpdateModelToWorkflowInfo(
+					jobRuntime,
+					updateModel,
+					workflowEvents,
+					instanceWorkflowEvents),
+				err:      nil,
+				sequence: sequence,
+			}
+		}(updateID, sequence)
+		sequence++
+	}
+
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+
+	for update := range ch {
+		if update.err != nil {
+			err = update.err
+			continue
+		}
+		updateInfos[update.sequence] = update.updateInfo
+	}
+
+	if err != nil {
+		return nil, err
 	}
 
 	return &svc.ListJobWorkflowsResponse{WorkflowInfos: updateInfos}, nil

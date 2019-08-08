@@ -2289,20 +2289,16 @@ func (s *Store) convertToWorkflowEvents(
 			count = 0
 			isLogged = false
 			prevWorkflowEvent = workflowEvent
-			continue
-		}
-
-		if prevWorkflowEvent.GetState() == workflowEvent.GetState() {
+		} else {
 			count++
-		}
-
-		if count > _defaultWorkflowEventsDedupeWarnLimit && !isLogged {
-			log.WithFields(log.Fields{
-				"workflow_state": workflowEvent.GetState().String(),
-				"workflow_type":  workflowEvent.GetType().String(),
-				"update_id":      updateID.GetValue(),
-			}).Warn("too many job workflow events in the same state")
-			isLogged = true
+			if count > _defaultWorkflowEventsDedupeWarnLimit && !isLogged {
+				log.WithFields(log.Fields{
+					"workflow_state": workflowEvent.GetState().String(),
+					"workflow_type":  workflowEvent.GetType().String(),
+					"update_id":      updateID.GetValue(),
+				}).Warn("too many job workflow events in the same state")
+				isLogged = true
+			}
 		}
 	}
 
