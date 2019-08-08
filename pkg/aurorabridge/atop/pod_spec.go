@@ -30,6 +30,7 @@ import (
 
 	"github.com/uber/peloton/pkg/aurorabridge/common"
 	"github.com/uber/peloton/pkg/aurorabridge/label"
+	"github.com/uber/peloton/pkg/common/config"
 
 	"go.uber.org/thriftrw/protocol"
 	"go.uber.org/thriftrw/ptr"
@@ -38,7 +39,7 @@ import (
 // NewPodSpec creates a new PodSpec.
 func NewPodSpec(
 	t *api.TaskConfig,
-	c ThermosExecutorConfig,
+	c config.ThermosExecutorConfig,
 ) (*pod.PodSpec, error) {
 	// Taking aurora TaskConfig struct from JobUpdateRequest, and
 	// serialize it using Thrift binary protocol. The resulting
@@ -171,7 +172,7 @@ func newImage(c *api.Container) (string, error) {
 	return "", fmt.Errorf("only docker and mesos containerizers are supported")
 }
 
-func newEntryPoint(c ThermosExecutorConfig) *pod.CommandSpec {
+func newEntryPoint(c config.ThermosExecutorConfig) *pod.CommandSpec {
 	var b strings.Builder
 	b.WriteString("${MESOS_SANDBOX=.}/")
 	b.WriteString(path.Base(c.Path))
@@ -187,7 +188,7 @@ func newEntryPoint(c ThermosExecutorConfig) *pod.CommandSpec {
 
 func newMesosPodSpec(
 	c *api.Container,
-	t ThermosExecutorConfig,
+	t config.ThermosExecutorConfig,
 	executorData []byte,
 ) *apachemesos.PodSpec {
 	if c == nil {
@@ -210,7 +211,7 @@ func newMesosPodSpec(
 	if t.Resources != "" {
 		resourcesToFetch = append(
 			resourcesToFetch,
-			strings.Split(t.Resources, _thermosExecutorDelimiter)...,
+			strings.Split(t.Resources, config.ThermosExecutorDelimiter)...,
 		)
 	}
 
@@ -227,7 +228,7 @@ func newMesosPodSpec(
 
 	result.ExecutorSpec = &apachemesos.PodSpec_ExecutorSpec{
 		Type:       apachemesos.PodSpec_ExecutorSpec_EXECUTOR_TYPE_CUSTOM,
-		ExecutorId: _thermosExecutorIDPlaceholder,
+		ExecutorId: config.ThermosExecutorIDPlaceholder,
 		Data:       executorData,
 	}
 

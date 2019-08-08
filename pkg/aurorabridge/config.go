@@ -19,7 +19,7 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
 
-	"github.com/uber/peloton/pkg/aurorabridge/atop"
+	"github.com/uber/peloton/pkg/common/config"
 )
 
 // ServiceHandlerConfig defines ServiceHandler configuration.
@@ -50,7 +50,9 @@ type ServiceHandlerConfig struct {
 	// UpdatesLimit specifies the limit on number of updates to include per job
 	UpdatesLimit uint32 `yaml:"updates_limit"`
 
-	ThermosExecutor atop.ThermosExecutorConfig `yaml:"thermos_executor"`
+	// ThemrosExecutor is config used to generate mesos CommandInfo / ExecutorInfo
+	// for Thermos executor
+	ThermosExecutor config.ThermosExecutorConfig `yaml:"thermos_executor"`
 
 	// Enable Peloton inplace update
 	EnableInPlace bool `yaml:"enable-inplace-update"`

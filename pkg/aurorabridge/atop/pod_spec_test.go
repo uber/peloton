@@ -20,6 +20,8 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
 
+	"github.com/uber/peloton/pkg/common/config"
+
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/thriftrw/ptr"
 )
@@ -50,7 +52,7 @@ func TestNewPodSpec_ContainersResource(t *testing.T) {
 			},
 			Metadata: md,
 		},
-		ThermosExecutorConfig{},
+		config.ThermosExecutorConfig{},
 	)
 	assert.NoError(t, err)
 

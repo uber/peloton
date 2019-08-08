@@ -372,6 +372,11 @@ func main() {
 		cfg.JobManager.GoalState.RateLimiterConfig.ExecutorShutdown.Burst = *executorShutdownBurstLimit
 	}
 
+	// Validate thermos executor config
+	if err := cfg.JobManager.JobSvcCfg.ThermosExecutor.Validate(); err != nil {
+		log.WithError(err).Fatal("Cannot validate thermos executor config")
+	}
+
 	log.WithField("config", cfg).Info("Loaded Job Manager configuration")
 
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(

@@ -21,6 +21,8 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
 
+	"github.com/uber/peloton/pkg/common/config"
+
 	"github.com/uber/peloton/pkg/aurorabridge/common"
 	"github.com/uber/peloton/pkg/aurorabridge/label"
 )
@@ -29,7 +31,7 @@ import (
 func NewJobSpecFromJobUpdateRequest(
 	r *api.JobUpdateRequest,
 	respoolID *peloton.ResourcePoolID,
-	c ThermosExecutorConfig,
+	c config.ThermosExecutorConfig,
 ) (*stateless.JobSpec, error) {
 
 	if !r.IsSetTaskConfig() {

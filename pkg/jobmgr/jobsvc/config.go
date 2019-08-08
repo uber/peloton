@@ -14,6 +14,8 @@
 
 package jobsvc
 
+import "github.com/uber/peloton/pkg/common/config"
+
 const (
 	_defaultMaxTasksPerJob uint32 = 100000
 )
@@ -25,6 +27,10 @@ type Config struct {
 
 	// Flag to enable handling peloton secrets
 	EnableSecrets bool `yaml:"enable_secrets"`
+
+	// ThemrosExecutor is config used to generate mesos CommandInfo / ExecutorInfo
+	// for Thermos executor
+	ThermosExecutor config.ThermosExecutorConfig `yaml:"thermos_executor"`
 }
 
 func (c *Config) normalize() {

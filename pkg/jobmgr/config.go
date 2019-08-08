@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/uber/peloton/pkg/common/api"
+	"github.com/uber/peloton/pkg/common/config"
 	"github.com/uber/peloton/pkg/jobmgr/goalstate"
 	"github.com/uber/peloton/pkg/jobmgr/jobsvc"
 	"github.com/uber/peloton/pkg/jobmgr/task/deadline"
@@ -67,4 +68,8 @@ type Config struct {
 	// HostManagerAPIVersion is the API version that the Resource Manager
 	// should use to talk to Host Manager.
 	HostManagerAPIVersion api.Version `yaml:"hostmgr_api_version"`
+
+	// ThemrosExecutor is config used to generate mesos CommandInfo / ExecutorInfo
+	// for Thermos executor
+	ThermosExecutor config.ThermosExecutorConfig `yaml:"thermos_executor"`
 }

@@ -24,6 +24,7 @@ import (
 	"github.com/uber/peloton/pkg/aurorabridge/common"
 	"github.com/uber/peloton/pkg/aurorabridge/fixture"
 	"github.com/uber/peloton/pkg/aurorabridge/label"
+	"github.com/uber/peloton/pkg/common/config"
 	"go.uber.org/thriftrw/ptr"
 )
 
@@ -47,7 +48,7 @@ func TestNewPodSpec_HostLimitConstraint(t *testing.T) {
 				},
 			}},
 		},
-		ThermosExecutorConfig{},
+		config.ThermosExecutorConfig{},
 	)
 	assert.NoError(t, err)
 
@@ -87,7 +88,7 @@ func TestNewPodSpec_ValueConstraints(t *testing.T) {
 				},
 			}},
 		},
-		ThermosExecutorConfig{},
+		config.ThermosExecutorConfig{},
 	)
 	assert.NoError(t, err)
 

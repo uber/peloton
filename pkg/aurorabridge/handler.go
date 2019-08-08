@@ -30,15 +30,15 @@ import (
 	podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
 	"github.com/uber/peloton/.gen/peloton/private/jobmgrsvc"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
-	"github.com/uber/peloton/pkg/aurorabridge/cache"
-	"github.com/uber/peloton/pkg/common/util"
 
 	"github.com/uber/peloton/pkg/aurorabridge/atop"
+	"github.com/uber/peloton/pkg/aurorabridge/cache"
 	"github.com/uber/peloton/pkg/aurorabridge/common"
 	"github.com/uber/peloton/pkg/aurorabridge/label"
 	"github.com/uber/peloton/pkg/aurorabridge/opaquedata"
 	"github.com/uber/peloton/pkg/aurorabridge/ptoa"
 	"github.com/uber/peloton/pkg/common/concurrency"
+	"github.com/uber/peloton/pkg/common/util"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"

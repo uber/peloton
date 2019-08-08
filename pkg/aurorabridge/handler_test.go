@@ -36,6 +36,7 @@ import (
 	cachemocks "github.com/uber/peloton/pkg/aurorabridge/cache/mocks"
 	commonmocks "github.com/uber/peloton/pkg/aurorabridge/common/mocks"
 	aurorabridgemocks "github.com/uber/peloton/pkg/aurorabridge/mocks"
+	"github.com/uber/peloton/pkg/common/config"
 	"github.com/uber/peloton/pkg/common/util"
 
 	"github.com/uber/peloton/pkg/aurorabridge/atop"
@@ -71,7 +72,7 @@ type ServiceHandlerTestSuite struct {
 	jobIdCache     *cachemocks.MockJobIDCache
 
 	config        ServiceHandlerConfig
-	thermosConfig atop.ThermosExecutorConfig
+	thermosConfig config.ThermosExecutorConfig
 
 	handler *ServiceHandler
 }
@@ -98,7 +99,7 @@ func (suite *ServiceHandlerTestSuite) SetupTest() {
 		GetTasksWithoutConfigsWorkers: 25,
 		StopPodWorkers:                25,
 		PodRunsDepth:                  2,
-		ThermosExecutor: atop.ThermosExecutorConfig{
+		ThermosExecutor: config.ThermosExecutorConfig{
 			Path: "/usr/share/aurora/bin/thermos_executor.pex",
 		},
 		EnableInPlace: true,

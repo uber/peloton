@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package atop
+package config
 
 import (
 	"fmt"
@@ -25,8 +25,8 @@ import (
 )
 
 const (
-	_thermosExecutorDelimiter     = ","
-	_thermosExecutorIDPlaceholder = "PLACEHOLDER"
+	ThermosExecutorDelimiter     = ","
+	ThermosExecutorIDPlaceholder = "PLACEHOLDER"
 )
 
 // ThermosExecutorConfig wraps the config for thermos executor
@@ -55,7 +55,7 @@ type ThermosExecutorConfig struct {
 }
 
 // Validate validates ThermosExecutorConfig
-func (c *ThermosExecutorConfig) Validate() error {
+func (c ThermosExecutorConfig) Validate() error {
 	if c.Path == "" {
 		return fmt.Errorf("thermos_executor_path not provided")
 	}
@@ -65,14 +65,12 @@ func (c *ThermosExecutorConfig) Validate() error {
 // NewThermosCommandInfo creates Mesos CommandInfo for thermos executor
 // similar to Aurora's behavior. Reference:
 // https://github.com/apache/aurora/blob/master/src/main/java/org/apache/aurora/scheduler/configuration/executor/ExecutorModule.java#L120
-func NewThermosCommandInfo(
-	c ThermosExecutorConfig,
-) *mesos_v1.CommandInfo {
+func (c ThermosExecutorConfig) NewThermosCommandInfo() *mesos_v1.CommandInfo {
 	resourcesToFetch := []string{c.Path}
 	if c.Resources != "" {
 		resourcesToFetch = append(
 			resourcesToFetch,
-			strings.Split(c.Resources, _thermosExecutorDelimiter)...,
+			strings.Split(c.Resources, ThermosExecutorDelimiter)...,
 		)
 	}
 
@@ -99,10 +97,7 @@ func NewThermosCommandInfo(
 }
 
 // NewThermosExecutorInfo creates Mesos ExecutorInfo for thermos executor.
-func NewThermosExecutorInfo(
-	c ThermosExecutorConfig,
-	executorData []byte,
-) *mesos_v1.ExecutorInfo {
+func (c ThermosExecutorConfig) NewThermosExecutorInfo(executorData []byte) *mesos_v1.ExecutorInfo {
 	var r []*mesos_v1.Resource
 	if c.CPU > 0 {
 		r = append(r, &mesos_v1.Resource{
@@ -127,7 +122,7 @@ func NewThermosExecutorInfo(
 	return &mesos_v1.ExecutorInfo{
 		Type: mesos_v1.ExecutorInfo_CUSTOM.Enum(),
 		ExecutorId: &mesos_v1.ExecutorID{
-			Value: ptr.String(_thermosExecutorIDPlaceholder),
+			Value: ptr.String(ThermosExecutorIDPlaceholder),
 		},
 		Resources: r,
 		Data:      executorData,

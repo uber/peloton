@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package atop
+package config
 
 import (
 	"testing"
@@ -24,13 +24,13 @@ import (
 )
 
 func TestNewThermosCommandInfo(t *testing.T) {
-	c := ThermosExecutorConfig{
+	c := &ThermosExecutorConfig{
 		Path:      "/some/path/to/executor.pex",
 		Resources: "/some/path/to/res1.pex,/some/path/to/res2.pex",
 		Flags:     "-flag1 -flag2",
 	}
 
-	ci := NewThermosCommandInfo(c)
+	ci := c.NewThermosCommandInfo()
 	assert.NotNil(t, ci)
 	assert.Equal(t, []*mesos_v1.CommandInfo_URI{
 		{
@@ -51,13 +51,13 @@ func TestNewThermosCommandInfo(t *testing.T) {
 }
 
 func TestNewThermosExecutorInfo(t *testing.T) {
-	c := ThermosExecutorConfig{
+	c := &ThermosExecutorConfig{
 		CPU: 2.5,
 		RAM: 1024,
 	}
 	d := []byte{0x11, 0x12, 0x13, 0x14}
 
-	ei := NewThermosExecutorInfo(c, d)
+	ei := c.NewThermosExecutorInfo(d)
 	assert.NotNil(t, ei)
 	assert.Equal(t, mesos_v1.ExecutorInfo_CUSTOM, ei.GetType())
 	assert.NotNil(t, ei.GetExecutorId())

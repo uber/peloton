@@ -48,6 +48,7 @@ import (
 	"github.com/uber/peloton/pkg/jobmgr/jobsvc"
 	jobmgrtask "github.com/uber/peloton/pkg/jobmgr/task"
 	"github.com/uber/peloton/pkg/jobmgr/task/activermtask"
+	handlerutil "github.com/uber/peloton/pkg/jobmgr/util/handler"
 	jobutil "github.com/uber/peloton/pkg/jobmgr/util/job"
 	"github.com/uber/peloton/pkg/storage"
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
@@ -180,6 +181,14 @@ func (h *serviceHandler) CreateJob(
 		return nil, errors.Wrap(err, "failed to validate resource pool")
 	}
 
+	jobSpec, err = handlerutil.ConvertForThermosExecutor(
+		jobSpec,
+		h.jobSvcCfg.ThermosExecutor,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to convert for thermos executor")
+	}
+
 	jobConfig, err := api.ConvertJobSpecToJobConfig(jobSpec)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to convert job spec")
@@ -295,7 +304,15 @@ func (h *serviceHandler) ReplaceJob(
 			"JobID must be of UUID format")
 	}
 
-	jobConfig, err := api.ConvertJobSpecToJobConfig(req.GetSpec())
+	jobSpec, err := handlerutil.ConvertForThermosExecutor(
+		req.GetSpec(),
+		h.jobSvcCfg.ThermosExecutor,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to convert for thermos executor")
+	}
+
+	jobConfig, err := api.ConvertJobSpecToJobConfig(jobSpec)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to convert job spec")
 	}
@@ -1594,7 +1611,15 @@ func (h *serviceHandler) GetReplaceJobDiff(
 		return nil, err
 	}
 
-	jobConfig, err := api.ConvertJobSpecToJobConfig(req.GetSpec())
+	jobSpec, err := handlerutil.ConvertForThermosExecutor(
+		req.GetSpec(),
+		h.jobSvcCfg.ThermosExecutor,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to convert for thermos executor")
+	}
+
+	jobConfig, err := api.ConvertJobSpecToJobConfig(jobSpec)
 	if err != nil {
 		return nil, err
 	}
