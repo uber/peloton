@@ -2241,6 +2241,7 @@ func (h *ServiceHandler) listWorkflows(
 	jobID *peloton.JobID,
 	includeInstanceEvents bool,
 ) ([]*stateless.WorkflowInfo, error) {
+
 	req := &statelesssvc.ListJobWorkflowsRequest{
 		JobId:               jobID,
 		InstanceEvents:      includeInstanceEvents,
@@ -2251,6 +2252,7 @@ func (h *ServiceHandler) listWorkflows(
 	if err != nil {
 		return nil, err
 	}
+
 	return resp.GetWorkflowInfos(), nil
 }
 
