@@ -28,7 +28,7 @@ defaultSpec:
       maxConsecutiveFailures: 3
       commandCheck:
         command: 'ls'
-    command:
-      shell: true
+    entrypoint:
       value: 'while :; do echo running and health check would succeed; sleep 10; done'
-
+  mesosSpec:
+    shell: true

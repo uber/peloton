@@ -24,9 +24,10 @@ defaultSpec:
         cpuLimit: 0.1
         memLimitMb: 2.0
         diskLimitMb: 10
-      command:
-        shell: true
+      entrypoint:
         value: 'while :; do echo running 3; sleep 10; done'
+  mesosSpec:
+    shell: true
   constraint:
     type: 1  # LABEL_CONSTRAINT
     labelConstraint:

@@ -25,6 +25,7 @@ defaultSpec:
       memLimitMb: 100
       diskLimitMb: 100
       fdLimit: 2
-    command:
-      shell: true
+    entrypoint:
       value: 'while :; do echo running; sleep 10; done'
+  mesosSpec:
+    shell: true

@@ -28,6 +28,7 @@ defaultSpec:
       maxConsecutiveFailures: 5
       commandCheck:
         command: 'ls'
-    command:
-      shell: true
+    entrypoint:
       value: 'exit 1'
+  mesosSpec:
+    shell: true
