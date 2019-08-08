@@ -211,6 +211,7 @@ type HostMgrHandlerTestSuite struct {
 	watchHostSummaryServer *hostsvcmocks.MockInternalHostServiceServiceWatchHostSummaryEventYARPCServer
 	topicsSupported        []watchevent.Topic
 	mockedCQosClient       *cqosmocks.MockQoSAdvisorServiceYARPCClient
+	metric                 *metrics.Metrics
 	hostPoolManager        *hostpool_manager_mocks.MockHostPoolManager
 }
 
@@ -233,7 +234,8 @@ func (suite *HostMgrHandlerTestSuite) SetupSuite() {
 	suite.downMachines = append(suite.downMachines, downMachine)
 	suite.mockedCQosClient = cqosmocks.NewMockQoSAdvisorServiceYARPCClient(
 		suite.ctrl)
-	bin_packing.Init(suite.mockedCQosClient)
+	suite.metric = metrics.NewMetrics(tally.NoopScope)
+	bin_packing.Init(suite.mockedCQosClient, suite.metric)
 }
 
 func (suite *HostMgrHandlerTestSuite) SetupTest() {

@@ -34,6 +34,7 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/binpacking"
 	hostmgr_mesos_mocks "github.com/uber/peloton/pkg/hostmgr/mesos/mocks"
 	mpb_mocks "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
+	"github.com/uber/peloton/pkg/hostmgr/metrics"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 	"github.com/uber/peloton/pkg/hostmgr/summary"
 	hostmgr_summary_mocks "github.com/uber/peloton/pkg/hostmgr/summary/mocks"
@@ -114,6 +115,7 @@ type OfferPoolTestSuite struct {
 	agent4Offers         []*mesos.Offer
 	watchProcessor       *watchmocks.MockWatchProcessor
 	cancelFunc           context.CancelFunc
+	metric               *metrics.Metrics
 }
 
 func (suite *OfferPoolTestSuite) SetupSuite() {
@@ -135,7 +137,7 @@ func (suite *OfferPoolTestSuite) SetupSuite() {
 			suite.agent4Offers = append(suite.agent4Offers, offers...)
 		}
 	}
-	binpacking.Init(nil)
+	binpacking.Init(nil, nil)
 }
 
 func (suite *OfferPoolTestSuite) SetupTest() {
@@ -149,6 +151,7 @@ func (suite *OfferPoolTestSuite) SetupTest() {
 	suite.masterOperatorClient = mpb_mocks.NewMockMasterOperatorClient(suite.ctrl)
 	suite.provider = hostmgr_mesos_mocks.NewMockFrameworkInfoProvider(suite.ctrl)
 	suite.watchProcessor = watchmocks.NewMockWatchProcessor(suite.ctrl)
+	suite.metric = metrics.NewMetrics(tally.NoopScope)
 
 	suite.pool = &offerPool{
 		hostOfferIndex:             make(map[string]summary.HostSummary),
@@ -809,7 +812,7 @@ func (suite *OfferPoolTestSuite) TestDeclineOffers() {
 
 func (suite *OfferPoolTestSuite) TestOfferSorting() {
 	binpacking.CleanUpRanker()
-	binpacking.Init(suite.mockedCQosClient)
+	binpacking.Init(suite.mockedCQosClient, suite.metric)
 	// Verify offer pool is empty
 	suite.Equal(suite.GetTimedOfferLen(), 0)
 
@@ -1098,7 +1101,7 @@ func (suite *OfferPoolTestSuite) TestClaimForPlaceWithFilterHint() {
 // hostname1 will be picked
 func (suite *OfferPoolTestSuite) TestClaimForPlaceWithRankHintLoadAware() {
 	binpacking.CleanUpRanker()
-	binpacking.Init(suite.mockedCQosClient)
+	binpacking.Init(suite.mockedCQosClient, suite.metric)
 	// Verify offer pool is empty
 	suite.Equal(suite.GetTimedOfferLen(), 0)
 

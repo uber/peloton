@@ -75,6 +75,9 @@ type Metrics struct {
 	// Time takes to acquire lock in watch processor
 	WatchProcessorLockDuration tally.Timer
 
+	GetCqosAdvisorMetric     tally.Counter
+	GetCqosAdvisorMetricFail tally.Counter
+
 	scope tally.Scope
 }
 
@@ -131,6 +134,9 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		WatchEventOverflow:         watchEventScope.Counter("watch_event_overflow"),
 		WatchCancelNotFound:        watchEventScope.Counter("watch_cancel_not_found"),
 		WatchProcessorLockDuration: watchEventScope.Timer("watch_processor_lock_duration"),
+
+		GetCqosAdvisorMetric:     scope.Counter("get_cqos_advisor_metric"),
+		GetCqosAdvisorMetricFail: scope.Counter("get_cqos_advisor_metric_fail"),
 
 		scope: scope,
 	}

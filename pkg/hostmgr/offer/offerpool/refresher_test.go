@@ -42,7 +42,7 @@ type RefreshTestSuite struct {
 }
 
 func TestRefreshTestSuite(t *testing.T) {
-	binpacking.Init(nil)
+	binpacking.Init(nil, nil)
 	suite.Run(t, new(RefreshTestSuite))
 }
 

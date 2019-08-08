@@ -608,10 +608,12 @@ func main() {
 	if err != nil {
 		log.WithError(err).Fatal("Cannot register reconciler background worker.")
 	}
+
+	metric := hostmetric.NewMetrics(rootScope)
 	if cfg.HostManager.QoSAdvisorService.Address != "" {
-		bin_packing.Init(cQosClient)
+		bin_packing.Init(cQosClient, metric)
 	} else {
-		bin_packing.Init(nil)
+		bin_packing.Init(nil, nil)
 	}
 
 	log.WithField("ranker_name", cfg.HostManager.BinPacking).
@@ -622,7 +624,6 @@ func main() {
 			Fatal("Ranker not found")
 	}
 
-	metric := hostmetric.NewMetrics(rootScope)
 	watchevent.InitWatchProcessor(cfg.HostManager.Watch, metric)
 	watchProcessor := watchevent.GetWatchProcessor()
 

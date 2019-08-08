@@ -15,18 +15,21 @@
 package binpacking
 
 import (
+	"github.com/uber/peloton/pkg/hostmgr/metrics"
 	"testing"
 
 	cqosmocks "github.com/uber/peloton/.gen/qos/v1alpha1/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
 )
 
 type BinPackingTestSuite struct {
 	suite.Suite
 	mockCtrl         *gomock.Controller
 	mockedCQosClient *cqosmocks.MockQoSAdvisorServiceYARPCClient
+	metric           *metrics.Metrics
 }
 
 func TestBinPackingTestSuiteTestSuite(t *testing.T) {
@@ -35,7 +38,8 @@ func TestBinPackingTestSuiteTestSuite(t *testing.T) {
 
 func (suite *BinPackingTestSuite) SetupTest() {
 	suite.mockedCQosClient = cqosmocks.NewMockQoSAdvisorServiceYARPCClient(suite.mockCtrl)
-	Init(suite.mockedCQosClient)
+	suite.metric = metrics.NewMetrics(tally.NoopScope)
+	Init(suite.mockedCQosClient, suite.metric)
 }
 
 // TestInit tests the Init() function

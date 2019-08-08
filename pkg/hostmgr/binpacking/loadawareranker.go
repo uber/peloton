@@ -20,6 +20,7 @@ import (
 	"time"
 
 	cqos "github.com/uber/peloton/.gen/qos/v1alpha1"
+	"github.com/uber/peloton/pkg/hostmgr/metrics"
 	"github.com/uber/peloton/pkg/hostmgr/summary"
 
 	log "github.com/sirupsen/logrus"
@@ -27,15 +28,19 @@ import (
 
 const (
 	_rpcTimeout = 15 * time.Second
+	// _maxTryTimeout is of unit of seconds, 300 seconds
+	_maxTryTimeout = float64(300)
 )
 
 // loadAwareRanker is the struct for implementation of
 // LoadAware Ranker
 type loadAwareRanker struct {
-	mu          sync.RWMutex
-	name        string
-	summaryList []interface{}
-	cqosClient  cqos.QoSAdvisorServiceYARPCClient
+	mu             sync.RWMutex
+	name           string
+	summaryList    []interface{}
+	cqosClient     cqos.QoSAdvisorServiceYARPCClient
+	cqosLastUpTime time.Time
+	cqosMetrics    *metrics.Metrics
 }
 
 type hostLoad struct {
@@ -44,10 +49,13 @@ type hostLoad struct {
 }
 
 // NewLoadAwareRanker returns the LoadAware Ranker
-func NewLoadAwareRanker(cqosClient cqos.QoSAdvisorServiceYARPCClient) Ranker {
+func NewLoadAwareRanker(
+	cqosClient cqos.QoSAdvisorServiceYARPCClient,
+	cqosMetrics *metrics.Metrics) Ranker {
 	return &loadAwareRanker{
-		name:       LoadAware,
-		cqosClient: cqosClient,
+		name:        LoadAware,
+		cqosClient:  cqosClient,
+		cqosMetrics: cqosMetrics,
 	}
 }
 
@@ -102,8 +110,16 @@ func (l *loadAwareRanker) getRankedHostList(
 	//and sort the host summary map according to the host load map
 	loadMap, err := l.pollFromCQos(ctx)
 	if err != nil {
-		return nil
+		l.cqosMetrics.GetCqosAdvisorMetricFail.Inc(1)
+		if time.Since(l.cqosLastUpTime).Seconds() >= _maxTryTimeout {
+			// Cqos advisor is not reachable after 5 mins
+			// expire the cache list, we fall back to first_fit ranker
+			return l.getRandomHostList(offerIndex)
+		}
+		// using cache summaryList
+		return l.summaryList
 	}
+	l.cqosMetrics.GetCqosAdvisorMetric.Inc(1)
 
 	// loadHostMap key is the load, value is an array of hosts of this load
 	loadHostMap := l.bucketSortByLoad(loadMap)
@@ -159,9 +175,23 @@ func (l *loadAwareRanker) pollFromCQos(ctx context.Context) (*cqos.
 	result, err := l.cqosClient.GetHostMetrics(
 		ctx, req)
 	if err != nil {
+		// when cqos advisor is unreachable, we will keep using sortedlist from
+		// cache. We expire the cache and fall back to firstFit ranker after
+		// cqos advisor has been down after _maxTryTimeout
 		log.WithError(err).
 			Warn("Failed to reach CQos.")
 		return nil, err
 	}
+	l.cqosLastUpTime = time.Now()
 	return result, nil
+}
+
+// return a random host summarylist
+func (l *loadAwareRanker) getRandomHostList(
+	offerIndex map[string]summary.HostSummary) []interface{} {
+	var summaryList []interface{}
+	for _, summary := range offerIndex {
+		summaryList = append(summaryList, summary)
+	}
+	return summaryList
 }

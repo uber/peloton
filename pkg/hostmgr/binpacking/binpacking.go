@@ -16,6 +16,7 @@ package binpacking
 
 import (
 	cqos "github.com/uber/peloton/.gen/qos/v1alpha1"
+	"github.com/uber/peloton/pkg/hostmgr/metrics"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -61,7 +62,9 @@ func register(
 }
 
 // Init registers all the rankers
-func Init(cqosClient cqos.QoSAdvisorServiceYARPCClient) {
+func Init(
+	cqosClient cqos.QoSAdvisorServiceYARPCClient,
+	metrics *metrics.Metrics) {
 	register(DeFrag, NewDeFragRanker)
 	register(FirstFit, NewFirstFitRanker)
 
@@ -74,7 +77,7 @@ func Init(cqosClient cqos.QoSAdvisorServiceYARPCClient) {
 		return
 	}
 	log.WithField("name", LoadAware).Info("Registering ranker")
-	rankers[LoadAware] = NewLoadAwareRanker(cqosClient)
+	rankers[LoadAware] = NewLoadAwareRanker(cqosClient, metrics)
 }
 
 // GetRankerByName returns a ranker with specified name

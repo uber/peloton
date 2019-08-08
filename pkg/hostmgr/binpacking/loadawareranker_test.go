@@ -16,14 +16,18 @@ package binpacking
 
 import (
 	"context"
+	"testing"
+
 	cqos "github.com/uber/peloton/.gen/qos/v1alpha1"
 	cqosmocks "github.com/uber/peloton/.gen/qos/v1alpha1/mocks"
+	"github.com/uber/peloton/pkg/hostmgr/metrics"
 	"github.com/uber/peloton/pkg/hostmgr/summary"
 	watchmocks "github.com/uber/peloton/pkg/hostmgr/watchevent/mocks"
-	"testing"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 type LoadAwareRankerTestSuite struct {
@@ -32,6 +36,7 @@ type LoadAwareRankerTestSuite struct {
 	loadAwareRanker  Ranker
 	offerIndex       map[string]summary.HostSummary
 	mockedCQosClient *cqosmocks.MockQoSAdvisorServiceYARPCClient
+	metric           *metrics.Metrics
 	mockCtrl         *gomock.Controller
 	watchProcessor   *watchmocks.MockWatchProcessor
 	cancelFunc       context.CancelFunc
@@ -48,7 +53,9 @@ func (suite *LoadAwareRankerTestSuite) SetupTest() {
 	//defer suite.cancelFunc()
 	suite.mockCtrl = gomock.NewController(suite.T())
 	suite.mockedCQosClient = cqosmocks.NewMockQoSAdvisorServiceYARPCClient(suite.mockCtrl)
-	suite.loadAwareRanker = NewLoadAwareRanker(suite.mockedCQosClient)
+	suite.metric = metrics.NewMetrics(tally.NoopScope)
+	suite.loadAwareRanker = NewLoadAwareRanker(suite.mockedCQosClient,
+		suite.metric)
 	suite.offerIndex = CreateOfferIndex(suite.watchProcessor)
 }
 
@@ -107,6 +114,113 @@ func (suite *LoadAwareRankerTestSuite) TestGetRankedHostListCqosNoHost() {
 	// hostname5 will be at the bottom of the list
 	suite.Equal(sortedList[5].(summary.HostSummary).GetHostname(),
 		"hostname5")
+}
+
+// TestGetCachedRankedHostListCqosDown tests verify if Cqos advisor is down
+// we will use the sortedhostsummarylist from cache
+func (suite *LoadAwareRankerTestSuite) TestGetCachedRankedHostListCqosDown() {
+	suite.setupMocks()
+	sortedList := suite.loadAwareRanker.GetRankedHostList(
+		suite.ctx,
+		suite.offerIndex,
+	)
+
+	suite.Equal(sortedList[0].(summary.HostSummary).GetHostname(),
+		"hostname0")
+	suite.Equal(sortedList[1].(summary.HostSummary).GetHostname(),
+		"hostname1")
+	suite.Equal(sortedList[2].(summary.HostSummary).GetHostname(),
+		"hostname3")
+	suite.Equal(sortedList[3].(summary.HostSummary).GetHostname(),
+		"hostname2")
+	suite.Equal(sortedList[4].(summary.HostSummary).GetHostname(),
+		"hostname4")
+
+	// cqos connection error out
+	for i := 0; i < 9; i++ {
+		suite.mockedCQosClient.EXPECT().
+			GetHostMetrics(
+				gomock.Any(),
+				gomock.Any()).Return(
+			nil, yarpcerrors.UnavailableErrorf("test error"))
+	}
+
+	// return the list from cache
+	for i := 0; i < 9; i++ {
+		suite.loadAwareRanker.RefreshRanking(
+			suite.ctx,
+			suite.offerIndex,
+		)
+	}
+	sortedList = suite.loadAwareRanker.GetRankedHostList(
+		suite.ctx,
+		suite.offerIndex,
+	)
+	suite.Equal(sortedList[0].(summary.HostSummary).GetHostname(),
+		"hostname0")
+	suite.Equal(sortedList[1].(summary.HostSummary).GetHostname(),
+		"hostname1")
+	suite.Equal(sortedList[2].(summary.HostSummary).GetHostname(),
+		"hostname3")
+	suite.Equal(sortedList[3].(summary.HostSummary).GetHostname(),
+		"hostname2")
+	suite.Equal(sortedList[4].(summary.HostSummary).GetHostname(),
+		"hostname4")
+}
+
+// TestExpiredRankedHostListCqosDown tests verify if Cqos advisor is down
+// for a long time,
+// we gonna expire the cached summary list and fall back to first_fit ranker
+// TODO: modify the test after making _maxTryTimeout configurable
+func (suite *LoadAwareRankerTestSuite) TestExpiredRankedHostListCqosDown() {
+	suite.setupMocks()
+	sortedList := suite.loadAwareRanker.GetRankedHostList(
+		suite.ctx,
+		suite.offerIndex,
+	)
+
+	suite.Equal(sortedList[0].(summary.HostSummary).GetHostname(),
+		"hostname0")
+	suite.Equal(sortedList[1].(summary.HostSummary).GetHostname(),
+		"hostname1")
+	suite.Equal(sortedList[2].(summary.HostSummary).GetHostname(),
+		"hostname3")
+	suite.Equal(sortedList[3].(summary.HostSummary).GetHostname(),
+		"hostname2")
+	suite.Equal(sortedList[4].(summary.HostSummary).GetHostname(),
+		"hostname4")
+
+	// cqos connection error out
+	for i := 0; i < 11; i++ {
+		suite.mockedCQosClient.EXPECT().
+			GetHostMetrics(
+				gomock.Any(),
+				gomock.Any()).Return(
+			nil, yarpcerrors.UnavailableErrorf("test error"))
+	}
+
+	// return the list from cache
+	for i := 0; i < 11; i++ {
+		suite.loadAwareRanker.RefreshRanking(
+			suite.ctx,
+			suite.offerIndex,
+		)
+	}
+	sortedList = suite.loadAwareRanker.GetRankedHostList(
+		suite.ctx,
+		suite.offerIndex,
+	)
+	suite.EqualValues(len(sortedList), 5)
+	hosts := []string{
+		"hostname0",
+		"hostname1",
+		"hostname2",
+		"hostname3",
+		"hostname4"}
+	for _, s := range sortedList {
+		h := s.(summary.HostSummary).GetHostname()
+		suite.Contains(hosts, h)
+	}
 }
 
 func (suite *LoadAwareRankerTestSuite) TestGetRankedHostListWithRefresh() {
