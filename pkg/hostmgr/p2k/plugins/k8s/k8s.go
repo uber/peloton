@@ -46,8 +46,6 @@ type K8SManager struct {
 	// Internal K8S client structs that provide pod and node watch
 	// functionality.
 	informerFactory informers.SharedInformerFactory
-	nodeInformer    cache.SharedIndexInformer
-	podInformer     cache.SharedIndexInformer
 	nodeLister      corelisters.NodeLister
 
 	// Pod events channel.
@@ -99,16 +97,12 @@ func newK8sManagerWithClient(
 		kubeClient,
 		_defaultResyncInterval,
 	)
-	nodeInformer := informerFactory.Core().V1().Nodes().Informer()
-	podInformer := informerFactory.Core().V1().Pods().Informer()
 	nodeLister := informerFactory.Core().V1().Nodes().Lister()
 
 	return &K8SManager{
 		kubeClient:      kubeClient,
 		informerFactory: informerFactory,
-		nodeInformer:    nodeInformer,
 		nodeLister:      nodeLister,
-		podInformer:     podInformer,
 		podEventCh:      podEventCh,
 		hostEventCh:     hostEventCh,
 		lifecycle:       lifecycle.NewLifeCycle(),
@@ -123,16 +117,20 @@ func (k *K8SManager) Start() {
 	}
 
 	// Add event callbacks to nodeInformer and podInformer.
-	k.nodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    k.addNode,
-		UpdateFunc: k.updateNode,
-		DeleteFunc: k.deleteNode,
-	})
-	k.podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    k.addPod,
-		UpdateFunc: k.updatePod,
-		DeleteFunc: k.deletePod,
-	})
+	nodeInformer := k.informerFactory.Core().V1().Nodes().Informer()
+	nodeInformer.AddEventHandler(
+		cache.ResourceEventHandlerFuncs{
+			AddFunc:    k.addNode,
+			UpdateFunc: k.updateNode,
+			DeleteFunc: k.deleteNode,
+		})
+	podInformer := k.informerFactory.Core().V1().Pods().Informer()
+	podInformer.AddEventHandler(
+		cache.ResourceEventHandlerFuncs{
+			AddFunc:    k.addPod,
+			UpdateFunc: k.updatePod,
+			DeleteFunc: k.deletePod,
+		})
 
 	// Start informers.
 	k.informerFactory.Start(k.lifecycle.StopCh())
@@ -140,8 +138,8 @@ func (k *K8SManager) Start() {
 	// Wait for all started informers cache were synced before scheduling.
 	if !cache.WaitForCacheSync(
 		k.lifecycle.StopCh(),
-		k.nodeInformer.HasSynced,
-		k.podInformer.HasSynced,
+		nodeInformer.HasSynced,
+		podInformer.HasSynced,
 	) {
 		log.Warn("Timed out waiting for cache to sync.")
 	}
@@ -270,8 +268,8 @@ func (k *K8SManager) addPod(obj interface{}) {
 }
 
 // PodInformer update function.
-func (k *K8SManager) updatePod(obj interface{}, obj2 interface{}) {
-	pod := obj.(*corev1.Pod)
+func (k *K8SManager) updatePod(oldObj interface{}, newObj interface{}) {
+	pod := newObj.(*corev1.Pod)
 	if pod.Spec.SchedulerName != common.PelotonRole {
 		// TODO: Generate an alert.
 		log.WithFields(log.Fields{
