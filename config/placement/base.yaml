@@ -25,7 +25,7 @@ placement:
     stateless: 60s
     daemon: 500s
     stateful: 60s
-  max_desired_host_placement_duration: 120s
+  max_desired_host_placement_duration: 100s
   use_host_pool: false
 
 election:
