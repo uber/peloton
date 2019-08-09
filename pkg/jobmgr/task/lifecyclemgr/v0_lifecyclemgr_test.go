@@ -431,3 +431,25 @@ func (suite *v0LifecycleTestSuite) TestLaunchErrors() {
 	suite.Error(err)
 	suite.True(yarpcerrors.IsResourceExhausted(err))
 }
+
+// TestTerminateLease tests successful lm.TerminateLease.
+func (suite *v0LifecycleTestSuite) TestTerminateLease() {
+	hostname := "test-host-1"
+	leaseID := uuid.New()
+
+	suite.mockHostMgr.EXPECT().
+		ReleaseHostOffers(gomock.Any(), &v0_hostsvc.ReleaseHostOffersRequest{
+			HostOffers: []*v0_hostsvc.HostOffer{{
+				Hostname: hostname,
+				AgentId:  &mesos.AgentID{Value: &hostname},
+				Id:       &peloton.HostOfferID{Value: leaseID},
+			}}}).Return(&v0_hostsvc.ReleaseHostOffersResponse{}, nil)
+
+	err := suite.lm.TerminateLease(
+		suite.ctx,
+		hostname,
+		hostname,
+		leaseID,
+	)
+	suite.Nil(err)
+}

@@ -77,6 +77,17 @@ type Manager interface {
 		agentID string,
 		rateLimiter *rate.Limiter,
 	) error
+
+	// TerminateLease will be called to terminate the acquired lease on
+	// hostmgr in case of any errors. This will ensure that the hosts that
+	// are leased are not freed up for placement in case we cannot place the
+	// current set of tasks on them.
+	TerminateLease(
+		ctx context.Context,
+		hostname string,
+		agentID string,
+		leaseID string,
+	) error
 }
 
 // New gets hostmgr API specific task/pod lifecycle mgr instance

@@ -25,6 +25,7 @@ import (
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/util"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
@@ -162,5 +163,31 @@ func (l *v1LifecycleMgr) ShutdownExecutor(
 	rateLimiter *rate.Limiter,
 ) error {
 	l.metrics.Shutdown.Inc(1)
+	return nil
+}
+
+// TerminateLease returns the unused lease back to the hostmgr.
+func (l *v1LifecycleMgr) TerminateLease(
+	ctx context.Context,
+	hostname string,
+	agentID string,
+	leaseID string,
+) error {
+	request := &v1_hostsvc.TerminateLeasesRequest{
+		Leases: []*v1_hostsvc.TerminateLeasesRequest_LeasePair{{
+			Hostname: hostname,
+			LeaseId:  &pbhostmgr.LeaseID{Value: leaseID},
+		}},
+	}
+	ctx, cancel := context.WithTimeout(ctx, _defaultHostmgrAPITimeout)
+	defer cancel()
+	_, err := l.hostManagerV1.TerminateLeases(ctx, request)
+	if err != nil {
+		l.metrics.TerminateLeaseFail.Inc(1)
+		return errors.Wrapf(err,
+			"failed to terminate lease: %v host %v", leaseID, hostname,
+		)
+	}
+	l.metrics.TerminateLease.Inc(1)
 	return nil
 }
