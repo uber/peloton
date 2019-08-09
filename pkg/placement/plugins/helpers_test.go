@@ -55,19 +55,43 @@ func (suite *PluginsHelperTestSuite) TestGroupByPlacementNeeds() {
 			expectedNeeds: []*TasksByPlacementNeeds{
 				{
 					PlacementNeeds: PlacementNeeds{
-						Constraint: "constraint0",
+						Constraint: &peloton_api_v0_task.LabelConstraint{
+							Kind:      peloton_api_v0_task.LabelConstraint_HOST,
+							Condition: peloton_api_v0_task.LabelConstraint_CONDITION_EQUAL,
+							Label: &peloton_api_v0_peloton.Label{
+								Key:   fmt.Sprintf("key%d", 0),
+								Value: fmt.Sprintf("value%d", 0),
+							},
+							Requirement: 0,
+						},
 					},
 					Tasks: []int{0},
 				},
 				{
 					PlacementNeeds: PlacementNeeds{
-						Constraint: "constraint1",
+						Constraint: &peloton_api_v0_task.LabelConstraint{
+							Kind:      peloton_api_v0_task.LabelConstraint_HOST,
+							Condition: peloton_api_v0_task.LabelConstraint_CONDITION_EQUAL,
+							Label: &peloton_api_v0_peloton.Label{
+								Key:   fmt.Sprintf("key%d", 1),
+								Value: fmt.Sprintf("value%d", 1),
+							},
+							Requirement: 1,
+						},
 					},
 					Tasks: []int{1},
 				},
 				{
 					PlacementNeeds: PlacementNeeds{
-						Constraint: "constraint2",
+						Constraint: &peloton_api_v0_task.LabelConstraint{
+							Kind:      peloton_api_v0_task.LabelConstraint_HOST,
+							Condition: peloton_api_v0_task.LabelConstraint_CONDITION_EQUAL,
+							Label: &peloton_api_v0_peloton.Label{
+								Key:   fmt.Sprintf("key%d", 2),
+								Value: fmt.Sprintf("value%d", 2),
+							},
+							Requirement: 2,
+						},
 					},
 					Tasks: []int{2},
 				},
@@ -316,7 +340,15 @@ type fakeTask struct {
 // newFakeTask returns a new fakeTask.
 func newFakeTask(index int) *fakeTask {
 	return &fakeTask{
-		constraint: fmt.Sprintf("constraint%d", index),
+		constraint: &peloton_api_v0_task.LabelConstraint{
+			Kind:      peloton_api_v0_task.LabelConstraint_HOST,
+			Condition: peloton_api_v0_task.LabelConstraint_CONDITION_EQUAL,
+			Label: &peloton_api_v0_peloton.Label{
+				Key:   fmt.Sprintf("key%d", index),
+				Value: fmt.Sprintf("value%d", index),
+			},
+			Requirement: uint32(index),
+		},
 	}
 }
 

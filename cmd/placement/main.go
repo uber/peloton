@@ -174,6 +174,12 @@ var (
 		Default("").
 		Envar("HOSTMGR_API_VERSION").
 		String()
+
+	useHostPool = app.Flag(
+		"use-host-pool", "Use host pool").
+		Default("false").
+		Envar("USE_HOST_POOL").
+		Bool()
 )
 
 func main() {
@@ -265,6 +271,10 @@ func main() {
 	}
 	if cfg.Placement.HostManagerAPIVersion == "" {
 		cfg.Placement.HostManagerAPIVersion = api.V0
+	}
+
+	if *useHostPool {
+		cfg.Placement.UseHostPool = true
 	}
 
 	// Parse and setup peloton auth

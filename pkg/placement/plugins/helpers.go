@@ -53,6 +53,7 @@ func GroupByPlacementNeeds(tasks []Task, config *Config) []*TasksByPlacementNeed
 						//  other than batch and stateless.
 						Value: config.TaskType.String(),
 					},
+					Requirement: 1,
 				},
 			}
 			err := needs.upsertConstraint(hostPoolConstraint)

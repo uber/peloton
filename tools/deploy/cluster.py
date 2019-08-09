@@ -44,6 +44,7 @@ class Cluster(object):
 
     def __init__(self, cfg_file, **kwargs):
         self.auto_migrate = False
+        self.use_host_pool = False
         for k, v in kwargs.iteritems():
             setattr(self, k, v)
 

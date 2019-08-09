@@ -127,6 +127,7 @@ class App(object):
         self.auth_type = "NOOP"
         self.auth_config_file = ""
         self.enable_inplace_update = False
+        self.use_host_pool = False
 
         for k, v in kwargs.iteritems():
             setattr(self, k, v)
@@ -238,17 +239,23 @@ class App(object):
             env_vars["TASK_TYPE"] = "STATEFUL"
             env_vars["APP"] = "placement"
             env_vars["APP_TYPE"] = "placement_stateful"
+            if self.cluster.use_host_pool:
+                env_vars["USE_HOST_POOL"] = self.cluster.use_host_pool
 
         if self.name == "placement_stateless":
             env_vars["TASK_TYPE"] = "STATELESS"
             env_vars["APP"] = "placement"
             env_vars["APP_TYPE"] = "placement_stateless"
+            if self.cluster.use_host_pool:
+                env_vars["USE_HOST_POOL"] = self.cluster.use_host_pool
 
         if self.name == "placement":
             if getattr(self, "task_dequeue_limit", ""):
                 env_vars["TASK_DEQUEUE_LIMIT"] = self.task_dequeue_limit
             if getattr(self, "task_dequeue_period", ""):
                 env_vars["TASK_DEQUEUE_PERIOD"] = self.task_dequeue_period
+            if self.cluster.use_host_pool:
+                env_vars["USE_HOST_POOL"] = self.cluster.use_host_pool
 
         if self.name == "jobmgr":
             env_vars["JOB_TYPE"] = getattr(self, "job_type", "BATCH")
@@ -306,6 +313,8 @@ class App(object):
             if self.qos_advisor_service_address:
                 env_vars["QOS_ADVISOR_SERVICE_ADDRESS"] \
                     = self.qos_advisor_service_address
+            if self.cluster.use_host_pool:
+                env_vars["ENABLE_HOST_POOL"] = self.cluster.use_host_pool
 
         if self.name == "aurorabridge":
             if self.respool_path:
