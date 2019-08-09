@@ -545,16 +545,16 @@ func (a *hostSummary) AddMesosOffers(
 		offerIDs = append(offerIDs, offer.GetId().GetValue())
 	}
 
-	log.WithFields(log.Fields{
-		"offer_ids":               strings.Join(offerIDs, ","),
-		"outstanding_offer_count": a.readyCount.Load(),
-		"hostname":                a.GetHostname(),
-		"host_state":              a.status,
-	}).Info("offers added to host summary")
-
 	if a.status == ReadyHost || a.status == HeldHost {
 		a.readyCount.Store(int32(len(a.unreservedOffers)))
 	}
+
+	log.WithFields(log.Fields{
+		"offer_ids":               strings.Join(offerIDs, ","),
+		"outstanding_offer_count": len(a.unreservedOffers),
+		"hostname":                a.GetHostname(),
+		"host_state":              a.status,
+	}).Info("offers added to host summary")
 
 	return a.status
 }

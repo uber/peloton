@@ -653,7 +653,7 @@ func (h *ServiceHandler) ReleaseHostOffers(
 			"hostname":      hostname,
 			"agent_id":      hostOffer.GetAgentId().GetValue(),
 			"host_offer_id": hostOffer.GetId().GetValue(),
-		}).Info("Released Host")
+		}).Info("ReleaseHostOffers")
 	}
 
 	return &hostsvc.ReleaseHostOffersResponse{}, nil
