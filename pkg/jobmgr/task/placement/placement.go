@@ -16,27 +16,32 @@ package placement
 
 import (
 	"context"
+	"encoding/base64"
 	"time"
-
-	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
-	"github.com/uber-go/tally"
-	"go.uber.org/yarpc"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
 	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/common/lifecycle"
 	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 	"github.com/uber/peloton/pkg/jobmgr/goalstate"
-	"github.com/uber/peloton/pkg/jobmgr/task/launcher"
+	"github.com/uber/peloton/pkg/jobmgr/task/lifecyclemgr"
 	taskutil "github.com/uber/peloton/pkg/jobmgr/util/task"
+	ormobjects "github.com/uber/peloton/pkg/storage/objects"
+
+	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
+	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 // Config is placement processor specific config
@@ -51,7 +56,7 @@ type Config struct {
 }
 
 // Processor defines the interface of placement processor
-// which dequeues placed tasks and sends them to host manager via task launcher
+// which dequeues placed tasks and sends them to host manager via lifecyclemgr.
 type Processor interface {
 	// Start starts the placement processor goroutines
 	Start() error
@@ -59,13 +64,16 @@ type Processor interface {
 	Stop() error
 }
 
-// launcher implements the Launcher interface
+// processor implements the task placement Processor interface.
 type processor struct {
 	resMgrClient    resmgrsvc.ResourceManagerServiceYARPCClient
 	jobFactory      cached.JobFactory
 	goalStateDriver goalstate.Driver
-	taskLauncher    launcher.Launcher
+	taskConfigV2Ops ormobjects.TaskConfigV2Ops
+	secretInfoOps   ormobjects.SecretInfoOps
 	lifeCycle       lifecycle.LifeCycle
+	hmVersion       api.Version
+	lm              lifecyclemgr.Manager
 	config          *Config
 	metrics         *Metrics
 }
@@ -77,6 +85,8 @@ const (
 	// This is a safety mechanism to avoid placement engine getting stuck in
 	// retrying errors wrongly classified as transient errors.
 	maxRetryCount = 1000
+	// Default secret operations cassandra timeout.
+	_defaultSecretInfoOpsTimeout = 10 * time.Second
 )
 
 // InitProcessor initializes placement processor
@@ -85,7 +95,8 @@ func InitProcessor(
 	resMgrClientName string,
 	jobFactory cached.JobFactory,
 	goalStateDriver goalstate.Driver,
-	taskLauncher launcher.Launcher,
+	hmVersion api.Version,
+	ormStore *ormobjects.Store,
 	config *Config,
 	parent tally.Scope,
 ) Processor {
@@ -93,7 +104,9 @@ func InitProcessor(
 		resMgrClient:    resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(resMgrClientName)),
 		jobFactory:      jobFactory,
 		goalStateDriver: goalStateDriver,
-		taskLauncher:    taskLauncher,
+		lm:              lifecyclemgr.New(hmVersion, d, parent),
+		taskConfigV2Ops: ormobjects.NewTaskConfigV2Ops(ormStore),
+		secretInfoOps:   ormobjects.NewSecretInfoOps(ormStore),
 		config:          config,
 		metrics:         NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
 		lifeCycle:       lifecycle.NewLifeCycle(),
@@ -159,78 +172,428 @@ func (p *processor) process() {
 	}
 }
 
-func (p *processor) processPlacement(ctx context.Context, placement *resmgr.Placement) {
-	var tasks []*mesos.TaskID
-	for _, t := range placement.GetTaskIDs() {
-		tasks = append(tasks, t.GetMesosTaskID())
+// prepareTasksForLaunch returns current task configuration and
+// the runtime diff which needs to be patched onto existing runtime for
+// each launchable task. It returns error only when the placement contains
+// less than required selected ports.
+func (p *processor) prepareTasksForLaunch(
+	ctx context.Context,
+	taskIDs []*mesos.TaskID,
+	hostname string,
+	agentID string,
+	selectedPorts []uint32,
+) (
+	map[string]*lifecyclemgr.LaunchableTaskInfo,
+	[]*peloton.TaskID,
+	error,
+) {
+	portsIndex := 0
+	taskInfos := make(map[string]*lifecyclemgr.LaunchableTaskInfo)
+	skippedTaskIDs := make([]*peloton.TaskID, 0)
+
+	for _, mtaskID := range taskIDs {
+		id, instanceID, err := util.ParseJobAndInstanceID(mtaskID.GetValue())
+		if err != nil {
+			log.WithField("mesos_task_id", mtaskID.GetValue()).
+				WithError(err).
+				Error("Failed to parse mesos task id")
+			continue
+		}
+
+		jobID := &peloton.JobID{Value: id}
+		ptaskID := &peloton.TaskID{
+			Value: util.CreatePelotonTaskID(id, instanceID),
+		}
+		ptaskIDStr := ptaskID.GetValue()
+
+		cachedJob := p.jobFactory.GetJob(jobID)
+		if cachedJob == nil {
+			skippedTaskIDs = append(skippedTaskIDs, ptaskID)
+			continue
+		}
+
+		cachedTask, err := cachedJob.AddTask(ctx, uint32(instanceID))
+		if err != nil {
+			log.WithError(err).
+				WithFields(log.Fields{
+					"job_id":      jobID.GetValue(),
+					"instance_id": uint32(instanceID),
+				}).Error("cannot add and recover task from DB")
+			continue
+		}
+
+		cachedRuntime, err := cachedTask.GetRuntime(ctx)
+		if err != nil {
+			log.WithError(err).
+				WithFields(log.Fields{
+					"job_id":      jobID.GetValue(),
+					"instance_id": uint32(instanceID),
+				}).Error("cannot fetch task runtime")
+			continue
+		}
+
+		if cachedRuntime.GetMesosTaskId().GetValue() != mtaskID.GetValue() {
+			log.WithFields(log.Fields{
+				"job_id":        jobID.GetValue(),
+				"instance_id":   uint32(instanceID),
+				"mesos_task_id": mtaskID.GetValue(),
+			}).Info("skipping launch of old run")
+			skippedTaskIDs = append(skippedTaskIDs, ptaskID)
+			continue
+		}
+
+		taskConfig, configAddOn, err := p.taskConfigV2Ops.GetTaskConfig(
+			ctx,
+			jobID,
+			uint32(instanceID),
+			cachedRuntime.GetConfigVersion())
+		if err != nil {
+			log.WithError(err).
+				WithField("task_id", ptaskID.GetValue()).
+				Error("not able to get task configuration")
+			continue
+		}
+
+		var spec *pbpod.PodSpec
+		if p.hmVersion.IsV1() {
+			// TODO: unify this call with p.taskConfigV2Ops.GetTaskConfig().
+			spec, err = p.taskConfigV2Ops.GetPodSpec(
+				ctx,
+				jobID,
+				uint32(instanceID),
+				cachedRuntime.GetConfigVersion())
+			if err != nil {
+				log.WithError(err).
+					WithField("task_id", ptaskIDStr).
+					Error("not able to get pod spec")
+				continue
+			}
+		}
+
+		runtimeDiff := make(jobmgrcommon.RuntimeDiff)
+		if cachedRuntime.GetGoalState() != task.TaskState_KILLED {
+			runtimeDiff[jobmgrcommon.HostField] = hostname
+			runtimeDiff[jobmgrcommon.AgentIDField] = &mesos.AgentID{
+				Value: &agentID,
+			}
+			runtimeDiff[jobmgrcommon.StateField] = task.TaskState_LAUNCHED
+		}
+
+		if selectedPorts != nil {
+			// Reset runtime ports to get new ports assignment if placement has ports.
+			ports := make(map[string]uint32)
+			// Assign selected dynamic port to task per port config.
+			for _, portConfig := range taskConfig.GetPorts() {
+				if portConfig.GetValue() != 0 {
+					// Skip static port.
+					continue
+				}
+				if portsIndex >= len(selectedPorts) {
+					// This should never happen.
+					log.WithFields(log.Fields{
+						"selected_ports": selectedPorts,
+						"task_id":        ptaskIDStr,
+					}).Error("placement contains less selected ports than required.")
+					return nil, nil, errors.New("invalid placement")
+				}
+				ports[portConfig.GetName()] = selectedPorts[portsIndex]
+				portsIndex++
+			}
+			runtimeDiff[jobmgrcommon.PortsField] = ports
+		}
+
+		runtimeDiff[jobmgrcommon.MessageField] = "Add hostname and ports"
+		runtimeDiff[jobmgrcommon.ReasonField] = "REASON_UPDATE_OFFER"
+
+		if cachedRuntime.GetGoalState() == task.TaskState_KILLED {
+			if cachedRuntime.GetState() != task.TaskState_KILLED {
+				// Received placement for task which needs to be killed,
+				// retry killing the task.
+				p.goalStateDriver.EnqueueTask(
+					jobID,
+					uint32(instanceID),
+					time.Now(),
+				)
+			}
+			// Skip launching of killed tasks.
+			skippedTaskIDs = append(skippedTaskIDs, ptaskID)
+			log.WithField("task_id", ptaskIDStr).
+				Info("skipping launch of killed task")
+			continue
+		}
+
+		// Patch task runtime with the generated runtime diff.
+		retry := 0
+		for retry < maxRetryCount {
+			_, _, err := cachedJob.PatchTasks(
+				ctx,
+				map[uint32]jobmgrcommon.RuntimeDiff{
+					uint32(instanceID): runtimeDiff,
+				},
+				false,
+			)
+			if err == nil {
+				runtime, _ := cachedTask.GetRuntime(ctx)
+				taskInfos[ptaskIDStr] = &lifecyclemgr.LaunchableTaskInfo{
+					TaskInfo: &task.TaskInfo{
+						Runtime:    runtime,
+						Config:     taskConfig,
+						InstanceId: uint32(instanceID),
+						JobId:      jobID,
+					},
+					ConfigAddOn: configAddOn,
+					Spec:        spec,
+				}
+				break
+			}
+
+			if common.IsTransientError(err) {
+				// TBD add a max retry to bail out after a few retries.
+				log.WithError(err).WithFields(log.Fields{
+					"job_id":      jobID,
+					"instance_id": instanceID,
+				}).Warn("retrying update task runtime on transient error")
+				retry++
+				continue
+			}
+
+			log.WithError(err).
+				WithFields(log.Fields{
+					"job_id":      jobID,
+					"instance_id": instanceID,
+				}).Error("cannot process placement due to non-transient db error")
+			delete(taskInfos, ptaskIDStr)
+			break
+		}
 	}
 
-	launchableTasks, skippedTasks, err := p.taskLauncher.GetLaunchableTasks(
+	return taskInfos, skippedTaskIDs, nil
+}
+
+func (p *processor) processPlacement(
+	ctx context.Context,
+	placement *resmgr.Placement,
+) {
+	var taskIDs []*mesos.TaskID
+	for _, t := range placement.GetTaskIDs() {
+		taskIDs = append(taskIDs, t.GetMesosTaskID())
+	}
+
+	launchableTaskInfos, skippedTaskIDs, err := p.prepareTasksForLaunch(
 		ctx,
-		tasks,
+		taskIDs,
 		placement.GetHostname(),
-		placement.GetAgentId(),
+		placement.GetAgentId().GetValue(),
 		placement.GetPorts(),
 	)
 	if err != nil {
+		if newErr := p.lm.TerminateLease(
+			ctx,
+			placement.GetHostname(),
+			placement.GetAgentId().GetValue(),
+			placement.GetHostOfferID().GetValue(),
+		); newErr != nil {
+			err = errors.Wrap(err, newErr.Error())
+		}
+		// We do not return error, so it should be logged here.
 		log.WithError(err).
 			WithFields(log.Fields{
 				"placement":   placement,
-				"tasks_total": len(tasks),
-			}).Error("Failed to get launchable tasks")
-
-		err = p.taskLauncher.TryReturnOffers(ctx, err, placement)
-		if err != nil {
-			log.WithError(err).
-				WithField("placement", placement).
-				Error("Failed to return offers for placement")
-		}
+				"tasks_total": len(taskIDs),
+			}).Error("failed to get launchable tasks")
+		p.metrics.TaskRequeuedOnLaunchFail.Inc(int64(len(taskIDs)))
 		return
 	}
 
-	launchableTaskInfos, tasksToSkip := p.createTaskInfos(ctx, launchableTasks)
-	skippedTasks = append(skippedTasks, tasksToSkip...)
-
-	if len(launchableTaskInfos) > 0 {
-
-		skippedTaskInfos, err := p.taskLauncher.Launch(
-			ctx,
-			launchableTaskInfos,
-			placement,
-		)
-		if err != nil {
-			p.processSkippedLaunches(ctx, launchableTaskInfos)
-			return
-		}
+	// Populate secrets in place in task config of launchableTaskInfos.
+	skippedTaskInfos := p.populateSecrets(ctx, launchableTaskInfos)
+	if len(skippedTaskInfos) != 0 {
+		// Process the task launches that were skipped due to transient DB
+		// errors when fetching secrets. Continue with the rest of the launches.
 		p.processSkippedLaunches(ctx, skippedTaskInfos)
-		// Finally, enqueue tasks into goalstate
-		p.enqueueTaskToGoalState(launchableTaskInfos)
 	}
+
+	err = p.lm.Launch(
+		ctx,
+		placement.GetHostOfferID().GetValue(),
+		placement.GetHostname(),
+		placement.GetAgentId().GetValue(),
+		launchableTaskInfos,
+		nil,
+	)
+	if err != nil {
+		// We do not return error, so it should be logged here.
+		log.WithError(err).
+			WithFields(log.Fields{
+				"placement":   placement,
+				"tasks_total": len(launchableTaskInfos),
+			}).Error("launch error, process skipped launches")
+		p.processSkippedLaunches(ctx, launchableTaskInfos)
+		return
+	}
+	p.enqueueTaskToGoalState(launchableTaskInfos)
 
 	// Kill skipped/unknown tasks. We ignore errors because that would indicate
 	// a channel/network error. We will retry when we can reconnect to
-	// resource-manager
-	p.KillResManagerTasks(ctx, skippedTasks)
+	// resource-manager.
+	p.KillResManagerTasks(ctx, skippedTaskIDs)
+}
+
+// populateSecrets populates the eligible tasks with secret data.
+// For the tasks which have transient errors when fetching the
+// secret data from DB, it returns them as skipped.
+func (p *processor) populateSecrets(
+	ctx context.Context,
+	taskInfos map[string]*lifecyclemgr.LaunchableTaskInfo,
+) map[string]*lifecyclemgr.LaunchableTaskInfo {
+	skippedTaskInfos := make(map[string]*lifecyclemgr.LaunchableTaskInfo)
+	for id, taskInfo := range taskInfos {
+		// If task config has secret volumes, populate secret data in config.
+		err := p.populateTaskConfigWithSecrets(ctx, taskInfo.Config)
+		if err != nil {
+			if yarpcerrors.IsNotFound(errors.Cause(err)) {
+				// This is not retryable and we will never recover
+				// from this error. Mark the task runtime as KILLED
+				// before dropping it so that we don't try to launch it
+				// again. No need to enqueue to goalstate engine here.
+				// The caller does that for all tasks in TaskInfo.
+
+				// TODO: Notify resmgr that the state of this task
+				// is failed and it should not retry this task
+				// Need a private resmgr API for this.
+				if err = p.updateTaskRuntime(
+					ctx,
+					id,
+					task.TaskState_KILLED,
+					"REASON_SECRET_NOT_FOUND",
+					err.Error(),
+				); err != nil {
+					// Not retrying here, worst case we will attempt to launch
+					// this task again from ProcessPlacement() call, and mark
+					// goalstate properly in the next iteration.
+					log.WithError(err).WithField("task_id", id).
+						Error("failed to update goalstate to KILLED")
+				}
+			} else {
+				// Skip this task in case of transient error but add it to
+				// skippedTaskInfos so that the caller can ask resmgr to
+				// launch this task again.
+				log.WithError(err).
+					WithField("task_id", id).
+					Error("populateSecrets failed. skipping task")
+				skippedTaskInfos[id] = taskInfo
+			}
+		}
+	}
+	return skippedTaskInfos
+}
+
+// populateTaskConfigWithSecrets checks task config for secret volumes.
+// If the config has volumes of type secret, it means that the Value field
+// of that secret contains the secret ID. This function queries
+// the DB to fetch the secret by secret ID and then replaces
+// the secret Value by the fetched secret data.
+// We do this to prevent secrets from being leaked as a part
+// of job or task config and populate the task config with
+// actual secrets just before task launch.
+func (p *processor) populateTaskConfigWithSecrets(
+	ctx context.Context,
+	taskConfig *task.TaskConfig,
+) error {
+	if taskConfig.GetContainer().GetType() != mesos.ContainerInfo_MESOS {
+		return nil
+	}
+	for _, volume := range taskConfig.GetContainer().GetVolumes() {
+		if volume.GetSource().GetType() == mesos.Volume_Source_SECRET &&
+			volume.GetSource().GetSecret().GetValue().GetData() != nil {
+			// Replace secret ID with actual secret here.
+			// This is done to make sure secrets are read from the DB
+			// when it is absolutely necessary and that they are not
+			// persisted in any place other than the secret_info table
+			// (for example as part of job/task config).
+			ctx, cancel := context.WithTimeout(
+				context.Background(), _defaultSecretInfoOpsTimeout)
+			defer cancel()
+
+			secretID := string(
+				volume.GetSource().GetSecret().GetValue().GetData())
+			secretInfoObj, err := p.secretInfoOps.GetSecret(
+				ctx,
+				secretID,
+			)
+
+			if err != nil {
+				p.metrics.TaskPopulateSecretFail.Inc(1)
+				return err
+			}
+			secretStr, err := base64.StdEncoding.DecodeString(
+				secretInfoObj.Data,
+			)
+			if err != nil {
+				p.metrics.TaskPopulateSecretFail.Inc(1)
+				return err
+			}
+			volume.GetSource().GetSecret().GetValue().Data =
+				[]byte(secretStr)
+		}
+	}
+	return nil
+}
+
+// updateTaskRuntime updates task runtime with goalstate, reason and message
+// for the given task id.
+func (p *processor) updateTaskRuntime(
+	ctx context.Context,
+	taskID string,
+	goalstate task.TaskState,
+	reason string,
+	message string,
+) error {
+	runtimeDiff := jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.GoalStateField: goalstate,
+		jobmgrcommon.ReasonField:    reason,
+		jobmgrcommon.MessageField:   message,
+	}
+	jobID, instanceID, err := util.ParseTaskID(taskID)
+	if err != nil {
+		return err
+	}
+	cachedJob := p.jobFactory.GetJob(&peloton.JobID{Value: jobID})
+	if cachedJob == nil {
+		return yarpcerrors.InternalErrorf("jobID %v not found in cache", jobID)
+	}
+	// Update the task in DB and cache, and then schedule to goalstate.
+	_, _, err = cachedJob.PatchTasks(
+		ctx,
+		map[uint32]jobmgrcommon.RuntimeDiff{uint32(instanceID): runtimeDiff},
+		false,
+	)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // processSkippedLaunches tries to kill the tasks in resmgr and
-// if the kill goes through enqueue the task into resmgr
+// if the kill goes through enqueue the task into resmgr.
 func (p *processor) processSkippedLaunches(
 	ctx context.Context,
-	taskInfoMap map[string]*launcher.LaunchableTaskInfo,
+	taskInfoMap map[string]*lifecyclemgr.LaunchableTaskInfo,
 ) {
 	var skippedTaskIDs []*peloton.TaskID
 	for id := range taskInfoMap {
 		skippedTaskIDs = append(skippedTaskIDs, &peloton.TaskID{Value: id})
 	}
-	// kill and enqueue skipped tasks back to resmgr to launch again, instead of
-	// waiting for resmgr timeout
+	// Kill and enqueue skipped tasks back to resmgr to launch again, instead of
+	// waiting for resmgr timeout.
 	if err := p.KillResManagerTasks(ctx, skippedTaskIDs); err == nil {
 		p.enqueueTasksToResMgr(ctx, taskInfoMap)
 	}
 }
 
-func (p *processor) enqueueTaskToGoalState(taskInfos map[string]*launcher.LaunchableTaskInfo) {
+func (p *processor) enqueueTaskToGoalState(
+	taskInfos map[string]*lifecyclemgr.LaunchableTaskInfo,
+) {
 	for id := range taskInfos {
 		jobID, instanceID, err := util.ParseTaskID(id)
 		if err != nil {
@@ -251,92 +614,6 @@ func (p *processor) enqueueTaskToGoalState(taskInfos map[string]*launcher.Launch
 			p.goalStateDriver,
 			cachedJob)
 	}
-}
-
-func (p *processor) createTaskInfos(
-	ctx context.Context,
-	lauchableTasks map[string]*launcher.LaunchableTask,
-) (map[string]*launcher.LaunchableTaskInfo, []*peloton.TaskID) {
-	taskInfos := make(map[string]*launcher.LaunchableTaskInfo)
-	skippedTasks := make([]*peloton.TaskID, 0)
-	for taskID, launchableTask := range lauchableTasks {
-		id, instanceID, err := util.ParseTaskID(taskID)
-		if err != nil {
-			continue
-		}
-		jobID := &peloton.JobID{Value: id}
-		cachedJob := p.jobFactory.AddJob(jobID)
-		cachedTask, err := cachedJob.AddTask(ctx, uint32(instanceID))
-		if err != nil {
-			log.WithError(err).
-				WithField("task_id", taskID).
-				Error("cannot add and recover task")
-			continue
-		}
-
-		cachedRuntime, err := cachedTask.GetRuntime(ctx)
-		if err != nil {
-			log.WithError(err).
-				WithField("task_id", taskID).
-				Error("cannot fetch task runtime")
-			continue
-		}
-
-		if cachedRuntime.GetGoalState() == task.TaskState_KILLED {
-			if cachedRuntime.GetState() != task.TaskState_KILLED {
-				// Received placement for task which needs to be killed, retry killing the task.
-				p.goalStateDriver.EnqueueTask(jobID, uint32(instanceID), time.Now())
-			}
-
-			// Skip launching of deleted tasks.
-			skippedTasks = append(skippedTasks, &peloton.TaskID{Value: taskID})
-			log.WithField("task_id", taskID).Info("skipping launch of killed task")
-			continue
-		}
-		retry := 0
-		for retry < maxRetryCount {
-			_, _, err := cachedJob.PatchTasks(
-				ctx,
-				map[uint32]jobmgrcommon.RuntimeDiff{
-					uint32(instanceID): launchableTask.RuntimeDiff,
-				},
-				false,
-			)
-			if err == nil {
-				runtime, _ := cachedTask.GetRuntime(ctx)
-				taskInfos[taskID] = &launcher.LaunchableTaskInfo{
-					TaskInfo: &task.TaskInfo{
-						Runtime:    runtime,
-						Config:     launchableTask.Config,
-						InstanceId: uint32(instanceID),
-						JobId:      jobID,
-					},
-					ConfigAddOn: launchableTask.ConfigAddOn,
-					Spec:        launchableTask.Spec,
-				}
-				break
-			}
-
-			if common.IsTransientError(err) {
-				// TBD add a max retry to bail out after a few retries.
-				log.WithError(err).WithFields(log.Fields{
-					"job_id":      id,
-					"instance_id": instanceID,
-				}).Warn("retrying update task runtime on transient error")
-				retry++
-				continue
-			}
-
-			log.WithError(err).
-				WithFields(log.Fields{
-					"job_id":      id,
-					"instance_id": instanceID,
-				}).Error("cannot process placement due to non-transient db error")
-			delete(taskInfos, taskID)
-			break
-		}
-	}
-	return taskInfos, skippedTasks
 }
 
 func (p *processor) getPlacements() ([]*resmgr.Placement, error) {
@@ -377,7 +654,10 @@ func (p *processor) getPlacements() ([]*resmgr.Placement, error) {
 }
 
 // enqueueTask enqueues given task to resmgr to launch again.
-func (p *processor) enqueueTasksToResMgr(ctx context.Context, tasks map[string]*launcher.LaunchableTaskInfo) (err error) {
+func (p *processor) enqueueTasksToResMgr(
+	ctx context.Context,
+	tasks map[string]*lifecyclemgr.LaunchableTaskInfo,
+) (err error) {
 	defer func() {
 		if err == nil {
 			return

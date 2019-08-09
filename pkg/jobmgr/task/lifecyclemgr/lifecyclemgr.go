@@ -20,6 +20,7 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+	"github.com/uber/peloton/.gen/peloton/private/models"
 
 	"github.com/uber/peloton/pkg/common/api"
 
@@ -41,10 +42,12 @@ var (
 		"invalid offer to launch tasks")
 )
 
-// LaunchableTaskInfo contains the info of a task to be launched
+// LaunchableTaskInfo contains the info of a task to be launched.
 type LaunchableTaskInfo struct {
 	*task.TaskInfo
-	// Spec is the pod spec for the pod to be launched
+	// ConfigAddOn is the task config add on.
+	ConfigAddOn *models.ConfigAddOn
+	// Spec is the pod spec for the pod to be launched.
 	Spec *pbpod.PodSpec
 }
 

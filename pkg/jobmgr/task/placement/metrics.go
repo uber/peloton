@@ -21,6 +21,11 @@ import (
 // Metrics is the struct containing all the counters that track internal state
 // of placement processor.
 type Metrics struct {
+	// Increment this counter when we see failure to
+	// populate the task's volume secret from DB
+	TaskPopulateSecretFail   tally.Counter
+	TaskRequeuedOnLaunchFail tally.Counter
+
 	GetPlacement              tally.Counter
 	GetPlacementFail          tally.Counter
 	GetPlacementsCallDuration tally.Timer
@@ -37,5 +42,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		GetPlacement:              taskAPIScope.Counter("get_placement"),
 		GetPlacementFail:          taskFailScope.Counter("get_placement"),
 		GetPlacementsCallDuration: getPlacementScope.Timer("call_duration"),
+		TaskPopulateSecretFail:    taskFailScope.Counter("populate_secret"),
+		TaskRequeuedOnLaunchFail:  taskFailScope.Counter("launch_fail_requeued_total"),
 	}
 }

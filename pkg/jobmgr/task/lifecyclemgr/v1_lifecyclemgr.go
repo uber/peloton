@@ -23,6 +23,7 @@ import (
 	v1_hostsvc "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc"
 
 	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/common/util"
 
 	"github.com/pkg/errors"
@@ -86,6 +87,9 @@ func (l *v1LifecycleMgr) Launch(
 				pod.Runtime.GetMesosTaskId()),
 			Spec: pod.Spec,
 		}
+		launchablePod.Spec.Labels = append(
+			launchablePod.Spec.Labels,
+			api.ConvertLabels(pod.ConfigAddOn.GetSystemLabels())...)
 		launchablePods = append(launchablePods, &launchablePod)
 	}
 

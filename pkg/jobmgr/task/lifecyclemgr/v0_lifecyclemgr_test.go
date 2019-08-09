@@ -17,8 +17,10 @@ package lifecyclemgr
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"strings"
 	"testing"
+	"time"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
@@ -28,7 +30,9 @@ import (
 	v0_host_mocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 
 	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/common/backoff"
 	"github.com/uber/peloton/pkg/common/rpc"
+	"github.com/uber/peloton/pkg/common/util"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -81,6 +85,7 @@ func (suite *v0LifecycleTestSuite) SetupTest() {
 		hostManagerV0: suite.mockHostMgr,
 		lockState:     &lockState{state: 0},
 		metrics:       NewMetrics(tally.NoopScope),
+		retryPolicy:   backoff.NewRetryPolicy(1, 1*time.Second),
 	}
 	suite.jobID = "af647b98-0ae0-4dac-be42-c74a524dfe44"
 	suite.instanceID = 89
@@ -181,6 +186,30 @@ func (suite *v0LifecycleTestSuite) TestNew() {
 	})
 
 	_ = newV0LifecycleMgr(dispatcher, tally.NoopScope)
+}
+
+// TestKillAndReserve tests successful lm.killAndReserve
+func (suite *v0LifecycleTestSuite) TestKillAndReserve() {
+	hostname := "host1"
+	pelotonTaskID, _ := util.ParseTaskIDFromMesosTaskID(suite.mesosTaskID)
+
+	suite.mockHostMgr.EXPECT().
+		KillAndReserveTasks(gomock.Any(), &v0_hostsvc.KillAndReserveTasksRequest{
+			Entries: []*v0_hostsvc.KillAndReserveTasksRequest_Entry{
+				{
+					Id:            &peloton.TaskID{Value: pelotonTaskID},
+					TaskId:        &mesos.TaskID{Value: &suite.mesosTaskID},
+					HostToReserve: hostname,
+				},
+			},
+		})
+	err := suite.lm.Kill(
+		suite.ctx,
+		suite.mesosTaskID,
+		hostname,
+		nil,
+	)
+	suite.Nil(err)
 }
 
 // TestKill tests successful lm.Kill
@@ -408,28 +437,70 @@ func (suite *v0LifecycleTestSuite) TestLaunchErrors() {
 	tmp := createTestTask(1)
 	taskID := tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId)
 	taskInfos[taskID] = tmp
+	hostname := "host"
+	leaseID := uuid.New()
+
+	suite.mockHostMgr.EXPECT().
+		ReleaseHostOffers(gomock.Any(), &v0_hostsvc.ReleaseHostOffersRequest{
+			HostOffers: []*v0_hostsvc.HostOffer{{
+				Hostname: hostname,
+				AgentId:  &mesos.AgentID{Value: &hostname},
+				Id:       &peloton.HostOfferID{Value: leaseID},
+			}}}).Return(&v0_hostsvc.ReleaseHostOffersResponse{}, nil)
 
 	err := suite.lm.Launch(
 		context.Background(),
-		"",
-		"host",
-		"host",
+		leaseID,
+		hostname,
+		hostname,
 		nil,
 		nil,
 	)
 	suite.Error(err)
 	suite.True(yarpcerrors.IsInvalidArgument(err))
 
+	suite.mockHostMgr.EXPECT().
+		ReleaseHostOffers(gomock.Any(), &v0_hostsvc.ReleaseHostOffersRequest{
+			HostOffers: []*v0_hostsvc.HostOffer{{
+				Hostname: hostname,
+				AgentId:  &mesos.AgentID{Value: &hostname},
+				Id:       &peloton.HostOfferID{Value: leaseID},
+			}}}).Return(&v0_hostsvc.ReleaseHostOffersResponse{}, nil)
 	err = suite.lm.Launch(
 		context.Background(),
-		"",
-		"host",
-		"host",
+		leaseID,
+		hostname,
+		hostname,
 		taskInfos,
 		rate.NewLimiter(0, 0),
 	)
 	suite.Error(err)
 	suite.True(yarpcerrors.IsResourceExhausted(err))
+
+	suite.mockHostMgr.EXPECT().
+		LaunchTasks(
+			gomock.Any(),
+			gomock.Any()).
+		Return(nil, fmt.Errorf("test error"))
+	// a failure to launch would trigger a call to ReleaseHostOffersRequest.
+	suite.mockHostMgr.EXPECT().
+		ReleaseHostOffers(gomock.Any(), &v0_hostsvc.ReleaseHostOffersRequest{
+			HostOffers: []*v0_hostsvc.HostOffer{{
+				Hostname: hostname,
+				AgentId:  &mesos.AgentID{Value: &hostname},
+				Id:       &peloton.HostOfferID{Value: leaseID},
+			}}}).Return(&v0_hostsvc.ReleaseHostOffersResponse{}, nil)
+
+	err = suite.lm.Launch(
+		context.Background(),
+		leaseID,
+		hostname,
+		hostname,
+		taskInfos,
+		nil,
+	)
+	suite.Error(err)
+	suite.True(strings.Contains(err.Error(), "test error"))
 }
 
 // TestTerminateLease tests successful lm.TerminateLease.
@@ -452,4 +523,46 @@ func (suite *v0LifecycleTestSuite) TestTerminateLease() {
 		leaseID,
 	)
 	suite.Nil(err)
+}
+
+// TestPopulateExecutorData tests populateExecutorData function to properly
+// fill out executor data in the launchable task, with the placement info
+// passed in.
+func (suite *v0LifecycleTestSuite) TestPopulateExecutorData() {
+	taskID := "067687c5-2461-475f-b006-68e717f0493b-3-1"
+	agentID := "ca6bd27e-9abb-4a2e-9860-0a2c2a942510-S0"
+	executorType := mesos.ExecutorInfo_CUSTOM
+	launchableTask := &v0_hostsvc.LaunchableTask{
+		Config: &task.TaskConfig{
+			Executor: &mesos.ExecutorInfo{
+				Type: &executorType,
+				Data: getTaskConfigData(),
+			},
+		},
+		TaskId: &mesos.TaskID{
+			Value: &taskID,
+		},
+		Ports: map[string]uint32{"test": 12345},
+	}
+	err := populateExecutorData(
+		launchableTask,
+		"192.168.33.7",
+		agentID,
+	)
+	suite.NoError(err)
+	defaultExecutorType := mesos.ExecutorInfo_DEFAULT
+	launchableTask.Config.Executor.Type = &defaultExecutorType
+	err = populateExecutorData(
+		launchableTask,
+		"192.168.33.7",
+		agentID,
+	)
+	suite.NoError(err)
+}
+
+// getTaskConfigData returns a sample binary-serialized TaskConfig
+// thrift struct from file
+func getTaskConfigData() []byte {
+	data, _ := ioutil.ReadFile(testTaskConfigData)
+	return data
 }

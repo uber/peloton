@@ -47,7 +47,6 @@ import (
 	"github.com/uber/peloton/pkg/jobmgr/task/activermtask"
 	"github.com/uber/peloton/pkg/jobmgr/task/deadline"
 	"github.com/uber/peloton/pkg/jobmgr/task/event"
-	"github.com/uber/peloton/pkg/jobmgr/task/launcher"
 	"github.com/uber/peloton/pkg/jobmgr/task/placement"
 	"github.com/uber/peloton/pkg/jobmgr/task/preemptor"
 	"github.com/uber/peloton/pkg/jobmgr/tasksvc"
@@ -540,16 +539,6 @@ func main() {
 			Fatal("fail to register workflowCheck in backgroundManager")
 	}
 
-	// TODO: We need to cleanup the client names
-	launcher.InitTaskLauncher(
-		dispatcher,
-		common.PelotonHostManager,
-		jobFactory,
-		ormStore,
-		rootScope,
-		cfg.JobManager.HostManagerAPIVersion,
-	)
-
 	goalStateDriver := goalstate.NewDriver(
 		dispatcher,
 		store, // store implements JobStore
@@ -570,7 +559,8 @@ func main() {
 		common.PelotonResourceManager,
 		jobFactory,
 		goalStateDriver,
-		launcher.GetLauncher(),
+		cfg.JobManager.HostManagerAPIVersion,
+		ormStore,
 		&cfg.JobManager.Placement,
 		rootScope,
 	)
@@ -685,6 +675,7 @@ func main() {
 		common.PelotonHostManager,
 		logmanager.NewLogManager(&http.Client{Timeout: _httpClientTimeout}),
 		activeJobCache,
+		cfg.JobManager.HostManagerAPIVersion,
 	)
 
 	podsvc.InitV1AlphaPodServiceHandler(

@@ -30,6 +30,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
 	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/common/leader"
 	"github.com/uber/peloton/pkg/common/util"
 	yarpcutil "github.com/uber/peloton/pkg/common/util/yarpc"
@@ -39,7 +40,7 @@ import (
 	"github.com/uber/peloton/pkg/jobmgr/logmanager"
 	jobmgr_task "github.com/uber/peloton/pkg/jobmgr/task"
 	"github.com/uber/peloton/pkg/jobmgr/task/activermtask"
-	"github.com/uber/peloton/pkg/jobmgr/task/launcher"
+	"github.com/uber/peloton/pkg/jobmgr/task/lifecyclemgr"
 	goalstateutil "github.com/uber/peloton/pkg/jobmgr/util/goalstate"
 	handlerutil "github.com/uber/peloton/pkg/jobmgr/util/handler"
 	taskutil "github.com/uber/peloton/pkg/jobmgr/util/task"
@@ -76,7 +77,9 @@ func InitServiceHandler(
 	mesosAgentWorkDir string,
 	hostMgrClientName string,
 	logManager logmanager.LogManager,
-	activeRMTasks activermtask.ActiveRMTasks) {
+	activeRMTasks activermtask.ActiveRMTasks,
+	hmVersion api.Version,
+) {
 
 	handler := &serviceHandler{
 		taskStore:          taskStore,
@@ -87,7 +90,7 @@ func InitServiceHandler(
 		podEventsOps:       ormobjects.NewPodEventsOps(ormStore),
 		metrics:            NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
 		resmgrClient:       resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
-		taskLauncher:       launcher.GetLauncher(),
+		lm:                 lifecyclemgr.New(hmVersion, d, parent),
 		jobFactory:         jobFactory,
 		goalStateDriver:    goalStateDriver,
 		candidate:          candidate,
@@ -109,7 +112,7 @@ type serviceHandler struct {
 	podEventsOps       ormobjects.PodEventsOps
 	metrics            *Metrics
 	resmgrClient       resmgrsvc.ResourceManagerServiceYARPCClient
-	taskLauncher       launcher.Launcher
+	lm                 lifecyclemgr.Manager
 	jobFactory         cached.JobFactory
 	goalStateDriver    goalstate.Driver
 	candidate          leader.Candidate

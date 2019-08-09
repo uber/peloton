@@ -15,13 +15,17 @@
 package lifecyclemgr
 
 import (
+	"bytes"
 	"context"
+	"strings"
 	"time"
 
 	"github.com/uber/peloton/.gen/mesos/v1"
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	v0_hostsvc "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"github.com/uber/peloton/.gen/peloton/private/models"
+	aurora "github.com/uber/peloton/.gen/thrift/aurora/api"
 
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/backoff"
@@ -30,6 +34,8 @@ import (
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
+	"go.uber.org/thriftrw/protocol"
+	"go.uber.org/thriftrw/wire"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/yarpcerrors"
 	"golang.org/x/time/rate"
@@ -44,6 +50,20 @@ type v0LifecycleMgr struct {
 	hostManagerV0 v0_hostsvc.InternalHostServiceYARPCClient
 	metrics       *Metrics
 	retryPolicy   backoff.RetryPolicy
+}
+
+// Assignment information used to generate "AssignedTask"
+type assignmentInfo struct {
+	// Mesos task id
+	taskID string
+	// Mesos slave id that this task has been assigned to
+	slaveID string
+	// The name of the machine that this task has been assigned to
+	slaveHost string
+	// Ports reserved on the machine while this task is running
+	assignedPorts map[string]int32
+	// The instance ID assigned to this task
+	instanceID int32
 }
 
 // newV0LifecycleMgr returns an instance of the v0 lifecycle manager.
@@ -127,21 +147,33 @@ func (l *v0LifecycleMgr) Launch(
 	agentID string,
 	tasks map[string]*LaunchableTaskInfo,
 	rateLimiter *rate.Limiter,
-) error {
+) (err error) {
+	defer func() {
+		if err != nil && err != errLaunchInvalidOffer {
+			if newErr := l.TerminateLease(
+				ctx,
+				hostname,
+				agentID,
+				leaseID,
+			); newErr != nil {
+				err = errors.Wrap(err, newErr.Error())
+			}
+		}
+	}()
+
 	if len(tasks) == 0 {
 		return errEmptyTasks
 	}
 	// enforce rate limit
 	if rateLimiter != nil && !rateLimiter.Allow() {
 		l.metrics.LaunchRateLimit.Inc(1)
-		return yarpcerrors.ResourceExhaustedErrorf(
-			"rate limit reached for kill")
+		return yarpcerrors.ResourceExhaustedErrorf("rate limit reached for kill")
 	}
 
 	log.WithField("tasks", tasks).Debug("Launching Tasks")
 	callStart := time.Now()
 
-	err := backoff.Retry(
+	err = backoff.Retry(
 		func() error {
 			return l.launchBatchTasks(
 				ctx,
@@ -201,6 +233,11 @@ func (l *v0LifecycleMgr) launchBatchTasks(
 			),
 			},
 		}
+		err := populateExecutorData(&launchableTask, hostname, agentID)
+		if err != nil {
+			return err
+		}
+		mutateSystemLabels(&launchableTask, launchableTaskInfo.ConfigAddOn)
 		launchableTasks = append(launchableTasks, &launchableTask)
 	}
 
@@ -338,4 +375,108 @@ func (l *v0LifecycleMgr) TerminateLease(
 	}
 	l.metrics.TerminateLease.Inc(1)
 	return nil
+}
+
+// populateExecutorData transforms executor data in TaskConfig to data
+// usable by actual custom executor. Currently, it only supports aurora
+// thermos executor, in which case, it will pack the existing executor
+// data along with placement information to binary-serialized AssignedTask
+// thrift struct.
+func populateExecutorData(
+	launchableTask *v0_hostsvc.LaunchableTask,
+	hostname string,
+	agentID string,
+) error {
+	executorData := launchableTask.GetConfig().GetExecutor().GetData()
+	if launchableTask.GetConfig().GetExecutor().GetType() !=
+		mesos.ExecutorInfo_CUSTOM || len(executorData) == 0 {
+		return nil
+	}
+
+	taskID := launchableTask.GetTaskId().GetValue()
+	_, instanceID, err := util.ParseJobAndInstanceID(taskID)
+	if err != nil {
+		return err
+	}
+
+	assignedPorts := make(map[string]int32)
+	for name, num := range launchableTask.GetPorts() {
+		assignedPorts[name] = int32(num)
+	}
+	assignment := assignmentInfo{
+		taskID:        taskID,
+		slaveID:       agentID,
+		slaveHost:     hostname,
+		assignedPorts: assignedPorts,
+		instanceID:    int32(instanceID),
+	}
+
+	transformedData, err := generateAssignedTask(executorData, assignment)
+	if err != nil {
+		return err
+	}
+	launchableTask.GetConfig().GetExecutor().Data = transformedData
+
+	return nil
+}
+
+// generateAssignedTask takes in binary form of "TaskConfig" thrift struct
+// along with task assignment information, and generates "AssignedTask"
+// thrift struct in binary form.
+func generateAssignedTask(
+	taskConfigData []byte,
+	assignment assignmentInfo,
+) ([]byte, error) {
+	taskConfigWireValue, err := protocol.Binary.Decode(
+		bytes.NewReader(taskConfigData),
+		wire.TStruct,
+	)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	taskConfig := &aurora.TaskConfig{}
+	err = taskConfig.FromWire(taskConfigWireValue)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	assignedTask := &aurora.AssignedTask{}
+	assignedTask.TaskId = &assignment.taskID
+	assignedTask.SlaveId = &assignment.slaveID
+	assignedTask.SlaveHost = &assignment.slaveHost
+	assignedTask.Task = taskConfig
+	assignedTask.AssignedPorts = assignment.assignedPorts
+	assignedTask.InstanceId = &assignment.instanceID
+
+	assignedTaskWireValue, err := assignedTask.ToWire()
+	if err != nil {
+		return []byte{}, err
+	}
+	var assignedTaskBuffer bytes.Buffer
+	err = protocol.Binary.Encode(assignedTaskWireValue, &assignedTaskBuffer)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return assignedTaskBuffer.Bytes(), nil
+}
+
+// Strip off labels with prefix common.SystemLabelPrefix. This is a temporary
+// fix to ensure job creates dont fail on clients adding the system labels
+// TODO: remove this once all Peloton clients have been modified
+// to not add these labels to jobs submitted through them.
+func mutateSystemLabels(
+	launchableTask *v0_hostsvc.LaunchableTask,
+	addOn *models.ConfigAddOn,
+) {
+	var labels []*peloton.Label
+	for _, label := range launchableTask.GetConfig().GetLabels() {
+		if !strings.HasPrefix(label.GetKey(), common.SystemLabelPrefix+".") {
+			labels = append(labels, label)
+		}
+	}
+	launchableTask.Config.Labels = labels
+	launchableTask.Config.Labels = append(
+		launchableTask.Config.Labels, addOn.GetSystemLabels()...)
 }

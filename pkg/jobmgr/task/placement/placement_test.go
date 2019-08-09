@@ -16,10 +16,35 @@ package placement
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"sync"
 	"testing"
 	"time"
+
+	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	"github.com/uber/peloton/.gen/peloton/api/v0/job"
+	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"github.com/uber/peloton/.gen/peloton/private/models"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
+	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
+	resmocks "github.com/uber/peloton/.gen/peloton/private/resmgrsvc/mocks"
+	lmmocks "github.com/uber/peloton/pkg/jobmgr/task/lifecyclemgr/mocks"
+	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
+
+	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/common/api"
+	"github.com/uber/peloton/pkg/common/lifecycle"
+	"github.com/uber/peloton/pkg/common/rpc"
+	"github.com/uber/peloton/pkg/common/util"
+	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
+	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
+	goalstatemocks "github.com/uber/peloton/pkg/jobmgr/goalstate/mocks"
+	"github.com/uber/peloton/pkg/jobmgr/task/lifecyclemgr"
+	"github.com/uber/peloton/pkg/storage/objects"
+	ormstore "github.com/uber/peloton/pkg/storage/objects"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -27,30 +52,16 @@ import (
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
-
-	mesos "github.com/uber/peloton/.gen/mesos/v1"
-	"github.com/uber/peloton/.gen/peloton/api/v0/job"
-	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
-	"github.com/uber/peloton/.gen/peloton/api/v0/task"
-	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	"github.com/uber/peloton/.gen/peloton/private/resmgr"
-	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
-	resmocks "github.com/uber/peloton/.gen/peloton/private/resmgrsvc/mocks"
-
-	"github.com/uber/peloton/pkg/common/lifecycle"
-	"github.com/uber/peloton/pkg/common/rpc"
-	"github.com/uber/peloton/pkg/common/util"
-	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
-	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
-	goalstatemocks "github.com/uber/peloton/pkg/jobmgr/goalstate/mocks"
-	"github.com/uber/peloton/pkg/jobmgr/task/launcher"
-	launchermocks "github.com/uber/peloton/pkg/jobmgr/task/launcher/mocks"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 const (
-	_testJobID = "bca875f5-322a-4439-b0c9-63e3cf9f982e"
-	taskIDFmt  = _testJobID + "-%d-%s"
-	testPort   = uint32(100)
+	_testJobID     = "bca875f5-322a-4439-b0c9-63e3cf9f982e"
+	taskIDFmt      = _testJobID + "-%d-%s"
+	testPort       = uint32(100)
+	testSecretPath = "/tmp/secret"
+	testSecretStr  = "test-data"
+	testSecretID   = "bca875f5-322a-4439-b0c9-63e3cf9f982f"
 )
 
 var (
@@ -61,6 +72,35 @@ var (
 		FdLimit:     10,
 	}
 )
+
+func createLaunchableTaskInfos(
+	numTasks int,
+	useSecrets bool,
+) map[string]*lifecyclemgr.LaunchableTaskInfo {
+	launchableTaskInfos := make(map[string]*lifecyclemgr.LaunchableTaskInfo, numTasks)
+
+	mesosContainerizer := mesos.ContainerInfo_MESOS
+
+	for i := 0; i < numTasks; i++ {
+		tmp, _ := createTestTask(i)
+		taskID := &peloton.TaskID{
+			Value: tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId),
+		}
+
+		if useSecrets {
+			tmp.GetConfig().Container = &mesos.ContainerInfo{
+				Type: &mesosContainerizer,
+			}
+			tmp.GetConfig().GetContainer().Volumes = []*mesos.Volume{
+				util.CreateSecretVolume(testSecretPath, testSecretID)}
+		}
+
+		launchableTaskInfos[taskID.GetValue()] = &lifecyclemgr.LaunchableTaskInfo{
+			TaskInfo: tmp,
+		}
+	}
+	return launchableTaskInfos
+}
 
 func createTestTask(instanceID int) (*task.TaskInfo, jobmgrcommon.RuntimeDiff) {
 	var tid = fmt.Sprintf(taskIDFmt, instanceID, uuid.NewUUID().String())
@@ -123,11 +163,13 @@ type PlacementTestSuite struct {
 	ctrl            *gomock.Controller
 	resMgrClient    *resmocks.MockResourceManagerServiceYARPCClient
 	pp              *processor
-	taskLauncher    *launchermocks.MockLauncher
 	jobFactory      *cachedmocks.MockJobFactory
 	goalStateDriver *goalstatemocks.MockDriver
 	cachedJob       *cachedmocks.MockJob
 	cachedTask      *cachedmocks.MockTask
+	lmMock          *lmmocks.MockManager
+	secretInfoOps   *objectmocks.MockSecretInfoOps
+	taskConfigV2Ops *objectmocks.MockTaskConfigV2Ops
 	config          *Config
 	metrics         *Metrics
 	scope           tally.Scope
@@ -141,7 +183,9 @@ func (suite *PlacementTestSuite) SetupTest() {
 	suite.cachedTask = cachedmocks.NewMockTask(suite.ctrl)
 	suite.resMgrClient =
 		resmocks.NewMockResourceManagerServiceYARPCClient(suite.ctrl)
-	suite.taskLauncher = launchermocks.NewMockLauncher(suite.ctrl)
+	suite.lmMock = lmmocks.NewMockManager(suite.ctrl)
+	suite.taskConfigV2Ops = objectmocks.NewMockTaskConfigV2Ops(suite.ctrl)
+	suite.secretInfoOps = objectmocks.NewMockSecretInfoOps(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
 	suite.goalStateDriver = goalstatemocks.NewMockDriver(suite.ctrl)
 	suite.config = &Config{
@@ -151,7 +195,9 @@ func (suite *PlacementTestSuite) SetupTest() {
 		config:          suite.config,
 		resMgrClient:    suite.resMgrClient,
 		metrics:         suite.metrics,
-		taskLauncher:    suite.taskLauncher,
+		lm:              suite.lmMock,
+		taskConfigV2Ops: suite.taskConfigV2Ops,
+		secretInfoOps:   suite.secretInfoOps,
 		jobFactory:      suite.jobFactory,
 		goalStateDriver: suite.goalStateDriver,
 		lifeCycle:       lifecycle.NewLifeCycle(),
@@ -186,9 +232,9 @@ func (suite *PlacementTestSuite) TestMultipleTasksPlacements() {
 		hostOffers = append(hostOffers, createHostOffer(i, rs))
 	}
 
-	// Generate Placements per host offer
+	// Generate Placements per host offer.
 	for i := 0; i < numHostOffers; i++ {
-		p := createPlacements(testTasks[i], hostOffers[i])
+		p := createPlacements([]*task.TaskInfo{testTasks[i]}, hostOffers[i])
 		placements[i] = p
 	}
 
@@ -211,55 +257,40 @@ func (suite *PlacementTestSuite) TestMultipleTasksPlacements() {
 // This test ensures placement engine, one start can dequeue placements, and
 // then call launcher to launch the placements.
 func (suite *PlacementTestSuite) TestTaskPlacementNoError() {
-	testTask, testRuntimeDiff := createTestTask(0) // taskinfo
+	testTask, _ := createTestTask(0) // taskinfo.
 	rs := createResources(float64(1))
 	hostOffer := createHostOffer(0, rs)
-	p := createPlacements(testTask, hostOffer)
-
-	taskID := &peloton.TaskID{
-		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
-	}
-
-	var tasks []*mesos.TaskID
-	for _, t := range p.GetTaskIDs() {
-		tasks = append(tasks, t.GetMesosTaskID())
-	}
+	p := createPlacements([]*task.TaskInfo{testTask}, hostOffer)
 
 	gomock.InOrder(
-		suite.taskLauncher.EXPECT().
-			GetLaunchableTasks(
-				gomock.Any(),
-				tasks,
-				p.Hostname,
-				p.AgentId,
-				p.Ports,
-			).Return(
-			map[string]*launcher.LaunchableTask{
-				taskID.Value: {
-					RuntimeDiff: testRuntimeDiff,
-					Config:      testTask.Config,
-				},
-			},
-			nil,
-			nil),
 		suite.jobFactory.EXPECT().
-			AddJob(testTask.JobId).Return(suite.cachedJob),
+			GetJob(testTask.JobId).Return(suite.cachedJob),
 		suite.cachedJob.EXPECT().
 			AddTask(gomock.Any(), uint32(0)).
 			Return(suite.cachedTask, nil),
 		suite.cachedTask.EXPECT().
 			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
+		suite.taskConfigV2Ops.EXPECT().
+			GetTaskConfig(gomock.Any(), testTask.JobId, uint32(0), gomock.Any()).
+			Return(testTask.Config, &models.ConfigAddOn{}, nil),
 		suite.cachedJob.EXPECT().
 			PatchTasks(gomock.Any(), gomock.Any(), false).
 			Return(nil, nil, nil),
 		suite.cachedTask.EXPECT().
 			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
-		suite.taskLauncher.EXPECT().
-			Launch(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(
-				map[string]*launcher.LaunchableTaskInfo{},
+
+		suite.lmMock.EXPECT().
+			Launch(
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
 				nil,
-			),
+			).Return(
+			nil,
+		),
+
 		suite.goalStateDriver.EXPECT().
 			EnqueueTask(testTask.JobId, testTask.InstanceId, gomock.Any()).Return(),
 		suite.jobFactory.EXPECT().
@@ -275,110 +306,49 @@ func (suite *PlacementTestSuite) TestTaskPlacementNoError() {
 	suite.pp.processPlacement(context.Background(), p)
 }
 
-func (suite *PlacementTestSuite) TestTaskPlacementGetTaskError() {
+// TestTaskPlacementKillSkippedTasks tests processPlacement action to simulate
+// resmgr kill for skipped tasks.
+func (suite *PlacementTestSuite) TestTaskPlacementKillSkippedTasks() {
 	testTask, _ := createTestTask(0) // taskinfo
 	rs := createResources(float64(1))
 	hostOffer := createHostOffer(0, rs)
-	p := createPlacements(testTask, hostOffer)
-
-	var tasks []*mesos.TaskID
-	for _, t := range p.GetTaskIDs() {
-		tasks = append(tasks, t.GetMesosTaskID())
-	}
-
-	gomock.InOrder(
-		suite.taskLauncher.EXPECT().
-			GetLaunchableTasks(
-				gomock.Any(),
-				tasks,
-				p.Hostname,
-				p.AgentId,
-				p.Ports,
-			).Return(nil, nil, fmt.Errorf("fake launch error")),
-		suite.taskLauncher.EXPECT().
-			TryReturnOffers(gomock.Any(), gomock.Any(), p).Return(nil),
-	)
-
-	suite.pp.processPlacement(context.Background(), p)
-}
-
-// TestTaskPlacementKillSkippedTasksError tests ProcessPlacement
-// action when the resmgr kill for skipped tasks fails
-func (suite *PlacementTestSuite) TestTaskPlacementKillSkippedTasksError() {
-	testTask, testRuntimeDiff := createTestTask(0) // taskinfo
-	rs := createResources(float64(1))
-	hostOffer := createHostOffer(0, rs)
-	p := createPlacements(testTask, hostOffer)
-
+	p := createPlacements([]*task.TaskInfo{testTask}, hostOffer)
 	taskID := &peloton.TaskID{
 		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
 	}
 
-	var tasks []*mesos.TaskID
-	for _, t := range p.GetTaskIDs() {
-		tasks = append(tasks, t.GetMesosTaskID())
-	}
-
+	emptyTaskInfos := make(map[string]*lifecyclemgr.LaunchableTaskInfo, 0)
 	gomock.InOrder(
-		suite.taskLauncher.EXPECT().
-			GetLaunchableTasks(
-				gomock.Any(),
-				tasks,
-				p.Hostname,
-				p.AgentId,
-				p.Ports,
-			).Return(
-			map[string]*launcher.LaunchableTask{
-				taskID.Value: {
-					RuntimeDiff: testRuntimeDiff,
-					Config:      testTask.Config,
-				},
-			},
-			nil,
-			nil),
 		suite.jobFactory.EXPECT().
-			AddJob(testTask.JobId).Return(suite.cachedJob),
-		suite.cachedJob.EXPECT().
-			AddTask(gomock.Any(), uint32(0)).
-			Return(suite.cachedTask, nil),
-		suite.cachedTask.EXPECT().
-			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
-		suite.cachedJob.EXPECT().
-			PatchTasks(gomock.Any(), gomock.Any(), false).
-			Return(nil, nil, nil),
-		suite.cachedTask.EXPECT().
-			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
-		suite.taskLauncher.EXPECT().
-			Launch(gomock.Any(), gomock.Any(), gomock.Any()).Return(
-			map[string]*launcher.LaunchableTaskInfo{
-				taskID.GetValue(): {},
-			},
+			GetJob(testTask.JobId).Return(nil),
+
+		suite.lmMock.EXPECT().
+			Launch(
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+				emptyTaskInfos,
+				nil,
+			).Return(
 			nil,
 		),
 		suite.resMgrClient.EXPECT().
 			KillTasks(gomock.Any(), &resmgrsvc.KillTasksRequest{
 				Tasks: []*peloton.TaskID{taskID},
-			}).Return(nil, fmt.Errorf("fake kill error")),
-		suite.goalStateDriver.EXPECT().
-			EnqueueTask(testTask.JobId, testTask.InstanceId, gomock.Any()).Return(),
-		suite.jobFactory.EXPECT().
-			AddJob(testTask.JobId).Return(suite.cachedJob),
-		suite.cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
-		suite.goalStateDriver.EXPECT().
-			JobRuntimeDuration(job.JobType_BATCH).
-			Return(1*time.Second),
-		suite.goalStateDriver.EXPECT().
-			EnqueueJob(testTask.JobId, gomock.Any()).Return(),
+			}).Return(&resmgrsvc.KillTasksResponse{}, nil),
 	)
-
 	suite.pp.processPlacement(context.Background(), p)
 }
 
+// TestTaskPlacementKilledTask tests launching a task which has goalstate KILLED
+// This task should be skipped.
 func (suite *PlacementTestSuite) TestTaskPlacementKilledTask() {
-	testTask, runtimeDiff := createTestTask(0) // taskinfo
+	testTask, _ := createTestTask(0) // taskinfo
 	rs := createResources(float64(1))
 	hostOffer := createHostOffer(0, rs)
-	p := createPlacements(testTask, hostOffer)
+	p := createPlacements([]*task.TaskInfo{testTask}, hostOffer)
+	emptyTaskInfos := make(map[string]*lifecyclemgr.LaunchableTaskInfo, 0)
 	testTask.Runtime.State = task.TaskState_KILLED
 	testTask.Runtime.GoalState = task.TaskState_KILLED
 
@@ -386,50 +356,46 @@ func (suite *PlacementTestSuite) TestTaskPlacementKilledTask() {
 		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
 	}
 
-	var tasks []*mesos.TaskID
-	for _, t := range p.GetTaskIDs() {
-		tasks = append(tasks, t.GetMesosTaskID())
-	}
-
 	req := &resmgrsvc.KillTasksRequest{Tasks: []*peloton.TaskID{taskID}}
 	resp := &resmgrsvc.KillTasksResponse{}
 	gomock.InOrder(
-		suite.taskLauncher.EXPECT().
-			GetLaunchableTasks(
-				gomock.Any(),
-				tasks,
-				p.Hostname,
-				p.AgentId,
-				p.Ports,
-			).Return(
-			map[string]*launcher.LaunchableTask{
-				taskID.Value: {
-					RuntimeDiff: runtimeDiff,
-					Config:      testTask.Config,
-				},
-			},
-			nil,
-			nil),
 		suite.jobFactory.EXPECT().
-			AddJob(testTask.JobId).Return(suite.cachedJob),
+			GetJob(testTask.JobId).Return(suite.cachedJob),
 		suite.cachedJob.EXPECT().
 			AddTask(gomock.Any(), uint32(0)).
 			Return(suite.cachedTask, nil),
 		suite.cachedTask.EXPECT().
 			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
+		suite.taskConfigV2Ops.EXPECT().
+			GetTaskConfig(gomock.Any(), testTask.JobId, uint32(0), gomock.Any()).
+			Return(testTask.Config, &models.ConfigAddOn{}, nil),
+		suite.lmMock.EXPECT().
+			Launch(
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+				emptyTaskInfos,
+				nil,
+			).Return(
+			nil,
+		),
 		suite.resMgrClient.EXPECT().
 			KillTasks(gomock.Any(), req).
 			Return(resp, nil),
 	)
-
 	suite.pp.processPlacement(context.Background(), p)
 }
 
-func (suite *PlacementTestSuite) TestTaskPlacementKilledJob() {
+// TestTaskPlacementKillResmgrTaskError tests launching a task which has
+// goalstate KILLED. This task should be skipped. This test simulates failure
+// when we try to send a kill request to resmgr for this skipped task.
+func (suite *PlacementTestSuite) TestTaskPlacementKillResmgrTaskError() {
 	testTask, _ := createTestTask(0) // taskinfo
 	rs := createResources(float64(1))
 	hostOffer := createHostOffer(0, rs)
-	p := createPlacements(testTask, hostOffer)
+	p := createPlacements([]*task.TaskInfo{testTask}, hostOffer)
+	emptyTaskInfos := make(map[string]*lifecyclemgr.LaunchableTaskInfo, 0)
 	testTask.Runtime.State = task.TaskState_KILLED
 	testTask.Runtime.GoalState = task.TaskState_KILLED
 
@@ -448,79 +414,76 @@ func (suite *PlacementTestSuite) TestTaskPlacementKilledJob() {
 			},
 		},
 	}
-
-	var tasks []*mesos.TaskID
-	for _, t := range p.GetTaskIDs() {
-		tasks = append(tasks, t.GetMesosTaskID())
-	}
-
 	gomock.InOrder(
-		suite.taskLauncher.EXPECT().
-			GetLaunchableTasks(
+		suite.jobFactory.EXPECT().
+			GetJob(testTask.JobId).Return(suite.cachedJob),
+		suite.cachedJob.EXPECT().
+			AddTask(gomock.Any(), uint32(0)).
+			Return(suite.cachedTask, nil),
+		suite.cachedTask.EXPECT().
+			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
+		suite.taskConfigV2Ops.EXPECT().
+			GetTaskConfig(gomock.Any(), testTask.JobId, uint32(0), gomock.Any()).
+			Return(testTask.Config, &models.ConfigAddOn{}, nil),
+		suite.lmMock.EXPECT().
+			Launch(
 				gomock.Any(),
-				tasks,
-				p.Hostname,
-				p.AgentId,
-				p.Ports,
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+				emptyTaskInfos,
+				nil,
 			).Return(
 			nil,
-			[]*peloton.TaskID{taskID},
-			nil),
+		),
 		suite.resMgrClient.EXPECT().
 			KillTasks(gomock.Any(), req).
 			Return(resp, nil),
 	)
-
 	suite.pp.processPlacement(context.Background(), p)
 }
 
+// TestTaskPlacementKilledRunningTask tests the case where we want to kill a
+// skipped task (which is RUNNING) in resmgr as well as re-enqueue it in the
+// jobmgr goalstate engine, because its goalstate is KILLED.
 func (suite *PlacementTestSuite) TestTaskPlacementKilledRunningTask() {
-	testTask, runtimeDiff := createTestTask(0) // taskinfo
+	testTask, _ := createTestTask(0) // taskinfo
 	rs := createResources(float64(1))
 	hostOffer := createHostOffer(0, rs)
-	p := createPlacements(testTask, hostOffer)
+	p := createPlacements([]*task.TaskInfo{testTask}, hostOffer)
+	emptyTaskInfos := make(map[string]*lifecyclemgr.LaunchableTaskInfo, 0)
 	testTask.Runtime.GoalState = task.TaskState_KILLED
 
 	taskID := &peloton.TaskID{
 		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
 	}
 
-	var tasks []*mesos.TaskID
-	for _, t := range p.GetTaskIDs() {
-		tasks = append(tasks, t.GetMesosTaskID())
-	}
-
-	expectedRuntime := make(map[uint32]*task.RuntimeInfo)
-	expectedRuntime[testTask.InstanceId] = testTask.Runtime
-
 	req := &resmgrsvc.KillTasksRequest{Tasks: []*peloton.TaskID{taskID}}
 	resp := &resmgrsvc.KillTasksResponse{}
 	gomock.InOrder(
-		suite.taskLauncher.EXPECT().
-			GetLaunchableTasks(
-				gomock.Any(),
-				tasks,
-				p.Hostname,
-				p.AgentId,
-				p.Ports,
-			).Return(
-			map[string]*launcher.LaunchableTask{
-				taskID.Value: {
-					RuntimeDiff: runtimeDiff,
-					Config:      testTask.Config,
-				},
-			},
-			nil,
-			nil),
 		suite.jobFactory.EXPECT().
-			AddJob(testTask.JobId).Return(suite.cachedJob),
+			GetJob(testTask.JobId).Return(suite.cachedJob),
 		suite.cachedJob.EXPECT().
 			AddTask(gomock.Any(), uint32(0)).
 			Return(suite.cachedTask, nil),
 		suite.cachedTask.EXPECT().
 			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
+		suite.taskConfigV2Ops.EXPECT().
+			GetTaskConfig(gomock.Any(), testTask.JobId, uint32(0), gomock.Any()).
+			Return(testTask.Config, &models.ConfigAddOn{}, nil),
 		suite.goalStateDriver.EXPECT().
 			EnqueueTask(testTask.JobId, gomock.Any(), gomock.Any()).Return(),
+		suite.lmMock.EXPECT().
+			Launch(
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+				emptyTaskInfos,
+				nil,
+			).Return(
+			nil,
+		),
 		suite.resMgrClient.EXPECT().
 			KillTasks(gomock.Any(), req).
 			Return(resp, nil),
@@ -529,102 +492,126 @@ func (suite *PlacementTestSuite) TestTaskPlacementKilledRunningTask() {
 	suite.pp.processPlacement(context.Background(), p)
 }
 
+// TestTaskPlacementDBError tests the case where PatchTasks fails with a DB error.
 func (suite *PlacementTestSuite) TestTaskPlacementDBError() {
-	testTask, runtimeDiff := createTestTask(0) // taskinfo
+	testTask, _ := createTestTask(0) // taskinfo
 	rs := createResources(float64(1))
 	hostOffer := createHostOffer(0, rs)
-	p := createPlacements(testTask, hostOffer)
+	p := createPlacements([]*task.TaskInfo{testTask}, hostOffer)
 
-	taskID := &peloton.TaskID{
-		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
-	}
-
-	var tasks []*mesos.TaskID
-	for _, t := range p.GetTaskIDs() {
-		tasks = append(tasks, t.GetMesosTaskID())
-	}
-
+	// Introduce non-transient DB error. Task is dropped in this case.
 	gomock.InOrder(
-		suite.taskLauncher.EXPECT().
-			GetLaunchableTasks(
-				gomock.Any(),
-				tasks,
-				p.Hostname,
-				p.AgentId,
-				p.Ports,
-			).Return(
-			map[string]*launcher.LaunchableTask{
-				taskID.Value: {
-					RuntimeDiff: runtimeDiff,
-					Config:      testTask.Config,
-				},
-			},
-			nil,
-			nil),
 		suite.jobFactory.EXPECT().
-			AddJob(testTask.JobId).Return(suite.cachedJob),
+			GetJob(testTask.JobId).Return(suite.cachedJob),
 		suite.cachedJob.EXPECT().
 			AddTask(gomock.Any(), uint32(0)).
 			Return(suite.cachedTask, nil),
 		suite.cachedTask.EXPECT().
 			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
+		suite.taskConfigV2Ops.EXPECT().
+			GetTaskConfig(gomock.Any(), testTask.JobId, uint32(0), gomock.Any()).
+			Return(testTask.Config, &models.ConfigAddOn{}, nil),
 		suite.cachedJob.EXPECT().
 			PatchTasks(gomock.Any(), gomock.Any(), false).
 			Return(nil, nil, fmt.Errorf("fake db error")),
+		suite.lmMock.EXPECT().
+			Launch(
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+				nil,
+			).Return(
+			nil,
+		),
 	)
 
 	suite.pp.processPlacement(context.Background(), p)
-}
 
-func (suite *PlacementTestSuite) TestTaskPlacementError() {
-	testTask, runtimeDiff := createTestTask(0) // taskinfo
-	rs := createResources(float64(1))
-	hostOffer := createHostOffer(0, rs)
-	p := createPlacements(testTask, hostOffer)
-
-	taskID := &peloton.TaskID{
-		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
-	}
-
-	var tasks []*mesos.TaskID
-	for _, t := range p.GetTaskIDs() {
-		tasks = append(tasks, t.GetMesosTaskID())
-	}
-
+	// Introduce non-transient DB error. Task is dropped in this case.
 	gomock.InOrder(
-		suite.taskLauncher.EXPECT().
-			GetLaunchableTasks(
-				gomock.Any(),
-				tasks,
-				p.Hostname,
-				p.AgentId,
-				p.Ports,
-			).Return(
-			map[string]*launcher.LaunchableTask{
-				taskID.Value: {
-					RuntimeDiff: runtimeDiff,
-					Config:      testTask.Config,
-				},
-			},
-			nil,
-			nil),
 		suite.jobFactory.EXPECT().
-			AddJob(testTask.JobId).Return(suite.cachedJob),
+			GetJob(testTask.JobId).Return(suite.cachedJob),
 		suite.cachedJob.EXPECT().
 			AddTask(gomock.Any(), uint32(0)).
 			Return(suite.cachedTask, nil),
 		suite.cachedTask.EXPECT().
 			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
+		suite.taskConfigV2Ops.EXPECT().
+			GetTaskConfig(gomock.Any(), testTask.JobId, uint32(0), gomock.Any()).
+			Return(testTask.Config, &models.ConfigAddOn{}, nil),
+		// Simulate transient failure where PatchTasks succeeds on second try.
+		suite.cachedJob.EXPECT().
+			PatchTasks(gomock.Any(), gomock.Any(), false).
+			Return(nil, nil, yarpcerrors.DeadlineExceededErrorf("transient error")),
 		suite.cachedJob.EXPECT().
 			PatchTasks(gomock.Any(), gomock.Any(), false).
 			Return(nil, nil, nil),
 		suite.cachedTask.EXPECT().
 			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
-		suite.taskLauncher.EXPECT().
-			Launch(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(
-				map[string]*launcher.LaunchableTaskInfo{},
-				fmt.Errorf("fake launch error")),
+		suite.lmMock.EXPECT().
+			Launch(
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+				nil,
+			).Return(
+			nil,
+		),
+		suite.goalStateDriver.EXPECT().
+			EnqueueTask(testTask.JobId, testTask.InstanceId, gomock.Any()).Return(),
+		suite.jobFactory.EXPECT().
+			AddJob(testTask.JobId).Return(suite.cachedJob),
+		suite.cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
+		suite.goalStateDriver.EXPECT().
+			JobRuntimeDuration(job.JobType_BATCH).
+			Return(1*time.Second),
+		suite.goalStateDriver.EXPECT().
+			EnqueueJob(testTask.JobId, gomock.Any()).Return(),
+	)
+	suite.pp.processPlacement(context.Background(), p)
+}
+
+// TestLaunchError tests failure in lifecyclemgr.Launch().
+func (suite *PlacementTestSuite) TestLaunchError() {
+	testTask, _ := createTestTask(0) // taskinfo
+	rs := createResources(float64(1))
+	hostOffer := createHostOffer(0, rs)
+	p := createPlacements([]*task.TaskInfo{testTask}, hostOffer)
+	taskID := &peloton.TaskID{
+		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
+	}
+
+	gomock.InOrder(
+		suite.jobFactory.EXPECT().
+			GetJob(testTask.JobId).Return(suite.cachedJob),
+		suite.cachedJob.EXPECT().
+			AddTask(gomock.Any(), uint32(0)).
+			Return(suite.cachedTask, nil),
+		suite.cachedTask.EXPECT().
+			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
+		suite.taskConfigV2Ops.EXPECT().
+			GetTaskConfig(gomock.Any(), testTask.JobId, uint32(0), gomock.Any()).
+			Return(testTask.Config, &models.ConfigAddOn{}, nil),
+		suite.cachedJob.EXPECT().
+			PatchTasks(gomock.Any(), gomock.Any(), false).
+			Return(nil, nil, nil),
+		suite.cachedTask.EXPECT().
+			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
+		suite.lmMock.EXPECT().
+			Launch(
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+				nil,
+			).Return(
+			fmt.Errorf("fake launch error"),
+		),
 		suite.resMgrClient.EXPECT().
 			KillTasks(gomock.Any(), &resmgrsvc.KillTasksRequest{
 				Tasks: []*peloton.TaskID{taskID},
@@ -648,54 +635,44 @@ func (suite *PlacementTestSuite) TestTaskPlacementError() {
 	suite.pp.processPlacement(context.Background(), p)
 }
 
-func (suite *PlacementTestSuite) TestTaskPlacementPlacementResMgrError() {
-	testTask, runtimeDiff := createTestTask(0) // taskinfo
+// TestLaunchErrorAndResmgrEnqueueError tests failure in lifecyclemgr.Launch()
+// followed by an error enqueuing the tasks to resmgr.
+func (suite *PlacementTestSuite) TestLaunchErrorAndResmgrEnqueueError() {
+	testTask, _ := createTestTask(0) // taskinfo.
 	rs := createResources(float64(1))
 	hostOffer := createHostOffer(0, rs)
-	p := createPlacements(testTask, hostOffer)
-
+	p := createPlacements([]*task.TaskInfo{testTask}, hostOffer)
 	taskID := &peloton.TaskID{
 		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
 	}
 
-	var tasks []*mesos.TaskID
-	for _, t := range p.GetTaskIDs() {
-		tasks = append(tasks, t.GetMesosTaskID())
-	}
-
 	gomock.InOrder(
-		suite.taskLauncher.EXPECT().
-			GetLaunchableTasks(
-				gomock.Any(),
-				tasks,
-				p.Hostname,
-				p.AgentId,
-				p.Ports,
-			).Return(
-			map[string]*launcher.LaunchableTask{
-				taskID.Value: {
-					RuntimeDiff: runtimeDiff,
-					Config:      testTask.Config,
-				},
-			},
-			nil,
-			nil),
 		suite.jobFactory.EXPECT().
-			AddJob(testTask.JobId).Return(suite.cachedJob),
+			GetJob(testTask.JobId).Return(suite.cachedJob),
 		suite.cachedJob.EXPECT().
-			AddTask(gomock.Any(), uint32(0)).Return(suite.cachedTask, nil),
+			AddTask(gomock.Any(), uint32(0)).
+			Return(suite.cachedTask, nil),
 		suite.cachedTask.EXPECT().
 			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
+		suite.taskConfigV2Ops.EXPECT().
+			GetTaskConfig(gomock.Any(), testTask.JobId, uint32(0), gomock.Any()).
+			Return(testTask.Config, &models.ConfigAddOn{}, nil),
 		suite.cachedJob.EXPECT().
 			PatchTasks(gomock.Any(), gomock.Any(), false).
 			Return(nil, nil, nil),
 		suite.cachedTask.EXPECT().
 			GetRuntime(gomock.Any()).Return(testTask.Runtime, nil),
-		suite.taskLauncher.EXPECT().
-			Launch(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(
-				map[string]*launcher.LaunchableTaskInfo{},
-				fmt.Errorf("fake launch error")),
+		suite.lmMock.EXPECT().
+			Launch(
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+				nil,
+			).Return(
+			fmt.Errorf("fake launch error"),
+		),
 		suite.resMgrClient.EXPECT().
 			KillTasks(gomock.Any(), &resmgrsvc.KillTasksRequest{
 				Tasks: []*peloton.TaskID{taskID},
@@ -707,7 +684,6 @@ func (suite *PlacementTestSuite) TestTaskPlacementPlacementResMgrError() {
 			PatchTasks(gomock.Any(), gomock.Any(), false).
 			Return(nil, nil, fmt.Errorf("fake db error")),
 	)
-
 	suite.pp.processPlacement(context.Background(), p)
 }
 
@@ -777,7 +753,7 @@ func (suite *PlacementTestSuite) TestTaskPlacementProcessorProcessReturnUpOnStop
 
 	// Generate Placements per host offer
 	for i := 0; i < numHostOffers; i++ {
-		p := createPlacements(testTasks[i], hostOffers[i])
+		p := createPlacements(testTasks, hostOffers[i])
 		placements[i] = p
 	}
 
@@ -792,7 +768,7 @@ func (suite *PlacementTestSuite) TestTaskPlacementProcessorProcessReturnUpOnStop
 	suite.pp.process()
 }
 
-// TestTaskPlacementProcessorProcessNormal tests the normal case of process call
+// TestTaskPlacementProcessorProcessNormal tests the normal case of process call.
 func (suite *PlacementTestSuite) TestTaskPlacementProcessorProcessNormal() {
 	numTasks := 1
 	testTasks := make([]*task.TaskInfo, numTasks)
@@ -812,7 +788,10 @@ func (suite *PlacementTestSuite) TestTaskPlacementProcessorProcessNormal() {
 
 	// Generate Placements per host offer
 	for i := 0; i < numHostOffers; i++ {
-		p := createPlacements(testTasks[i], hostOffers[i])
+		p := createPlacements(testTasks, hostOffers[i])
+		// Simulate port mismatch failure which will trigger TerminateLease().
+		// This will ensure that the selected ports are fewer than what the task needs for launch.
+		p.Ports = []uint32{}
 		placements[i] = p
 	}
 
@@ -822,16 +801,18 @@ func (suite *PlacementTestSuite) TestTaskPlacementProcessorProcessNormal() {
 	suite.resMgrClient.EXPECT().
 		GetPlacements(gomock.Any(), gomock.Any()).
 		Return(&resmgrsvc.GetPlacementsResponse{Placements: placements}, nil)
-	suite.taskLauncher.EXPECT().
-		GetLaunchableTasks(
-			gomock.Any(),
-			gomock.Any(),
-			gomock.Any(),
-			gomock.Any(),
-			gomock.Any(),
-		).Return(nil, nil, fmt.Errorf("test err"))
-	suite.taskLauncher.EXPECT().
-		TryReturnOffers(gomock.Any(), gomock.Any(), gomock.Any()).
+	suite.jobFactory.EXPECT().
+		GetJob(testTasks[0].JobId).Return(suite.cachedJob)
+	suite.cachedJob.EXPECT().
+		AddTask(gomock.Any(), uint32(0)).
+		Return(suite.cachedTask, nil)
+	suite.cachedTask.EXPECT().
+		GetRuntime(gomock.Any()).Return(testTasks[0].Runtime, nil)
+	suite.taskConfigV2Ops.EXPECT().
+		GetTaskConfig(gomock.Any(), testTasks[0].JobId, uint32(0), gomock.Any()).
+		Return(testTasks[0].Config, &models.ConfigAddOn{}, nil)
+	suite.lmMock.EXPECT().
+		TerminateLease(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(fmt.Errorf("test err"))
 	suite.pp.process()
 	// wait for all work to be done
@@ -840,15 +821,21 @@ func (suite *PlacementTestSuite) TestTaskPlacementProcessorProcessNormal() {
 
 func (suite *PlacementTestSuite) TestInitPlacementProcessor() {
 	t := rpc.NewTransport()
-	outbounds := yarpc.Outbounds{
-		"testClient": transport.Outbounds{
-			Unary: t.NewSingleOutbound("localhost"),
-		},
-	}
-
+	outbound := t.NewOutbound(nil)
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
-		Name:      "test-service",
-		Outbounds: outbounds,
+		Name:     common.PelotonJobManager,
+		Inbounds: nil,
+		Outbounds: yarpc.Outbounds{
+			common.PelotonHostManager: transport.Outbounds{
+				Unary: outbound,
+			},
+			"testClient": transport.Outbounds{
+				Unary: t.NewSingleOutbound("localhost"),
+			},
+		},
+		Metrics: yarpc.MetricsConfig{
+			Tally: tally.NoopScope,
+		},
 	})
 
 	pp := InitProcessor(
@@ -856,36 +843,88 @@ func (suite *PlacementTestSuite) TestInitPlacementProcessor() {
 		"testClient",
 		suite.jobFactory,
 		suite.goalStateDriver,
-		suite.taskLauncher,
+		api.V0,
+		&ormstore.Store{},
 		suite.config,
 		suite.scope,
 	).(*processor)
 	suite.Equal(suite.jobFactory, pp.jobFactory)
 	suite.Equal(suite.goalStateDriver, pp.goalStateDriver)
-	suite.Equal(suite.taskLauncher, pp.taskLauncher)
 	suite.Equal(suite.config, pp.config)
 	suite.NotNil(pp.metrics)
 	suite.NotNil(pp.lifeCycle)
 	suite.NotNil(pp.resMgrClient)
 }
 
-// createPlacements creates the placement
-func createPlacements(t *task.TaskInfo,
-	hostOffer *hostsvc.HostOffer) *resmgr.Placement {
-	placementTasks := make([]*resmgr.Placement_Task, 1)
+// TestPopulateSecrets tests the populateSecrets function
+// to make sure that all the tasks in launchableTasks list
+// that contain a volume/secret will be populated with
+// the actual secret data fetched from the secret store.
+func (suite *PlacementTestSuite) TestPopulateSecrets() {
+	// Expected Secret
 
-	taskID := &peloton.TaskID{
-		Value: t.JobId.Value + "-" + fmt.Sprint(t.InstanceId),
+	secretInfoObject := &objects.SecretInfoObject{
+		SecretID:     testSecretID,
+		JobID:        _testJobID,
+		Version:      0,
+		Valid:        true,
+		Path:         testSecretPath,
+		Data:         base64.StdEncoding.EncodeToString([]byte(testSecretStr)),
+		CreationTime: time.Now(),
 	}
-	placementTasks[0] = &resmgr.Placement_Task{
-		PelotonTaskID: taskID,
+	suite.secretInfoOps.EXPECT().
+		GetSecret(gomock.Any(), testSecretID).
+		Return(secretInfoObject, nil).Times(5)
+	launchableTasksWithSecrets := createLaunchableTaskInfos(5, true)
+	launchableTasks := createLaunchableTaskInfos(5, false)
+	for id, task := range launchableTasksWithSecrets {
+		launchableTasks[id] = task
 	}
-	placement := &resmgr.Placement{
+	suite.pp.populateSecrets(context.Background(), launchableTasks)
+
+	// Test secret not found error.
+	launchableTasks = createLaunchableTaskInfos(1, true)
+	for _, t := range launchableTasks {
+		suite.jobFactory.EXPECT().GetJob(t.JobId).Return(suite.cachedJob)
+		suite.cachedJob.EXPECT().
+			PatchTasks(gomock.Any(), gomock.Any(), false).
+			Do(func(ctx context.Context, runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff, slaAware bool) {
+				suite.Equal(task.TaskState_KILLED, runtimeDiffs[0][jobmgrcommon.GoalStateField])
+				suite.Equal("REASON_SECRET_NOT_FOUND", runtimeDiffs[0][jobmgrcommon.ReasonField])
+			}).Return(nil, nil, nil)
+	}
+	suite.secretInfoOps.EXPECT().
+		GetSecret(gomock.Any(), testSecretID).
+		Return(nil, yarpcerrors.NotFoundErrorf("not found"))
+	suite.pp.populateSecrets(context.Background(), launchableTasks)
+
+	// Test secret transient error.
+	suite.secretInfoOps.EXPECT().
+		GetSecret(gomock.Any(), testSecretID).
+		Return(nil, yarpcerrors.DeadlineExceededErrorf("deadline exceeded"))
+	skipped := suite.pp.populateSecrets(context.Background(), launchableTasks)
+	suite.Equal(skipped, launchableTasks)
+}
+
+// createPlacements creates the placement.
+func createPlacements(
+	tasks []*task.TaskInfo,
+	hostOffer *hostsvc.HostOffer,
+) *resmgr.Placement {
+	placementTasks := make([]*resmgr.Placement_Task, len(tasks))
+	for i, t := range tasks {
+		taskID := &peloton.TaskID{
+			Value: t.JobId.Value + "-" + fmt.Sprint(t.InstanceId),
+		}
+		placementTasks[i] = &resmgr.Placement_Task{
+			PelotonTaskID: taskID,
+			MesosTaskID:   t.GetRuntime().GetMesosTaskId(),
+		}
+	}
+	return &resmgr.Placement{
 		AgentId:  hostOffer.AgentId,
 		Hostname: hostOffer.Hostname,
 		TaskIDs:  placementTasks,
 		Ports:    []uint32{testPort},
 	}
-
-	return placement
 }
