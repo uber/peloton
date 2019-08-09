@@ -22,6 +22,7 @@ import (
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	halphapb "github.com/uber/peloton/.gen/peloton/api/v1alpha/host"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/pkg/common/constraints"
@@ -115,6 +116,13 @@ type HostSummary interface {
 	// and unreserved offer.
 	HasAnyOffer() bool
 
+	// GetTasks returns tasks placed or running on this host.
+	GetTasks() []*mesos.TaskID
+
+	// UpdateTasksOnHost updates the state of task placed or running on this host.
+	// If task state is terminal then remove from HostToTaskMap.
+	UpdateTasksOnHost(taskID string, taskState task.TaskState, taskInfo *task.TaskInfo)
+
 	// TryMatch atomically tries to match offers from the current host with
 	// given constraint.
 	TryMatch(
@@ -132,7 +140,10 @@ type HostSummary interface {
 	// ClaimForLaunch releases unreserved offers for task launch.
 	// An optional list of task ids is provided if the host is held for
 	// the tasks
-	ClaimForLaunch(hostOfferID string, taskIDs ...*peloton.TaskID) (map[string]*mesos.Offer, error)
+	ClaimForLaunch(
+		hostOfferID string,
+		launchableTasks []*hostsvc.LaunchableTask,
+		taskIDs ...*peloton.TaskID) (map[string]*mesos.Offer, error)
 
 	// CasStatus atomically sets the status to new value if current value is old,
 	// otherwise returns error.
@@ -230,6 +241,11 @@ type hostSummary struct {
 	// key is the task id, value is the expiration time
 	// of the hold
 	heldTasks map[string]time.Time
+
+	// a map to present tasks assigned or running on this host
+	// key is the mesos tasks id and value is the current task state
+	tasks map[string]*task.TaskInfo
+
 	// watchProcessor
 	watchProcessor watchevent.WatchProcessor
 }
@@ -246,6 +262,7 @@ func New(
 		unreservedOffers:    make(map[string]*mesos.Offer),
 		reservedOffers:      make(map[string]*mesos.Offer),
 		heldTasks:           make(map[string]time.Time),
+		tasks:               make(map[string]*task.TaskInfo),
 		scarceResourceTypes: scarceResourceTypes,
 		slackResourceTypes:  slackResourceTypes,
 
@@ -274,6 +291,46 @@ func (a *hostSummary) HasAnyOffer() bool {
 	a.Lock()
 	defer a.Unlock()
 	return len(a.unreservedOffers) > 0
+}
+
+// GetTasks returns tasks placed or running on this host.
+func (a *hostSummary) GetTasks() []*mesos.TaskID {
+	a.Lock()
+	defer a.Unlock()
+
+	var result []*mesos.TaskID
+	for taskID := range a.tasks {
+		t := taskID
+		result = append(result, &mesos.TaskID{Value: &t})
+	}
+
+	return result
+}
+
+// UpdateTasksOnHost updates the list of tasks on this host.
+// It can perform one of following actions
+// - Add/Update the status of task based on recovery or eventstream.
+// - Remove the task from the list if task state is terminal.
+func (a *hostSummary) UpdateTasksOnHost(
+	taskID string,
+	taskState task.TaskState,
+	taskInfo *task.TaskInfo) {
+	a.Lock()
+	defer a.Unlock()
+
+	switch {
+	case util.IsPelotonStateTerminal(taskState):
+		delete(a.tasks, taskID)
+	case taskInfo != nil:
+		a.tasks[taskID] = taskInfo
+	default:
+		taskInfo, ok := a.tasks[taskID]
+		if !ok {
+			return
+		}
+
+		taskInfo.Runtime.State = taskState
+	}
 }
 
 // Match represents the result of a match
@@ -491,7 +548,10 @@ func (a *hostSummary) AddMesosOffers(
 // ClaimForLaunch atomically check that current hostSummary is in Placing
 // status, release offers so caller can use them to launch tasks, and reset
 // status to ready.
-func (a *hostSummary) ClaimForLaunch(hostOfferID string, taskIDs ...*peloton.TaskID) (map[string]*mesos.Offer,
+func (a *hostSummary) ClaimForLaunch(
+	hostOfferID string,
+	launchableTasks []*hostsvc.LaunchableTask,
+	taskIDs ...*peloton.TaskID) (map[string]*mesos.Offer,
 	error) {
 	a.Lock()
 	defer a.Unlock()
@@ -508,6 +568,17 @@ func (a *hostSummary) ClaimForLaunch(hostOfferID string, taskIDs ...*peloton.Tas
 
 	result := make(map[string]*mesos.Offer)
 	result, a.unreservedOffers = a.unreservedOffers, result
+
+	for _, t := range launchableTasks {
+		taskID := t.GetTaskId().GetValue()
+		a.tasks[taskID] = &task.TaskInfo{
+			Config: t.GetConfig(),
+			Runtime: &task.RuntimeInfo{
+				State:     task.TaskState_LAUNCHED,
+				StartTime: time.Now().Format(time.RFC3339Nano),
+			},
+		}
+	}
 
 	for _, taskID := range taskIDs {
 		a.releaseHoldForTaskLockFree(taskID)

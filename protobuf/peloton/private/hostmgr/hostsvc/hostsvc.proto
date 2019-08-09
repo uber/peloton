@@ -528,6 +528,8 @@ message GetHostsByQueryResponse {
     // list of tasks the host is held for, if the
     // host is held for in-place update
     repeated api.v0.peloton.TaskID held_tasks = 4;
+    // list of tasks running on the host
+    repeated mesos.v1.TaskID tasks = 5;
   }
 
   repeated Host hosts = 1;

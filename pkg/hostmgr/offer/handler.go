@@ -29,6 +29,7 @@ import (
 	"github.com/uber/peloton/pkg/common/backoff"
 	"github.com/uber/peloton/pkg/common/cirbuf"
 	"github.com/uber/peloton/pkg/common/eventstream"
+	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/hostmgr/binpacking"
 	"github.com/uber/peloton/pkg/hostmgr/config"
 	"github.com/uber/peloton/pkg/hostmgr/hostpool/manager"
@@ -383,6 +384,11 @@ func (h *eventHandler) Update(ctx context.Context, body *sched.Event) error {
 			WithField("status_update", taskUpdate.GetStatus()).
 			Error("Cannot add status update")
 	}
+
+	h.offerPool.UpdateTasksOnHost(
+		taskUpdate.GetStatus().GetTaskId().GetValue(),
+		util.MesosStateToPelotonState(taskUpdate.GetStatus().GetState()),
+		nil)
 
 	// If buffer is full, AddStatusUpdate would fail and peloton would not
 	// ack the status update and mesos master would resend the status update.

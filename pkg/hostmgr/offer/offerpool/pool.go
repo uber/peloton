@@ -27,6 +27,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/constraints"
+	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/hostmgr/binpacking"
 	"github.com/uber/peloton/pkg/hostmgr/hostpool/manager"
 	hostmgr_mesos "github.com/uber/peloton/pkg/hostmgr/mesos"
@@ -50,6 +51,9 @@ type Pool interface {
 	// Rescind a offer from the pool, on Mesos Master --offer-timeout
 	// Returns whether the offer is found in the pool.
 	RescindOffer(*mesos.OfferID) bool
+
+	// UpdateTasksOnHost updates the task to host map for host summary.
+	UpdateTasksOnHost(taskID string, taskState task.TaskState, taskInfo *task.TaskInfo)
 
 	// RemoveExpiredOffers, prunes offers from the pool, when offer-hold-time
 	// is expired.
@@ -82,6 +86,7 @@ type Pool interface {
 	ClaimForLaunch(
 		hostname string,
 		hostOfferID string,
+		launchableTasks []*hostsvc.LaunchableTask,
 		taskIDs ...*peloton.TaskID) (map[string]*mesos.Offer, error)
 
 	// ReturnUnusedOffers returns previously placed offers on hostname back
@@ -218,6 +223,11 @@ type offerPool struct {
 	// hostOfferIndex -- key: hostname, value: HostSummary
 	hostOfferIndex map[string]summary.HostSummary
 
+	// Inverse index from task to hostname. This map is required
+	// because event stream does not have hostname.
+	// key: taskID, value: hostname
+	taskToHostMap sync.Map
+
 	// scarce resource types, such as GPU.
 	scarceResourceTypes []string
 
@@ -351,6 +361,7 @@ func (p *offerPool) getRankedHostSummaryList(
 func (p *offerPool) ClaimForLaunch(
 	hostname string,
 	hostOfferID string,
+	launchableTasks []*hostsvc.LaunchableTask,
 	taskIDs ...*peloton.TaskID,
 ) (map[string]*mesos.Offer, error) {
 	p.RLock()
@@ -364,7 +375,7 @@ func (p *offerPool) ClaimForLaunch(
 		return nil, errors.New("cannot find input hostname " + hostname)
 	}
 
-	offerMap, err = hs.ClaimForLaunch(hostOfferID, taskIDs...)
+	offerMap, err = hs.ClaimForLaunch(hostOfferID, launchableTasks, taskIDs...)
 
 	if err != nil {
 		return nil, err
@@ -388,6 +399,10 @@ func (p *offerPool) ClaimForLaunch(
 
 	for _, taskID := range taskIDs {
 		p.removeTaskHold(hostname, taskID)
+	}
+
+	for _, launchableTask := range launchableTasks {
+		p.addTaskToHost(launchableTask.GetTaskId().GetValue(), hostname)
 	}
 
 	return offerMap, nil
@@ -448,16 +463,7 @@ func (p *offerPool) AddOffers(
 
 	p.Lock()
 	for hostname := range hostnameToOffers {
-		_, ok := p.hostOfferIndex[hostname]
-		if !ok {
-			hs := summary.New(
-				p.scarceResourceTypes,
-				hostname,
-				p.slackResourceTypes,
-				p.hostPlacingOfferStatusTimeout,
-				p.watchProcessor)
-			p.hostOfferIndex[hostname] = hs
-		}
+		p.addHostSummary(hostname)
 	}
 	p.Unlock()
 
@@ -474,6 +480,57 @@ func (p *offerPool) AddOffers(
 	wg.Wait()
 
 	return acceptableOffers
+}
+
+// addHostSummary is helper function to create HostSummary for
+// provided hostname if not exists.
+func (p *offerPool) addHostSummary(hostname string) {
+	_, ok := p.hostOfferIndex[hostname]
+	if !ok {
+		hs := summary.New(
+			p.scarceResourceTypes,
+			hostname,
+			p.slackResourceTypes,
+			p.hostPlacingOfferStatusTimeout,
+			p.watchProcessor)
+		p.hostOfferIndex[hostname] = hs
+	}
+}
+
+// UpdateTasksOnHost updates tasks assigned or running on a host.
+// Task is assigned first time on recovery or placement.
+// On receiving non-terminal event, task state is updated and on
+// receiving terminal event, task is removed from the host.
+func (p *offerPool) UpdateTasksOnHost(
+	taskID string,
+	taskState task.TaskState,
+	taskInfo *task.TaskInfo) {
+	p.Lock()
+	defer p.Unlock()
+
+	var hostname string
+	// on recovery, taskinfo is non-nil
+	if taskInfo != nil {
+		hostname = taskInfo.GetRuntime().GetHost()
+		if len(hostname) == 0 || util.IsPelotonStateTerminal(taskState) {
+			return
+		}
+
+		p.addHostSummary(hostname)
+		p.addTaskToHost(taskID, hostname)
+	} else {
+		// on receving mesos task status update event else is evaluated.
+		value, ok := p.taskToHostMap.Load(taskID)
+		if !ok {
+			return
+		}
+		hostname = value.(string)
+	}
+
+	p.hostOfferIndex[hostname].UpdateTasksOnHost(taskID, taskState, taskInfo)
+	if util.IsPelotonStateTerminal(taskState) {
+		p.removeTaskToHost(taskID)
+	}
 }
 
 // removeOffer is a helper method to remove an offer from timedOffers and
@@ -852,4 +909,12 @@ func (p *offerPool) addTaskHold(hostname string, id *peloton.TaskID) {
 // held for a task
 func (p *offerPool) removeTaskHold(hostname string, id *peloton.TaskID) {
 	p.taskHeldIndex.Delete(id.GetValue())
+}
+
+func (p *offerPool) addTaskToHost(taskID, hostname string) {
+	p.taskToHostMap.LoadOrStore(taskID, hostname)
+}
+
+func (p *offerPool) removeTaskToHost(taskID string) {
+	p.taskToHostMap.Delete(taskID)
 }

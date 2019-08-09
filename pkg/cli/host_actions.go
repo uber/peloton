@@ -32,8 +32,8 @@ const (
 	hostQueryFormatHeader = "Hostname\tIP\tState\n"
 	hostQueryFormatBody   = "%s\t%s\t%s\n"
 	hostSeparator         = ","
-	getHostsFormatHeader  = "Hostname\tCPU\tGPU\tMEM\tDisk\tState\t Task Hold\n"
-	getHostsFormatBody    = "%s\t%.2f\t%.2f\t%.2f MB\t%.2f MB\t%s\t%s\n"
+	getHostsFormatHeader  = "Hostname\tCPU\tGPU\tMEM\tDisk\tState\t Task Hold\t Task Running\n"
+	getHostsFormatBody    = "%s\t%.2f\t%.2f\t%.2f MB\t%.2f MB\t%s\t%s\t%s\n"
 	hostCacheFormatHeader = "Hostname\tCPU\tGPU\tMEM\tDisk\tStatus\n"
 	hostCacheFormatBody   = "%s\t%.2f/%.2f\t%.2f/%.2f\t%.2f/%.2f MB\t%.2f/%.2f MB\t%s\n"
 )
@@ -222,6 +222,7 @@ func printGetHostsResponse(resp *hostsvc.GetHostsByQueryResponse) {
 				resource.GetDisk(),
 				host.GetStatus(),
 				getTaskHeldString(host),
+				getTasksString(host),
 			)
 		}
 	}
@@ -239,6 +240,20 @@ func getTaskHeldString(host *hostsvc.GetHostsByQueryResponse_Host) string {
 	}
 
 	return taskHeldStr
+}
+
+func getTasksString(host *hostsvc.GetHostsByQueryResponse_Host) string {
+	var taskStr string
+	for _, task := range host.GetTasks() {
+		taskStr = taskStr + task.GetValue() + " "
+	}
+
+	// remove the last space
+	if len(taskStr) != 0 {
+		taskStr = taskStr[:len(taskStr)-1]
+	}
+
+	return taskStr
 }
 
 // DisableKillTasksAction disable the kill task request to mesos master

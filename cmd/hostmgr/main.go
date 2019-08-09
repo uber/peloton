@@ -732,6 +732,8 @@ func main() {
 
 	recoveryHandler := hostmgr.NewRecoveryHandler(
 		rootScope,
+		store,
+		ormStore,
 		maintenanceQueue,
 		masterOperatorClient,
 		maintenanceHostInfoMap,

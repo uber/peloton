@@ -17,6 +17,7 @@ package summary
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -1001,7 +1002,12 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
 	}
 	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()).AnyTimes()
 	for _, tt := range testTable {
-		s := New(nil, hostname, supportedSlackResourceTypes, time.Duration(30*time.Second), suite.watchProcessor).(*hostSummary)
+		s := New(
+			nil,
+			hostname,
+			supportedSlackResourceTypes,
+			time.Duration(30*time.Second),
+			suite.watchProcessor).(*hostSummary)
 		s.status = tt.initialStatus
 		s.statusPlacingOfferExpiration = tt.statusPlacingOfferExpiration
 		s.AddMesosOffers(context.Background(), offers)
@@ -1013,7 +1019,11 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
 		}
 	}
 
-	s := New(nil, hostname, supportedSlackResourceTypes, time.Duration(30*time.Second), suite.watchProcessor).(*hostSummary)
+	s := New(nil,
+		hostname,
+		supportedSlackResourceTypes,
+		time.Duration(30*time.Second),
+		suite.watchProcessor).(*hostSummary)
 	s.AddMesosOffers(context.Background(), offers)
 	s.statusPlacingOfferExpiration = now.Add(-10 * time.Minute)
 	invalidCacheStatus := s.CasStatus(PlacingHost, ReadyHost)
@@ -1130,7 +1140,12 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredHeldOfferStatus() {
 	}
 
 	for _, tt := range testTable {
-		s := New(nil, "host1", supportedSlackResourceTypes, time.Duration(30*time.Second), suite.watchProcessor).(*hostSummary)
+		s := New(
+			nil,
+			"host1",
+			supportedSlackResourceTypes,
+			time.Duration(30*time.Second),
+			suite.watchProcessor).(*hostSummary)
 		s.status = tt.initialStatus
 		for _, task := range tt.tasksHeld {
 			s.heldTasks[task.taskHeld.GetValue()] = task.statusHeldHostExpiration
@@ -1228,12 +1243,28 @@ func (suite *HostOfferSummaryTestSuite) TestClaimForUnreservedOffersForLaunch() 
 		for _, heldTask := range tt.heldTasks {
 			s.HoldForTask(heldTask)
 		}
+
+		var launchableTask []*hostsvc.LaunchableTask
+		for _, t := range tt.claimTasks {
+			mesosTaskID := fmt.Sprintf("%s-%d", t.GetValue(), 1)
+			launchableTask = append(launchableTask, &hostsvc.LaunchableTask{
+				TaskId: &mesos.TaskID{
+					Value: &mesosTaskID,
+				},
+				Config: &task.TaskConfig{
+					Name: t.GetValue(),
+				},
+			})
+		}
+
 		suite.Len(s.GetHeldTask(), len(tt.heldTasks))
 		suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()).AnyTimes()
-		_, err := s.ClaimForLaunch(offers[0].GetId().GetValue(), tt.claimTasks...)
+		_, err := s.ClaimForLaunch(offers[0].GetId().GetValue(), launchableTask, tt.claimTasks...)
 		if err != nil {
 			suite.Equal(err.Error(), tt.err.Error(), tt.name)
 		}
+
+		suite.Equal(len(tt.claimTasks), len(s.GetTasks()), tt.name)
 		suite.Equal(s.status, tt.afterStatus, tt.name)
 		suite.Equal(s.readyCount.Load(), tt.expectedReadyCount, tt.name)
 		summaryOffers := s.GetOffers(Unreserved)
@@ -1249,10 +1280,20 @@ func (suite *HostOfferSummaryTestSuite) TestHoldAndReleaseTask() {
 	defer suite.ctrl.Finish()
 
 	hostname0 := "hostname-0"
-	hs0 := New(nil, hostname0, supportedSlackResourceTypes, time.Duration(30*time.Second), suite.watchProcessor).(*hostSummary)
+	hs0 := New(
+		nil,
+		hostname0,
+		supportedSlackResourceTypes,
+		time.Duration(30*time.Second),
+		suite.watchProcessor).(*hostSummary)
 
 	hostname1 := "hostname-1"
-	hs1 := New(nil, hostname1, supportedSlackResourceTypes, time.Duration(30*time.Second), suite.watchProcessor).(*hostSummary)
+	hs1 := New(
+		nil,
+		hostname1,
+		supportedSlackResourceTypes,
+		time.Duration(30*time.Second),
+		suite.watchProcessor).(*hostSummary)
 
 	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()).AnyTimes()
 	t1 := &peloton.TaskID{Value: "t1"}
@@ -1293,4 +1334,36 @@ func (suite *HostOfferSummaryTestSuite) TestReturnPlacingHost() {
 	suite.NoError(hs.ReturnPlacingHost())
 	suite.Equal(hs.GetHostStatus(), HeldHost)
 
+}
+
+// Tests host to task map is updated correctly on terminal and non-terminal
+// task update status.
+func (suite *HostOfferSummaryTestSuite) TestHostToTaskMap() {
+	defer suite.ctrl.Finish()
+
+	taskID := "673b91dd-f7ce-4c83-a0d2-4057878ea50a-1-1"
+
+	hs := New(
+		nil,
+		_testAgent,
+		supportedSlackResourceTypes,
+		time.Duration(30*time.Second),
+		suite.watchProcessor).(*hostSummary)
+	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()).AnyTimes()
+
+	// Add task first time on recovery or launch
+	hs.UpdateTasksOnHost(taskID, task.TaskState_LAUNCHED, &task.TaskInfo{
+		Config: &task.TaskConfig{},
+		Runtime: &task.RuntimeInfo{
+			State: task.TaskState_LAUNCHED,
+		},
+	})
+
+	// update task state in host_to_task_map
+	hs.UpdateTasksOnHost(taskID, task.TaskState_RUNNING, nil)
+	suite.Equal(1, len(hs.GetTasks()))
+
+	// On terminal event, remove the task from host_to_task_map
+	hs.UpdateTasksOnHost(taskID, task.TaskState_SUCCEEDED, nil)
+	suite.Equal(0, len(hs.GetTasks()))
 }

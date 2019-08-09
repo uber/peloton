@@ -234,6 +234,7 @@ func (h *ServiceHandler) GetHostsByQuery(
 			Resources: nonRevocable,
 			Status:    toHostStatus(hostSummary.GetHostStatus()),
 			HeldTasks: hostSummary.GetHeldTask(),
+			Tasks:     hostSummary.GetTasks(),
 		})
 	}
 
@@ -730,6 +731,7 @@ func (h *ServiceHandler) LaunchTasks(
 	offers, err := h.offerPool.ClaimForLaunch(
 		req.GetHostname(),
 		req.GetId().GetValue(),
+		req.GetTasks(),
 		hostToTaskIDs[req.GetHostname()]...,
 	)
 	if err != nil {
