@@ -35,7 +35,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// HostStatus represents status (Ready/Placing/Reserved/Held) of the host in
+// HostStatus represents status (Ready/Placing/Reserved) of the host in
 // host cache
 type HostStatus int
 
@@ -48,10 +48,6 @@ const (
 
 	// ReservedHost represents a host that is reserved for tasks.
 	ReservedHost
-
-	// HeldHost represents a host hat is held for tasks, which is used for
-	// in-place update.
-	HeldHost
 )
 
 const (
@@ -109,6 +105,23 @@ type HostSummary interface {
 	// HandlePodEvent is called when a pod event occurs for a pod
 	// that affects this host.
 	HandlePodEvent(event *p2kscalar.PodEvent) error
+
+	// HoldForPod holds the host for the pod specified.
+	// If an error is returned, hostsummary would guarantee that
+	// the host is not held for the task.
+	HoldForPod(id *peloton.PodID) error
+
+	// ReleaseHoldForPod release the hold of host for the pod specified.
+	ReleaseHoldForPod(id *peloton.PodID)
+
+	// GetHeldPods returns a slice of pods that puts the host in held.
+	GetHeldPods() []*peloton.PodID
+
+	// DeleteExpiredHolds deletes expired held pods in a hostSummary, returns
+	// whether the hostSummary is free of helds,
+	// available resource,
+	// and the pods held expired.
+	DeleteExpiredHolds(now time.Time) (bool, scalar.Resources, []*peloton.PodID)
 }
 
 // hostSummary is a data struct holding resources and metadata of a host.
@@ -179,15 +192,16 @@ func (a *hostSummary) TryMatch(
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	if a.status != ReadyHost && a.status != HeldHost {
+	if a.status != ReadyHost {
 		return Match{
 			Result: hostmgr.HostFilterResult_HOST_FILTER_MISMATCH_STATUS,
 		}
 	}
 
-	// For host in Held state, it is only a match if the filter hint contains
-	// the host.
-	if a.status == HeldHost {
+	// For a host held pods, we anticipate in place upgrades to happen. So, it
+	// is only a match when the hint contains the host and we temporarily
+	// reject any additional pod placements on the host.
+	if a.isHeld() {
 		var hintFound bool
 		for _, hostHint := range filter.GetHint().GetHostHint() {
 			if hostHint.GetHostname() == a.hostname {
@@ -250,7 +264,7 @@ func (a *hostSummary) ReleasePodResources(
 // CompleteLease verifies that the leaseID on this host is still valid.
 // It checks that current hostSummary is in Placing status, updates podToResMap
 // to the host summary, recalculates allocated resources and set the host status
-// to Ready/Held.
+// to Ready.
 func (a *hostSummary) CompleteLease(
 	leaseID string,
 	newPodToResMap map[string]scalar.Resources,
@@ -266,10 +280,7 @@ func (a *hostSummary) CompleteLease(
 		return yarpcerrors.InvalidArgumentErrorf("host leaseID does not match")
 	}
 
-	// Reset status to held/ready depending on if the host is held for
-	// other tasks.
-	newState := a.getResetStatus()
-	if err := a.casStatus(PlacingHost, newState); err != nil {
+	if err := a.casStatus(PlacingHost, ReadyHost); err != nil {
 		return yarpcerrors.InvalidArgumentErrorf("failed to unlock host: %s", err)
 	}
 
@@ -286,9 +297,8 @@ func (a *hostSummary) CompleteLease(
 	a.updatePodToResMap(newPodToResMap)
 
 	log.WithFields(log.Fields{
-		"hostname":   a.hostname,
-		"pods":       newPodToResMap,
-		"new_status": newState,
+		"hostname": a.hostname,
+		"pods":     newPodToResMap,
 	}).Debug("pods added to the host for launch")
 
 	return nil
@@ -382,7 +392,7 @@ func (a *hostSummary) GetHostLease() *hostmgr.HostLease {
 
 // TerminateLease is called when terminating the lease on a host.
 // This will be called when host in PLACING state is not used, and placement
-// engine decides to terminate its lease and set the host back to Ready/Held.
+// engine decides to terminate its lease and set the host back to Ready.
 func (a *hostSummary) TerminateLease(leaseID string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -391,12 +401,12 @@ func (a *hostSummary) TerminateLease(leaseID string) error {
 		return yarpcerrors.InvalidArgumentErrorf("invalid status %v", a.status)
 	}
 
+	// TODO: lease may be expired already.
 	if a.leaseID != leaseID {
 		return yarpcerrors.InvalidArgumentErrorf("host leaseID does not match")
 	}
 
-	newStatus := a.getResetStatus()
-	if err := a.casStatus(PlacingHost, newStatus); err != nil {
+	if err := a.casStatus(PlacingHost, ReadyHost); err != nil {
 		return yarpcerrors.InvalidArgumentErrorf("failed to set cas status: %s", err)
 	}
 
@@ -429,16 +439,94 @@ func (a *hostSummary) HandlePodEvent(event *p2kscalar.PodEvent) error {
 	return fmt.Errorf("unsupported pod event type: %v", event.EventType)
 }
 
-// getResetStatus returns the new host status for a host that is going to be
-// reset from PLACING/HELD state.
-// This function assumes hostSummary lock is held before calling.
-func (a *hostSummary) getResetStatus() HostStatus {
-	newStatus := ReadyHost
-	if len(a.heldPodIDs) != 0 {
-		newStatus = HeldHost
+// HoldForPod adds pod to heldPodIDs map when host is not reserved. It is noop
+// if pod ready exists in the map.
+func (a *hostSummary) HoldForPod(id *peloton.PodID) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.status == ReservedHost {
+		return yarpcerrors.InvalidArgumentErrorf("invalid status %v for holding", a.status)
 	}
 
-	return newStatus
+	if _, ok := a.heldPodIDs[id.GetValue()]; !ok {
+		a.heldPodIDs[id.GetValue()] = time.Now().Add(hostHeldStatusTimeout)
+	}
+
+	log.WithFields(log.Fields{
+		"hostname":  a.hostname,
+		"pods_held": a.heldPodIDs,
+		"pod_id":    id.GetValue(),
+	}).Debug("Hold for pod")
+	return nil
+}
+
+// ReleaseHoldForPod removes the pod from heldPodIDs map. It should be called
+// when:
+// 1. pod is upgraded in place.
+// 2. hold for this pod expires.
+func (a *hostSummary) ReleaseHoldForPod(id *peloton.PodID) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	a.releaseHoldForPod(id)
+	return
+}
+
+// GetHeldPods returns a list of held PodIDs.
+func (a *hostSummary) GetHeldPods() []*peloton.PodID {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	var result []*peloton.PodID
+	for id := range a.heldPodIDs {
+		result = append(result, &peloton.PodID{Value: id})
+	}
+	return result
+}
+
+// DeleteExpiredHolds deletes expired held pods in a hostSummary, returns
+// whether the hostSummary is free of helds,
+// available resource,
+// and the pods held expired.
+func (a *hostSummary) DeleteExpiredHolds(
+	deadline time.Time) (bool, scalar.Resources, []*peloton.PodID) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	var expired []*peloton.PodID
+	for id, expirationTime := range a.heldPodIDs {
+		if deadline.After(expirationTime) {
+			pod := &peloton.PodID{Value: id}
+			a.releaseHoldForPod(pod)
+			expired = append(expired, pod)
+		}
+	}
+	return !a.isHeld(), a.getAvailable(), expired
+}
+
+func (a *hostSummary) releaseHoldForPod(id *peloton.PodID) {
+	if _, ok := a.heldPodIDs[id.GetValue()]; !ok {
+		// This can happen for various reasons such as a task is launched again
+		// on the same host after timeout.
+		log.WithFields(log.Fields{
+			"hostname": a.hostname,
+			"pod_id":   id.GetValue(),
+		}).Info("Host not held for pod")
+		return
+	}
+
+	delete(a.heldPodIDs, id.GetValue())
+
+	log.WithFields(log.Fields{
+		"hostname": a.hostname,
+		"pod_id":   id.GetValue(),
+	}).Debug("Release hold for pod")
+}
+
+// isHeld is true when number of held PodIDs is greater than zero.
+func (a *hostSummary) isHeld() bool {
+	return len(a.heldPodIDs) > 0
 }
 
 // validateNewPods will return an error if:
@@ -493,7 +581,7 @@ func (a *hostSummary) updatePodToResMap(
 // This function assumes hostSummary lock is held before calling.
 func (a *hostSummary) casStatus(oldStatus, newStatus HostStatus) error {
 	if a.status != oldStatus {
-		return fmt.Errorf("Invalid old status: %v", oldStatus)
+		return fmt.Errorf("invalid old status: %v", oldStatus)
 	}
 	a.status = newStatus
 
@@ -507,8 +595,6 @@ func (a *hostSummary) casStatus(oldStatus, newStatus HostStatus) error {
 	case ReservedHost:
 		// generate the offer id for a placing host.
 		a.leaseID = uuid.New()
-	case HeldHost:
-		a.leaseID = emptyLeaseID
 	}
 	return nil
 }
@@ -555,7 +641,7 @@ func (a *hostSummary) matchHostFilter(
 	result, err := evaluator.Evaluate(sc, lv)
 	if err != nil {
 		log.WithError(err).
-			Error("Error when evaluating input constraint")
+			Error("Evaluating input constraint")
 		return hostmgr.HostFilterResult_HOST_FILTER_MISMATCH_CONSTRAINTS
 	}
 
@@ -564,13 +650,13 @@ func (a *hostSummary) matchHostFilter(
 		fallthrough
 	case constraints.EvaluateResultNotApplicable:
 		log.WithFields(log.Fields{
-			"values":     lv,
+			"labels":     lv,
 			"hostname":   a.hostname,
 			"constraint": sc,
 		}).Debug("Attributes match constraint")
 	default:
 		log.WithFields(log.Fields{
-			"values":     lv,
+			"labels":     lv,
 			"hostname":   a.hostname,
 			"constraint": sc,
 		}).Debug("Attributes do not match constraint")

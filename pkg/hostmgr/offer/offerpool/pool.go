@@ -708,17 +708,18 @@ func (p *offerPool) ResetExpiredHeldHostSummaries(now time.Time) []string {
 	defer p.RUnlock()
 	var resetHostnames []string
 	for hostname, summ := range p.hostOfferIndex {
-		if reset, res, taskExpired := summ.ResetExpiredHostHeldStatus(now); reset {
+		reset, res, taskExpired := summ.ResetExpiredHostHeldStatus(now)
+		if reset {
 			resetHostnames = append(resetHostnames, hostname)
-			for _, task := range taskExpired {
-				p.removeTaskHold(hostname, task)
-			}
 			p.metrics.ResetExpiredHeldHosts.Inc(1)
 			log.WithFields(log.Fields{
 				"host":    hostname,
 				"summary": summ,
 				"delta":   res,
 			}).Info("reset expired host summaries in HELD state.")
+		}
+		for _, task := range taskExpired {
+			p.removeTaskHold(hostname, task)
 		}
 	}
 	return resetHostnames

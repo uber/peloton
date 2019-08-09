@@ -16,17 +16,18 @@ package hostcache
 
 import (
 	"sync"
+	"time"
 
-	"go.uber.org/yarpc/yarpcerrors"
-
+	peloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
 	"github.com/uber/peloton/pkg/common/lifecycle"
-
 	"github.com/uber/peloton/pkg/hostmgr/p2k/plugins"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 	hmscalar "github.com/uber/peloton/pkg/hostmgr/scalar"
 
 	log "github.com/sirupsen/logrus"
+	"go.uber.org/multierr"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 // HostCache manages cluster resources, and provides necessary abstractions to
@@ -55,6 +56,19 @@ type HostCache interface {
 	// GetSummaries returns a list of host summaries that the host cache is
 	// managing.
 	GetSummaries() (summaries []HostSummary)
+
+	// ResetExpiredHeldHostSummaries resets the status of each hostSummary if
+	// the helds have expired and returns the hostnames which got reset.
+	ResetExpiredHeldHostSummaries(now time.Time) []string
+
+	// GetHostHeldForPod returns the host that is held for the pod.
+	GetHostHeldForPod(podID *peloton.PodID) string
+
+	// HoldForPods holds the host for the pods specified.
+	HoldForPods(hostname string, podIDs []*peloton.PodID) error
+
+	// ReleaseHoldForPods release the hold of host for the pods specified.
+	ReleaseHoldForPods(hostname string, podIDs []*peloton.PodID) error
 }
 
 // hostCache is an implementation of HostCache interface.
@@ -63,6 +77,9 @@ type hostCache struct {
 
 	// Map of hostname to HostSummary.
 	hostIndex map[string]HostSummary
+
+	// Map of podID to host held.
+	podHeldIndex map[string]string
 
 	// The event channel on which the underlying cluster manager plugin will send
 	// host events to host cache.
@@ -170,10 +187,9 @@ func (c *hostCache) TerminateLease(
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	hs, ok := c.hostIndex[hostname]
-	if !ok {
-		// TODO: metrics
-		return yarpcerrors.NotFoundErrorf("cannot find host %s in cache", hostname)
+	hs, err := c.getSummary(hostname)
+	if err != nil {
+		return err
 	}
 	if err := hs.TerminateLease(leaseID); err != nil {
 		// TODO: metrics
@@ -201,12 +217,10 @@ func (c *hostCache) CompleteLease(
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	hs, ok := c.hostIndex[hostname]
-	if !ok {
-		// TODO: metrics
-		return yarpcerrors.NotFoundErrorf("cannot find host %s in cache", hostname)
+	hs, err := c.getSummary(hostname)
+	if err != nil {
+		return err
 	}
-
 	if err := hs.CompleteLease(leaseID, podToResMap); err != nil {
 		// TODO: metrics
 		return err
@@ -230,6 +244,105 @@ func (c *hostCache) GetClusterCapacity() (
 		allocation = allocation.Add(hs.GetAllocated())
 	}
 	return
+}
+
+// ResetExpiredHeldHostSummaries resets the status of each hostSummary if
+// the holds have expired and returns the hostnames which got reset.
+func (c *hostCache) ResetExpiredHeldHostSummaries(deadline time.Time) []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	var ret []string
+	for hostname, hs := range c.hostIndex {
+		isFreed, _, podIDExpired := hs.DeleteExpiredHolds(deadline)
+		if isFreed {
+			ret = append(ret, hostname)
+			// TODO: add metrics.
+		}
+		for _, id := range podIDExpired {
+			c.removePodHold(id)
+		}
+	}
+	return ret
+}
+
+func (c *hostCache) GetHostHeldForPod(podID *peloton.PodID) string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	hn, ok := c.podHeldIndex[podID.GetValue()]
+	if !ok {
+		// TODO: this should return an error. But keep it the same way as in
+		// offerpool for now.
+		return ""
+	}
+	return hn
+}
+
+func (c *hostCache) HoldForPods(hostname string, podIDs []*peloton.PodID) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	hs, err := c.getSummary(hostname)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, id := range podIDs {
+		if err := hs.HoldForPod(id); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		c.addPodHold(hostname, id)
+	}
+	if len(errs) > 0 {
+		return yarpcerrors.InternalErrorf("failed to hold pods: %s", multierr.Combine(errs...))
+	}
+	return nil
+}
+
+func (c *hostCache) ReleaseHoldForPods(hostname string, podIDs []*peloton.PodID) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	hs, err := c.getSummary(hostname)
+	if err != nil {
+		return err
+	}
+	for _, id := range podIDs {
+		hs.ReleaseHoldForPod(id)
+		c.removePodHold(id)
+	}
+	return nil
+}
+
+// addPodHold add a pod to podHeldIndex. Replace the old host if exists.
+func (c *hostCache) addPodHold(hostname string, id *peloton.PodID) {
+	old, ok := c.podHeldIndex[id.GetValue()]
+	if ok && old != hostname {
+		log.WithFields(log.Fields{
+			"new_host": hostname,
+			"old_host": old,
+			"task_id":  id.GetValue(),
+		}).Warn("pod is held by multiple hosts")
+	}
+	c.podHeldIndex[id.GetValue()] = hostname
+}
+
+// removePodHold deletes id from podHeldIndex regardless of hostname.
+func (c *hostCache) removePodHold(id *peloton.PodID) {
+	delete(c.podHeldIndex, id.GetValue())
+}
+
+// getSummary returns host summary given name. If the host does not exist,
+// return error not found.
+func (c *hostCache) getSummary(hostname string) (HostSummary, error) {
+	hs, ok := c.hostIndex[hostname]
+	if !ok {
+		// TODO: metrics
+		return nil, yarpcerrors.NotFoundErrorf("cannot find host %s in cache", hostname)
+	}
+	return hs, nil
 }
 
 // waitForHostEvents will start a goroutine that waits on the host events

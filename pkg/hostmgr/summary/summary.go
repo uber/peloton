@@ -887,7 +887,7 @@ func (a *hostSummary) HoldForTask(id *peloton.TaskID) error {
 // GetHeldTask returns a slice of task that puts the host in held
 func (a *hostSummary) GetHeldTask() []*peloton.TaskID {
 	a.Lock()
-	a.Unlock()
+	defer a.Unlock()
 
 	var result []*peloton.TaskID
 	for taskID := range a.heldTasks {

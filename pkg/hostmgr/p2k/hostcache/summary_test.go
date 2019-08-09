@@ -19,18 +19,19 @@ import (
 	"runtime"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
-	"go.uber.org/atomic"
-
 	p2kscalar "github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 
 	"github.com/pborman/uuid"
 	log "github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"go.uber.org/atomic"
 )
 
 var (
@@ -66,6 +67,10 @@ func (suite *HostCacheTestSuite) TearDownTest() {
 
 func TestHostCacheTestSuite(t *testing.T) {
 	suite.Run(t, new(HostCacheTestSuite))
+}
+
+func mockHostSummary() *hostSummary {
+	return newHostSummary(_hostname, _capacity, _version).(*hostSummary)
 }
 
 func createResource(cpu, mem float64) (r scalar.Resources) {
@@ -162,6 +167,7 @@ func (suite *HostCacheTestSuite) TestTryMatchReadyHost() {
 	testTable := map[string]struct {
 		expectedResult hostmgr.HostFilterResult
 		allocated      scalar.Resources
+		heldPodIDs     map[string]time.Time
 		filter         *hostmgr.HostFilter
 		beforeStatus   HostStatus
 		afterStatus    HostStatus
@@ -169,7 +175,8 @@ func (suite *HostCacheTestSuite) TestTryMatchReadyHost() {
 		"match-success-ready-host": {
 			expectedResult: hostmgr.HostFilterResult_HOST_FILTER_MATCH,
 			// available cpu 9.0 mem 90
-			allocated: createResource(1.0, 10.0),
+			allocated:  createResource(1.0, 10.0),
+			heldPodIDs: nil,
 			filter: &hostmgr.HostFilter{
 				ResourceConstraint: &hostmgr.ResourceConstraint{
 					Minimum: &pod.ResourceSpec{
@@ -185,7 +192,8 @@ func (suite *HostCacheTestSuite) TestTryMatchReadyHost() {
 			expectedResult: hostmgr.
 				HostFilterResult_HOST_FILTER_INSUFFICIENT_RESOURCES,
 			// available cpu 0 mem 90, host is fully allocated for CPUs
-			allocated: createResource(10.0, 10.0),
+			allocated:  createResource(10.0, 10.0),
+			heldPodIDs: nil,
 			filter: &hostmgr.HostFilter{
 				ResourceConstraint: &hostmgr.ResourceConstraint{
 					Minimum: &pod.ResourceSpec{
@@ -201,7 +209,8 @@ func (suite *HostCacheTestSuite) TestTryMatchReadyHost() {
 			expectedResult: hostmgr.
 				HostFilterResult_HOST_FILTER_INSUFFICIENT_RESOURCES,
 			// available cpu 9 mem 90
-			allocated: createResource(1.0, 10.0),
+			allocated:  createResource(1.0, 10.0),
+			heldPodIDs: nil,
 			filter: &hostmgr.HostFilter{
 				ResourceConstraint: &hostmgr.ResourceConstraint{
 					Minimum: &pod.ResourceSpec{
@@ -218,6 +227,7 @@ func (suite *HostCacheTestSuite) TestTryMatchReadyHost() {
 			expectedResult: hostmgr.
 				HostFilterResult_HOST_FILTER_MISMATCH_STATUS,
 			allocated:    createResource(1.0, 1.0),
+			heldPodIDs:   nil,
 			filter:       &hostmgr.HostFilter{},
 			beforeStatus: PlacingHost,
 			afterStatus:  PlacingHost,
@@ -226,14 +236,16 @@ func (suite *HostCacheTestSuite) TestTryMatchReadyHost() {
 			expectedResult: hostmgr.
 				HostFilterResult_HOST_FILTER_MISMATCH_STATUS,
 			allocated:    createResource(1.0, 1.0),
+			heldPodIDs:   map[string]time.Time{uuid.New(): time.Now()},
 			filter:       &hostmgr.HostFilter{},
-			beforeStatus: HeldHost,
-			afterStatus:  HeldHost,
+			beforeStatus: ReadyHost,
+			afterStatus:  ReadyHost,
 		},
 		"match-fail-status-mismatch-reserved": {
 			expectedResult: hostmgr.
 				HostFilterResult_HOST_FILTER_MISMATCH_STATUS,
 			allocated:    createResource(1.0, 1.0),
+			heldPodIDs:   nil,
 			filter:       &hostmgr.HostFilter{},
 			beforeStatus: ReservedHost,
 			afterStatus:  ReservedHost,
@@ -241,9 +253,10 @@ func (suite *HostCacheTestSuite) TestTryMatchReadyHost() {
 	}
 
 	for ttName, tt := range testTable {
-		s := newHostSummary(_hostname, _capacity, _version).(*hostSummary)
+		s := mockHostSummary()
 		s.status = tt.beforeStatus
 		s.allocated = tt.allocated
+		s.heldPodIDs = tt.heldPodIDs
 
 		match := s.TryMatch(tt.filter)
 
@@ -285,16 +298,6 @@ func (suite *HostCacheTestSuite) TestHostSummaryTerminateLease() {
 			beforeStatus:    PlacingHost,
 			afterStatus:     ReadyHost,
 		},
-		"terminate-lease-held-host": {
-			errExpected:     true,
-			errMsg:          fmt.Sprintf("code:invalid-argument message:invalid status 4"),
-			podToResMap:     generatePodToResMap(10, 1.0, 10.0),
-			beforeAllocated: createResource(1.0, 10.0),
-			leaseID:         _leaseID,
-			inputLeaseID:    _leaseID,
-			beforeStatus:    HeldHost,
-			afterStatus:     HeldHost,
-		},
 		"terminate-lease-ready-host": {
 			errExpected:     true,
 			errMsg:          fmt.Sprintf("code:invalid-argument message:invalid status 1"),
@@ -319,7 +322,7 @@ func (suite *HostCacheTestSuite) TestHostSummaryTerminateLease() {
 
 	for ttName, tt := range testTable {
 		// create a host with 10 CPU and 100Mem
-		s := newHostSummary(_hostname, _capacity, _version).(*hostSummary)
+		s := mockHostSummary()
 		s.status = tt.beforeStatus
 		// initialize host cache with a podMap
 		s.podToResMap = generatePodToResMap(1, 1.0, 10.0)
@@ -406,17 +409,6 @@ func (suite *HostCacheTestSuite) TestHostSummaryCompleteLease() {
 			// meanlingless at this point.
 			afterStatus: ReadyHost,
 		},
-		"complete-lease-held-host": {
-			errExpected:     true,
-			errMsg:          fmt.Sprintf("code:invalid-argument message:host status is not Placing"),
-			podToResMap:     generatePodToResMap(10, 1.0, 10.0),
-			beforeAllocated: createResource(1.0, 10.0),
-			afterAllocated:  createResource(1.0, 10.0),
-			leaseID:         _leaseID,
-			inputLeaseID:    _leaseID,
-			beforeStatus:    HeldHost,
-			afterStatus:     HeldHost,
-		},
 		"complete-lease-ready-host": {
 			errExpected:     true,
 			errMsg:          fmt.Sprintf("code:invalid-argument message:host status is not Placing"),
@@ -443,7 +435,7 @@ func (suite *HostCacheTestSuite) TestHostSummaryCompleteLease() {
 
 	for ttName, tt := range testTable {
 		// create a host with 10 CPU and 100Mem
-		s := newHostSummary(_hostname, _capacity, _version).(*hostSummary)
+		s := mockHostSummary()
 		s.status = tt.beforeStatus
 		// initialize host cache with a podMap
 		s.podToResMap = generatePodToResMap(1, 1.0, 10.0)
@@ -464,5 +456,126 @@ func (suite *HostCacheTestSuite) TestHostSummaryCompleteLease() {
 		}
 		suite.Equal(tt.afterAllocated, s.allocated, "test case: %s", ttName)
 		suite.Equal(tt.afterStatus, s.GetHostStatus(), "test case: %s", ttName)
+	}
+}
+
+func TestHoldForPod(t *testing.T) {
+	id := &peloton.PodID{Value: uuid.New()}
+	testCases := map[string]struct {
+		heldPodIDs map[string]time.Time
+		id         *peloton.PodID
+		status     HostStatus
+		errStr     string
+	}{
+		"added": {
+			map[string]time.Time{}, id, ReadyHost, ""},
+		"noop because previously added": {
+			map[string]time.Time{id.GetValue(): time.Now()}, id, ReadyHost, ""},
+		"failed because host is reserved": {
+			map[string]time.Time{}, id, ReservedHost, "code:invalid-argument message:invalid status 3 for holding"},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			s := mockHostSummary()
+			s.status = tc.status
+			s.heldPodIDs = tc.heldPodIDs
+
+			err := s.HoldForPod(tc.id)
+			if tc.errStr != "" {
+				require.Error(err, tc.errStr)
+				return
+			}
+			require.NoError(err)
+			_, ok := s.heldPodIDs[tc.id.GetValue()]
+			require.True(ok)
+		})
+	}
+}
+
+func TestReleaseHoldForPod(t *testing.T) {
+	id := &peloton.PodID{Value: uuid.New()}
+	testCases := map[string]struct {
+		heldPodIDs  map[string]time.Time
+		id          *peloton.PodID
+		expectedLen int
+	}{
+		"deleted": {
+			map[string]time.Time{id.GetValue(): time.Now()}, id, 0},
+		"noop because not held": {
+			map[string]time.Time{uuid.New(): time.Now()}, id, 1},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			s := mockHostSummary()
+			s.heldPodIDs = tc.heldPodIDs
+			s.ReleaseHoldForPod(tc.id)
+			require.Equal(tc.expectedLen, len(s.heldPodIDs))
+		})
+	}
+}
+
+func TestGetHeldPods(t *testing.T) {
+	require := require.New(t)
+	s := mockHostSummary()
+	ids := map[string]struct{}{}
+	for i := 0; i < 10; i++ {
+		id := &peloton.PodID{Value: uuid.New()}
+		require.NoError(s.HoldForPod(id))
+		ids[id.GetValue()] = struct{}{}
+	}
+	heldPods := s.GetHeldPods()
+	for _, id := range heldPods {
+		_, ok := ids[id.GetValue()]
+		require.True(ok)
+	}
+}
+
+func TestDeleteExpiredHolds(t *testing.T) {
+	deadline := time.Now()
+	t1 := deadline.Truncate(time.Minute)
+	t2 := deadline.Add(time.Minute)
+	p1 := &peloton.PodID{Value: uuid.New()}
+	p2 := &peloton.PodID{Value: uuid.New()}
+	testCases := map[string]struct {
+		heldPodIDs map[string]time.Time
+		isFree     bool
+		expired    map[string]struct{}
+	}{
+		"free all": {
+			map[string]time.Time{p1.GetValue(): t1, p2.GetValue(): t1},
+			true,
+			map[string]struct{}{
+				p1.GetValue(): {},
+				p2.GetValue(): {},
+			}},
+		"free some": {
+			map[string]time.Time{p1.GetValue(): t1, p2.GetValue(): t2},
+			false,
+			map[string]struct{}{
+				p1.GetValue(): {},
+			}},
+		"free none": {
+			map[string]time.Time{p1.GetValue(): t2, p2.GetValue(): t2},
+			false,
+			nil},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			s := mockHostSummary()
+			s.heldPodIDs = tc.heldPodIDs
+			isFree, _, expired := s.DeleteExpiredHolds(deadline)
+			require.Equal(tc.isFree, isFree)
+			require.Equal(len(tc.expired), len(expired))
+			for _, p := range expired {
+				_, ok := tc.expired[p.GetValue()]
+				require.True(ok)
+			}
+		})
 	}
 }
