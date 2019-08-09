@@ -316,7 +316,12 @@ func (h *eventHandler) SetHostPoolManager(manager manager.HostPoolManager) {
 // Offers is the mesos callback that sends the offers from master
 func (h *eventHandler) Offers(ctx context.Context, body *sched.Event) error {
 	event := body.GetOffers()
-	log.WithField("event", event).Debug("OfferManager: processing Offers event")
+	for _, offer := range event.Offers {
+		log.WithFields(log.Fields{
+			"offer_id": offer.GetId().GetValue(),
+			"hostname": offer.GetHostname(),
+		}).Info("offers received")
+	}
 	h.offerPool.AddOffers(ctx, event.Offers)
 
 	return nil

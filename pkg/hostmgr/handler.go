@@ -543,9 +543,8 @@ func (h *ServiceHandler) AcquireHostOffers(
 		response.HostOffers = append(response.HostOffers, &pHostOffer)
 		log.WithFields(log.Fields{
 			"hostname":      hostname,
-			"agent_id":      offers[0].GetAgentId().GetValue(),
 			"host_offer_id": hostOffer.ID,
-		}).Info("Acquired Host")
+		}).Info("AcquireHostOffers")
 	}
 
 	return response, nil
@@ -867,10 +866,11 @@ func (h *ServiceHandler) LaunchTasks(
 	}
 
 	log.WithFields(log.Fields{
-		"tasks":         taskIDs,
-		"offers":        offerIDs,
+		"task_ids":      taskIDs,
+		"offer_ids":     offerIDs,
+		"hostname":      req.GetHostname(),
 		"host_offer_id": req.GetId().GetValue(),
-	}).Info("Tasks launched.")
+	}).Info("LaunchTasks")
 
 	return &hostsvc.LaunchTasksResponse{}, nil
 }

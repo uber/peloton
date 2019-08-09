@@ -17,6 +17,7 @@ package summary
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -480,6 +481,7 @@ func (a *hostSummary) TryMatch(
 		}
 		offers = append(offers, offer)
 	}
+
 	// Setting status to `PlacingHost`: this ensures proper state
 	// tracking of resources on the host and also ensures offers on
 	// this host will not be sent to another `AcquireHostOffers`
@@ -521,6 +523,8 @@ func (a *hostSummary) AddMesosOffers(
 	offers []*mesos.Offer) HostStatus {
 	a.Lock()
 	defer a.Unlock()
+
+	var offerIDs []string
 	for _, offer := range offers {
 		// filter out revocable resources whose type we don't recognize
 		offerID := offer.GetId().GetValue()
@@ -537,7 +541,17 @@ func (a *hostSummary) AddMesosOffers(
 		} else {
 			a.reservedOffers[offerID] = offer
 		}
+
+		offerIDs = append(offerIDs, offer.GetId().GetValue())
 	}
+
+	log.WithFields(log.Fields{
+		"offer_ids":               strings.Join(offerIDs, ","),
+		"outstanding_offer_count": a.readyCount.Load(),
+		"hostname":                a.GetHostname(),
+		"host_state":              a.status,
+	}).Info("offers added to host summary")
+
 	if a.status == ReadyHost || a.status == HeldHost {
 		a.readyCount.Store(int32(len(a.unreservedOffers)))
 	}
@@ -564,8 +578,6 @@ func (a *hostSummary) ClaimForLaunch(
 		return nil, errors.New("host offer id does not match")
 	}
 
-	log.WithField("offer_id", hostOfferID).Debug("host offer match")
-
 	result := make(map[string]*mesos.Offer)
 	result, a.unreservedOffers = a.unreservedOffers, result
 
@@ -585,13 +597,6 @@ func (a *hostSummary) ClaimForLaunch(
 	}
 
 	newState := a.getResetStatus()
-
-	log.WithFields(log.Fields{
-		"hostname":   a.hostname,
-		"tasks":      taskIDs,
-		"new_status": newState,
-	}).Debug("host status changes after task launch")
-
 	// Reset status to held/ready depending on if the host is held for
 	// other tasks.
 	if err := a.casStatusLockFree(PlacingHost, newState); err != nil {
@@ -626,9 +631,10 @@ func (a *hostSummary) RemoveMesosOffer(offerID, reason string) (HostStatus, *mes
 	switch a.status {
 	case ReadyHost:
 		log.WithFields(log.Fields{
-			"offer":  offerID,
-			"reason": reason,
-		}).Debug("Ready offer removed")
+			"offer":    offerID,
+			"hostname": a.GetHostname(),
+			"reason":   reason,
+		}).Info("Ready offer removed")
 	default:
 		// This could trigger INVALID_OFFER error later.
 		log.WithFields(log.Fields{
@@ -733,6 +739,7 @@ func (a *hostSummary) ResetExpiredPlacingOfferStatus(now time.Time) (bool, scala
 		a.casStatusLockFree(PlacingHost, newStatus)
 		return true, scalar.FromOfferMap(a.unreservedOffers), taskExpired
 	}
+
 	return false, scalar.Resources{}, taskExpired
 }
 
