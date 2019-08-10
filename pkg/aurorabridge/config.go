@@ -41,6 +41,10 @@ type ServiceHandlerConfig struct {
 	// the number of pods returned.
 	PodRunsDepth int `yaml:"pod_runs_depth"`
 
+	// Maximum number of pods that will get returned, while meeting
+	// minPodRunsDepth requirement.
+	GetTasksPodMax int `yaml:"get_tasks_pod_max"`
+
 	// QueryJobsLimit specifies Limit parameter passed to QueryJobs request
 	QueryJobsLimit uint32 `yaml:"query_jobs_limit"`
 
@@ -77,6 +81,9 @@ func (c *ServiceHandlerConfig) normalize() {
 	}
 	if c.PodRunsDepth <= 0 {
 		c.PodRunsDepth = 1
+	}
+	if c.GetTasksPodMax == 0 {
+		c.GetTasksPodMax = 1000
 	}
 	if c.QueryJobsLimit == 0 {
 		c.QueryJobsLimit = 1000

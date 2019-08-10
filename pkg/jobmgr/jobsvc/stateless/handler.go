@@ -1460,7 +1460,7 @@ func (h *serviceHandler) ListJobWorkflows(
 			}
 
 			ch <- updateInfoChan{
-				updateInfo: api.ConvertUpdateModelToWorkflowInfo(
+				updateInfo: handlerutil.ConvertUpdateModelToWorkflowInfo(
 					jobRuntime,
 					updateModel,
 					workflowEvents,
