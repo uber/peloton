@@ -22,7 +22,6 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/pborman/uuid"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	jobmocks "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc/mocks"
@@ -36,8 +35,6 @@ import (
 	cachemocks "github.com/uber/peloton/pkg/aurorabridge/cache/mocks"
 	commonmocks "github.com/uber/peloton/pkg/aurorabridge/common/mocks"
 	aurorabridgemocks "github.com/uber/peloton/pkg/aurorabridge/mocks"
-	"github.com/uber/peloton/pkg/common/config"
-	"github.com/uber/peloton/pkg/common/util"
 
 	"github.com/uber/peloton/pkg/aurorabridge/atop"
 	"github.com/uber/peloton/pkg/aurorabridge/common"
@@ -45,8 +42,11 @@ import (
 	"github.com/uber/peloton/pkg/aurorabridge/label"
 	"github.com/uber/peloton/pkg/aurorabridge/mockutil"
 	"github.com/uber/peloton/pkg/aurorabridge/opaquedata"
+	"github.com/uber/peloton/pkg/common/config"
+	"github.com/uber/peloton/pkg/common/util"
 
 	"github.com/golang/mock/gomock"
+	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
@@ -4320,4 +4320,50 @@ func (suite *ServiceHandlerTestSuite) TestChangeBridgeUpdateLabel() {
 	p3n := suite.handler.changeBridgeUpdateLabel(p3)
 	suite.Len(p3.GetLabels(), 1)
 	suite.Equal(common.BridgeUpdateLabelKey, p3n.GetLabels()[1].GetKey())
+}
+
+// TestGetPodRunsLimit tests getPodRunsLimit
+func TestGetPodRunsLimit(t *testing.T) {
+	testCases := []struct {
+		name         string
+		podsNum      uint32
+		podsMax      uint32
+		podRunsDepth uint32
+		wantPodRuns  uint32
+	}{
+		{
+			name:         "test total pods less than pod max",
+			podsNum:      100,
+			podsMax:      1000,
+			podRunsDepth: 5,
+			wantPodRuns:  5,
+		},
+		{
+			name:         "test total pods larger than pod max, calculated depth larger than min pod run depth",
+			podsNum:      300,
+			podsMax:      1000,
+			podRunsDepth: 6,
+			wantPodRuns:  4,
+		},
+		{
+			name:         "test total pods larger than pod max, calculated depth less than min pod run depth",
+			podsNum:      1000,
+			podsMax:      1000,
+			podRunsDepth: 5,
+			wantPodRuns:  minPodRunsDepth,
+		},
+		{
+			name:         "test total pods larger than pod max, calculated depth less than min pod run depth, but pod_runs_depth is less min_pod_runs_depth",
+			podsNum:      1000,
+			podsMax:      1000,
+			podRunsDepth: 1,
+			wantPodRuns:  util.Min(1, minPodRunsDepth),
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			l := getPodRunsLimit(tc.podsNum, tc.podsMax, tc.podRunsDepth)
+			assert.Equal(t, tc.wantPodRuns, l)
+		})
+	}
 }

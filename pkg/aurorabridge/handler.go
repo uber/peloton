@@ -17,6 +17,7 @@ package aurorabridge
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -48,6 +49,10 @@ import (
 )
 
 var errUnimplemented = errors.New("rpc is unimplemented")
+
+// Minimum task query depth when PodRunsDepth in the config is set to
+// larger than and equals to 2 and bounded by PodRunsMax.
+const minPodRunsDepth = 2
 
 // jobCache is an internal struct used to capture job id and name
 // of the a specific job. Mostly used as the job query return result.
@@ -379,6 +384,18 @@ type getScheduledTaskInput struct {
 	podSpec    *pod.PodSpec
 }
 
+// getPodRunsLimit calculates the number of pod runs getTasksWithoutConfigs
+// endpoint will return based on config.
+func getPodRunsLimit(
+	podsNum uint32,
+	podsMax uint32,
+	podRunsDepth uint32,
+) uint32 {
+	podsNumTotal := util.Min(podsNum*podRunsDepth, podsMax)
+	podRuns := uint32(math.Ceil(float64(podsNumTotal) / float64(podsNum)))
+	return util.Max(podRuns, util.Min(podRunsDepth, minPodRunsDepth))
+}
+
 // getScheduledTasks generates a list of Aurora ScheduledTask in a worker
 // pool.
 func (h *ServiceHandler) getScheduledTasks(
@@ -388,6 +405,12 @@ func (h *ServiceHandler) getScheduledTasks(
 	filter *taskFilter,
 ) ([]*api.ScheduledTask, error) {
 	jobID := jobSummary.GetJobId()
+
+	podRunsDepth := getPodRunsLimit(
+		uint32(len(podInfos)),
+		uint32(h.config.GetTasksPodMax),
+		uint32(h.config.PodRunsDepth),
+	)
 
 	var inputs []interface{}
 	for _, p := range podInfos {
@@ -407,7 +430,7 @@ func (h *ServiceHandler) getScheduledTasks(
 
 		// when PodRunsDepth set to 1, query only current run pods, when set
 		// to larger than 1, will query current plus previous run pods
-		for i := uint64(0); i < uint64(h.config.PodRunsDepth); i++ {
+		for i := uint64(0); i < uint64(podRunsDepth); i++ {
 			newRunID := runID - i
 			if newRunID == 0 {
 				// No more previous run pods
