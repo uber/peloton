@@ -54,9 +54,11 @@ def teardown_mesos(config):
 
 # Start a kind cluster.
 def run_k8s():
+    print_utils.okgreen("starting k8s cluster")
     k8s = kind.Kind(PELOTON_K8S_NAME)
     k8s.teardown()
     k8s.create()
+    print_utils.okgreen("started k8s cluster")
 
 
 #

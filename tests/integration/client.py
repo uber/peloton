@@ -8,6 +8,9 @@ from peloton_client.pbgen.peloton.private.resmgrsvc import (
 from peloton_client.pbgen.peloton.private.hostmgr.hostsvc import (
     hostsvc_pb2_grpc as hostmgr_grpc,
 )
+from peloton_client.pbgen.peloton.private.hostmgr.v1alpha.svc import (
+    hostmgr_svc_pb2_grpc as v1hostmgr_grpc,
+)
 
 from util import load_config
 
@@ -53,6 +56,8 @@ def with_private_stubs(client):
     hm_loc = urlparse(client.hm_url).netloc
     hm_channel = PelotonClient.hostmgr_channel_pool[hm_loc]
     client.hostmgr_svc = hostmgr_grpc.InternalHostServiceStub(
+        channel=hm_channel)
+    client.v1hostmgr_svc = v1hostmgr_grpc.HostManagerServiceStub(
         channel=hm_channel)
 
     return client
