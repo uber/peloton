@@ -42,6 +42,9 @@ message HostInfo {
 
     // Goal state of the host
     HostState goal_state = 4;
+
+    // Host labels.
+    repeated peloton.Label labels = 5;
 }
 
 // Portrange describes a range of ports.

@@ -16,9 +16,11 @@ package objects
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	hostpb "github.com/uber/peloton/.gen/peloton/api/v0/host"
+	pelotonpb "github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/pkg/storage/objects/base"
 )
 
@@ -39,6 +41,8 @@ type HostInfoObject struct {
 	State string `column:"name=state"`
 	// GoalState of the host
 	GoalState string `column:"name=goal_state"`
+	// Labels of the host
+	Labels string `column:"name=labels"`
 	// Last update time of the host maintenance
 	UpdateTime time.Time `column:"name=update_time"`
 }
@@ -52,6 +56,7 @@ type HostInfoOps interface {
 		ip string,
 		state hostpb.HostState,
 		goalState hostpb.HostState,
+		labels map[string]string,
 	) error
 
 	// Get retrieves the row based on the primary key from the table.
@@ -69,6 +74,7 @@ type HostInfoOps interface {
 		hostname string,
 		state hostpb.HostState,
 		goalState hostpb.HostState,
+		labels map[string]string,
 	) error
 
 	// Delete removes an object from the table based on primary key.
@@ -95,12 +101,18 @@ func (d *hostInfoOps) Create(
 	ip string,
 	state hostpb.HostState,
 	goalState hostpb.HostState,
+	labels map[string]string,
 ) error {
+	bytes, err := json.Marshal(&labels)
+	if err != nil {
+		return err
+	}
 	hostInfoObject := &HostInfoObject{
 		Hostname:   base.NewOptionalString(hostname),
 		IP:         ip,
 		State:      state.String(),
 		GoalState:  goalState.String(),
+		Labels:     string(bytes),
 		UpdateTime: time.Now(),
 	}
 	if err := d.store.oClient.Create(ctx, hostInfoObject); err != nil {
@@ -123,8 +135,13 @@ func (d *hostInfoOps) Get(
 		d.store.metrics.OrmHostInfoMetrics.HostInfoGetFail.Inc(1)
 		return nil, err
 	}
+	info, err := newHostInfoFromHostInfoObject(hostInfoObject)
+	if err != nil {
+		d.store.metrics.OrmHostInfoMetrics.HostInfoGetFail.Inc(1)
+		return nil, err
+	}
 	d.store.metrics.OrmHostInfoMetrics.HostInfoGet.Inc(1)
-	return newHostInfoFromHostInfoObject(hostInfoObject), nil
+	return info, nil
 }
 
 // GetAll gets all host infos from db without any pk specified
@@ -138,9 +155,12 @@ func (d *hostInfoOps) GetAll(ctx context.Context) ([]*hostpb.HostInfo, error) {
 
 	var hostInfos []*hostpb.HostInfo
 	for _, value := range results {
-		hostInfos = append(
-			hostInfos,
-			newHostInfoFromHostInfoObject(value.(*HostInfoObject)))
+		info, err := newHostInfoFromHostInfoObject(value.(*HostInfoObject))
+		if err != nil {
+			d.store.metrics.OrmHostInfoMetrics.HostInfoGetAllFail.Inc(1)
+			return nil, err
+		}
+		hostInfos = append(hostInfos, info)
 	}
 	return hostInfos, nil
 }
@@ -151,14 +171,20 @@ func (d *hostInfoOps) Update(
 	hostname string,
 	state hostpb.HostState,
 	goalState hostpb.HostState,
+	labels map[string]string,
 ) error {
+	bytes, err := json.Marshal(&labels)
+	if err != nil {
+		return err
+	}
 	hostInfoObject := &HostInfoObject{
 		Hostname:   base.NewOptionalString(hostname),
 		State:      state.String(),
 		GoalState:  goalState.String(),
+		Labels:     string(bytes),
 		UpdateTime: time.Now(),
 	}
-	fieldsToUpdate := []string{"State", "GoalState", "UpdateTime"}
+	fieldsToUpdate := []string{"State", "GoalState", "Labels", "UpdateTime"}
 	if err := d.store.oClient.Update(
 		ctx,
 		hostInfoObject,
@@ -186,7 +212,7 @@ func (d *hostInfoOps) Delete(ctx context.Context, hostname string) error {
 // newHostInfoFromHostInfoObject creates a new *hostpb.HostInfo
 // and sets each field from a HostInfoObject object
 func newHostInfoFromHostInfoObject(
-	hostInfoObject *HostInfoObject) *hostpb.HostInfo {
+	hostInfoObject *HostInfoObject) (*hostpb.HostInfo, error) {
 	hostInfo := &hostpb.HostInfo{}
 	hostInfo.Hostname = hostInfoObject.Hostname.String()
 	hostInfo.Ip = hostInfoObject.IP
@@ -194,5 +220,19 @@ func newHostInfoFromHostInfoObject(
 		hostpb.HostState_value[hostInfoObject.State])
 	hostInfo.GoalState = hostpb.HostState(
 		hostpb.HostState_value[hostInfoObject.GoalState])
-	return hostInfo
+
+	if hostInfoObject.Labels != "" {
+		labels := make(map[string]string)
+		err := json.Unmarshal([]byte(hostInfoObject.Labels), &labels)
+		if err != nil {
+			return nil, err
+		}
+		for l, v := range labels {
+			hostInfo.Labels = append(
+				hostInfo.Labels,
+				&pelotonpb.Label{Key: l, Value: v},
+			)
+		}
+	}
+	return hostInfo, nil
 }

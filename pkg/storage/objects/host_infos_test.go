@@ -23,6 +23,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
 	hostpb "github.com/uber/peloton/.gen/peloton/api/v0/host"
+	pelotonpb "github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/pkg/storage/objects/base"
 	ormmocks "github.com/uber/peloton/pkg/storage/orm/mocks"
 )
@@ -50,13 +51,19 @@ func (s *HostInfoObjectTestSuite) TestHostInfo() {
 		GoalState: hostpb.HostState_HOST_STATE_DRAINING,
 	}
 
+	labels := make(map[string]string)
+	for _, label := range testHostInfo.Labels {
+		labels[label.Key] = label.Value
+	}
+
 	// Test Create
 	err := db.Create(
 		context.Background(),
 		testHostInfo.Hostname,
 		testHostInfo.Ip,
 		testHostInfo.State,
-		testHostInfo.GoalState)
+		testHostInfo.GoalState,
+		labels)
 	s.NoError(err)
 
 	// Test Get
@@ -71,12 +78,17 @@ func (s *HostInfoObjectTestSuite) TestHostInfo() {
 		State:     hostpb.HostState_HOST_STATE_UP,
 		GoalState: hostpb.HostState_HOST_STATE_DRAINING,
 	}
+	labels2 := make(map[string]string)
+	for _, label := range testHostInfo2.Labels {
+		labels2[label.Key] = label.Value
+	}
 	err = db.Create(
 		context.Background(),
 		testHostInfo2.Hostname,
 		testHostInfo2.Ip,
 		testHostInfo2.State,
-		testHostInfo2.GoalState)
+		testHostInfo2.GoalState,
+		labels2)
 	s.NoError(err)
 	hostInfosAll, err := db.GetAll(context.Background())
 	s.NoError(err)
@@ -88,11 +100,22 @@ func (s *HostInfoObjectTestSuite) TestHostInfo() {
 	// Test Update
 	testHostInfo.State = hostpb.HostState_HOST_STATE_DRAINING
 	testHostInfo.GoalState = hostpb.HostState_HOST_STATE_DRAINED
+	testHostInfo.Labels = []*pelotonpb.Label{
+		{
+			Key:   "label1",
+			Value: "value1",
+		},
+	}
+	labels = make(map[string]string)
+	for _, label := range testHostInfo.Labels {
+		labels[label.Key] = label.Value
+	}
 	err = db.Update(
 		context.Background(),
 		testHostInfo.Hostname,
 		testHostInfo.State,
-		testHostInfo.GoalState)
+		testHostInfo.GoalState,
+		labels)
 	s.NoError(err)
 	hostInfoGot, err := db.Get(context.Background(), testHostInfo.Hostname)
 	s.NoError(err)
@@ -136,12 +159,18 @@ func (s *HostInfoObjectTestSuite) TestCreateGetGetAllDeleteHostInfoFail() {
 		GoalState: hostpb.HostState_HOST_STATE_DRAINING,
 	}
 
+	labels := make(map[string]string)
+	for _, label := range testHostInfo.Labels {
+		labels[label.Key] = label.Value
+	}
+
 	err := db.Create(
 		ctx,
 		testHostInfo.Hostname,
 		testHostInfo.Ip,
 		testHostInfo.State,
-		testHostInfo.GoalState)
+		testHostInfo.GoalState,
+		labels)
 
 	s.Error(err)
 	s.Equal("Create failed", err.Error())
@@ -165,8 +194,11 @@ func (s *HostInfoObjectTestSuite) TestNewHostInfoFromHostInfoObject() {
 		IP:         "1.2.3.4",
 		State:      "HOST_STATE_UP",
 		GoalState:  "HOST_STATE_DRAINING",
+		Labels:     "{}",
 		UpdateTime: time.Now(),
 	}
+	info, err := newHostInfoFromHostInfoObject(hostInfoObject)
+	s.NoError(err)
 	s.Equal(
 		&hostpb.HostInfo{
 			Hostname:  "hostname",
@@ -174,6 +206,6 @@ func (s *HostInfoObjectTestSuite) TestNewHostInfoFromHostInfoObject() {
 			State:     hostpb.HostState_HOST_STATE_UP,
 			GoalState: hostpb.HostState_HOST_STATE_DRAINING,
 		},
-		newHostInfoFromHostInfoObject(hostInfoObject),
+		info,
 	)
 }

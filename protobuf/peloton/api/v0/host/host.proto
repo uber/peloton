@@ -6,6 +6,8 @@ syntax = "proto3";
 
 package peloton.api.v0.host;
 
+import "peloton/api/v0/peloton.proto";
+
 enum HostState {
     HOST_STATE_INVALID = 0;
 
@@ -38,6 +40,9 @@ message HostInfo {
 
     // Goal state of the host
     HostState goal_state = 4;
+
+    // Host labels.
+    repeated peloton.Label labels = 5;
 }
 
 /**
