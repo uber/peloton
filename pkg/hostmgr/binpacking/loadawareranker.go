@@ -44,8 +44,8 @@ type loadAwareRanker struct {
 }
 
 type hostLoad struct {
-	hostName string
-	load     int32
+	HostName string
+	Load     int32
 }
 
 // NewLoadAwareRanker returns the LoadAware Ranker
@@ -67,7 +67,7 @@ func (l *loadAwareRanker) Name() string {
 
 // GetRankedHostList returns the ranked host list.
 // For loadAware we are following sorted ascending order
-// cQoS provides an abstract metric called load which ranges from 0 to 100.
+// cQoS provides an abstract metric called Load which ranges from 0 to 100.
 func (l *loadAwareRanker) GetRankedHostList(
 	ctx context.Context,
 	offerIndex map[string]summary.HostSummary) []interface{} {
@@ -81,7 +81,7 @@ func (l *loadAwareRanker) GetRankedHostList(
 	return l.summaryList
 }
 
-// RefreshRanking refreshes the host list based on load information
+// RefreshRanking refreshes the host list based on Load information
 // This function has to be called periodically to refresh the list
 func (l *loadAwareRanker) RefreshRanking(
 	ctx context.Context,
@@ -94,7 +94,7 @@ func (l *loadAwareRanker) RefreshRanking(
 	l.summaryList = summaryList
 }
 
-// getRankedHostList sorts the offer index to one criteria, load from CQos
+// getRankedHostList sorts the offer index to one criteria, Load from CQos
 // a int32 type
 func (l *loadAwareRanker) getRankedHostList(
 	ctx context.Context,
@@ -105,12 +105,16 @@ func (l *loadAwareRanker) getRankedHostList(
 	for key, value := range offerIndex {
 		offerIndexCopy[key] = value
 	}
-	//get the host load map from cQos
+	//get the host Load map from cQos
 	//loop through the hosts summary map
-	//and sort the host summary map according to the host load map
+	//and sort the host summary map according to the host Load map
 	loadMap, err := l.pollFromCQos(ctx)
 	if err != nil {
 		l.cqosMetrics.GetCqosAdvisorMetricFail.Inc(1)
+		log.WithFields(log.Fields{
+			"cqosLastUpTime": l.cqosLastUpTime,
+			"downDuration":   time.Since(l.cqosLastUpTime).Seconds(),
+		}).Debug("Cqos advisor is down")
 		if time.Since(l.cqosLastUpTime).Seconds() >= _maxTryTimeout {
 			// Cqos advisor is not reachable after 5 mins
 			// expire the cache list, we fall back to first_fit ranker
@@ -121,9 +125,9 @@ func (l *loadAwareRanker) getRankedHostList(
 	}
 	l.cqosMetrics.GetCqosAdvisorMetric.Inc(1)
 
-	// loadHostMap key is the load, value is an array of hosts of this load
+	// loadHostMap key is the Load, value is an array of hosts of this Load
 	loadHostMap := l.bucketSortByLoad(loadMap)
-	// loop through the hosts of same load
+	// loop through the hosts of same Load
 	cqosLoadMin := int32(0)
 	cqosLoadMax := int32(100)
 	for i := cqosLoadMin; i <= cqosLoadMax; i++ {
@@ -131,36 +135,38 @@ func (l *loadAwareRanker) getRankedHostList(
 			continue
 		}
 		for _, perHostLoad := range loadHostMap[i] {
-			hsummary := offerIndex[perHostLoad.hostName]
+			hsummary := offerIndex[perHostLoad.HostName]
 			summaryList = append(summaryList, hsummary)
-			delete(offerIndexCopy, perHostLoad.hostName)
+			delete(offerIndexCopy, perHostLoad.HostName)
 		}
 	}
 
 	// this means some hosts are in mesos offers while not in cqos response.
-	// We will temporary treat those hosts with load of 100
+	// We will temporary treat those hosts with Load of 100
 	if len(offerIndexCopy) != 0 {
 		for host := range offerIndexCopy {
 			summaryList = append(summaryList, offerIndexCopy[host])
 		}
 	}
+	log.WithFields(log.Fields{
+		"summaryList": summaryList,
+	}).Debug("Host summary List after sorting by load ranker")
 	return summaryList
 }
 
-// bucketSortByLoad bucket sorting the load
-// the load will be [0..100]
+// bucketSortByLoad bucket sorting the Load
+// the Load will be [0..100]
 // map looks like 0 => {host1, host2}
 //                1 => {host3}...
 func (l *loadAwareRanker) bucketSortByLoad(
 	loadMap *cqos.GetHostMetricsResponse) map[int32][]hostLoad {
-	// loadHostMap records load to hosts of the same load
+	// loadHostMap records Load to hosts of the same Load
 	loadHostMap := make(map[int32][]hostLoad)
 
 	for hostName, load := range loadMap.GetHosts() {
 		loadHostMap[load.Score] = append(loadHostMap[load.Score],
 			hostLoad{hostName, load.Score})
 	}
-
 	return loadHostMap
 }
 

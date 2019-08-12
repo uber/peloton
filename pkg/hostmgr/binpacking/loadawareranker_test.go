@@ -68,7 +68,7 @@ func (suite *LoadAwareRankerTestSuite) TestName() {
 	suite.EqualValues(suite.loadAwareRanker.Name(), LoadAware)
 }
 
-// TestGetRankedHostList return a sorted hostsummary by load
+// TestGetRankedHostList return a sorted hostsummary by Load
 func (suite *LoadAwareRankerTestSuite) TestGetRankedHostList() {
 	suite.setupMocks()
 
@@ -88,7 +88,7 @@ func (suite *LoadAwareRankerTestSuite) TestGetRankedHostList() {
 		"hostname4")
 }
 
-// TestGetRankedHostListCqosNotHost tests cQos doesn't return load value for
+// TestGetRankedHostListCqosNotHost tests cQos doesn't return Load value for
 // hostname5 but hostname5 is present in offerIndex
 // hostname5 will be put into the buttom of the sorted list
 // treating it like the heavy loaded.
