@@ -127,6 +127,7 @@ func (l *loadAwareRanker) getRankedHostList(
 
 	// loadHostMap key is the Load, value is an array of hosts of this Load
 	loadHostMap := l.bucketSortByLoad(loadMap)
+	var hostLoadOrderedList []hostLoad
 	// loop through the hosts of same Load
 	cqosLoadMin := int32(0)
 	cqosLoadMax := int32(100)
@@ -138,6 +139,7 @@ func (l *loadAwareRanker) getRankedHostList(
 			hsummary := offerIndex[perHostLoad.HostName]
 			summaryList = append(summaryList, hsummary)
 			delete(offerIndexCopy, perHostLoad.HostName)
+			hostLoadOrderedList = append(hostLoadOrderedList, perHostLoad)
 		}
 	}
 
@@ -148,9 +150,11 @@ func (l *loadAwareRanker) getRankedHostList(
 			summaryList = append(summaryList, offerIndexCopy[host])
 		}
 	}
+
 	log.WithFields(log.Fields{
-		"summaryList": summaryList,
-	}).Debug("Host summary List after sorting by load ranker")
+		"hostLoadOrderedList": hostLoadOrderedList,
+	}).Debug("Host load ordered List after sorting by load ranker")
+
 	return summaryList
 }
 
