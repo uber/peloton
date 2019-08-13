@@ -530,18 +530,18 @@ func (c *hostCache) deleteHost(event *scalar.HostEvent) {
 // Start will start the goroutine that listens for host events.
 func (c *hostCache) Start() {
 	if !c.lifecycle.Start() {
-		log.Warn("hostCache is already started")
 		return
 	}
 
 	go c.waitForHostEvents()
 	go c.waitForPodEvents()
+
+	log.Warn("hostCache started")
 }
 
 // Stop will stop the host cache go routine that listens for host events.
 func (c *hostCache) Stop() {
 	if !c.lifecycle.Stop() {
-		log.Warn("hostCache already stopped")
 		return
 	}
 
