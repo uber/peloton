@@ -37,7 +37,7 @@ WORKDIR /go/src/github.com/uber/peloton
 
 # setup config environment with default configurations
 RUN mkdir /etc/peloton
-COPY $GIT_REPO/docker/default-config/ /etc/peloton/
+COPY $GIT_REPO/config/ /etc/peloton/
 COPY $GIT_REPO/docker/entrypoint.sh /bin/entrypoint.sh
 
 # TODO(gabe): reenable me when we have no more closed source dependencies, and
