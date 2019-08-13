@@ -28,6 +28,8 @@ import (
 	recovery_mocks "github.com/uber/peloton/pkg/hostmgr/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/offer"
 	offer_mocks "github.com/uber/peloton/pkg/hostmgr/offer/mocks"
+	hostcache_mocks "github.com/uber/peloton/pkg/hostmgr/p2k/hostcache/mocks"
+	plugins_mocks "github.com/uber/peloton/pkg/hostmgr/p2k/plugins/mocks"
 	reconciler_mocks "github.com/uber/peloton/pkg/hostmgr/reconcile/mocks"
 	reserver_mocks "github.com/uber/peloton/pkg/hostmgr/reserver/mocks"
 	watchmocks "github.com/uber/peloton/pkg/hostmgr/watchevent/mocks"
@@ -68,6 +70,9 @@ type ServerTestSuite struct {
 	reserver       *reserver_mocks.MockReserver
 	watchProcessor *watchmocks.MockWatchProcessor
 
+	plugin    *plugins_mocks.MockPlugin
+	hostCache *hostcache_mocks.MockHostCache
+
 	server *Server
 }
 
@@ -83,6 +88,8 @@ func (suite *ServerTestSuite) SetupTest() {
 	suite.drainer = host_mocks.NewMockDrainer(suite.ctrl)
 	suite.reserver = reserver_mocks.NewMockReserver(suite.ctrl)
 	suite.watchProcessor = watchmocks.NewMockWatchProcessor(suite.ctrl)
+	suite.plugin = plugins_mocks.NewMockPlugin(suite.ctrl)
+	suite.hostCache = hostcache_mocks.NewMockHostCache(suite.ctrl)
 
 	suite.server = &Server{
 		ID:   _ID,
@@ -108,6 +115,9 @@ func (suite *ServerTestSuite) SetupTest() {
 
 		metrics:        metrics.NewMetrics(suite.testScope),
 		watchProcessor: suite.watchProcessor,
+
+		plugin:    suite.plugin,
+		hostCache: suite.hostCache,
 	}
 	suite.server.Start()
 }
@@ -132,6 +142,8 @@ func (suite *ServerTestSuite) TestNewServer() {
 		suite.drainer,
 		suite.reserver,
 		suite.watchProcessor,
+		suite.plugin,
+		suite.hostCache,
 	)
 	suite.ctrl.Finish()
 	suite.NotNil(s)
@@ -161,6 +173,8 @@ func (suite *ServerTestSuite) TestUnelectedNoOp() {
 	suite.server.handlersRunning.Store(false)
 	gomock.InOrder(
 		suite.mInbound.EXPECT().IsRunning().Return(false).Times(2),
+		suite.plugin.EXPECT().Stop(),
+		suite.hostCache.EXPECT().Stop(),
 	)
 	suite.server.ensureStateRound()
 	suite.ctrl.Finish()
@@ -178,6 +192,8 @@ func (suite *ServerTestSuite) TestUnelectedStopConnection() {
 		suite.mInbound.EXPECT().IsRunning().Return(true).AnyTimes(),
 		suite.mInbound.EXPECT().Stop(),
 		suite.mInbound.EXPECT().IsRunning().Return(false).AnyTimes(),
+		suite.plugin.EXPECT().Stop(),
+		suite.hostCache.EXPECT().Stop(),
 	)
 
 	suite.server.ensureStateRound()
@@ -207,6 +223,8 @@ func (suite *ServerTestSuite) TestUnelectedStopHandler() {
 		suite.recoveryHandler.EXPECT().Stop(),
 		suite.drainer.EXPECT().Stop(),
 		suite.reserver.EXPECT().Stop(),
+		suite.plugin.EXPECT().Stop(),
+		suite.hostCache.EXPECT().Stop(),
 	)
 
 	suite.server.ensureStateRound()
@@ -230,6 +248,8 @@ func (suite *ServerTestSuite) TestUnelectedStopConnectionAndHandler() {
 		suite.drainer.EXPECT().Stop(),
 		suite.reserver.EXPECT().Stop(),
 		suite.mInbound.EXPECT().IsRunning().Return(false).AnyTimes(),
+		suite.plugin.EXPECT().Stop(),
+		suite.hostCache.EXPECT().Stop(),
 	)
 
 	suite.server.ensureStateRound()
@@ -245,6 +265,8 @@ func (suite *ServerTestSuite) TestElectedNoOp() {
 	suite.server.handlersRunning.Store(true)
 	gomock.InOrder(
 		suite.mInbound.EXPECT().IsRunning().Return(true).AnyTimes(),
+		suite.hostCache.EXPECT().Start(),
+		suite.plugin.EXPECT().Start(),
 	)
 	suite.server.ensureStateRound()
 	suite.ctrl.Finish()
@@ -277,6 +299,8 @@ func (suite *ServerTestSuite) TestElectedRestartConnection() {
 
 		// Connected, now start handlers.
 		suite.mInbound.EXPECT().IsRunning().Return(true),
+		suite.hostCache.EXPECT().Start(),
+		suite.plugin.EXPECT().Start(),
 
 		// Triggers Explicit Reconciliation on Mesos Master re-election
 		suite.reconciler.EXPECT().SetExplicitReconcileTurn(true).Times(1),
@@ -300,6 +324,8 @@ func (suite *ServerTestSuite) TestElectedRestartHandlers() {
 
 	gomock.InOrder(
 		suite.mInbound.EXPECT().IsRunning().Return(true).Times(3),
+		suite.hostCache.EXPECT().Start(),
+		suite.plugin.EXPECT().Start(),
 		suite.reconciler.EXPECT().SetExplicitReconcileTurn(true).Times(1),
 		suite.backgroundManager.EXPECT().Start(),
 		suite.eventHandler.EXPECT().Start(),
@@ -334,6 +360,9 @@ func (suite *ServerTestSuite) TestElectedRestartConnectionAndHandler() {
 
 		// Connected, now start handlers.
 		suite.mInbound.EXPECT().IsRunning().Return(true),
+		suite.hostCache.EXPECT().Start(),
+		suite.plugin.EXPECT().Start(),
+
 		// Triggers Explicit Reconciliation on re-election of host manager.
 		suite.reconciler.EXPECT().SetExplicitReconcileTurn(true).Times(1),
 		suite.backgroundManager.EXPECT().Start(),

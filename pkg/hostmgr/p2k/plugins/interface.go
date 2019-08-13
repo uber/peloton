@@ -19,7 +19,6 @@ import (
 
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 
-	"github.com/uber/peloton/pkg/hostmgr/p2k/plugins/k8s"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 )
 
@@ -27,7 +26,7 @@ import (
 // different underlying cluster management systems.
 type Plugin interface {
 	// Start the plugin.
-	Start()
+	Start() error
 
 	// Stop the plugin.
 	Stop()
@@ -43,15 +42,4 @@ type Plugin interface {
 
 	// ReconcileHosts will return the current state of hosts in the cluster.
 	ReconcileHosts() ([]*scalar.HostInfo, error)
-}
-
-// New returns a new instance of Plugin based on the input config.
-func New(
-	configPath string,
-	podEventsCh chan<- *scalar.PodEvent,
-	hostEventCh chan<- *scalar.HostEvent,
-) (Plugin, error) {
-	// Input is config, initialize either mesos plugin or k8s plugin based on
-	// input config. for now keep k8s plugin as default.
-	return k8s.NewK8sManager(configPath, podEventsCh, hostEventCh)
 }

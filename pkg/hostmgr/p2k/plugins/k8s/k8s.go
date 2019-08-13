@@ -25,6 +25,7 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 
 	log "github.com/sirupsen/logrus"
+	"go.uber.org/yarpc/yarpcerrors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -110,10 +111,10 @@ func newK8sManagerWithClient(
 }
 
 // Start starts the k8s manager plugin
-func (k *K8SManager) Start() {
+func (k *K8SManager) Start() error {
 	if !k.lifecycle.Start() {
 		log.Warn("K8SManager is already started")
-		return
+		return nil
 	}
 
 	// Add event callbacks to nodeInformer and podInformer.
@@ -141,8 +142,10 @@ func (k *K8SManager) Start() {
 		nodeInformer.HasSynced,
 		podInformer.HasSynced,
 	) {
-		log.Warn("Timed out waiting for cache to sync.")
+		return yarpcerrors.InternalErrorf("timed out waiting for cache to sync")
 	}
+
+	return nil
 }
 
 // Stop stops the K8SManager.

@@ -659,13 +659,16 @@ func main() {
 
 	maintenanceQueue := queue.NewMaintenanceQueue()
 
-	if cfg.K8s.Enabled {
-		podEventCh := make(chan *scalar.PodEvent, k8s.EventChanSize)
-		hostEventCh := make(chan *scalar.HostEvent, k8s.EventChanSize)
+	plugin := plugins.NewNoopPlugin()
+	var hostCache hostcache.HostCache
+	podEventCh := make(chan *scalar.PodEvent, k8s.EventChanSize)
+	hostEventCh := make(chan *scalar.HostEvent, k8s.EventChanSize)
 
-		// If k8s config file is present, this will return a k8s plugin, else a
-		// mesos plugin, for now.
-		plugin, err := plugins.New(
+	// If k8s is enabled, return a k8s plugin.
+	// TODO: start MesosPlugin after it's implemented.
+	if cfg.K8s.Enabled {
+		var err error
+		plugin, err = plugins.NewK8sPlugin(
 			cfg.K8s.Kubeconfig,
 			podEventCh,
 			hostEventCh,
@@ -673,36 +676,26 @@ func main() {
 		if err != nil {
 			log.WithError(err).Fatal("Cannot init host manager plugin.")
 		}
-
-		// Create host cache instance.
-		hc := hostcache.New(hostEventCh, podEventCh, plugin)
-
-		pem := podeventmanager.New(
-			dispatcher,
-			podEventCh,
-			plugin,
-			cfg.HostManager.TaskUpdateBufferSize,
-			rootScope)
-
-		// This should start the event stream for pods and hosts
-		// TODO: do this after leader election (T3224499).
-		hc.Start()
-		defer hc.Stop()
-
-		// Start plugin event listeners to listen for scheduler events
-		// TODO: do this after leader election (T3224499).
-		plugin.Start()
-		defer plugin.Stop()
-
-		// Create v1alpha hostmgr internal service handler.
-		hostmgrsvc.NewServiceHandler(
-			dispatcher,
-			rootScope,
-			plugin,
-			hc,
-			pem,
-		)
 	}
+
+	// Create host cache instance.
+	hostCache = hostcache.New(hostEventCh, podEventCh, plugin)
+
+	pem := podeventmanager.New(
+		dispatcher,
+		podEventCh,
+		plugin,
+		cfg.HostManager.TaskUpdateBufferSize,
+		rootScope)
+
+	// Create v1alpha hostmgr internal service handler.
+	hostmgrsvc.NewServiceHandler(
+		dispatcher,
+		rootScope,
+		plugin,
+		hostCache,
+		pem,
+	)
 
 	// Create new hostmgr internal service handler.
 	serviceHandler := hostmgr.NewServiceHandler(
@@ -759,10 +752,12 @@ func main() {
 		drainer,
 		serviceHandler.GetReserver(),
 		watchProcessor,
+		plugin,
+		hostCache,
 	)
 	server.Start()
 
-	// Start dispatch loop
+	// Start dispatch loop.
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
@@ -782,7 +777,7 @@ func main() {
 	}
 	defer candidate.Stop()
 
-	// Start dispatch loop
+	// Start dispatch loop.
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
@@ -793,10 +788,10 @@ func main() {
 		"grpcPort": cfg.HostManager.GRPCPort,
 	}).Info("Started host manager")
 
-	// we can *honestly* say the server is booted up now
+	// We can *honestly* say the server is booted up now.
 	health.InitHeartbeat(rootScope, cfg.Health, candidate)
 
-	// start collecting runtime metrics
+	// Start collecting runtime metrics.
 	defer metrics.StartCollectingRuntimeMetrics(
 		rootScope,
 		cfg.Metrics.RuntimeMetrics.Enabled,

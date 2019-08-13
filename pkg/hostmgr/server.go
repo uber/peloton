@@ -27,6 +27,8 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/transport/mhttp"
 	"github.com/uber/peloton/pkg/hostmgr/metrics"
 	"github.com/uber/peloton/pkg/hostmgr/offer"
+	"github.com/uber/peloton/pkg/hostmgr/p2k/hostcache"
+	"github.com/uber/peloton/pkg/hostmgr/p2k/plugins"
 	"github.com/uber/peloton/pkg/hostmgr/reconcile"
 	"github.com/uber/peloton/pkg/hostmgr/reserver"
 	"github.com/uber/peloton/pkg/hostmgr/watchevent"
@@ -87,6 +89,10 @@ type Server struct {
 
 	// watch processor control all the client connection listening for the events
 	watchProcessor watchevent.WatchProcessor
+
+	plugin plugins.Plugin
+
+	hostCache hostcache.HostCache
 }
 
 // NewServer creates a host manager Server instance.
@@ -101,7 +107,9 @@ func NewServer(
 	recoveryHandler RecoveryHandler,
 	drainer host.Drainer,
 	reserver reserver.Reserver,
-	watchProcessor watchevent.WatchProcessor) *Server {
+	watchProcessor watchevent.WatchProcessor,
+	plugin plugins.Plugin,
+	hostCache hostcache.HostCache) *Server {
 
 	s := &Server{
 		ID:                   leader.NewID(httpPort, grpcPort),
@@ -119,6 +127,8 @@ func NewServer(
 		reserver:             reserver,
 		metrics:              metrics.NewMetrics(parent),
 		watchProcessor:       watchProcessor,
+		plugin:               plugin,
+		hostCache:            hostCache,
 	}
 	log.Info("Hostmgr server started.")
 	return s
@@ -149,7 +159,7 @@ func (s *Server) GainedLeadershipCallback() error {
 }
 
 // LostLeadershipCallback is the callback when the current node lost
-// leadership
+// leadership.
 func (s *Server) LostLeadershipCallback() error {
 	s.Lock()
 	defer s.Unlock()
@@ -157,13 +167,14 @@ func (s *Server) LostLeadershipCallback() error {
 	log.WithField("role", s.role).Info("Lost leadership")
 	s.elected.Store(false)
 	s.isLeader = false
+
 	s.watchProcessor.StopEventClients()
 
 	return nil
 }
 
 // HasGainedLeadership returns true iff once GainedLeadershipCallback
-// completes
+// completes.
 func (s *Server) HasGainedLeadership() bool {
 	s.Lock()
 	defer s.Unlock()
@@ -177,6 +188,7 @@ func (s *Server) ShutDownCallback() error {
 	defer s.Unlock()
 
 	log.WithFields(log.Fields{"role": s.role}).Info("Quitting election")
+
 	s.elected.Store(false)
 	s.isLeader = false
 	s.watchProcessor.StopEventClients()
@@ -261,9 +273,17 @@ func (s *Server) ensureRunning() {
 		s.resetBackoff()
 	}
 
-	// If we have mesosInbound running,
-	// restart underlying handlers if necessary.
-	if s.mesosInbound.IsRunning() && !s.handlersRunning.Load() {
+	if !s.mesosInbound.IsRunning() {
+		return
+	}
+
+	s.hostCache.Start()
+	if err := s.plugin.Start(); err != nil {
+		log.Errorf("Failed to start plugin: %s", err)
+		return
+	}
+
+	if !s.handlersRunning.Load() {
 		s.startHandlers()
 	}
 }
@@ -281,12 +301,15 @@ func (s *Server) ensureStopped() {
 	if s.handlersRunning.Load() {
 		s.stopHandlers()
 	}
+
+	s.plugin.Stop()
+	s.hostCache.Stop()
 }
 
-// This function ensures desire states based on whether current
+// This function ensures desired states based on whether current
 // server is elected, and whether actively connected to Mesos.
 func (s *Server) ensureStateRound() {
-	// Update metrics
+	// Update metrics.
 	s.metrics.Elected.Update(btof(s.elected.Load()))
 	s.metrics.MesosConnected.Update(btof(s.mesosInbound.IsRunning()))
 	s.metrics.HandlersRunning.Update(btof(s.handlersRunning.Load()))
