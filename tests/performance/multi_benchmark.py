@@ -35,8 +35,9 @@ PERF_TEST_CONDUCTED = [
     ('JOB_UPDATE', '_job_update.csv'),
     ('JOB_STATELESS_CREATE', '_job_stateless_create.csv'),
     ('JOB_STATELESS_UPDATE', '_job_stateless_update.csv'),
-    ('JOB_PARALLEL_STATELESS_UPDATE',
-     '_job_parallel_stateless_update.csv'),
+    ('JOB_PARALLEL_STATELESS_UPDATE', '_job_parallel_stateless_update.csv'),
+    ('JOB_STATELESS_HOST_LIMIT_1_CREATE', '_job_stateless_host_limit_1_create.csv'),
+    ('JOB_STATELESS_HOST_LIMIT_1_UPDATE', '_job_stateless_host_limit_1_update.csv'),
 ]
 
 NUM_TASKS = [10000, 50000]
@@ -226,6 +227,16 @@ def main():
     pupdate_df = t.perf_test_stateless_parallel_updates()
     if pupdate_df is not None:
         pupdate_df.to_csv(output_csv_files_list[4], sep='\t')
+
+    # create a stateless job with host-limit-1 constraint (use 60% of the cluster)
+    host_limit_1_create_df = t.perf_test_job_stateless_host_limit_1_create()
+    if host_limit_1_create_df is not None:
+        host_limit_1_create_df.to_csv(output_csv_files_list[5], sep='\t')
+
+    # update a stateless job with host-limit-1 constraint (use 60% of the cluster)
+    host_limit_1_update_df = t.perf_test_stateless_job_host_limit_1_update()
+    if host_limit_1_update_df is not None:
+        host_limit_1_update_df.to_csv(output_csv_files_list[6], sep='\t')
 
 
 def run_one_test(pf_client, num_tasks, instance_config, sleep_time, agent_num):
@@ -657,6 +668,161 @@ class PerformanceTest:
             ],
         )
         print("Test Create + Get")
+        print(df)
+        return df
+
+    def perf_test_job_stateless_host_limit_1_create(
+            self,
+            num_tasks=600,
+            sleep_time=1000,
+    ):
+        """
+        perf_test_job_stateless_host_limit_1_create is used to test creating a
+        stateless job with host-limit-1 constraint. The test creates one job
+        with num_tasks and measures the time it takes for all tasks to become
+        RUNNING.
+        """
+        total_time_in_seconds = 0
+        try:
+            job = self.client.get_stateless_job()
+            self.client.create_job(
+                job,
+                num_tasks,
+                False,
+                sleep_time,
+                host_limit_1=True,
+            )
+        except Exception as e:
+            msg = "Num_start_tasks %s && SleepTime %s" % (
+                num_tasks,
+                sleep_time,
+            )
+            print(
+                "test_job_stateless__host_limit_1_create: create job failed: %s (%s)"
+                % (e, msg)
+            )
+            return
+
+        succeed, _, completion = self.client.monitoring_job(job)
+        if succeed:
+            total_time_in_seconds = completion
+
+        try:
+            self.client.stop_job(job, wait_for_kill=True)
+        except Exception as e:
+            msg = "Num_start_tasks %s && SleepTime %s" % (
+                num_tasks,
+                sleep_time,
+            )
+            print(
+                "test_job_stateless_host_limit_1_create: stop job failed: %s (%s)"
+                % (e, msg)
+            )
+            return
+
+        record = [
+            {
+                "NumStartTasks": num_tasks,
+                "Sleep(s)": sleep_time,
+                "TotalTimeInSeconds": total_time_in_seconds,
+            }
+        ]
+        df = pd.DataFrame(
+            record, columns=["NumStartTasks", "Sleep(s)", "TotalTimeInSeconds"],
+            dtype=np.int64
+        )
+        print("Test StatelessHostLimit1Create")
+        print(df)
+        return df
+
+    def perf_test_stateless_job_host_limit_1_update(
+            self,
+            num_tasks=600,
+            batch_size=600,
+            sleep_time=1000,
+    ):
+        """
+        perf_test_stateless_job_host_limit_1_update is used to test updating a
+        stateless job with host_limit_1 constraint. The test creates one job
+        with num_tasks and measures the time it takes to update all tasks to a
+        new version.
+        """
+        total_time_in_seconds = 0
+        try:
+            job = self.client.get_stateless_job()
+            self.client.create_job(
+                job,
+                num_tasks,
+                False,
+                sleep_time - 100,
+                host_limit_1=True,
+            )
+        except Exception as e:
+            msg = "Num_start_tasks %s && SleepTime %s" % (
+                num_tasks,
+                sleep_time,
+            )
+            print(
+                "test_job_stateless_host_limit_1_update: create job failed: "
+                "%s (%s)" % (e, msg)
+            )
+            return
+
+        succeed, _, _ = self.client.monitoring_job(job)
+        if succeed is False:
+            print("test_job_stateless_host_limit_1_update: job failed to start")
+            return
+
+        try:
+            self.client.update_job(
+                job, 0, batch_size, False, sleep_time, host_limit_1=True)
+        except Exception as e:
+            msg = "Num_tasks %s && SleepTime %s && BatchSize %s" % (
+                num_tasks,
+                sleep_time,
+                batch_size,
+            )
+            print(
+                "test_job_stateless_host_limit_1_update: update job failed: %s (%s)"
+                % (e, msg)
+            )
+            return
+
+        succeed, _, completion = self.client.monitoring_job(job)
+        if succeed:
+            total_time_in_seconds = completion
+
+        try:
+            self.client.stop_job(job, wait_for_kill=True)
+        except Exception as e:
+            msg = "Num_start_tasks %s && SleepTime %s" % (
+                num_tasks,
+                sleep_time,
+            )
+            print(
+                "test_job_stateless_host_limit_1_create: stop job failed: "
+                "%s (%s)" % (e, msg)
+            )
+            return
+
+        record = [
+            {
+                "NumStartTasks": num_tasks,
+                "Sleep(s)": sleep_time,
+                "BatchSize": batch_size,
+                "TotalTimeInSeconds": total_time_in_seconds,
+            }
+        ]
+        df = pd.DataFrame(
+            record,
+            columns=[
+                "NumStartTasks",
+                "Sleep(s)",
+                "BatchSize",
+                "TotalTimeInSeconds",
+            ],
+        )
+        print("Test StatelessHostLimit1Update")
         print(df)
         return df
 

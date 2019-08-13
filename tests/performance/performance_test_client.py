@@ -64,7 +64,7 @@ class Job(object):
         self.job_id = None
 
     @abstractmethod
-    def create_pod_config(self, sleep_time, dynamic_factor):
+    def create_pod_config(self, sleep_time, dynamic_factor, host_limit_1):
         """
         Create the pod configuration with the sleep time in
         the command and dynamic factor is the echo output.
@@ -94,7 +94,12 @@ class Job(object):
 
     @abstractmethod
     def update_job(
-        self, instance_inc, batch_size, use_instance_config, sleep_time
+        self,
+        instance_inc,
+        batch_size,
+        use_instance_config,
+        sleep_time,
+        host_limit_1,
     ):
         """
         Update the job. The instance_inc will be added to the instance
@@ -105,7 +110,13 @@ class Job(object):
         pass
 
     @abstractmethod
-    def create_job(self, instance_num, use_instance_config, sleep_time):
+    def create_job(
+        self,
+        instance_num,
+        use_instance_config,
+        sleep_time,
+        host_limit_1,
+    ):
         """
         Create the job and store the job-id. Number of instances in the
         job are passed via instance_num, per instance configuration is
@@ -151,7 +162,7 @@ class Job(object):
 
 
 class BatchJob(Job):
-    def create_pod_config(self, sleep_time, dynamic_factor):
+    def create_pod_config(self, sleep_time, dynamic_factor, host_limit_1=False):
         return task.TaskConfig(
             resource=task.ResourceConfig(
                 cpuLimit=0.1, memLimitMb=32, diskLimitMb=32
@@ -187,7 +198,12 @@ class BatchJob(Job):
         return False
 
     def update_job(
-        self, instance_inc, batch_size, use_instance_config, sleep_time
+        self,
+        instance_inc,
+        batch_size,
+        use_instance_config,
+        sleep_time,
+        host_limit_1=False,
     ):
         job_info = self.get_job_info()
         job_config = job_info.config
@@ -209,7 +225,13 @@ class BatchJob(Job):
             timeout=default_timeout,
         )
 
-    def create_job(self, instance_num, use_instance_config, sleep_time):
+    def create_job(
+        self,
+        instance_num,
+        use_instance_config,
+        sleep_time,
+        host_limit_1=False,
+    ):
         default_config = self.create_pod_config(sleep_time, "static")
         instance_config = {}
         if use_instance_config:
@@ -291,10 +313,12 @@ class BatchJob(Job):
 
 
 class StatelessJob(Job):
-    def create_pod_config(self, sleep_time, dynamic_factor):
+    def create_pod_config(self, sleep_time, dynamic_factor, host_limit_1=False):
         container_spec = pod.ContainerSpec(
             resource=pod.ResourceSpec(
-                cpu_limit=0.1, mem_limit_mb=32, disk_limit_mb=32
+                cpu_limit=0.1,
+                mem_limit_mb=32,
+                disk_limit_mb=32,
             ),
             command=mesos.CommandInfo(
                 shell=True,
@@ -302,8 +326,26 @@ class StatelessJob(Job):
                 % (str(dynamic_factor), str(sleep_time)),
             ),
         )
+
+        instance_label = v1alpha_peloton.Label(
+            key="peloton/instance", value="instance-label"
+        )
+        host_limit_1_constraint = None
+        if host_limit_1:
+            host_limit_1_constraint = pod.Constraint(
+                type=1,  # Label constraint
+                label_constraint=pod.LabelConstraint(
+                    kind=1,  # Label
+                    condition=2,  # Equal
+                    requirement=0,
+                    label=instance_label,
+                ),
+            )
+
         containers = [container_spec]
-        return pod.PodSpec(containers=containers)
+        return pod.PodSpec(containers=containers,
+                           labels=[instance_label],
+                           constraint=host_limit_1_constraint)
 
     def get_job_info(self):
         request = stateless_svc.GetJobRequest(
@@ -349,9 +391,15 @@ class StatelessJob(Job):
         return False
 
     def update_job(
-        self, instance_inc, batch_size, use_instance_config, sleep_time
+        self,
+        instance_inc,
+        batch_size,
+        use_instance_config,
+        sleep_time,
+        host_limit_1=False,
     ):
-        default_config = self.create_pod_config(sleep_time, "static")
+        default_config = self.create_pod_config(
+            sleep_time, "static", host_limit_1=host_limit_1)
         job_spec = create_stateless_job_spec(
             "instance %s && sleep %s" % (instance_inc, sleep_time),
             [
@@ -395,8 +443,18 @@ class StatelessJob(Job):
             break
         return resp
 
-    def create_job(self, instance_num, use_instance_config, sleep_time):
-        default_config = self.create_pod_config(sleep_time, "static")
+    def create_job(
+        self,
+        instance_num,
+        use_instance_config,
+        sleep_time,
+        host_limit_1=False,
+    ):
+        default_config = self.create_pod_config(
+            sleep_time,
+            "static",
+            host_limit_1=host_limit_1,
+        )
         job_spec = create_stateless_job_spec(
             "instance %s && sleep %s" % (instance_num, sleep_time),
             [
@@ -518,14 +576,24 @@ class PerformanceTestClient(object):
         raise Exception("could not kill job")
 
     def update_job(
-        self, job, instance_inc, batch_size, use_instance_config, sleep_time
+        self,
+        job,
+        instance_inc,
+        batch_size,
+        use_instance_config,
+        sleep_time,
+        host_limit_1,
     ):
         return job.update_job(
-            instance_inc, batch_size, use_instance_config, sleep_time
+            instance_inc,
+            batch_size,
+            use_instance_config,
+            sleep_time,
+            host_limit_1,
         )
 
-    def create_job(self, job, instance_num, use_instance_config, sleep_time):
-        return job.create_job(instance_num, use_instance_config, sleep_time)
+    def create_job(self, job, instance_num, use_instance_config, sleep_time, host_limit_1):
+        return job.create_job(instance_num, use_instance_config, sleep_time, host_limit_1)
 
     def monitoring_job(self, job, stable_timeout=600):
         """
