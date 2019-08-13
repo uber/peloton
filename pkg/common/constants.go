@@ -46,6 +46,8 @@ const (
 	PelotonCLI = "peloton-cli"
 	// PelotonAuroraBridge application name
 	PelotonAuroraBridge = "peloton-aurorabridge"
+	// PelotonAPIProxy application name
+	PelotonAPIProxy = "peloton-api-proxy"
 
 	// Cqos advisor application name
 	QoSAdvisorService = "qosadvisorservice"

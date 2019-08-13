@@ -1,0 +1,4 @@
+metrics:
+  runtime_metrics:
+    enabled: true
+    interval: 10s
