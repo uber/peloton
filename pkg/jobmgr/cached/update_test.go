@@ -1254,6 +1254,12 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithLabelAddAndU
 		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, nil).
 		Return(taskRuntimes, nil)
 
+	for i := uint32(0); i < instanceCount; i++ {
+		suite.taskConfigV2Ops.EXPECT().
+			GetTaskConfig(gomock.Any(), suite.jobID, i, uint64(3)).
+			Return(&pbtask.TaskConfig{}, &models.ConfigAddOn{}, nil)
+	}
+
 	instancesAdded, instancesUpdated, instancesRemoved, instancesUnchanged, err :=
 		GetInstancesToProcessForUpdate(
 			context.Background(),
@@ -1307,6 +1313,12 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateWithLabelUpdated
 	suite.taskStore.EXPECT().
 		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, nil).
 		Return(taskRuntimes, nil)
+
+	for i := uint32(0); i < instanceCount; i++ {
+		suite.taskConfigV2Ops.EXPECT().
+			GetTaskConfig(gomock.Any(), suite.jobID, i, uint64(3)).
+			Return(&pbtask.TaskConfig{}, &models.ConfigAddOn{}, nil)
+	}
 
 	instancesAdded, instancesUpdated, instancesRemoved, instancesUnchanged, err :=
 		GetInstancesToProcessForUpdate(

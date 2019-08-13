@@ -1,0 +1,25 @@
+name: TestSpec
+owner: testUser
+owningTeam: testTeam
+ldapGroups:
+- team6
+- otto
+description: "A dummy test stateless job spec for peloton with job label changed"
+labels:
+- key: testKey0
+  value: testVal0
+- key: testKey1
+  value: testVal1
+- key: testKey3
+  value: testVal3
+instanceCount: 3
+defaultSpec:
+  containers:
+  - resource:
+      cpuLimit: 0.1
+      memLimitMb: 2.0
+      diskLimitMb: 10
+    entrypoint:
+      value: 'while :; do echo running 3; sleep 10; done'
+  mesosSpec:
+    shell: true

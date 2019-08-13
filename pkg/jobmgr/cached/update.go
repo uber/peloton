@@ -1030,30 +1030,22 @@ func GetInstancesToProcessForUpdate(
 		return
 	}
 
-	hasJobLabelsChanged := taskconfig.HasPelotonLabelsChanged(
-		prevJobConfig.GetLabels(),
-		newJobConfig.GetLabels(),
-	)
-
 	for instID := uint32(0); instID < newJobConfig.GetInstanceCount(); instID++ {
 		if runtime, ok := taskRuntimes[instID]; !ok {
 			// new instance added
 			instancesAdded = append(instancesAdded, instID)
 		} else {
-			changed := hasJobLabelsChanged
-
-			if !changed {
-				changed, err = hasInstanceConfigChanged(
-					ctx,
-					jobID,
-					instID,
-					runtime.GetConfigVersion(),
-					newJobConfig,
-					taskConfigV2Ops,
-				)
-				if err != nil {
-					return
-				}
+			var changed bool
+			changed, err = hasInstanceConfigChanged(
+				ctx,
+				jobID,
+				instID,
+				runtime.GetConfigVersion(),
+				newJobConfig,
+				taskConfigV2Ops,
+			)
+			if err != nil {
+				return
 			}
 
 			if changed || runtime.GetConfigVersion() != runtime.GetDesiredConfigVersion() {

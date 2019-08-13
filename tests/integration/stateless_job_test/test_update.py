@@ -22,6 +22,7 @@ from tests.integration.stateless_job_test.util import (
     assert_pod_id_changed,
     assert_pod_spec_changed,
     assert_pod_spec_equal,
+    assert_pod_id_equal,
     get_host_to_task_count,
 )
 from tests.integration.stateless_update import StatelessUpdate
@@ -64,6 +65,9 @@ UPDATE_STATELESS_JOB_WITH_HEALTH_CHECK_SPEC = (
 )
 UPDATE_STATELESS_JOB_INVALID_SPEC = "test_stateless_job_spec_invalid.yaml"
 UPDATE_STATELESS_JOB_NO_ERR = "test_stateless_job_exit_without_err_spec.yaml"
+UPDATE_STATELESS_JOB_LABEL_UPDATE_SPEC = (
+    "test_stateless_job_label_update_spec.yaml"
+)
 
 
 def test__create_update(stateless_job, in_place):
@@ -1388,3 +1392,18 @@ def test__update_with_host_maintenance__bad_config(stateless_job, maintenance):
         assert False, 'Host should not transition to DOWN'
     except:
         assert is_host_in_state(test_host, host_pb2.HOST_STATE_DRAINING)
+
+
+# test__create_update_update_job_label tests update job label
+# would not trigger task restart
+def test__create_update_update_job_label(stateless_job):
+    stateless_job.create()
+    stateless_job.wait_for_all_pods_running()
+    old_pod_infos = stateless_job.query_pods()
+    update = StatelessUpdate(
+        stateless_job, updated_job_file=UPDATE_STATELESS_JOB_LABEL_UPDATE_SPEC
+    )
+    update.create()
+    update.wait_for_state(goal_state="SUCCEEDED")
+    new_pod_infos = stateless_job.query_pods()
+    assert_pod_id_equal(old_pod_infos, new_pod_infos)
