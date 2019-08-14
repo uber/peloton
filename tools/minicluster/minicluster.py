@@ -469,6 +469,19 @@ def run_peloton_placement(config, enable_k8s=False):
 
 
 #
+# Run peloton api proxy
+#
+def run_peloton_apiproxy(config, enable_k8s=False):
+    for i in range(0, config["peloton_apiproxy_instance_count"]):
+        ports = [
+            port + i * 10 for port in config["peloton_apiproxy_ports"]
+        ]
+        name = config["peloton_apiproxy_container"] + repr(i)
+        utils.remove_existing_container(name)
+        start_and_wait("apiproxy", name, ports, config)
+
+
+#
 # Run peloton archiver app
 #
 def run_peloton_archiver(config, enable_k8s=False):

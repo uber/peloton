@@ -1,4 +1,4 @@
-.PHONY: all placement install cli test unit_test cover lint clean \
+.PHONY: all apiproxy placement install cli test unit_test cover lint clean \
 	hostmgr jobmgr resmgr docker version debs docker-push \
 	test-containers archiver failure-test-minicluster \
 	failure-test-vcluster aurorabridge docs
@@ -39,7 +39,6 @@ PHAB_COMMENT = .phabricator-comment
 # See https://golang.org/doc/gdb for details of the flags
 GO_FLAGS = -gcflags '-N -l' -ldflags "-X main.version=$(PACKAGE_VERSION)"
 
-K8S ?= "--k8s"
 THIS_FILE := $(lastword $(MAKEFILE_LIST))
 
 ifeq ($(shell uname),Linux)
@@ -50,7 +49,7 @@ endif
 
 .PRECIOUS: $(GENS) $(LOCAL_MOCKS) $(VENDOR_MOCKS) mockgens
 
-all: gens placement cli hostmgr resmgr jobmgr archiver aurorabridge
+all: gens placement cli hostmgr resmgr jobmgr archiver aurorabridge apiproxy
 
 cli:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton cmd/cli/*.go
@@ -72,6 +71,9 @@ archiver:
 
 aurorabridge:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-aurorabridge cmd/aurorabridge/*.go
+
+apiproxy:
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-apiproxy cmd/apiproxy/*.go
 
 # Use the same version of mockgen in unit tests as in mock generation
 build-mockgen:

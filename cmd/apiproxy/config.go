@@ -12,15 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package apiproxy
+package main
 
 import (
 	"github.com/uber/peloton/pkg/apiproxy"
+	"github.com/uber/peloton/pkg/auth"
 	"github.com/uber/peloton/pkg/common/metrics"
+	"github.com/uber/peloton/pkg/middleware/inbound"
 )
 
 // Config contains all configuration to run Peloton API Proxy
 type Config struct {
-	Metrics  metrics.Config  `yaml:"metrics"`
-	APIProxy apiproxy.Config `yaml:"api_proxy"`
+	Metrics   metrics.Config          `yaml:"metrics"`
+	APIProxy  apiproxy.Config         `yaml:"api_proxy"`
+	Auth      auth.Config             `yaml:"auth"`
+	RateLimit inbound.RateLimitConfig `yaml:"rate_limit"`
 }
