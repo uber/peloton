@@ -20,14 +20,22 @@ import (
 
 	peloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
+	"github.com/uber/peloton/pkg/common/background"
 	"github.com/uber/peloton/pkg/common/lifecycle"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/plugins"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 	hmscalar "github.com/uber/peloton/pkg/hostmgr/scalar"
 
 	log "github.com/sirupsen/logrus"
+	uatomic "github.com/uber-go/atomic"
+	"github.com/uber-go/tally"
 	"go.uber.org/multierr"
 	"go.uber.org/yarpc/yarpcerrors"
+)
+
+const (
+	_hostCacheMetricsRefresh       = "hostCacheMetricsRefresh"
+	_hostCacheMetricsRefreshPeriod = 10 * time.Second
 )
 
 // HostCache manages cluster resources, and provides necessary abstractions to
@@ -94,6 +102,12 @@ type hostCache struct {
 
 	// Lifecycle manager.
 	lifecycle lifecycle.LifeCycle
+
+	// background manager.
+	backgroundMgr background.Manager
+
+	// Metrics.
+	metrics *Metrics
 }
 
 // New returns a new instance of host cache.
@@ -101,13 +115,17 @@ func New(
 	hostEventCh chan *scalar.HostEvent,
 	podEventCh chan *scalar.PodEvent,
 	plugin plugins.Plugin,
+	backgroundMgr background.Manager,
+	parent tally.Scope,
 ) HostCache {
 	return &hostCache{
-		hostIndex:   make(map[string]HostSummary),
-		hostEventCh: hostEventCh,
-		podEventCh:  podEventCh,
-		plugin:      plugin,
-		lifecycle:   lifecycle.NewLifeCycle(),
+		hostIndex:     make(map[string]HostSummary),
+		hostEventCh:   hostEventCh,
+		podEventCh:    podEventCh,
+		plugin:        plugin,
+		lifecycle:     lifecycle.NewLifeCycle(),
+		metrics:       NewMetrics(parent),
+		backgroundMgr: backgroundMgr,
 	}
 }
 
@@ -314,6 +332,36 @@ func (c *hostCache) ReleaseHoldForPods(hostname string, podIDs []*peloton.PodID)
 		c.removePodHold(id)
 	}
 	return nil
+}
+
+// RefreshMetrics refreshes the metrics for hosts in ready and placing state.
+func (c *hostCache) RefreshMetrics() {
+	totalAvailable := hmscalar.Resources{}
+	totalAllocated := hmscalar.Resources{}
+	readyHosts := float64(0)
+	placingHosts := float64(0)
+
+	hosts := c.GetSummaries()
+
+	for _, h := range hosts {
+		allocated, capacity := h.GetAllocated(), h.GetCapacity()
+		available, _ := capacity.TrySubtract(allocated)
+		totalAllocated = totalAllocated.Add(allocated)
+		totalAvailable = totalAvailable.Add(available)
+
+		switch h.GetHostStatus() {
+		case ReadyHost:
+			readyHosts++
+		case PlacingHost:
+			placingHosts++
+		}
+	}
+
+	c.metrics.Available.Update(totalAvailable)
+	c.metrics.Allocated.Update(totalAllocated)
+	c.metrics.ReadyHosts.Update(readyHosts)
+	c.metrics.PlacingHosts.Update(placingHosts)
+	c.metrics.AvailableHosts.Update(float64(len(hosts)))
 }
 
 // addPodHold add a pod to podHeldIndex. Replace the old host if exists.
@@ -564,6 +612,16 @@ func (c *hostCache) Start() {
 	if !c.lifecycle.Start() {
 		return
 	}
+
+	c.backgroundMgr.RegisterWorks(
+		background.Work{
+			Name: _hostCacheMetricsRefresh,
+			Func: func(_ *uatomic.Bool) {
+				c.RefreshMetrics()
+			},
+			Period: _hostCacheMetricsRefreshPeriod,
+		},
+	)
 
 	go c.waitForHostEvents()
 	go c.waitForPodEvents()

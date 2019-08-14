@@ -679,7 +679,13 @@ func main() {
 	}
 
 	// Create host cache instance.
-	hostCache = hostcache.New(hostEventCh, podEventCh, plugin)
+	hostCache = hostcache.New(
+		hostEventCh,
+		podEventCh,
+		plugin,
+		backgroundManager,
+		rootScope,
+	)
 
 	pem := podeventmanager.New(
 		dispatcher,

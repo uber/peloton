@@ -29,6 +29,7 @@ import (
 
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
+	"github.com/uber-go/tally"
 )
 
 // TestAcquireLeases tests the host cache AcquireLeases API
@@ -118,6 +119,7 @@ func (suite *HostCacheTestSuite) TestAcquireLeases() {
 		hosts := generateHostSummaries(10)
 		hc := &hostCache{
 			hostIndex: make(map[string]HostSummary),
+			metrics:   NewMetrics(tally.NoopScope),
 		}
 		// initialize host cache with these 10 hosts
 		for _, s := range hosts {
@@ -127,6 +129,7 @@ func (suite *HostCacheTestSuite) TestAcquireLeases() {
 		}
 
 		leases, filterResult := hc.AcquireLeases(tt.filter)
+		hc.RefreshMetrics()
 
 		suite.Equal(tt.matched, len(leases), "test case %s", ttName)
 		suite.Equal(tt.filterCounts, filterResult, "test case %s", ttName)
