@@ -93,6 +93,10 @@ func (suite *trackerTestSuite) SetupSuite() {
 
 func (suite *trackerTestSuite) TearDownTest() {
 	suite.tracker.Clear()
+	for s := range task.TaskState_name {
+		suite.tracker.(*tracker).
+			resourcesHeldByTaskState[task.TaskState(s)] = scalar.ZeroResource
+	}
 }
 
 func (suite *trackerTestSuite) addTaskToTracker(task *resmgr.Task) {
@@ -740,5 +744,85 @@ func (suite *trackerTestSuite) TestGetOrphanTasks() {
 
 	for _, t := range suite.tracker.GetOrphanTasks("") {
 		suite.Equal(tr.orphanTasks[t.Task().GetTaskId().GetValue()], t)
+	}
+}
+
+// TestResourcesHeldByTaskState tests resources held by task state. It checks
+// if the resource map is updated correctly after each state transition
+func (suite *trackerTestSuite) TestResourcesHeldByTaskState() {
+	rmTask1 := suite.tracker.GetTask(suite.task.Id)
+	task2 := suite.createTask(1)
+	suite.addTaskToTracker(task2)
+	rmTask2 := suite.tracker.GetTask(task2.GetId())
+
+	testRMTasks := []*RMTask{rmTask1, rmTask2}
+
+	for i, t := range testRMTasks {
+		err := t.TransitTo(task.TaskState_PENDING.String())
+		suite.NoError(err)
+
+		err = t.TransitTo(task.TaskState_READY.String())
+		suite.NoError(err)
+		resourcesHeld := suite.tracker.(*tracker).resourcesHeldByTaskState[task.TaskState_READY]
+		suite.Equal(t.task.GetResource().GetCpuLimit(), resourcesHeld.GetCPU())
+		suite.Equal(t.task.GetResource().GetMemLimitMb(), resourcesHeld.GetMem())
+		suite.Equal(t.task.GetResource().GetDiskLimitMb(), resourcesHeld.GetDisk())
+		suite.Equal(t.task.GetResource().GetGpuLimit(), resourcesHeld.GetGPU())
+
+		err = t.TransitTo(task.TaskState_PLACING.String())
+		suite.NoError(err)
+		suite.Equal(scalar.ZeroResource, suite.tracker.(*tracker).resourcesHeldByTaskState[task.TaskState_READY])
+		resourcesHeld = suite.tracker.(*tracker).resourcesHeldByTaskState[task.TaskState_PLACING]
+		suite.Equal(t.task.GetResource().GetCpuLimit(), resourcesHeld.GetCPU())
+		suite.Equal(t.task.GetResource().GetMemLimitMb(), resourcesHeld.GetMem())
+		suite.Equal(t.task.GetResource().GetDiskLimitMb(), resourcesHeld.GetDisk())
+		suite.Equal(t.task.GetResource().GetGpuLimit(), resourcesHeld.GetGPU())
+
+		err = t.TransitTo(task.TaskState_PLACED.String())
+		suite.NoError(err)
+		suite.Equal(scalar.ZeroResource, suite.tracker.(*tracker).resourcesHeldByTaskState[task.TaskState_PLACING])
+		resourcesHeld = suite.tracker.(*tracker).resourcesHeldByTaskState[task.TaskState_PLACED]
+		suite.Equal(t.task.GetResource().GetCpuLimit(), resourcesHeld.GetCPU())
+		suite.Equal(t.task.GetResource().GetMemLimitMb(), resourcesHeld.GetMem())
+		suite.Equal(t.task.GetResource().GetDiskLimitMb(), resourcesHeld.GetDisk())
+		suite.Equal(t.task.GetResource().GetGpuLimit(), resourcesHeld.GetGPU())
+
+		err = t.TransitTo(task.TaskState_LAUNCHING.String())
+		suite.NoError(err)
+		suite.Equal(scalar.ZeroResource, suite.tracker.(*tracker).resourcesHeldByTaskState[task.TaskState_PLACED])
+		resourcesHeld = suite.tracker.(*tracker).resourcesHeldByTaskState[task.TaskState_LAUNCHING]
+		suite.Equal(t.task.GetResource().GetCpuLimit(), resourcesHeld.GetCPU())
+		suite.Equal(t.task.GetResource().GetMemLimitMb(), resourcesHeld.GetMem())
+		suite.Equal(t.task.GetResource().GetDiskLimitMb(), resourcesHeld.GetDisk())
+		suite.Equal(t.task.GetResource().GetGpuLimit(), resourcesHeld.GetGPU())
+
+		err = t.TransitTo(task.TaskState_LAUNCHED.String())
+		suite.NoError(err)
+		suite.Equal(scalar.ZeroResource, suite.tracker.(*tracker).resourcesHeldByTaskState[task.TaskState_LAUNCHING])
+		resourcesHeld = suite.tracker.(*tracker).resourcesHeldByTaskState[task.TaskState_LAUNCHED]
+		suite.Equal(t.task.GetResource().GetCpuLimit(), resourcesHeld.GetCPU())
+		suite.Equal(t.task.GetResource().GetMemLimitMb(), resourcesHeld.GetMem())
+		suite.Equal(t.task.GetResource().GetDiskLimitMb(), resourcesHeld.GetDisk())
+		suite.Equal(t.task.GetResource().GetGpuLimit(), resourcesHeld.GetGPU())
+
+		err = t.TransitTo(task.TaskState_RUNNING.String())
+		suite.NoError(err)
+		suite.Equal(scalar.ZeroResource, suite.tracker.(*tracker).resourcesHeldByTaskState[task.TaskState_LAUNCHED])
+		resourcesHeld = suite.tracker.(*tracker).resourcesHeldByTaskState[task.TaskState_RUNNING]
+		if i == 0 {
+			suite.Equal(t.task.GetResource().GetCpuLimit(), resourcesHeld.GetCPU())
+			suite.Equal(t.task.GetResource().GetMemLimitMb(), resourcesHeld.GetMem())
+			suite.Equal(t.task.GetResource().GetDiskLimitMb(), resourcesHeld.GetDisk())
+			suite.Equal(t.task.GetResource().GetGpuLimit(), resourcesHeld.GetGPU())
+		} else {
+			suite.Equal(rmTask1.task.GetResource().GetCpuLimit()+
+				rmTask2.task.GetResource().GetCpuLimit(), resourcesHeld.GetCPU())
+			suite.Equal(rmTask1.task.GetResource().GetMemLimitMb()+
+				rmTask2.task.GetResource().GetMemLimitMb(), resourcesHeld.GetMem())
+			suite.Equal(rmTask1.task.GetResource().GetDiskLimitMb()+
+				rmTask2.task.GetResource().GetDiskLimitMb(), resourcesHeld.GetDisk())
+			suite.Equal(rmTask1.task.GetResource().GetGpuLimit()+
+				rmTask2.task.GetResource().GetGpuLimit(), resourcesHeld.GetGPU())
+		}
 	}
 }

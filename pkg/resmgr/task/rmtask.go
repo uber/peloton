@@ -347,6 +347,8 @@ func (rmTask *RMTask) TransitFromTo(
 
 // TransitTo transitions to the target state
 func (rmTask *RMTask) TransitTo(stateTo string, options ...state.Option) error {
+	fromState := rmTask.getCurrentState().State
+
 	err := rmTask.stateMachine.TransitTo(state.State(stateTo), options...)
 	if err != nil {
 		if err == state.ErrNoOpTransition {
@@ -356,9 +358,10 @@ func (rmTask *RMTask) TransitTo(stateTo string, options ...state.Option) error {
 		return errors.Wrap(err, "failed to transition rmtask")
 	}
 
-	GetTracker().UpdateCounters(
-		rmTask.getCurrentState().State,
+	GetTracker().UpdateMetrics(
+		fromState,
 		task.TaskState(task.TaskState_value[stateTo]),
+		scalar.ConvertToResmgrResource(rmTask.task.GetResource()),
 	)
 	return nil
 }

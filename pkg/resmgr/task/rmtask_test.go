@@ -735,6 +735,9 @@ func (s *RMTaskTestSuite) TestRMTaskTransitToError() {
 	fErr := errors.New("fake error")
 
 	errStateMachine := sm_mock.NewMockStateMachine(s.ctrl)
+	errStateMachine.EXPECT().GetCurrentState().Return(statemachine.State("RUNNING"))
+	errStateMachine.EXPECT().GetReason().Return("")
+	errStateMachine.EXPECT().GetLastUpdateTime()
 	errStateMachine.EXPECT().TransitTo(gomock.Any()).Return(fErr)
 
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})

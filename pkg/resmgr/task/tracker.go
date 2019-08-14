@@ -77,8 +77,8 @@ type Tracker interface {
 	// GetActiveTasks returns task states map
 	GetActiveTasks(jobID string, respoolID string, states []string) map[string][]*RMTask
 
-	// UpdateCounters updates the counters for each state
-	UpdateCounters(from task.TaskState, to task.TaskState)
+	// UpdateMetrics updates the task metrics
+	UpdateMetrics(from task.TaskState, to task.TaskState, taskResources *scalar.Resources)
 
 	// GetOrphanTask gets the orphan RMTask for the given mesos-task-id
 	GetOrphanTask(mesosTaskID string) *RMTask
@@ -113,8 +113,12 @@ type tracker struct {
 
 	// mutex for the state counters
 	cMutex sync.Mutex
+
 	// map of task state to the count of tasks in the tracker
 	counters map[task.TaskState]float64
+
+	// map of task state to the resources held
+	resourcesHeldByTaskState map[task.TaskState]*scalar.Resources
 
 	// host manager client
 	hostMgrClient hostsvc.InternalHostServiceYARPCClient
@@ -134,12 +138,22 @@ func InitTaskTracker(
 
 	scope := parent.SubScope("tracker")
 	rmtracker = &tracker{
-		tasks:       make(map[string]*RMTask),
-		placements:  map[string]map[resmgr.TaskType]map[string]*RMTask{},
-		orphanTasks: make(map[string]*RMTask),
-		metrics:     NewMetrics(scope),
-		scope:       scope,
-		counters:    make(map[task.TaskState]float64),
+		tasks:                    make(map[string]*RMTask),
+		placements:               map[string]map[resmgr.TaskType]map[string]*RMTask{},
+		orphanTasks:              make(map[string]*RMTask),
+		metrics:                  NewMetrics(scope),
+		scope:                    scope,
+		counters:                 make(map[task.TaskState]float64),
+		resourcesHeldByTaskState: make(map[task.TaskState]*scalar.Resources),
+	}
+
+	// Initialize resources held by each non-terminal task state to zero resource.
+	for s := range task.TaskState_name {
+		taskState := task.TaskState(s)
+		// skip terminal states
+		if !util.IsPelotonStateTerminal(taskState) {
+			rmtracker.resourcesHeldByTaskState[taskState] = scalar.ZeroResource
+		}
 	}
 
 	// Checking placement back off is enabled , if yes then initialize
@@ -426,6 +440,17 @@ func (tr *tracker) AddResources(
 		return errors.Errorf("Not able to add resources for "+
 			"rmTask %s for respool %s ", tID, rmTask.respool.Name())
 	}
+
+	taskState := rmTask.GetCurrentState().State
+	if val, ok := tr.resourcesHeldByTaskState[taskState]; ok {
+		tr.resourcesHeldByTaskState[taskState] = val.Add(res)
+	}
+
+	// publish metrics
+	if gauge, ok := tr.metrics.ResourcesHeldByTaskState[taskState]; ok {
+		gauge.Update(tr.resourcesHeldByTaskState[taskState])
+	}
+
 	log.WithFields(log.Fields{
 		"respool_id": rmTask.respool.ID(),
 		"resources":  res,
@@ -484,29 +509,50 @@ func (tr *tracker) GetActiveTasks(
 	return taskStates
 }
 
-// UpdateCounters updates the counters for each state. This can be called from
+// UpdateMetrics updates the task metrics. This can be called from
 // multiple goroutines.
-func (tr *tracker) UpdateCounters(from task.TaskState, to task.TaskState) {
+func (tr *tracker) UpdateMetrics(
+	from task.TaskState,
+	to task.TaskState,
+	taskResources *scalar.Resources,
+) {
 	tr.cMutex.Lock()
 	defer tr.cMutex.Unlock()
 
 	// Reducing the count from state
-	if val, ok := tr.counters[from]; ok {
-		if val > 0 {
-			tr.counters[from] = val - 1
-		}
+	tr.counters[from] -= 1
+	if tr.counters[from] < 0 {
+		tr.counters[from] = 0
 	}
 
 	// Incrementing the state counter to +1
-	if val, ok := tr.counters[to]; ok {
-		tr.counters[to] = val + 1
-	} else {
-		tr.counters[to] = 1
+	tr.counters[to] += 1
+
+	// Subtract resources from 'from' state
+	if res, ok := tr.resourcesHeldByTaskState[from]; ok {
+		tr.resourcesHeldByTaskState[from] = res.Subtract(taskResources)
 	}
 
-	// publishing all the counters
-	for state, gauge := range tr.metrics.TaskStatesGauge {
-		gauge.Update(tr.counters[state])
+	// Add resources to 'to' state
+	if res, ok := tr.resourcesHeldByTaskState[to]; ok {
+		tr.resourcesHeldByTaskState[to] = res.Add(taskResources)
+	}
+
+	// publish metrics
+	if gauge, ok := tr.metrics.TaskStatesGauge[from]; ok {
+		gauge.Update(tr.counters[from])
+	}
+
+	if gauge, ok := tr.metrics.TaskStatesGauge[to]; ok {
+		gauge.Update(tr.counters[to])
+	}
+
+	if gauge, ok := tr.metrics.ResourcesHeldByTaskState[from]; ok {
+		gauge.Update(tr.resourcesHeldByTaskState[from])
+	}
+
+	if gauge, ok := tr.metrics.ResourcesHeldByTaskState[to]; ok {
+		gauge.Update(tr.resourcesHeldByTaskState[to])
 	}
 }
 

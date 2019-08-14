@@ -30,7 +30,8 @@ type Metrics struct {
 
 	TaskStatesGauge map[task.TaskState]tally.Gauge
 
-	LeakedResources scalar.GaugeMaps
+	ResourcesHeldByTaskState map[task.TaskState]scalar.GaugeMaps
+	LeakedResources          scalar.GaugeMaps
 
 	ReconciliationSuccess tally.Counter
 	ReconciliationFail    tally.Counter
@@ -72,11 +73,40 @@ func NewMetrics(scope tally.Scope) *Metrics {
 			task.TaskState_FAILED: taskStateScope.Gauge(
 				"task_state_failed"),
 			task.TaskState_KILLED: taskStateScope.Gauge(
-				"task_state_pending"),
+				"task_state_killed"),
 			task.TaskState_LOST: taskStateScope.Gauge(
 				"task_state_lost"),
 			task.TaskState_PREEMPTING: taskStateScope.Gauge(
 				"task_state_preempting"),
+		},
+		ResourcesHeldByTaskState: map[task.TaskState]scalar.GaugeMaps{
+			task.TaskState_READY: scalar.NewGaugeMaps(
+				scope.SubScope("task_state_ready"),
+			),
+			task.TaskState_PLACING: scalar.NewGaugeMaps(
+				scope.SubScope("task_state_placing"),
+			),
+			task.TaskState_PLACED: scalar.NewGaugeMaps(
+				scope.SubScope("task_state_placed"),
+			),
+			task.TaskState_LAUNCHING: scalar.NewGaugeMaps(
+				scope.SubScope("task_state_launching"),
+			),
+			task.TaskState_LAUNCHED: scalar.NewGaugeMaps(
+				scope.SubScope("task_state_launched"),
+			),
+			task.TaskState_RUNNING: scalar.NewGaugeMaps(
+				scope.SubScope("task_state_running"),
+			),
+			task.TaskState_STARTING: scalar.NewGaugeMaps(
+				scope.SubScope("task_state_starting"),
+			),
+			task.TaskState_PREEMPTING: scalar.NewGaugeMaps(
+				scope.SubScope("task_state_preempting"),
+			),
+			task.TaskState_KILLING: scalar.NewGaugeMaps(
+				scope.SubScope("task_state_killing"),
+			),
 		},
 		LeakedResources:       scalar.NewGaugeMaps(leakScope),
 		ReconciliationSuccess: successScope.Counter("run"),

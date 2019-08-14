@@ -36,6 +36,7 @@ import (
 	"github.com/uber/peloton/pkg/resmgr/preemption"
 	r_queue "github.com/uber/peloton/pkg/resmgr/queue"
 	"github.com/uber/peloton/pkg/resmgr/respool"
+	"github.com/uber/peloton/pkg/resmgr/scalar"
 	rmtask "github.com/uber/peloton/pkg/resmgr/task"
 
 	multierror "github.com/hashicorp/go-multierror"
@@ -787,8 +788,11 @@ func (h *ServiceHandler) handleEvent(event *pb_eventstream.Event) {
 	}).Info("Task is completed and removed from tracker")
 
 	// publish metrics
-	rmtask.GetTracker().UpdateCounters(
-		t.TaskState_RUNNING, taskState)
+	rmtask.GetTracker().UpdateMetrics(
+		t.TaskState_RUNNING,
+		taskState,
+		scalar.ConvertToResmgrResource(rmTask.Task().GetResource()),
+	)
 }
 
 func (h *ServiceHandler) acknowledgeEvent(offset uint64) {
@@ -987,13 +991,16 @@ func (h *ServiceHandler) KillTasks(
 			tasksNotKilled = append(tasksNotKilled, taskTobeKilled)
 			continue
 		}
+
 		log.WithFields(log.Fields{
 			"task_id":       taskTobeKilled.Value,
 			"current_state": rmTaskToKill.GetCurrentState().State.String(),
 		}).Info("Task is Killed and removed from tracker")
-		h.rmTracker.UpdateCounters(
+
+		h.rmTracker.UpdateMetrics(
 			rmTaskToKill.GetCurrentState().State,
 			t.TaskState_KILLED,
+			scalar.ConvertToResmgrResource(rmTaskToKill.Task().GetResource()),
 		)
 	}
 
