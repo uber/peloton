@@ -582,7 +582,7 @@ class PerformanceTestClient(object):
         batch_size,
         use_instance_config,
         sleep_time,
-        host_limit_1,
+        host_limit_1=False,
     ):
         return job.update_job(
             instance_inc,
@@ -592,7 +592,7 @@ class PerformanceTestClient(object):
             host_limit_1,
         )
 
-    def create_job(self, job, instance_num, use_instance_config, sleep_time, host_limit_1):
+    def create_job(self, job, instance_num, use_instance_config, sleep_time, host_limit_1=False):
         return job.create_job(instance_num, use_instance_config, sleep_time, host_limit_1)
 
     def monitoring_job(self, job, stable_timeout=600):
