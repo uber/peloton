@@ -22,6 +22,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	pbupdate "github.com/uber/peloton/.gen/peloton/api/v0/update"
+	"github.com/uber/peloton/.gen/peloton/private/models"
 
 	"github.com/uber/peloton/pkg/storage"
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
@@ -301,7 +302,22 @@ func (f *jobFactory) publishMetrics() map[pbtask.TaskState]map[pbtask.TaskState]
 			}).Debug("job has instances in unknown state")
 		}
 
-		if unavailableInstances > jobConfig.GetSLA().GetMaximumUnavailableInstances() {
+		var hasActiveUpdate bool
+		for _, w := range j.GetAllWorkflows() {
+			if w.GetWorkflowType() == models.WorkflowType_UPDATE &&
+				IsUpdateStateActive(w.GetState().State) {
+				hasActiveUpdate = true
+				break
+			}
+		}
+
+		// skip check for SLA violation if job has an ongoing update
+		if hasActiveUpdate {
+			continue
+		}
+
+		if jobConfig.GetSLA().GetMaximumUnavailableInstances() > 0 &&
+			unavailableInstances > jobConfig.GetSLA().GetMaximumUnavailableInstances() {
 			log.WithField("job_id", j.ID().GetValue()).
 				Info("job sla violated")
 			slaViolatedJobIDs = append(slaViolatedJobIDs, j.ID().GetValue())

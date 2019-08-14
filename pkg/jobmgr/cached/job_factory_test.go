@@ -23,6 +23,8 @@ import (
 	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
+	pbupdate "github.com/uber/peloton/.gen/peloton/api/v0/update"
+	"github.com/uber/peloton/.gen/peloton/private/models"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -205,10 +207,20 @@ func TestPublishMetrics(t *testing.T) {
 	sm, ok := testScope.Snapshot().Gauges()["mean_spread_quotient+"]
 	assert.True(t, ok)
 	assert.Equal(t, 1.5, sm.Value())
+	f.ClearJob(jobID)
 
+	// sla violation check
 	jobID = &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f112"}
-	taskInfos = make(map[uint32]*pbtask.TaskInfo, 1)
+	taskInfos = make(map[uint32]*pbtask.TaskInfo, 2)
 	taskInfos[0] = &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:     pbtask.TaskState_PENDING,
+			GoalState: pbtask.TaskState_RUNNING,
+			Revision:  &peloton.ChangeLog{Version: 1},
+			Healthy:   pbtask.HealthState_HEALTH_UNKNOWN,
+		},
+	}
+	taskInfos[1] = &pbtask.TaskInfo{
 		Runtime: &pbtask.RuntimeInfo{
 			State:     pbtask.TaskState_PENDING,
 			GoalState: pbtask.TaskState_RUNNING,
@@ -221,7 +233,7 @@ func TestPublishMetrics(t *testing.T) {
 	cachedJob.config = &cachedConfig{
 		jobType: pbjob.JobType_SERVICE,
 		sla: &pbjob.SlaConfig{
-			MaximumUnavailableInstances: 0,
+			MaximumUnavailableInstances: 1,
 		},
 	}
 	cachedJob.jobType = pbjob.JobType_SERVICE
@@ -231,8 +243,9 @@ func TestPublishMetrics(t *testing.T) {
 	f.publishMetrics()
 	svm, ok := testScope.Snapshot().Gauges()["sla_violated_jobs+"]
 	assert.True(t, ok)
-	assert.Equal(t, 1.0, svm.Value())
+	f.ClearJob(jobID)
 
+	// sla violation check for a job with no unavailable instances
 	jobID = &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f115"}
 	taskInfos[0] = &pbtask.TaskInfo{
 		Runtime: &pbtask.RuntimeInfo{
@@ -257,7 +270,43 @@ func TestPublishMetrics(t *testing.T) {
 	f.publishMetrics()
 	svm, ok = testScope.Snapshot().Gauges()["sla_violated_jobs+"]
 	assert.True(t, ok)
-	assert.Equal(t, 1.0, svm.Value())
+	assert.Equal(t, 0.0, svm.Value())
+	f.ClearJob(jobID)
+
+	// sla violation check for a job with ongoing update
+	jobID = &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f115"}
+	taskInfos[0] = &pbtask.TaskInfo{
+		Runtime: &pbtask.RuntimeInfo{
+			State:     pbtask.TaskState_RUNNING,
+			GoalState: pbtask.TaskState_RUNNING,
+			Revision:  &peloton.ChangeLog{Version: 1},
+			Healthy:   pbtask.HealthState_HEALTHY,
+		},
+	}
+	j = f.AddJob(jobID)
+	testUpdate := &peloton.UpdateID{
+		Value: "update0",
+	}
+	cachedJob = j.(*job)
+	cachedJob.config = &cachedConfig{
+		jobType: pbjob.JobType_SERVICE,
+		sla: &pbjob.SlaConfig{
+			MaximumUnavailableInstances: 0,
+		},
+	}
+	cachedJob.jobType = pbjob.JobType_SERVICE
+	cachedJob.runtime = &pbjob.RuntimeInfo{}
+	cachedJob.workflows[testUpdate.GetValue()] = &update{
+		workflowType: models.WorkflowType_UPDATE,
+		state:        pbupdate.State_ROLLING_FORWARD,
+	}
+	j.ReplaceTasks(taskInfos, true)
+
+	f.publishMetrics()
+	svm, ok = testScope.Snapshot().Gauges()["sla_violated_jobs+"]
+	assert.True(t, ok)
+	assert.Equal(t, 0.0, svm.Value())
+	f.ClearJob(jobID)
 }
 
 // BenchmarkPublishMetrics benchmarks the time needed to call publishMetrics
