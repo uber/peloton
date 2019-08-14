@@ -6,6 +6,7 @@ import os
 import string
 import subprocess
 import sys
+from distutils.sysconfig import get_python_lib
 
 peloton_proto = "./protobuf/"
 proto_file_paths = [
@@ -19,6 +20,12 @@ protoc_cmd = (
     "protoc --proto_path /usr/local/include/ --proto_path={proto_path} "
     "--{gen}_out={mflags}:{out_dir} --{gen}_opt={gen_opt} {file}"
 )
+
+protoc_python_cmd = (
+    "python -m grpc_tools.protoc  --proto_path={proto_path} "
+    "--{gen}_out={out_dir} --grpc_{gen}_out={out_dir} {file}"
+)
+
 doc_opt = (
     "markdown,api-reference.md:mesos/*,private/*,api/v0/*,timestamp.proto"
 )
@@ -92,6 +99,41 @@ def generate(gen, f, m, out_dir, gen_opt=""):
         sys.exit(retval)
 
 
+def clean_python_stub(stub_directory):
+    print "cleaning old python stub generation"
+    retval = subprocess.call("rm -rf " + stub_directory, shell=True)
+    if retval != 0:
+        sys.exit(retval)
+
+
+def generate_python_stub(gen, stub_dir, f):
+    cmd = protoc_python_cmd.format(
+        proto_path=peloton_proto,
+        gen=gen,
+        out_dir=stub_dir,
+        file=f
+    )
+    print cmd
+    retval = subprocess.call(cmd, shell=True)
+    if retval != 0:
+        sys.exit(retval)
+
+
+def create_init_files(stub_directory):
+    print "creating init files"
+    for root, dir, files in os.walk(stub_directory):
+        retval = subprocess.call("touch " + root + "/__init__.py", shell=True)
+        if retval != 0:
+            sys.exit(1)
+
+
+def patch_python_stub(stub_directory):
+    retval = subprocess.call(
+        ["bash", "scripts/patch-python-stub.sh", stub_directory])
+    if retval != 0:
+        sys.exit(1)
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Generate types, yarpc stubs and doc from protobuf files"
@@ -103,7 +145,7 @@ def parse_args():
         default="github.com/uber/peloton/.gen/",
     )
     parser.add_argument(
-        "-o", "--out-dir", help="output dir of generated code", default=".gen"
+        "-o", "--out-dir", help="output dir of generated code,outdir for Python code is relative to site-packages", default=".gen"
     )
     parser.add_argument(
         "-g",
@@ -135,6 +177,22 @@ def main():
 
     elif args.generator == "doc":
         generate("doc", " ".join(files), "", args.out_dir, doc_opt)
+
+    elif args.generator == "python":
+        # For every .proto file in peloton generate us a python file
+        stub_directory = get_python_lib() + "/" + args.out_dir
+        # clearing python stub
+        clean_python_stub(stub_directory)
+        # creating directory if not exist
+        retval = subprocess.call("mkdir -p " + stub_directory, shell=True)
+        if retval != 0:
+            sys.exit(1)
+        print "generating python stub"
+        for f in files:
+            generate_python_stub("python", stub_directory, f)
+        create_init_files(stub_directory)
+        print "patching python stub"
+        patch_python_stub(stub_directory)
 
 
 if __name__ == "__main__":

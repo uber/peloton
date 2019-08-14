@@ -87,6 +87,7 @@ if [[ ! -d "$ENV" ]]; then
   pip install --upgrade pip
   pip install -r requirements.txt
   pip install -r tools/vcluster/requirements.txt
+  make pygens
   deactivate
 fi
 

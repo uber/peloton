@@ -19,6 +19,8 @@ make install
 
 pip install -r tests/requirements.txt
 
+make pygens
+
 # Allow python path override so we can test any local changes in python client
 if [[ -z "${PYTHONPATH}" ]]; then
   PYTHONPATH=$(pwd)

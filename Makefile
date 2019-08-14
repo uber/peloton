@@ -27,6 +27,8 @@ STABLE_RELEASE=`git describe --abbrev=0 --tags`
 DOCKER_IMAGE ?= uber/peloton
 DC ?= all
 GEN_DIR = .gen
+#Python gen dir relative to site-packages of python
+PYTHON_GEN_DIR = peloton_client/pbgen
 UNAME = $(shell uname | tr '[:upper:]' '[:lower:]')
 
 GOKIND = bin/kind
@@ -120,7 +122,7 @@ cover:
 	./scripts/cover.sh $(shell go list $(PACKAGES))
 	go tool cover -html=cover.out -o cover.html
 
-gens: thriftgens pbgens
+gens: thriftgens pbgens pygens
 
 thriftgens: $(VENDOR)
 	@mkdir -p $(GEN_DIR)
@@ -137,6 +139,13 @@ pbgens: $(VENDOR)
 	./scripts/patch-v0-api-rpc.sh
 	# Temporarily rename Sla to SLA for lint
 	./scripts/rename-job-sla.sh
+
+pygens: $(VENDOR)
+	. env/bin/activate; \
+	pip install --upgrade pip; \
+	pip install grpcio grpcio-tools; \
+	./scripts/generate-protobuf.py --generator=python --out-dir=$(PYTHON_GEN_DIR) ;\
+    deactivate; \
 
 apidoc: $(VENDOR)
 	go get github.com/pseudomuto/protoc-gen-doc/cmd/protoc-gen-doc
