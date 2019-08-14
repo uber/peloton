@@ -1107,13 +1107,17 @@ func (u *update) writeWorkflowEvents(
 		return err
 	}
 
-	if err := u.jobFactory.jobUpdateEventsOps.Create(
-		ctx,
-		u.id,
-		workflowType,
-		state); err != nil {
-		return err
+	// only need to add job update events if new state is different from existing state
+	if state != u.state {
+		if err := u.jobFactory.jobUpdateEventsOps.Create(
+			ctx,
+			u.id,
+			workflowType,
+			state); err != nil {
+			return err
+		}
 	}
+
 	return nil
 }
 

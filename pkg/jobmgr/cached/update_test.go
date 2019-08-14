@@ -134,14 +134,6 @@ func (suite *UpdateTestSuite) TestModifyValid() {
 		Return(nil).
 		Times(6)
 
-	suite.jobUpdateEventsOps.EXPECT().
-		Create(
-			gomock.Any(),
-			gomock.Any(),
-			gomock.Any(),
-			pbupdate.State_ROLLING_FORWARD).
-		Return(nil)
-
 	err := suite.update.Modify(
 		context.Background(),
 		instancesAdded,
@@ -171,13 +163,6 @@ func (suite *UpdateTestSuite) TestModifyDBError() {
 			gomock.Any(),
 			pbupdate.State_ROLLING_FORWARD).
 		Return(nil).Times(6)
-	suite.jobUpdateEventsOps.EXPECT().
-		Create(
-			gomock.Any(),
-			gomock.Any(),
-			gomock.Any(),
-			pbupdate.State_ROLLING_FORWARD).
-		Return(nil)
 
 	suite.updateStore.EXPECT().
 		ModifyUpdate(gomock.Any(), gomock.Any()).
