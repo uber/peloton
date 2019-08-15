@@ -135,6 +135,10 @@ def run_mesos(config):
             is_exclusive=True,
             exclusive_label_value=config.get('exclusive_label_value', ''))
 
+    print_utils.okblue(
+        "sleep 60 secs for mesos agent to register with mesos master")
+    time.sleep(60)
+
 
 #
 # Run a mesos agent
