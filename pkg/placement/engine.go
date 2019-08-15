@@ -287,7 +287,7 @@ func (e *engine) placeAssignmentGroup(
 			log.WithFields(log.Fields{
 				"needs":       needs,
 				"assignments": assignments,
-			}).Info("failed to place tasks due to offer starvation")
+			}).Debug("failed to place tasks due to offer starvation")
 			e.returnStarvedAssignments(ctx, assignments, reason)
 			return nil
 		}
