@@ -962,10 +962,10 @@ func (h *serviceHandler) GetJob(
 		return h.getJobConfigurationWithVersion(ctx, req.GetJobId(), req.GetVersion())
 	}
 
-	pelotonJobID := &peloton.JobID{Value: req.GetJobId().GetValue()}
+	pelotonJobID := req.GetJobId().GetValue()
 
 	// Get the latest configuration and runtime
-	jobRuntime, err := h.jobRuntimeOps.Get(
+	jobRuntime, err := h.jobStore.GetJobRuntime(
 		ctx,
 		pelotonJobID,
 	)
@@ -973,7 +973,7 @@ func (h *serviceHandler) GetJob(
 		return nil, errors.Wrap(err, "failed to get job status")
 	}
 
-	jobConfig, _, err := h.jobConfigOps.Get(
+	jobConfig, _, err := h.jobStore.GetJobConfigWithVersion(
 		ctx,
 		pelotonJobID,
 		jobRuntime.GetConfigurationVersion(),

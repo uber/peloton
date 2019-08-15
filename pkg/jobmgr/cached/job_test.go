@@ -2330,7 +2330,7 @@ func (suite *jobTestSuite) TestPatchTasksSLAAwareDesiredConfigVersionChange() {
 			gomock.Any(),
 			gomock.Any()).
 		Return(nil)
-	suite.taskConfigV2Ops.EXPECT().
+	suite.taskStore.EXPECT().
 		GetTaskConfig(
 			gomock.Any(),
 			gomock.Any(),

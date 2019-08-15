@@ -62,6 +62,10 @@ type JobStore interface {
 	GetActiveJobs(ctx context.Context) ([]*peloton.JobID, error)
 	// DeleteActiveJob deletes job from active jobs table
 	DeleteActiveJob(ctx context.Context, id *peloton.JobID) error
+	// GetJobRuntime gets the job runtime of a given job
+	GetJobRuntime(ctx context.Context, jobID string) (*job.RuntimeInfo, error)
+	// GetJobConfigWithVersion fetches the job configuration for a given job of a given version
+	GetJobConfigWithVersion(ctx context.Context, jobID string, version uint64) (*job.JobConfig, *models.ConfigAddOn, error)
 }
 
 // TaskStore is the interface to store task states

@@ -395,6 +395,123 @@ func uncompress(buffer []byte) ([]byte, error) {
 	return uncompressed, nil
 }
 
+// GetJobRuntime returns the job runtime info
+func (s *Store) GetJobRuntime(ctx context.Context, jobID string) (*job.RuntimeInfo, error) {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select("*").From(jobRuntimeTable).
+		Where(qb.Eq{"job_id": jobID})
+	allResults, err := s.executeRead(ctx, stmt)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID).
+			Error("GetJobRuntime failed")
+		s.metrics.JobMetrics.JobGetRuntimeFail.Inc(1)
+		return nil, err
+	}
+
+	for _, value := range allResults {
+		var record JobRuntimeRecord
+		err := FillObject(value, &record, reflect.TypeOf(record))
+		if err != nil {
+			log.WithError(err).
+				WithField("job_id", jobID).
+				WithField("value", value).
+				Error("Failed to get JobRuntimeRecord from record")
+			s.metrics.JobMetrics.JobGetRuntimeFail.Inc(1)
+			return nil, err
+		}
+		runtime, err := record.GetJobRuntime()
+		if err != nil {
+			return nil, err
+		}
+
+		if runtime.GetRevision().GetVersion() < 1 {
+			// Older job which does not have changelog.
+			// TODO (zhixin): remove this after no more job in the system
+			// does not have a changelog version.
+			runtime.Revision = &peloton.ChangeLog{
+				CreatedAt: uint64(time.Now().UnixNano()),
+				UpdatedAt: uint64(time.Now().UnixNano()),
+				Version:   1,
+			}
+		}
+		return runtime, nil
+	}
+	s.metrics.JobMetrics.JobNotFound.Inc(1)
+	return nil, yarpcerrors.NotFoundErrorf(
+		"job:%s not found", jobID)
+}
+
+// GetJobConfigWithVersion fetches the job configuration for a given
+// job of a given version
+func (s *Store) GetJobConfigWithVersion(ctx context.Context,
+	jobID string,
+	version uint64,
+) (*job.JobConfig, *models.ConfigAddOn, error) {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select("config", "config_addon").From(jobConfigTable).
+		Where(qb.Eq{"job_id": jobID, "version": version})
+	stmtString, _, _ := stmt.ToSQL()
+	allResults, err := s.executeRead(ctx, stmt)
+	if err != nil {
+		log.Errorf("Fail to execute stmt %v, err=%v", stmtString, err)
+		s.metrics.JobMetrics.JobGetFail.Inc(1)
+		return nil, nil, err
+	}
+
+	if len(allResults) > 1 {
+		s.metrics.JobMetrics.JobGetFail.Inc(1)
+		return nil, nil,
+			yarpcerrors.FailedPreconditionErrorf(
+				"found %d jobs %v for job id %v",
+				len(allResults), allResults, jobID)
+	}
+	for _, value := range allResults {
+		var record JobConfigRecord
+		err := FillObject(value, &record, reflect.TypeOf(record))
+		if err != nil {
+			log.WithError(err).
+				Error("Failed to Fill into JobRecord")
+			s.metrics.JobMetrics.JobGetFail.Inc(1)
+			return nil, nil, err
+		}
+
+		var configAddOn *models.ConfigAddOn
+		if configAddOn, err = record.GetConfigAddOn(); err != nil {
+			log.WithError(err).
+				Error("Failed to Fill into ConfigAddOn")
+			s.metrics.JobMetrics.JobGetFail.Inc(1)
+			return nil, nil, err
+		}
+		s.metrics.JobMetrics.JobGet.Inc(1)
+
+		jobConfig, err := record.GetJobConfig()
+		if err != nil {
+			s.metrics.JobMetrics.JobGetFail.Inc(1)
+			return nil, nil, err
+		}
+		if jobConfig.GetChangeLog().GetVersion() < 1 {
+			// Older job which does not have changelog.
+			// TODO (zhixin): remove this after no more job in the system
+			// does not have a changelog version.
+			v, err := s.GetMaxJobConfigVersion(ctx, jobID)
+			if err != nil {
+				s.metrics.JobMetrics.JobGetFail.Inc(1)
+				return nil, nil, err
+			}
+			jobConfig.ChangeLog = &peloton.ChangeLog{
+				CreatedAt: uint64(time.Now().UnixNano()),
+				UpdatedAt: uint64(time.Now().UnixNano()),
+				Version:   v,
+			}
+		}
+		return jobConfig, configAddOn, nil
+	}
+	s.metrics.JobMetrics.JobNotFound.Inc(1)
+	return nil, nil, yarpcerrors.NotFoundErrorf(
+		"job:%s not found", jobID)
+}
+
 // CreateTaskConfig creates the task configuration
 func (s *Store) CreateTaskConfig(
 	ctx context.Context,

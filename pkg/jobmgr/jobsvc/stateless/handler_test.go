@@ -305,20 +305,20 @@ func (suite *statelessHandlerTestSuite) TestGetJobConfigVersionError() {
 func (suite *statelessHandlerTestSuite) TestGetJobSuccess() {
 	instanceCount := uint32(5)
 
-	suite.jobRuntimeOps.EXPECT().
-		Get(
+	suite.jobStore.EXPECT().
+		GetJobRuntime(
 			gomock.Any(),
-			testPelotonJobID,
+			testPelotonJobID.GetValue(),
 		).
 		Return(&pbjob.RuntimeInfo{
 			State:    pbjob.JobState_RUNNING,
 			UpdateID: &peloton.UpdateID{Value: testUpdateID},
 		}, nil)
 
-	suite.jobConfigOps.EXPECT().
-		Get(
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(
 			gomock.Any(),
-			testPelotonJobID,
+			testPelotonJobID.GetValue(),
 			gomock.Any(),
 		).
 		Return(&pbjob.JobConfig{
@@ -373,17 +373,17 @@ func (suite *statelessHandlerTestSuite) TestGetJobSuccess() {
 // configuration, runtime and workflow information with DB error
 // when trying to fetch job configuration
 func (suite *statelessHandlerTestSuite) TestGetJobConfigGetError() {
-	suite.jobRuntimeOps.EXPECT().
-		Get(
+	suite.jobStore.EXPECT().
+		GetJobRuntime(
 			gomock.Any(),
-			testPelotonJobID,
+			testPelotonJobID.GetValue(),
 		).
 		Return(&pbjob.RuntimeInfo{}, nil)
 
-	suite.jobConfigOps.EXPECT().
-		Get(
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(
 			gomock.Any(),
-			testPelotonJobID,
+			testPelotonJobID.GetValue(),
 			gomock.Any(),
 		).
 		Return(nil, nil, fmt.Errorf("fake db error"))
@@ -401,10 +401,10 @@ func (suite *statelessHandlerTestSuite) TestGetJobConfigGetError() {
 // configuration, runtime and workflow information with DB error
 // when trying to fetch job runtime
 func (suite *statelessHandlerTestSuite) TestGetJobRuntimeGetError() {
-	suite.jobRuntimeOps.EXPECT().
-		Get(
+	suite.jobStore.EXPECT().
+		GetJobRuntime(
 			gomock.Any(),
-			testPelotonJobID,
+			testPelotonJobID.GetValue(),
 		).
 		Return(nil, fmt.Errorf("fake db error"))
 
@@ -423,20 +423,20 @@ func (suite *statelessHandlerTestSuite) TestGetJobRuntimeGetError() {
 func (suite *statelessHandlerTestSuite) TestGetJobUpdateGetError() {
 	instanceCount := uint32(5)
 
-	suite.jobRuntimeOps.EXPECT().
-		Get(
+	suite.jobStore.EXPECT().
+		GetJobRuntime(
 			gomock.Any(),
-			testPelotonJobID,
+			testPelotonJobID.GetValue(),
 		).
 		Return(&pbjob.RuntimeInfo{
 			State:    pbjob.JobState_RUNNING,
 			UpdateID: &peloton.UpdateID{Value: testUpdateID},
 		}, nil)
 
-	suite.jobConfigOps.EXPECT().
-		Get(
+	suite.jobStore.EXPECT().
+		GetJobConfigWithVersion(
 			gomock.Any(),
-			testPelotonJobID,
+			testPelotonJobID.GetValue(),
 			gomock.Any(),
 		).
 		Return(&pbjob.JobConfig{
