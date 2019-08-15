@@ -15,7 +15,6 @@
 package hostcache
 
 import (
-	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -31,11 +30,13 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 
 	"github.com/pborman/uuid"
-	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 )
 
-// HostStatus represents status (Ready/Placing/Reserved) of the host in
+// makes sure baseHostSummary implements HostSummary
+var _ HostSummary = &baseHostSummary{}
+
+// HostStatus represents status (Ready/Placing/Reserved/Held) of the host in
 // host cache
 type HostStatus int
 
@@ -65,9 +66,6 @@ type HostSummary interface {
 	// HostFilter, and lock the host if it does.
 	TryMatch(filter *hostmgr.HostFilter) Match
 
-	// ReleasePodResources adds back resources to the current hostSummary.
-	ReleasePodResources(ctx context.Context, podID string)
-
 	// CompleteLease verifies that the leaseID on this host is still valid.
 	CompleteLease(leaseID string, newPodToResMap map[string]scalar.Resources) error
 
@@ -81,8 +79,14 @@ type HostSummary interface {
 	// GetAllocated returns the allocation of the host.
 	GetAllocated() scalar.Resources
 
+	// GetAvailable returns the available resources of the host.
+	GetAvailable() scalar.Resources
+
 	// SetCapacity sets the capacity of the host.
 	SetCapacity(r scalar.Resources)
+
+	// SetAvailable sets the available resource of the host.
+	SetAvailable(r scalar.Resources)
 
 	// GetVersion returns the version of the host.
 	GetVersion() string
@@ -124,25 +128,23 @@ type HostSummary interface {
 	DeleteExpiredHolds(now time.Time) (bool, scalar.Resources, []*peloton.PodID)
 }
 
-// hostSummary is a data struct holding resources and metadata of a host.
-type hostSummary struct {
+// hostStrategy defines methods that shared by mesos/k8s hosts, but have different
+// implementation.
+// methods in the interface assumes lock is taken
+type hostStrategy interface {
+	// postCompleteLease handles actions after lease is completed
+	postCompleteLease(newPodToResMap map[string]scalar.Resources) error
+}
+
+// baseHostSummary is a data struct holding resources and metadata of a host.
+type baseHostSummary struct {
 	mu sync.RWMutex
 
 	// hostname of the host
 	hostname string
 
-	// capacity of the host
-	capacity scalar.Resources
-
-	// resources allocated on the host. this should always be equal to the sum
-	// of resources in podToResMap
-	allocated scalar.Resources
-
 	// labels on this host
 	labels []*peloton.Label
-
-	// pod map of PodID to resources for pods that run on this host
-	podToResMap map[string]scalar.Resources
 
 	// a map of podIDs for which the host is held
 	// key is the podID, value is the expiration time of the hold
@@ -162,31 +164,41 @@ type hostSummary struct {
 
 	// Resource version of this host.
 	version string
+
+	// strategy pattern adopted by the particular host
+	strategy hostStrategy
+
+	// capacity of the host
+	capacity scalar.Resources
+
+	// resources allocated on the host. this should always be equal to the sum
+	// of resources in podToResMap
+	allocated scalar.Resources
+
+	// available resources on the host
+	available scalar.Resources
 }
 
-// New returns a zero initialized HostSummary object.
-func newHostSummary(
+// newBaseHostSummary returns a zero initialized HostSummary object.
+func newBaseHostSummary(
 	hostname string,
-	r *peloton.Resources,
 	version string,
-) HostSummary {
-	rs := scalar.FromPelotonResources(r)
-	return &hostSummary{
-		status:      ReadyHost,
-		hostname:    hostname,
-		podToResMap: make(map[string]scalar.Resources),
-		heldPodIDs:  make(map[string]time.Time),
-		capacity:    rs,
-		version:     version,
+) *baseHostSummary {
+	return &baseHostSummary{
+		status:     ReadyHost,
+		hostname:   hostname,
+		heldPodIDs: make(map[string]time.Time),
+		version:    version,
+		strategy:   &noopHostStrategy{},
 	}
 }
 
 // TryMatch atomically tries to match the current host with given HostFilter,
-// and lock the host if it does. If current hostSummary is matched, this host
+// and lock the host if it does. If current baseHostSummary is matched, this host
 // will be marked as `PLACING`, after which it cannot be used by another
 // placement engine until released. If current host is not matched by given
 // HostFilter, the host status will remain unchanged.
-func (a *hostSummary) TryMatch(
+func (a *baseHostSummary) TryMatch(
 	filter *hostmgr.HostFilter,
 ) Match {
 	a.mu.Lock()
@@ -241,31 +253,11 @@ func (a *hostSummary) TryMatch(
 	}
 }
 
-// ReleasePodResources adds back resources to the current hostSummary.
-// When a pod is terminal, it will be deleted and this function will be called
-// to remove that pod from the host summary and free up the resources allocated
-// to that pod.
-func (a *hostSummary) ReleasePodResources(
-	ctx context.Context,
-	podID string,
-) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	if _, ok := a.podToResMap[podID]; !ok {
-		// TODO: add failure metric
-		log.WithField("podID", podID).Error("pod not found in host summary")
-		return
-	}
-	delete(a.podToResMap, podID)
-	a.calculateAllocated()
-}
-
 // CompleteLease verifies that the leaseID on this host is still valid.
-// It checks that current hostSummary is in Placing status, updates podToResMap
+// It checks that current baseHostSummary is in Placing status, updates podToResMap
 // to the host summary, recalculates allocated resources and set the host status
 // to Ready.
-func (a *hostSummary) CompleteLease(
+func (a *baseHostSummary) CompleteLease(
 	leaseID string,
 	newPodToResMap map[string]scalar.Resources,
 ) error {
@@ -284,17 +276,9 @@ func (a *hostSummary) CompleteLease(
 		return yarpcerrors.InvalidArgumentErrorf("failed to unlock host: %s", err)
 	}
 
-	// At this point the lease is terminated, the host is back in ready/held
-	// status but we need to validate if the new pods can be successfully
-	// launched on this host. Note that the lease has to be terminated before
-	// this step irrespective of the outcome
-	if err := a.validateNewPods(newPodToResMap); err != nil {
-		return yarpcerrors.InvalidArgumentErrorf("pod validation failed: %s", err)
+	if err := a.strategy.postCompleteLease(newPodToResMap); err != nil {
+		return err
 	}
-
-	// Update podToResMap with newPodToResMap for the new pods to be launched
-	// Reduce available resources by the resources required by the new pods
-	a.updatePodToResMap(newPodToResMap)
 
 	log.WithFields(log.Fields{
 		"hostname": a.hostname,
@@ -306,7 +290,7 @@ func (a *hostSummary) CompleteLease(
 
 // CasStatus sets the status to new value if current value is old, otherwise
 // returns error.
-func (a *hostSummary) CasStatus(old, new HostStatus) error {
+func (a *baseHostSummary) CasStatus(old, new HostStatus) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -317,32 +301,8 @@ func (a *hostSummary) CasStatus(old, new HostStatus) error {
 	return nil
 }
 
-// GetCapacity returns the capacity of the host.
-func (a *hostSummary) GetCapacity() scalar.Resources {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-
-	return a.capacity
-}
-
-// GetAllocated returns the allocation of the host.
-func (a *hostSummary) GetAllocated() scalar.Resources {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-
-	return a.allocated
-}
-
-// SetCapacity sets the capacity of the host.
-func (a *hostSummary) SetCapacity(r scalar.Resources) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	a.capacity = r
-}
-
 // GetVersion returns the version of the host.
-func (a *hostSummary) GetVersion() string {
+func (a *baseHostSummary) GetVersion() string {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -350,7 +310,7 @@ func (a *hostSummary) GetVersion() string {
 }
 
 // SetVersion sets the version of the host.
-func (a *hostSummary) SetVersion(v string) {
+func (a *baseHostSummary) SetVersion(v string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -358,7 +318,7 @@ func (a *hostSummary) SetVersion(v string) {
 }
 
 // GetHostname returns the hostname of the host.
-func (a *hostSummary) GetHostname() string {
+func (a *baseHostSummary) GetHostname() string {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -366,7 +326,7 @@ func (a *hostSummary) GetHostname() string {
 }
 
 // GetHostStatus returns the HostStatus of the host.
-func (a *hostSummary) GetHostStatus() HostStatus {
+func (a *baseHostSummary) GetHostStatus() HostStatus {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -374,7 +334,7 @@ func (a *hostSummary) GetHostStatus() HostStatus {
 }
 
 // GetHostLease creates and returns a host lease.
-func (a *hostSummary) GetHostLease() *hostmgr.HostLease {
+func (a *baseHostSummary) GetHostLease() *hostmgr.HostLease {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -384,7 +344,7 @@ func (a *hostSummary) GetHostLease() *hostmgr.HostLease {
 		},
 		HostSummary: &pbhost.HostSummary{
 			Hostname:  a.hostname,
-			Resources: scalar.ToPelotonResources(a.getAvailable()),
+			Resources: scalar.ToPelotonResources(a.available),
 			Labels:    a.labels,
 		},
 	}
@@ -392,8 +352,8 @@ func (a *hostSummary) GetHostLease() *hostmgr.HostLease {
 
 // TerminateLease is called when terminating the lease on a host.
 // This will be called when host in PLACING state is not used, and placement
-// engine decides to terminate its lease and set the host back to Ready.
-func (a *hostSummary) TerminateLease(leaseID string) error {
+// engine decides to terminate its lease and set the host back to Ready
+func (a *baseHostSummary) TerminateLease(leaseID string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -413,35 +373,25 @@ func (a *hostSummary) TerminateLease(leaseID string) error {
 	return nil
 }
 
-// HandlePodEvent makes sure that we update the host summary according to the
-// pod events that occur in the cluster.
-// Add events should no-op because we already allocated the resources while
-// completing the lease and launching the pods.
-// Update events are not handled at the moment, but theoretically should only
-// noop because a pod update can only change the image of the pod, not the
-// resource profile.
-// Delete events should release the resources of the pod that was deleted.
-func (a *hostSummary) HandlePodEvent(event *p2kscalar.PodEvent) error {
-	switch event.EventType {
-	case p2kscalar.AddPod, p2kscalar.UpdatePod:
-		// We do not need to do anything during an Add event, as it will
-		// always follow a Launch, which already populated this host summary.
-		// Update events only change the image of the pod, and as such the
-		// resource accounting doesn't change.
-		return nil
-	case p2kscalar.DeletePod:
-		// The release error scenario is handled inside release. If the pod
-		// was already deleted, ReleasePodResources no-ops, which is correct
-		// here.
-		a.ReleasePodResources(context.Background(), event.Event.PodId.Value)
-		return nil
-	}
-	return fmt.Errorf("unsupported pod event type: %v", event.EventType)
+// GetCapacity returns the capacity of the host.
+func (a *baseHostSummary) GetCapacity() scalar.Resources {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	return a.capacity
+}
+
+// GetAllocated returns the allocation of the host.
+func (a *baseHostSummary) GetAllocated() scalar.Resources {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	return a.allocated
 }
 
 // HoldForPod adds pod to heldPodIDs map when host is not reserved. It is noop
 // if pod ready exists in the map.
-func (a *hostSummary) HoldForPod(id *peloton.PodID) error {
+func (a *baseHostSummary) HoldForPod(id *peloton.PodID) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -465,7 +415,7 @@ func (a *hostSummary) HoldForPod(id *peloton.PodID) error {
 // when:
 // 1. pod is upgraded in place.
 // 2. hold for this pod expires.
-func (a *hostSummary) ReleaseHoldForPod(id *peloton.PodID) {
+func (a *baseHostSummary) ReleaseHoldForPod(id *peloton.PodID) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -474,7 +424,7 @@ func (a *hostSummary) ReleaseHoldForPod(id *peloton.PodID) {
 }
 
 // GetHeldPods returns a list of held PodIDs.
-func (a *hostSummary) GetHeldPods() []*peloton.PodID {
+func (a *baseHostSummary) GetHeldPods() []*peloton.PodID {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -489,7 +439,7 @@ func (a *hostSummary) GetHeldPods() []*peloton.PodID {
 // whether the hostSummary is free of helds,
 // available resource,
 // and the pods held expired.
-func (a *hostSummary) DeleteExpiredHolds(
+func (a *baseHostSummary) DeleteExpiredHolds(
 	deadline time.Time) (bool, scalar.Resources, []*peloton.PodID) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -502,10 +452,10 @@ func (a *hostSummary) DeleteExpiredHolds(
 			expired = append(expired, pod)
 		}
 	}
-	return !a.isHeld(), a.getAvailable(), expired
+	return !a.isHeld(), a.available, expired
 }
 
-func (a *hostSummary) releaseHoldForPod(id *peloton.PodID) {
+func (a *baseHostSummary) releaseHoldForPod(id *peloton.PodID) {
 	if _, ok := a.heldPodIDs[id.GetValue()]; !ok {
 		// This can happen for various reasons such as a task is launched again
 		// on the same host after timeout.
@@ -525,61 +475,44 @@ func (a *hostSummary) releaseHoldForPod(id *peloton.PodID) {
 }
 
 // isHeld is true when number of held PodIDs is greater than zero.
-func (a *hostSummary) isHeld() bool {
+func (a *baseHostSummary) isHeld() bool {
 	return len(a.heldPodIDs) > 0
 }
 
-// validateNewPods will return an error if:
-// 1. The pod already exists on the host map.
-// 2. The host has insufficient resources to place new pods.
-// This function assumes hostSummary lock is held before calling.
-func (a *hostSummary) validateNewPods(
-	newPodToResMap map[string]scalar.Resources,
-) error {
-	var needed scalar.Resources
+// GetAvailable returns the available resources of the host.
+func (a *baseHostSummary) GetAvailable() scalar.Resources {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 
-	available := a.getAvailable()
-	for podID, res := range newPodToResMap {
-		if _, ok := a.podToResMap[podID]; ok {
-			return fmt.Errorf("pod %v already exists on the host", podID)
-		}
-		needed = needed.Add(res)
-	}
-	if !available.Contains(needed) {
-		return errors.New("host has insufficient resources")
-	}
+	return a.available
+}
+
+// HandlePodEvent is a noop for baseHostSummary, corresponding subclasses should
+// overwrite the method
+func (a *baseHostSummary) HandlePodEvent(event *p2kscalar.PodEvent) error {
 	return nil
 }
 
-// calculateAllocated walks through the current list of pods on this host and
-// calculates total allocated resources.
-// This function assumes hostSummary lock is held before calling.
-func (a *hostSummary) calculateAllocated() {
-	var allocated scalar.Resources
-	// calculate current allocation based on the new pods map
-	for _, r := range a.podToResMap {
-		allocated = allocated.Add(r)
-	}
-	a.allocated = allocated
+// SetCapacity sets the capacity of the host.
+func (a *baseHostSummary) SetCapacity(r scalar.Resources) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	a.capacity = r
 }
 
-// updatepodToResMap updates the current podToResMap with the new podToResMap
-// and also recalculate available resources based on the new podToResMap.
-// This function assumes hostSummary lock is held before calling.
-func (a *hostSummary) updatePodToResMap(
-	newPodToResMap map[string]scalar.Resources,
-) {
-	// Add new pods to the pods map.
-	for podID, res := range newPodToResMap {
-		a.podToResMap[podID] = res
-	}
-	a.calculateAllocated()
+// SetAvailable sets the available resources of the host
+func (a *baseHostSummary) SetAvailable(r scalar.Resources) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	a.available = r
 }
 
 // casStatus lock-freely sets the status to new value and update lease ID if
 // current value is old, otherwise returns error.
-// This function assumes hostSummary lock is held before calling.
-func (a *hostSummary) casStatus(oldStatus, newStatus HostStatus) error {
+// This function assumes baseHostSummary lock is held before calling.
+func (a *baseHostSummary) casStatus(oldStatus, newStatus HostStatus) error {
 	if a.status != oldStatus {
 		return fmt.Errorf("invalid old status: %v", oldStatus)
 	}
@@ -600,18 +533,16 @@ func (a *hostSummary) casStatus(oldStatus, newStatus HostStatus) error {
 }
 
 // matchHostFilter determines whether given HostFilter matches the host.
-// This function assumes hostSummary lock is held before calling.
-func (a *hostSummary) matchHostFilter(
+// This function assumes baseHostSummary lock is held before calling.
+func (a *baseHostSummary) matchHostFilter(
 	c *hostmgr.HostFilter,
 ) hostmgr.HostFilterResult {
 
 	min := c.GetResourceConstraint().GetMinimum()
-	available := a.getAvailable()
-
 	if min != nil {
 		// Get min required resources.
 		minRes := scalar.FromResourceSpec(min)
-		if !available.Contains(minRes) {
+		if !a.available.Contains(minRes) {
 			return hostmgr.HostFilterResult_HOST_FILTER_INSUFFICIENT_RESOURCES
 		}
 	}
@@ -666,21 +597,8 @@ func (a *hostSummary) matchHostFilter(
 	return hostmgr.HostFilterResult_HOST_FILTER_MATCH
 }
 
-// getAvailable calculates available resources by subtracting the current
-// allocation from host capacity.
-// This function assumes hostSummary lock is held before calling.
-func (a *hostSummary) getAvailable() scalar.Resources {
-	available, ok := a.capacity.TrySubtract(a.allocated)
-	if !ok {
-		// continue with available set to scalar.Resources{}. This would
-		// organically fail in the following steps.
-		log.WithFields(
-			log.Fields{
-				"allocated":   a.allocated,
-				"podToResMap": a.podToResMap,
-				"capacity":    a.capacity,
-			},
-		).Error("Allocated more resources than capacity")
-	}
-	return available
+type noopHostStrategy struct{}
+
+func (s *noopHostStrategy) postCompleteLease(newPodToResMap map[string]scalar.Resources) error {
+	return nil
 }

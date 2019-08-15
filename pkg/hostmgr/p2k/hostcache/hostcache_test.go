@@ -121,7 +121,8 @@ func (suite *HostCacheTestSuite) TestAcquireLeases() {
 		}
 		// initialize host cache with these 10 hosts
 		for _, s := range hosts {
-			s.(*hostSummary).allocated = tt.allocatedPerHost
+			s.(*baseHostSummary).allocated = tt.allocatedPerHost
+			s.(*baseHostSummary).available = s.(*baseHostSummary).capacity.Subtract(tt.allocatedPerHost)
 			hc.hostIndex[s.GetHostname()] = s
 		}
 
@@ -143,7 +144,7 @@ func (suite *HostCacheTestSuite) TestGetClusterCapacity() {
 	allocPerHost := createResource(1.0, 10.0)
 	// initialize host cache with these 10 hosts
 	for _, s := range hosts {
-		s.(*hostSummary).allocated = allocPerHost
+		s.(*baseHostSummary).allocated = allocPerHost
 		hc.hostIndex[s.GetHostname()] = s
 	}
 
@@ -168,12 +169,12 @@ func (suite *HostCacheTestSuite) TestGetSummaries() {
 	allocPerHost := createResource(1.0, 10.0)
 	// initialize host cache with these 10 hosts
 	for _, s := range hosts {
-		s.(*hostSummary).allocated = allocPerHost
+		s.(*baseHostSummary).allocated = allocPerHost
 		hc.hostIndex[s.GetHostname()] = s
 	}
 
 	for _, summary := range hc.GetSummaries() {
-		host := hc.hostIndex[summary.GetHostname()].(*hostSummary)
+		host := hc.hostIndex[summary.GetHostname()].(*baseHostSummary)
 		suite.Equal(summary, host)
 	}
 }
@@ -392,7 +393,7 @@ func (suite *HostCacheTestSuite) TestAcquireLeasesParallel() {
 		hc.hostIndex[s.GetHostname()] = s
 	}
 
-	aggrLeases := []*hostmgr.HostLease{}
+	var aggrLeases []*hostmgr.HostLease
 	nClients := 8
 	mutex := &sync.Mutex{}
 	wg := sync.WaitGroup{}

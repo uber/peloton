@@ -216,7 +216,7 @@ func (k *K8SManager) addNode(obj interface{}) {
 // NodeInformer update function.
 func (k *K8SManager) updateNode(old interface{}, new interface{}) {
 	node := new.(*corev1.Node)
-	evt, err := scalar.BuildHostEventFromNode(node, scalar.UpdateHost)
+	evt, err := scalar.BuildHostEventFromNode(node, scalar.UpdateHostSpec)
 	if err != nil {
 		// Drop this error, reconcile will take care of this.
 		log.WithFields(log.Fields{

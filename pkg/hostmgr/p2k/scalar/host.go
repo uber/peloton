@@ -15,10 +15,12 @@ type HostEventType int
 const (
 	// AddHost event type.
 	AddHost HostEventType = iota + 1
-	// UpdateHost event type.
-	UpdateHost
+	// UpdateHostSpec event type.
+	UpdateHostSpec
 	// DeleteHost event type.
 	DeleteHost
+	// UpdateHostAvailableRes event type, used by mesos only
+	UpdateHostAvailableRes
 )
 
 // HostEvent contains information about the host, event type and resource
@@ -51,6 +53,8 @@ type HostInfo struct {
 	capacity *peloton.Resources
 	// Resource version for this host. This is k8s specific.
 	resourceVersion string
+	// capacity available on the host
+	available *peloton.Resources
 }
 
 // GetHostName is helper function to get name of the host.
@@ -71,6 +75,11 @@ func (h *HostInfo) GetPodMap() map[string]*peloton.Resources {
 // GetResourceVersion is helper function to get resource version.
 func (h *HostInfo) GetResourceVersion() string {
 	return h.resourceVersion
+}
+
+// GetAvailable is helper function to get available resources for the host.
+func (h *HostInfo) GetAvailable() *peloton.Resources {
+	return h.available
 }
 
 // Initialize each host disk capacity to 1T by default for k8s.
@@ -108,6 +117,28 @@ func BuildHostEventFromNode(
 		},
 		eventType: e,
 	}, nil
+}
+
+// BuildHostEventFromResource builds a host event from underlying resource
+func BuildHostEventFromResource(
+	hostname string,
+	resources *peloton.Resources,
+	e HostEventType,
+) *HostEvent {
+	podMap := make(map[string]*peloton.Resources)
+
+	if resources == nil {
+		resources = &peloton.Resources{}
+	}
+
+	return &HostEvent{
+		hostInfo: &HostInfo{
+			hostname:  hostname,
+			podMap:    podMap,
+			available: resources,
+		},
+		eventType: e,
+	}
 }
 
 // IsOldVersion is a very k8s specific check.

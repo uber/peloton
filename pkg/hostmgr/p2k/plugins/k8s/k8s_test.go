@@ -151,7 +151,7 @@ func TestHostEventHandlers(t *testing.T) {
 	require.NoError(err)
 
 	evt = <-hostEventCh
-	require.Equal(scalar.UpdateHost, evt.GetEventType())
+	require.Equal(scalar.UpdateHostSpec, evt.GetEventType())
 	require.Equal(testHostName, evt.GetHostInfo().GetHostName())
 
 	// Delete host.

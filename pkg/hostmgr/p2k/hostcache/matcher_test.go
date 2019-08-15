@@ -37,14 +37,14 @@ func (suite *HostCacheTestSuite) TestEffectiveHostLimit() {
 }
 
 func generateHostSummaries(numHosts int) []HostSummary {
-	hosts := []HostSummary{}
+	var hosts []HostSummary
 	for i := 0; i < numHosts; i++ {
 		hosts = append(
 			hosts,
-			newHostSummary(
+			newTestBaseHostSummary(
 				fmt.Sprintf("%v%v", _hostname, i),
-				_capacity,
-				_version),
+				_version,
+				_capacity),
 		)
 	}
 	return hosts
@@ -141,7 +141,11 @@ func (suite *HostCacheTestSuite) TestTryMatch() {
 
 		// Run matcher on all hosts
 		for _, hs := range hosts {
-			hs.(*hostSummary).allocated = tt.allocatedPerHost
+			hs.(*baseHostSummary).allocated = tt.allocatedPerHost
+			hs.(*baseHostSummary).available = hs.(*baseHostSummary).
+				capacity.
+				Subtract(tt.allocatedPerHost)
+
 			matcher.tryMatch(hs.GetHostname(), hs)
 		}
 		suite.Equal(tt.matched, len(matcher.hostNames), "test case %s", ttName)

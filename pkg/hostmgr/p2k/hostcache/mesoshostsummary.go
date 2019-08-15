@@ -1,0 +1,84 @@
+// Copyright (c) 2019 Uber Technologies, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package hostcache
+
+import (
+	p2kscalar "github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
+	"github.com/uber/peloton/pkg/hostmgr/scalar"
+
+	log "github.com/sirupsen/logrus"
+)
+
+// makes sure mesosHostSummary implements HostSummary
+var _ HostSummary = &mesosHostSummary{}
+
+// makes sure mesosHostSummary implements hostStrategy
+var _ hostStrategy = &mesosHostSummary{}
+
+type mesosHostSummary struct {
+	*baseHostSummary
+}
+
+func newMesosHostSummary(hostname string, version string) HostSummary {
+	ms := &mesosHostSummary{
+		baseHostSummary: newBaseHostSummary(hostname, version),
+	}
+
+	ms.baseHostSummary.strategy = ms
+
+	return ms
+}
+
+// HandlePodEvent is noop for mesos, because mesos host does not rely
+// on pod status to calculate resources available/allocated.
+func (a *mesosHostSummary) HandlePodEvent(event *p2kscalar.PodEvent) error {
+	return nil
+}
+
+// SetCapacity sets the capacity of the host.
+func (a *mesosHostSummary) SetCapacity(r scalar.Resources) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	// TODO: figure out how to handle available/allocated resources
+	a.capacity = r
+}
+
+// SetAvailable sets available resources on a host
+func (a *mesosHostSummary) SetAvailable(r scalar.Resources) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	var ok bool
+
+	a.available = r
+	a.allocated, ok = a.capacity.TrySubtract(r)
+	if !ok {
+		// continue with available set to scalar.Resources{}. This would
+		// organically fail in the following steps.
+		log.WithFields(
+			log.Fields{
+				"allocated": r,
+				"capacity":  a.capacity,
+			},
+		).Error("mesosHostSummary: Allocated more resources than capacity")
+	}
+}
+
+// postCompleteLease handles actions after lease is completed
+func (a *mesosHostSummary) postCompleteLease(newPodToResMap map[string]scalar.Resources) error {
+	// noop for mesos
+	return nil
+}
