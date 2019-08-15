@@ -163,6 +163,33 @@ def wait_for_mesos_master_leader(
     assert False, "timed out waiting for mesos master leader"
 
 
+def wait_for_all_agents_to_register(
+    url="http://127.0.0.1:5050/state.json",
+    timeout_secs=300,
+):
+    """
+    util method to wait for all agents to register
+    """
+
+    deadline = time.time() + timeout_secs
+    while time.time() < deadline:
+        try:
+            resp = requests.get(url)
+            if resp.status_code == 200:
+                registered_agents = 0
+                for a in resp.json()['slaves']:
+                    if a['active'] == True:
+                        registered_agents += 1
+
+                if registered_agents == 3:
+                    return
+            time.sleep(10)
+        except Exception:
+            pass
+
+    assert False, "timed out waiting for agents to register"
+
+
 def setup_minicluster(enable_k8s=False):
     """
     setup minicluster

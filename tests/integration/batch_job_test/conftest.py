@@ -2,6 +2,7 @@ import pytest
 from tests.integration.conftest import (
     setup_minicluster,
     teardown_minicluster,
+    wait_for_all_agents_to_register,
 )
 
 
@@ -25,3 +26,9 @@ def setup_cluster(request):
     override parent module fixture
     """
     pass
+
+
+@pytest.fixture(autouse=True)
+def run_around_tests():
+    wait_for_all_agents_to_register()
+    yield

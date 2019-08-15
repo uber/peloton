@@ -2,7 +2,11 @@ import pytest
 
 from tests.integration.aurorabridge_test.client import Client
 from tests.integration.aurorabridge_test.util import delete_jobs
-from tests.integration.conftest import setup_minicluster, teardown_minicluster
+from tests.integration.conftest import (
+    setup_minicluster,
+    teardown_minicluster,
+    wait_for_all_agents_to_register,
+)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -29,6 +33,7 @@ def setup_cluster(request):
 
 @pytest.fixture
 def client():
+    wait_for_all_agents_to_register()
     client = Client()
 
     yield client

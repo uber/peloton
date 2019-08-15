@@ -3,6 +3,7 @@ from tests.integration.conftest import (
     setup_minicluster,
     teardown_minicluster,
     cleanup_stateless_jobs,
+    wait_for_all_agents_to_register,
 )
 
 
@@ -31,7 +32,7 @@ def setup_cluster(request):
 
 @pytest.fixture(autouse=True)
 def run_around_tests():
-
+    wait_for_all_agents_to_register()
     yield
     # after each test
     cleanup_stateless_jobs()
