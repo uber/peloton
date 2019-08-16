@@ -3,11 +3,152 @@
 0.9.0 (unreleased)
 ------------------
 
+0.8.10
+------------------
+* 2019-08-16    Wait for all agents to register to master before running integration tests             sachins@uber.com
+* 2019-08-15    Add MesosManager for plugin and separate HostSummary for different clusters            zhixin@uber.com
+* 2019-08-15    Add 60 secs wait for mesos agent to register with mesos master                         varung@uber.com
+* 2019-08-14    Add api proxy to minicluster                                                           yunpeng@uber.com
+* 2019-08-14    Change logging level of failed placements                                              sachins@uber.com
+* 2019-08-14    Add metric for resources held per task state                                           sachins@uber.com
+* 2019-08-14    peloton: Make host cache log less verbose                                              yiran@uber.com
+* 2019-08-14    Fix broken performance test client                                                     sachins@uber.com
+* 2019-08-14    Skip flaky test__auto_rollback_with_pinned_instances__stopped_instances                kevinxu@uber.com
+* 2019-08-13    Remove unused 'default-config' directory                                               amitbose@uber.com
+* 2019-08-13    Scaffolding api proxy                                                                  yunpeng@uber.com
+* 2019-08-13    [p2k] start k8s plugin after leader election                                           yiran@uber.com
+* 2019-08-13    Add performance test for host-limit-1 constraint                                       sachins@uber.com
+* 2019-08-13    Modify load aware placement debug log                                                  sishi@uber.com
+* 2019-08-13    Add host labels into host infos table                                                  yunpeng@uber.com
+* 2019-08-12    Mark failed instances and instances killed for update as unavailable                   sachins@uber.com
+* 2019-08-12    Add debug logging for load aware placement                                             sishi@uber.com
+* 2019-08-11    HostMgr: Integration Tests: v1alpha hostmgr tests                                      pourchet@uber.com
+* 2019-08-09    Limit number of pod runs to return inside GetTasksWithoutConfigs                       kevinxu@uber.com
+* 2019-08-09    Add hold functionalities in hostsummary and hostcache                                  evelynl@uber.com
+* 2019-08-09    Nit refactor in host manager logs                                                      varung@uber.com
+* 2019-08-09    Add logs for mesos offer trace                                                         varung@uber.com
+* 2019-08-09    Add TerminateLease API to lifecyclemgr.                                                adityacb@uber.com
+* 2019-08-09    Add requirement to host pool constraint                                                yunpeng@uber.com
+* 2019-08-09    Add populate for host to task map with recovery                                        varung@uber.com
+* 2019-08-09    Add CLI commands to operate on host-pools                                              amitbose@uber.com
+* 2019-08-09    Add APIs for operating on host pools                                                   amitbose@uber.com
+* 2019-08-08    Thermos executor spec generation                                                       kevinxu@uber.com
+* 2019-08-08    Handle prolonged loss of cQoS advisor and add metrics for connection failure           sishi@uber.com
+* 2019-08-08    Implemenet parallel update get for list job workflows API                              varung@uber.com
+* 2019-08-08    Change default max_desired_host_placement_duration to 100s                             zhixin@uber.com
+* 2019-08-08    Integration Tests: First K8S integration test                                          pourchet@uber.com
+* 2019-08-08    Add Launch API to task lifecyclemgr.                                                   adityacb@uber.com
+* 2019-08-08    Remove the use of mesos container, command and executor structures from integration tests apoorvaj@uber.com
+* 2019-08-08    hostCache.GetSummaries should have Read lock protected                                 zhixin@uber.com
+* 2019-08-07    Add host pool constraint to task placement needs                                       yunpeng@uber.com
+* 2019-08-07    fix updatePod to use new version to generate PodEvent                                  binz@uber.com
+* 2019-08-07    Performance Test: Enable parallel-stateless-update test                                sachins@uber.com
+* 2019-08-07    Add and populate resources to be given to the mesos executor                           apoorvaj@uber.com
+* 2019-08-07    Disabling the new jenkins test                                                         pourchet@uber.com
+* 2019-08-07    Jenkins: Add new jenkins file for k8s testing                                          pourchet@uber.com
+* 2019-08-07    Match host pool during placement                                                       yunpeng@uber.com
+* 2019-08-07    Fix flaky stateless integration tests                                                  sachins@uber.com
+* 2019-08-07    peloton: Fix style of comments                                                         yiran@uber.com
+* 2019-08-07    Use agent map in host pool manager for now                                             yunpeng@uber.com
+* 2019-08-06    Un-skip flaky test__abort_auto_rollback_with_pinned_instances_and_update               kevinxu@uber.com
+* 2019-08-06    Remove the use of deprecated mesos fields in PodSpec in aurora bridge                  apoorvaj@uber.com
+* 2019-08-06    Fix resource cleanup for older runs of the task                                        sachins@uber.com
+* 2019-08-06    Add job manager leader check stateless update actions in integ tests                   varung@uber.com
+* 2019-08-06    Revert GetPodEvents from ORM to store.go                                               varung@uber.com
+* 2019-08-06    Populate cqos address if set                                                           sishi@uber.com
+* 2019-08-06    Delete volumesvc code                                                                  adityacb@uber.com
+* 2019-08-06    Implement host-pool change and publish event                                           amitbose@uber.com
+* 2019-08-06    Refactor QueryPods to use GetPod                                                       varung@uber.com
+* 2019-08-06    Increase timeout for waiting rolled back in aurorabridge integration tests.            kevinxu@uber.com
+* 2019-08-05    Fix Pod and Node informer setup in k8s plugin.                                         adityacb@uber.com
+* 2019-08-05    Remove unneeded logs from the job replace and job create handlers.                     apoorvaj@uber.com
+* 2019-08-05    Use SHA256 for faster auth                                                             zhixin@uber.com
+* 2019-08-05    Set default rate limit to unlimited                                                    zhixin@uber.com
+* 2019-08-05    Increase parallelism for getTasksWithoutConfigs handler                                kevinxu@uber.com
+* 2019-08-05    Update changelog for `0.8.9.6`                                                         avyas@uber.com
+* 2019-08-05    [Middleware] Add more logging metadata and remove the use of defer                     avyas@uber.com
+* 2019-08-02    Implement lock on kill operation                                                       zhixin@uber.com
+* 2019-08-01    Load Aware placement                                                                   sishi@uber.com
+* 2019-08-01    Fix additional nil case in getJobUpdateDetails endpoint.                               kevinxu@uber.com
+* 2019-08-01    add copyright to new files and update some comments                                    binz@uber.com
+* 2019-08-01    Check if field exist before unmarshall                                                 zhixin@uber.com
+* 2019-08-01    Fix test__manual_rollback_abort after change in instancesToUpdate behavior             varung@uber.com
+* 2019-08-01    Fix the way we convert v1alpha entrypoint to k8s podspec                               adityacb@uber.com
+* 2019-07-31    Fix flaky unit test TestStatusUpdateDedupe                                             varung@uber.com
+* 2019-07-31    Integrate V1 eventstream in jobmgr                                                     binz@uber.com
+* 2019-07-31    Misc p2k fixes.                                                                        adityacb@uber.com
+* 2019-07-30    Update unavailable instances before updating available ones                            sachins@uber.com
+* 2019-07-30    Get rid of drainingHosts from drainer                                                  sachins@uber.com
+* 2019-07-30    HostMgr: GetHostCache                                                                  pourchet@uber.com
+* 2019-07-30    Add integration tests for SLA Aware Host Maintenance                                   sachins@uber.com
+* 2019-07-30    Add support for Read/Write API lock                                                    zhixin@uber.com
+* 2019-07-30    Address flaky unit test TestStatusUpdateDedupe                                         varung@uber.com
+* 2019-07-30    Remove stateful related code in task launcher                                          zhixin@uber.com
+* 2019-07-29    Prevent `Job Stop` if neither jobID nor owner is provided.                             yuweit@uber.com
+* 2019-07-29    Get taskConfig from legacy task_config table if needed                                 adityacb@uber.com
+* 2019-07-29    Refactor Mesos Task Status Update Callback                                             varung@uber.com
+* 2019-07-29    Fix flaky test__kill_mesos_agent_makes_task_resume                                     sachins@uber.com
+* 2019-07-29    Deprecate jobRuntimeCalculationViaCache flag                                           sishi@uber.com
+* 2019-07-29    Add hostmgr_api_version flag and configure it through fixture params                   evelynl@uber.com
+* 2019-07-29    Add translation to new v1alpha API                                                     apoorvaj@uber.com
+* 2019-07-29    Add pause/resume goal state engine support                                             zhixin@uber.com
+* 2019-07-29    Disable excessive host reservation logs in host manager and placement                  aihuaxu@uber.com
+* 2019-07-28    Add host pool manager skeleton                                                         yunpeng@uber.com
+* 2019-07-26    Add leader check for job manager in integration tests                                  varung@uber.com
+* 2019-07-26    Skip test__delete_initialized_job_with_force_flag test                                 sachins@uber.com
+* 2019-07-26    Split Peloton Batch & Stateless Integration Tests                                      varung@uber.com
+* 2019-07-26    Remove logs for host manager and aurora bridge from integration test                   varung@uber.com
+* 2019-07-26    Placement Engine: Last Refactor of v0 model functions                                  pourchet@uber.com
+* 2019-07-26    Add back 0031_drop_mv_job migration file in master                                     kevinxu@uber.com
+* 2019-07-26    Upgrade minicluster mesos config to 1.7.1                                              varung@uber.com
+* 2019-07-25    Handle 'instancesToBeRetried' in cachedjob.PatchTasks caller                           sachins@uber.com
+* 2019-07-25    Drop 0030_drop_mv_job schema migration and rename 0031_add_host_infos                  kevinxu@uber.com
+* 2019-07-25    Use LOCAL_SERIAL for CAS operations on Cassandra                                       varung@uber.com
+* 2019-07-25    Added support for listening to hostSummary proto object                                arpit.goyal@uber.com
+* 2019-07-25    Integration Test: Increase stateless respool capacity to cluster capacity              sachins@uber.com
+* 2019-07-24    Placement Engine: Fix v1alpha offer to mimir group generation                          pourchet@uber.com
+* 2019-07-24    Fix panic in placement engine with the v1alpha lease being unhashable                  pourchet@uber.com
+* 2019-07-24    [Part 2] jobmgr code change to use task lifecycle mgr                                  adityacb@uber.com
+* 2019-07-24    Implements TerminateLease in HostManager                                               pourchet@uber.com
+* 2019-07-24    Skip default task config not found error due task_config deprecation                   kevinxu@uber.com
+* 2019-07-23    [Part 1] Lifecycle mgr for kill tasks/pods in JobMgr                                   adityacb@uber.com
+* 2019-07-23    Skip flaky integration tests                                                           zhixin@uber.com
+* 2019-07-22    Change default http/grpc port for stateless placement engine                           kevinxu@uber.com
+* 2019-07-22    Resmgr changes to get cluster capacity from a k8s cluster                              adityacb@uber.com
+* 2019-07-22    Fix job delete regression to always remove a deleted job from active table             adityacb@uber.com
+* 2019-07-22    Fix job-sla-violation metric issue in job factory                                      sachins@uber.com
+* 2019-07-19    Make PREEMPTING a timeout state in rmtask                                              sachins@uber.com
+* 2019-07-19    (Part 2) Migrate active_jobs table to ORM                                              yuweit@uber.com
+* 2019-07-19    Delete records in task_config_v2 when deleting jobs                                    sishi@uber.com
+* 2019-07-18    Placement Engine: Set SchedulingConstraint in v1alpha HostFilter                       pourchet@uber.com
+* 2019-07-18    Fix changelog for 0.8.9                                                                apoorvaj@uber.com
+* 2019-07-18    HostManager: HostSummary: Implemented HandlePodEvent                                   pourchet@uber.com
+* 2019-07-18    Added cQoS API protobuf definitions                                                    kulkarni@uber.com
+* 2019-07-18    Quick fix for Stateless Job Create perf test failure                                   yuweit@uber.com
+* 2019-07-17    Add new rpc call ChangeHostPool to private protobuf                                    yunpeng@uber.com
+* 2019-07-17    Placement Engine: Add tasks to mimir offer group                                       pourchet@uber.com
+* 2019-07-17    Fix delay due to lock contention in job cache                                          sachins@uber.com
+* 2019-07-17    Common: Moving api conversion to common package                                        pourchet@uber.com
+* 2019-07-17    Revert "Revert "Define SLAInfo and add SLA Awareness to Host Maintenance""             sachins@uber.com
+* 2019-07-17    Migrate GetTaskCofig to ORM                                                            zhixin@uber.com
+* 2019-07-16    Placement Engine: Small fixes to v1alpha offers service                                pourchet@uber.com
+* 2019-07-16    Revert "Define SLAInfo and add SLA Awareness to Host Maintenance"                      sachins@uber.com
+* 2019-07-15    Delete volumes code from hostmgr                                                       adityacb@uber.com
+* 2019-07-15    Add the make script for running failure integration test                               zhaokai@uber.com
+* 2019-07-15    Add dependency to failure test make command in makefile                                zhaokai@uber.com
+* 2019-07-14    [Part 1] Launch pods from Jobmgr                                                       adityacb@uber.com
+* 2019-07-14    Enable a specific number of peloton instances to be built for failure testing on minicluster zhaokai@uber.com
+* 2019-07-11    Change log for Release 0.8.9                                                           sishi@uber.com
+* 2019-07-11    Migrate GetPodSpec to ORM                                                              zhixin@uber.com
+* 2019-07-11    Implement job id cache for GetJobs / GetJobSummary                                     kevinxu@uber.com
+* 2019-07-11    Fix perftests report `IndexError` issue                                                yuweit@uber.com
+* 2019-07-11    Migrate CreateTaskConfig to ORM                                                        zhixin@uber.com
+
 0.8.9.6
 ------------------
 * 2019-06-25    Use LOCAL_SERIAL for CAS operations on Cassandra                                       varung@uber.com
 * 2019-06-31    Revert "Remove task_config table"                                                      avyas@uber.com
-* 2019-06-25    Drop 0030_drop_mv_job schema migration and rename 0031_add_host_infos                  kevinxu@uber.com    
+* 2019-06-25    Drop 0030_drop_mv_job schema migration and rename 0031_add_host_infos                  kevinxu@uber.com
 * 2019-06-23    Skip default task config not found error due task_config deprecation                   kevinxu@uber.com
 * 2019-06-19    Fix hostmgr out of index                                                               zhixin@uber.com
 
