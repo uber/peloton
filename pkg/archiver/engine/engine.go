@@ -174,11 +174,10 @@ func (e *engine) Start() error {
 	// Account for time taken for jobmgr to start and finish recovery
 	// This is more of a precaution so that archiver does not mess
 	// around with core jobmgr functionality.
-	// TODO (adityacb): remove this delay once we move to API server
+	// TODO: remove this delay once we move to API server
 	e.metrics.ArchiverStart.Inc(1)
 	jitter := time.Duration(rand.Intn(jitterMax)) * time.Millisecond
 	time.Sleep(e.config.Archiver.BootstrapDelay + jitter)
-
 	// At first, the time range will be [(t-30d-1d), (t-30d))
 	maxTime := time.Now().UTC().Add(-e.config.Archiver.ArchiveAge)
 	minTime := maxTime.Add(-e.config.Archiver.ArchiveStepSize)
@@ -218,12 +217,14 @@ func (e *engine) Start() error {
 				return err
 			}
 
+			e.metrics.ArchiverRun.Inc(1)
 			e.metrics.ArchiverRunDuration.Record(time.Since(startTime))
 			maxTime = minTime
 			minTime = minTime.Add(-e.config.Archiver.ArchiveStepSize)
 		}
 
 		if e.config.Archiver.PodEventsCleanup {
+			startTime := time.Now()
 			spec := job.QuerySpec{
 				JobStates: []job.JobState{
 					job.JobState_RUNNING,
@@ -243,6 +244,8 @@ func (e *engine) Start() error {
 				e.deletePodEvents); err != nil {
 				return err
 			}
+			e.metrics.PodDeleteEventsRun.Inc(1)
+			e.metrics.PodDeleteEventsRunDuration.Record(time.Since(startTime))
 		}
 
 		jitter := time.Duration(rand.Intn(jitterMax)) * time.Millisecond
@@ -313,7 +316,9 @@ func (e *engine) archiveJobs(
 				Id: summary.GetId(),
 			}
 			ctx, cancel := context.WithTimeout(
-				ctx, e.config.Archiver.PelotonClientTimeout)
+				ctx,
+				e.config.Archiver.PelotonClientTimeout,
+			)
 			defer cancel()
 			_, err := e.jobClient.Delete(ctx, deleteReq)
 			if err != nil {
@@ -360,7 +365,18 @@ func (e *engine) deletePodEvents(
 		if jobSummary.GetType() != job.JobType_SERVICE {
 			continue
 		}
+		log.WithFields(log.Fields{
+			"job_id": jobSummary.GetId().GetValue(),
+			"state":  jobSummary.GetRuntime().GetState()}).
+			Debug("Deleting pod events")
+
 		for i = 0; i < jobSummary.GetInstanceCount(); i++ {
+			ctx, cancel := context.WithTimeout(
+				ctx,
+				e.config.Archiver.PelotonClientTimeout,
+			)
+			defer cancel()
+
 			response, err := e.taskClient.GetPodEvents(
 				ctx,
 				&task.GetPodEventsRequest{
@@ -371,7 +387,8 @@ func (e *engine) deletePodEvents(
 				log.WithFields(log.Fields{
 					"job_id":      jobSummary.GetId(),
 					"instance_id": i,
-				}).WithError(err).Error("unable to fetch pod events")
+				}).WithError(err).
+					Error("unable to fetch pod events")
 				e.metrics.PodDeleteEventsFail.Inc(1)
 				continue
 			}
@@ -386,7 +403,8 @@ func (e *engine) deletePodEvents(
 					"job_id":      jobSummary.GetId(),
 					"instance_id": i,
 					"run_id":      response.GetResult()[0].GetTaskId().GetValue(),
-				}).Error(err)
+				}).WithError(err).
+					Error("error parsing runID")
 				e.metrics.PodDeleteEventsFail.Inc(1)
 				continue
 			}
@@ -398,7 +416,11 @@ func (e *engine) deletePodEvents(
 					"run_id":      runID - _defaultPodEventsToConstraint,
 					"task_id":     response.GetResult()[0].GetTaskId().GetValue(),
 				}).Info("Delete runs")
-
+				ctx, cancel := context.WithTimeout(
+					ctx,
+					e.config.Archiver.PelotonClientTimeout,
+				)
+				defer cancel()
 				_, err = e.taskClient.DeletePodEvents(
 					ctx,
 					&task.DeletePodEventsRequest{
@@ -410,7 +432,8 @@ func (e *engine) deletePodEvents(
 						"job_id":      jobSummary.GetId(),
 						"instance_id": i,
 						"run_id":      response.GetResult()[0].GetTaskId().GetValue(),
-					}).WithError(err).Error("unable to delete pod events")
+					}).WithError(err).
+						Error("unable to delete pod events")
 					e.metrics.PodDeleteEventsFail.Inc(1)
 					continue
 				}
@@ -425,8 +448,10 @@ func (e *engine) queryJobs(
 	req *job.QueryRequest,
 	p backoff.Retrier) (*job.QueryResponse, error) {
 	for {
-		ctx, cancel := context.WithTimeout(ctx,
-			e.config.Archiver.PelotonClientTimeout)
+		ctx, cancel := context.WithTimeout(
+			ctx,
+			e.config.Archiver.PelotonClientTimeout,
+		)
 		resp, err := e.jobClient.Query(ctx, req)
 		cancel()
 		if err == nil {

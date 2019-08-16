@@ -31,7 +31,10 @@ type Metrics struct {
 	PodDeleteEventsFail    tally.Counter
 	PodDeleteEventsSuccess tally.Counter
 
-	ArchiverRunDuration tally.Timer
+	ArchiverRun                tally.Counter
+	ArchiverRunDuration        tally.Timer
+	PodDeleteEventsRun         tally.Counter
+	PodDeleteEventsRunDuration tally.Timer
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics
@@ -47,6 +50,9 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		PodDeleteEventsSuccess:    scope.Counter("pod_delete_events_success"),
 		PodDeleteEventsFail:       scope.Counter("pod_delete_events_fail"),
 
-		ArchiverRunDuration: scope.Timer("archiver_run_duration"),
+		ArchiverRun:                scope.Counter("archiver_run"),
+		ArchiverRunDuration:        scope.Timer("archiver_run_duration"),
+		PodDeleteEventsRun:         scope.Counter("pod_delete_events_run"),
+		PodDeleteEventsRunDuration: scope.Timer("pod_delete_events_run_duration"),
 	}
 }
