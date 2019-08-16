@@ -98,9 +98,14 @@ func NewJobConfiguration(
 		return nil, err
 	}
 
-	taskConfig, err := NewTaskConfig(jobSummary, podSpec)
-	if err != nil {
-		return nil, err
+	var taskConfig *api.TaskConfig
+
+	// If the job is stopped, skip it from the response
+	if instanceCount > 0 {
+		taskConfig, err = NewTaskConfig(jobSummary, podSpec)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &api.JobConfiguration{
