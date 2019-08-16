@@ -241,6 +241,10 @@ func (p *statusUpdate) ProcessStatusUpdate(
 				Info("ignoring duplicate task id failure")
 			return nil
 		}
+
+		// task failed, do not place the task on the same host for retry,
+		// in case it is a machine failure
+		newRuntime.DesiredHost = ""
 		newRuntime.Reason = reason
 		newRuntime.State = updateEvent.State()
 		newRuntime.Message = msg
@@ -302,6 +306,8 @@ func (p *statusUpdate) ProcessStatusUpdate(
 			"task_status_event": updateEvent.MesosTaskStatus(),
 		}).Info("reschedule lost task if needed")
 
+		// task failed due to lost, do not place the task on the same host for retry
+		newRuntime.DesiredHost = ""
 		newRuntime.State = pb_task.TaskState_LOST
 		newRuntime.Message = "Task LOST: " + updateEvent.StatusMsg()
 		newRuntime.Reason = updateEvent.Reason()
