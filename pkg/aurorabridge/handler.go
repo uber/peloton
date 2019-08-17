@@ -173,6 +173,11 @@ func (h *ServiceHandler) getJobSummary(
 				jobID.GetValue(), err)
 		}
 
+		// If the job is stopped, skip it from the response
+		if jobInfo.GetSpec().GetInstanceCount() == 0 {
+			return nil, nil
+		}
+
 		// In Aurora, JobSummary.JobConfiguration.TaskConfig
 		// is generated using latest "active" task. Reference:
 		// https://github.com/apache/aurora/blob/master/src/main/java/org/apache/aurora/scheduler/base/Tasks.java#L133
@@ -723,6 +728,11 @@ func (h *ServiceHandler) getJobs(
 			}
 			return nil, fmt.Errorf("get job info for job id %q: %s",
 				jobID.GetValue(), err)
+		}
+
+		// If the job is stopped, skip it from the response
+		if jobInfo.GetSpec().GetInstanceCount() == 0 {
+			return nil, nil
 		}
 
 		// In Aurora, JobConfiguration.TaskConfig
