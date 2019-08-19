@@ -235,8 +235,10 @@ func (suite *hostmgrActionsInternalTestSuite) TestGetHostsByQuery() {
 
 	req := &hostmgrsvc.GetHostsByQueryRequest{
 		Resource: &pb_task.ResourceConfig{
-			CpuLimit: 1.0,
-			GpuLimit: 2.0,
+			CpuLimit:    1.0,
+			GpuLimit:    2.0,
+			MemLimitMb:  1000.0,
+			DiskLimitMb: 10000.0,
 		},
 		CmpLess:   false,
 		Hostnames: []string{"host1", "host3"},
@@ -251,7 +253,7 @@ func (suite *hostmgrActionsInternalTestSuite) TestGetHostsByQuery() {
 	}
 
 	suite.mockHostMgr.EXPECT().GetHostsByQuery(gomock.Any(), req).Return(resp, nil)
-	err := c.HostsGetAction(1.0, 2.0, false, "host1,host3")
+	err := c.HostsGetAction(1.0, 2.0, 1000.0, 10000.0, false, "host1,host3")
 	suite.NoError(err)
 }
 
@@ -280,8 +282,10 @@ func (suite *hostmgrActionsInternalTestSuite) TestGetHostsByQueryLessThan() {
 
 	req := &hostmgrsvc.GetHostsByQueryRequest{
 		Resource: &pb_task.ResourceConfig{
-			CpuLimit: 4.0,
-			GpuLimit: 3.0,
+			CpuLimit:    4.0,
+			GpuLimit:    3.0,
+			MemLimitMb:  1000.0,
+			DiskLimitMb: 10000.0,
 		},
 		CmpLess: true,
 	}
@@ -294,7 +298,7 @@ func (suite *hostmgrActionsInternalTestSuite) TestGetHostsByQueryLessThan() {
 	}
 
 	suite.mockHostMgr.EXPECT().GetHostsByQuery(gomock.Any(), req).Return(resp, nil)
-	err := c.HostsGetAction(4.0, 3.0, true, "")
+	err := c.HostsGetAction(4.0, 3.0, 1000.0, 10000.0, true, "")
 	suite.NoError(err)
 }
 
@@ -317,6 +321,6 @@ func (suite *hostmgrActionsInternalTestSuite) TestGetHostsByQueryNoHost() {
 	resp := &hostmgrsvc.GetHostsByQueryResponse{}
 
 	suite.mockHostMgr.EXPECT().GetHostsByQuery(gomock.Any(), req).Return(resp, nil)
-	err := c.HostsGetAction(1.0, 2.0, false, "")
+	err := c.HostsGetAction(1.0, 2.0, 0.0, 0.0, false, "")
 	suite.NoError(err)
 }

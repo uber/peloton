@@ -169,6 +169,8 @@ func printHostQueryResponse(r *host_svc.QueryHostsResponse, debug bool) {
 func (c *Client) HostsGetAction(
 	cpu float64,
 	gpu float64,
+	mem float64,
+	disk float64,
 	cmpLess bool,
 	hosts string) error {
 	var hostnames []string
@@ -182,8 +184,10 @@ func (c *Client) HostsGetAction(
 	}
 
 	resourceConfig := &pb_task.ResourceConfig{
-		CpuLimit: cpu,
-		GpuLimit: gpu,
+		CpuLimit:    cpu,
+		GpuLimit:    gpu,
+		MemLimitMb:  mem,
+		DiskLimitMb: disk,
 	}
 
 	resp, _ := c.hostMgrClient.GetHostsByQuery(

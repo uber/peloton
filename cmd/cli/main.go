@@ -619,11 +619,40 @@ var (
 	offers = hostmgr.Command("offers", "list all outstanding offers")
 
 	// command for listing hosts
-	getHosts          = hostmgr.Command("hosts", "list all hosts matching the query")
-	getHostsCPU       = getHosts.Flag("cpu", "compare cpu cores available at the host, ignore if not provided").Short('c').Default("0").Float64()
-	getHostsGPU       = getHosts.Flag("gpu", "compare gpu cores available at the host, ignore if not provided").Short('g').Default("0").Float64()
-	getHostsCmpLess   = getHosts.Flag("less", "list hosts with resources less than cpu and/or gpu cores specified (default to greater than and equal to if not specified)").Short('l').Default("false").Bool()
-	getHostsHostnames = getHosts.Flag("hosts", "filter the hosts based on the comma separated hostnames provided").String()
+	getHosts    = hostmgr.Command("hosts", "list all hosts matching the query")
+	getHostsCPU = getHosts.Flag(
+		"cpu",
+		"compare cpu cores available at the host, ignore if not provided",
+	).Short('c').
+		Default("0").
+		Float64()
+	getHostsGPU = getHosts.Flag(
+		"gpu",
+		"compare gpu cores available at the host, ignore if not provided",
+	).Short('g').
+		Default("0").
+		Float64()
+	getHostsMem = getHosts.Flag(
+		"mem",
+		"compare memory available at the host, ignore if not provided",
+	).Default("0").
+		Float64()
+	getHostsDisk = getHosts.Flag(
+		"disk",
+		"compare disk available at the host, ignore if not provided",
+	).Default("0").
+		Float64()
+	getHostsCmpLess = getHosts.Flag(
+		"less",
+		"list hosts with resources less than resources specified (default to "+
+			"greater than and equal to if not specified)",
+	).Short('l').
+		Default("false").
+		Bool()
+	getHostsHostnames = getHosts.Flag(
+		"hosts",
+		"filter the hosts based on the comma separated hostnames provided",
+	).String()
 
 	// command to watch mesos events update present in the event stream
 	watchEventMesosUpdate = hostmgr.Command("events-mesos-update", "watch mesos event update received from mesos")
@@ -960,7 +989,14 @@ func main() {
 	case offers.FullCommand():
 		err = client.OffersGetAction()
 	case getHosts.FullCommand():
-		err = client.HostsGetAction(*getHostsCPU, *getHostsGPU, *getHostsCmpLess, *getHostsHostnames)
+		err = client.HostsGetAction(
+			*getHostsCPU,
+			*getHostsGPU,
+			*getHostsMem,
+			*getHostsDisk,
+			*getHostsCmpLess,
+			*getHostsHostnames,
+		)
 	case disableKillTasks.FullCommand():
 		err = client.DisableKillTasksAction()
 	case podGetEvents.FullCommand():
