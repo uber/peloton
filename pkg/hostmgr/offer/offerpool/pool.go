@@ -283,7 +283,7 @@ func (p *offerPool) ClaimForPlace(
 	// if host hint is provided, try to return the hosts in hints first
 	for _, filterHints := range hostFilter.GetHint().GetHostHint() {
 		if hs, ok := p.hostOfferIndex[filterHints.GetHostname()]; ok {
-			if result := matcher.tryMatch(hs.GetHostname(), hs); result != hostsvc.HostFilterResult_MATCH {
+			if result := matcher.tryMatch(hs); result != hostsvc.HostFilterResult_MATCH {
 				log.WithField("task_id", filterHints.GetTaskID().GetValue()).
 					WithField("hostname", hs.GetHostname()).
 					WithField("match_result", result.String()).
@@ -307,8 +307,9 @@ func (p *offerPool) ClaimForPlace(
 			p.hostOfferIndex,
 		)
 	}
+
 	for _, s := range sortedSummaryList {
-		matcher.tryMatch(s.(summary.HostSummary).GetHostname(), s.(summary.HostSummary))
+		matcher.tryMatch(s.(summary.HostSummary))
 		if matcher.HasEnoughHosts() {
 			break
 		}

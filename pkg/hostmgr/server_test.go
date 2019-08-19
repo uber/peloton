@@ -218,9 +218,9 @@ func (suite *ServerTestSuite) TestUnelectedStopHandler() {
 
 	gomock.InOrder(
 		suite.mInbound.EXPECT().IsRunning().Return(false).AnyTimes(),
+		suite.recoveryHandler.EXPECT().Stop(),
 		suite.backgroundManager.EXPECT().Stop(),
 		suite.eventHandler.EXPECT().Stop(),
-		suite.recoveryHandler.EXPECT().Stop(),
 		suite.drainer.EXPECT().Stop(),
 		suite.reserver.EXPECT().Stop(),
 		suite.plugin.EXPECT().Stop(),
@@ -242,9 +242,9 @@ func (suite *ServerTestSuite) TestUnelectedStopConnectionAndHandler() {
 	gomock.InOrder(
 		suite.mInbound.EXPECT().IsRunning().Return(true).AnyTimes(),
 		suite.mInbound.EXPECT().Stop(),
+		suite.recoveryHandler.EXPECT().Stop(),
 		suite.backgroundManager.EXPECT().Stop(),
 		suite.eventHandler.EXPECT().Stop(),
-		suite.recoveryHandler.EXPECT().Stop(),
 		suite.drainer.EXPECT().Stop(),
 		suite.reserver.EXPECT().Stop(),
 		suite.mInbound.EXPECT().IsRunning().Return(false).AnyTimes(),
@@ -284,9 +284,9 @@ func (suite *ServerTestSuite) TestElectedRestartConnection() {
 		suite.mInbound.EXPECT().IsRunning().Return(false).AnyTimes(),
 
 		// Stop handlers.
+		suite.recoveryHandler.EXPECT().Stop(),
 		suite.backgroundManager.EXPECT().Stop(),
 		suite.eventHandler.EXPECT().Stop(),
-		suite.recoveryHandler.EXPECT().Stop(),
 		suite.drainer.EXPECT().Stop(),
 		suite.reserver.EXPECT().Stop(),
 
@@ -303,10 +303,10 @@ func (suite *ServerTestSuite) TestElectedRestartConnection() {
 		suite.plugin.EXPECT().Start(),
 
 		// Triggers Explicit Reconciliation on Mesos Master re-election
+		suite.recoveryHandler.EXPECT().Start(),
 		suite.reconciler.EXPECT().SetExplicitReconcileTurn(true).Times(1),
 		suite.backgroundManager.EXPECT().Start(),
 		suite.eventHandler.EXPECT().Start(),
-		suite.recoveryHandler.EXPECT().Start(),
 		suite.drainer.EXPECT().Start(),
 		suite.reserver.EXPECT().Start(),
 	)
@@ -326,10 +326,10 @@ func (suite *ServerTestSuite) TestElectedRestartHandlers() {
 		suite.mInbound.EXPECT().IsRunning().Return(true).Times(3),
 		suite.hostCache.EXPECT().Start(),
 		suite.plugin.EXPECT().Start(),
+		suite.recoveryHandler.EXPECT().Start(),
 		suite.reconciler.EXPECT().SetExplicitReconcileTurn(true).Times(1),
 		suite.backgroundManager.EXPECT().Start(),
 		suite.eventHandler.EXPECT().Start(),
-		suite.recoveryHandler.EXPECT().Start(),
 		suite.drainer.EXPECT().Start(),
 		suite.reserver.EXPECT().Start(),
 	)
@@ -364,13 +364,14 @@ func (suite *ServerTestSuite) TestElectedRestartConnectionAndHandler() {
 		suite.plugin.EXPECT().Start(),
 
 		// Triggers Explicit Reconciliation on re-election of host manager.
+		suite.recoveryHandler.EXPECT().Start(),
 		suite.reconciler.EXPECT().SetExplicitReconcileTurn(true).Times(1),
 		suite.backgroundManager.EXPECT().Start(),
 		suite.eventHandler.EXPECT().Start(),
-		suite.recoveryHandler.EXPECT().Start(),
 		suite.drainer.EXPECT().Start(),
 		suite.reserver.EXPECT().Start(),
 	)
+
 	suite.server.ensureStateRound()
 	suite.ctrl.Finish()
 	suite.Zero(suite.server.currentBackoffNano.Load())

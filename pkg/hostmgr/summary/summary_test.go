@@ -915,7 +915,8 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchHostOnHeld() {
 			nil,
 			offer.GetHostname(),
 			supportedSlackResourceTypes,
-			time.Duration(30*time.Second), mockProcessor).(*hostSummary)
+			time.Duration(30*time.Second),
+			mockProcessor).(*hostSummary)
 		s.status = tt.initialStatus
 		s.offerIDgenerator = seqIDGenerator(tt.offerID)
 
@@ -963,6 +964,167 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchHostOnHeld() {
 		_, _, afterStatus := s.UnreservedAmount()
 		suite.Equal(tt.afterStatus, afterStatus, "test case is %s", ttName)
 	}
+}
+
+func (suite *HostOfferSummaryTestSuite) TestTryMatchTaskAffinity() {
+	defer suite.ctrl.Finish()
+
+	taskID := "673b91dd-f7ce-4c83-a0d2-4057878ea50a-1-1"
+	taskID2 := "473b91dd-f7ce-4c83-a0d2-4057878ea50a-1-1"
+	offer := suite.createUnreservedMesosOffer("offer-id")
+	offers := suite.createUnreservedMesosOffers(5)
+	ctrl := gomock.NewController(suite.T())
+	mockEvaluator := constraint_mocks.NewMockEvaluator(ctrl)
+	mockProcessor := watchmocks.NewMockWatchProcessor(ctrl)
+	lv := constraints.GetHostLabelValues(_testAgent, offer.Attributes)
+	seqIDGenerator := func(i string) func() string {
+		return func() string {
+			return i
+		}
+	}
+	label := &peloton.Label{
+		Key:   "key1",
+		Value: "value1",
+	}
+	filterHostLimit1 := &hostsvc.HostFilter{
+		SchedulingConstraint: &task.Constraint{
+			Type: task.Constraint_LABEL_CONSTRAINT,
+			LabelConstraint: &task.LabelConstraint{
+				Kind:        task.LabelConstraint_TASK,
+				Label:       label,
+				Requirement: 1,
+			},
+		},
+	}
+	filterHostLimit2 := &hostsvc.HostFilter{
+		SchedulingConstraint: &task.Constraint{
+			Type: task.Constraint_LABEL_CONSTRAINT,
+			LabelConstraint: &task.LabelConstraint{
+				Kind:        task.LabelConstraint_TASK,
+				Label:       label,
+				Requirement: 2,
+			},
+		},
+	}
+	filterHostLimit1DifferentService := &hostsvc.HostFilter{
+		SchedulingConstraint: &task.Constraint{
+			Type: task.Constraint_LABEL_CONSTRAINT,
+			LabelConstraint: &task.LabelConstraint{
+				Kind: task.LabelConstraint_TASK,
+				Label: &peloton.Label{
+					Key:   "key2",
+					Value: "value2",
+				},
+				Requirement: 1,
+			},
+		},
+	}
+
+	hs := New(
+		nil,
+		offer.GetHostname(),
+		nil,
+		time.Duration(30*time.Second),
+		mockProcessor).(*hostSummary)
+	hs.offerIDgenerator = seqIDGenerator("1")
+	hs.status = ReadyHost
+	hs.AddMesosOffers(context.Background(), offers)
+
+	mockEvaluator.
+		EXPECT().
+		Evaluate(
+			gomock.Eq(filterHostLimit1.SchedulingConstraint),
+			gomock.Eq(lv)).
+		Return(constraints.EvaluateResultMatch, nil).
+		AnyTimes()
+	mockEvaluator.
+		EXPECT().
+		Evaluate(
+			gomock.Eq(filterHostLimit2.SchedulingConstraint),
+			gomock.Eq(lv)).
+		Return(constraints.EvaluateResultMatch, nil).
+		AnyTimes()
+	mockEvaluator.
+		EXPECT().
+		Evaluate(
+			gomock.Eq(filterHostLimit1DifferentService.SchedulingConstraint),
+			gomock.Eq(lv)).
+		Return(constraints.EvaluateResultMatch, nil).
+		AnyTimes()
+	mockProcessor.
+		EXPECT().
+		NotifyEventChange(gomock.Any()).
+		AnyTimes()
+
+	// No tasks running on this host, so task is matched
+	match := hs.TryMatch(
+		filterHostLimit1,
+		mockEvaluator,
+		nil,
+	)
+	suite.Equal(hostsvc.HostFilterResult_MATCH, match.Result)
+
+	hs.UpdateTasksOnHost(taskID,
+		task.TaskState_LAUNCHED,
+		&task.TaskInfo{
+			Config: &task.TaskConfig{
+				Labels: []*peloton.Label{label},
+			},
+			Runtime: &task.RuntimeInfo{
+				State: task.TaskState_LAUNCHED,
+			},
+		},
+	)
+	hs.status = ReadyHost
+	hs.AddMesosOffers(context.Background(), offers)
+
+	// One task is running, try to place task of same service with host limit 1
+	match = hs.TryMatch(
+		filterHostLimit1,
+		mockEvaluator,
+		nil,
+	)
+	suite.Equal(hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS, match.Result)
+
+	// One task is running, now try to place task of same service with host limit 2
+	match = hs.TryMatch(
+		filterHostLimit2,
+		mockEvaluator,
+		nil,
+	)
+	suite.Equal(hostsvc.HostFilterResult_MATCH, match.Result)
+
+	hs.UpdateTasksOnHost(taskID2,
+		task.TaskState_LAUNCHED,
+		&task.TaskInfo{
+			Config: &task.TaskConfig{
+				Labels: []*peloton.Label{label},
+			},
+			Runtime: &task.RuntimeInfo{
+				State: task.TaskState_LAUNCHED,
+			},
+		},
+	)
+	hs.status = ReadyHost
+	hs.AddMesosOffers(context.Background(), offers)
+
+	// Two tasks are running on same host for same service,
+	// now thrid task cannot run with host limit 2
+	match = hs.TryMatch(
+		filterHostLimit2,
+		mockEvaluator,
+		nil,
+	)
+	suite.Equal(hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS, match.Result)
+
+	// Two tasks running for same service on same host,
+	// try to place one task of different service on same host
+	match = hs.TryMatch(
+		filterHostLimit1DifferentService,
+		mockEvaluator,
+		nil,
+	)
+	suite.Equal(hostsvc.HostFilterResult_MATCH, match.Result)
 }
 
 func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {

@@ -1,5 +1,5 @@
 import time
-
+from collections import defaultdict
 import requests
 import grpc
 
@@ -337,6 +337,17 @@ def verify_task_config(client, job_key, metadata_dict):
                 assert m.value == metadata_dict[m.key]
             else:
                 assert False, "unexpected metadata {}".format(m)
+
+
+def verify_host_limit_1(tasks):
+    host_counts = defaultdict(int)
+
+    for t in tasks:
+        host_counts[t.assignedTask.slaveHost] += 1
+
+    # Ensure the host limit is enforced.
+    for host, count in host_counts.iteritems():
+        assert count == 1, "{host} has more than 1 task".format(host=host)
 
 
 def expand_instance_range(instances):

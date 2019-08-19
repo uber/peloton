@@ -328,9 +328,9 @@ func (s *Server) stopHandlers() {
 	defer s.Unlock()
 
 	if s.handlersRunning.Swap(false) {
+		s.recoveryHandler.Stop()
 		s.backgroundManager.Stop()
 		s.getOfferEventHandler().Stop()
-		s.recoveryHandler.Stop()
 		s.drainer.Stop()
 		s.reserver.Stop()
 	}
@@ -343,12 +343,12 @@ func (s *Server) startHandlers() {
 	defer s.Unlock()
 
 	if !s.handlersRunning.Swap(true) {
+		s.recoveryHandler.Start()
 		// Set Explicit Reconcile Turn to true, to make sure Explicit Reconciliation runs
 		// on Host Manager or Mesos Master re-election.
 		s.reconciler.SetExplicitReconcileTurn(true)
 		s.backgroundManager.Start()
 		s.getOfferEventHandler().Start()
-		s.recoveryHandler.Start()
 		s.drainer.Start()
 		s.reserver.Start()
 	}

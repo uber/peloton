@@ -53,21 +53,23 @@ type Matcher struct {
 // If properly matched, the offers will be kept in Matcher for later return,
 // otherwise they are untouched.
 func (m *Matcher) tryMatch(
-	hostname string,
 	s summary.HostSummary) hostsvc.HostFilterResult {
-	result := m.tryMatchImpl(hostname, s)
+
+	result := m.tryMatchImpl(s)
 	if name, ok := hostsvc.HostFilterResult_name[int32(result)]; !ok {
 		log.WithField("value", result).
 			Error("Unknown enum value for HostFilterResult_name")
 	} else {
 		m.filterResultCounts[strings.ToLower(name)]++
 	}
+
 	return result
 }
 
 func (m *Matcher) tryMatchImpl(
-	hostname string,
 	s summary.HostSummary) hostsvc.HostFilterResult {
+	hostname := s.GetHostname()
+
 	if m.HasEnoughHosts() {
 		return hostsvc.HostFilterResult_MISMATCH_MAX_HOST_LIMIT
 	}

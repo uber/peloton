@@ -60,7 +60,8 @@ func setupEngine(t *testing.T, options ...option) (
 	*gomock.Controller,
 	*engine, *offers_mock.MockService,
 	*tasks_mock.MockService,
-	*mocks.MockStrategy) {
+	*mocks.MockStrategy,
+	tally.TestScope) {
 	ctrl := gomock.NewController(t)
 
 	mockOfferService := offers_mock.NewMockService(ctrl)
@@ -97,9 +98,9 @@ func setupEngine(t *testing.T, options ...option) (
 
 	pool := async.NewPool(async.PoolOptions{}, nil)
 	pool.Start()
-
+	scope := tally.NewTestScope("", map[string]string{})
 	e := New(
-		tally.NoopScope,
+		scope,
 		config,
 		mockOfferService,
 		mockTaskService,
@@ -108,11 +109,70 @@ func setupEngine(t *testing.T, options ...option) (
 		pool,
 	)
 
-	return ctrl, e.(*engine), mockOfferService, mockTaskService, mockStrategy
+	return ctrl, e.(*engine), mockOfferService, mockTaskService, mockStrategy, scope
+}
+
+// Tests that metric is emitted if number of hosts returned by host manager
+// are greater than equal to number of assignments.
+func TestEngineTaskAffinityConstraintFailure(t *testing.T) {
+	ctrl, engine, mockOfferService, mockTaskService, mockStrategy, scope := setupEngine(t)
+
+	defer ctrl.Finish()
+	engine.config.MaxPlacementDuration = 1 * time.Second
+
+	host1 := testutil.SetupHostOffers()
+	host2 := testutil.SetupHostOffers()
+	offers := []models.Offer{host1, host2}
+	assignment := testutil.SetupAssignment(time.Now().Add(1*time.Second), 10)
+	assignment.Task.PlacementDeadline = time.Now().Add(-1 * time.Second)
+	assignments := []models.Task{assignment}
+
+	mockStrategy.EXPECT().
+		GetTaskPlacements(
+			gomock.Any(),
+			gomock.Any(),
+		).
+		Return(map[int]int{}).
+		AnyTimes()
+
+	mockTaskService.EXPECT().
+		SetPlacements(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+		).MinTimes(1).
+		Return().
+		AnyTimes()
+
+	mockOfferService.EXPECT().
+		Acquire(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+		).MinTimes(1).
+		Return(offers, _testReason)
+
+	mockOfferService.EXPECT().Release(
+		gomock.Any(),
+		gomock.Any()).
+		Return().
+		AnyTimes()
+
+	mockStrategy.EXPECT().
+		ConcurrencySafe().
+		Return(true).
+		AnyTimes()
+
+	needs := plugins.PlacementNeeds{
+		Revocable: true,
+	}
+	engine.placeAssignmentGroup(context.Background(), needs, assignments)
+	assert.Equal(t, int64(1), scope.Snapshot().Counters()["batch.placement.host_limit+result=fail"].Value())
 }
 
 func TestEnginePlaceNoTasksToPlace(t *testing.T) {
-	ctrl, engine, _, mockTaskService, _ := setupEngine(t)
+	ctrl, engine, _, mockTaskService, _, _ := setupEngine(t)
 	defer ctrl.Finish()
 
 	mockTaskService.EXPECT().
@@ -131,7 +191,7 @@ func TestEnginePlaceNoTasksToPlace(t *testing.T) {
 }
 
 func TestEnginePlaceMultipleTasks(t *testing.T) {
-	ctrl, engine, mockOfferService, mockTaskService, _ := setupEngine(t)
+	ctrl, engine, mockOfferService, mockTaskService, _, _ := setupEngine(t)
 	defer ctrl.Finish()
 	createTasks := 25
 	createHosts := 10
@@ -194,7 +254,7 @@ func TestEnginePlaceMultipleTasks(t *testing.T) {
 }
 
 func TestEnginePlaceInPlaceUpdateTasks(t *testing.T) {
-	ctrl, engine, mockOfferService, mockTaskService, _ := setupEngine(
+	ctrl, engine, mockOfferService, mockTaskService, _, _ := setupEngine(
 		t,
 		withTaskType(resmgr.TaskType_STATELESS),
 		withStrategy(config.Mimir),
@@ -262,7 +322,7 @@ func TestEnginePlaceInPlaceUpdateTasks(t *testing.T) {
 	assert.Len(t, unfulfilledAssignment, createTasks/2)
 }
 func TestEnginePlaceSubsetOfTasksDueToInsufficientResources(t *testing.T) {
-	ctrl, engine, mockOfferService, mockTaskService, _ := setupEngine(t)
+	ctrl, engine, mockOfferService, mockTaskService, _, _ := setupEngine(t)
 	defer ctrl.Finish()
 	createTasks := 25
 	createHosts := 10
@@ -326,7 +386,7 @@ func TestEnginePlaceSubsetOfTasksDueToInsufficientResources(t *testing.T) {
 
 // Test tasks cannot get placed due to no host offer.
 func TestEnginePlaceNoHostsMakesTaskExceedDeadline(t *testing.T) {
-	ctrl, engine, mockOfferService, mockTaskService, _ := setupEngine(t)
+	ctrl, engine, mockOfferService, mockTaskService, _, _ := setupEngine(t)
 	defer ctrl.Finish()
 	engine.config.MaxPlacementDuration = time.Millisecond
 	assignment := testutil.SetupAssignment(time.Now().Add(time.Millisecond), 1)
@@ -354,7 +414,7 @@ func TestEnginePlaceNoHostsMakesTaskExceedDeadline(t *testing.T) {
 }
 
 func TestEnginePlaceTaskExceedMaxRoundsAndGetsPlaced(t *testing.T) {
-	ctrl, engine, mockOfferService, mockTaskService, mockStrategy := setupEngine(t)
+	ctrl, engine, mockOfferService, mockTaskService, mockStrategy, _ := setupEngine(t)
 	defer ctrl.Finish()
 	maxRounds := 5
 	engine.config.MaxPlacementDuration = 1 * time.Second
@@ -400,7 +460,7 @@ func TestEnginePlaceTaskExceedMaxRoundsAndGetsPlaced(t *testing.T) {
 }
 
 func TestEnginePlaceTaskExceedMaxPlacementDeadlineGetsPlaced(t *testing.T) {
-	ctrl, engine, mockOfferService, mockTaskService, mockStrategy := setupEngine(t)
+	ctrl, engine, mockOfferService, mockTaskService, mockStrategy, _ := setupEngine(t)
 	defer ctrl.Finish()
 	engine.config.MaxPlacementDuration = 1 * time.Second
 
@@ -441,7 +501,7 @@ func TestEnginePlaceTaskExceedMaxPlacementDeadlineGetsPlaced(t *testing.T) {
 }
 
 func TestEnginePlaceCallToStrategy(t *testing.T) {
-	ctrl, engine, mockOfferService, mockTaskService, mockStrategy := setupEngine(t)
+	ctrl, engine, mockOfferService, mockTaskService, mockStrategy, _ := setupEngine(t)
 	defer ctrl.Finish()
 	engine.config.MaxPlacementDuration = 100 * time.Millisecond
 
@@ -531,7 +591,7 @@ func TestEnginePlaceCallToStrategy(t *testing.T) {
 }
 
 func TestEnginePlaceReservedTasks(t *testing.T) {
-	ctrl, engine, mockOfferService, mockTaskService, _ := setupEngine(t)
+	ctrl, engine, mockOfferService, mockTaskService, _, _ := setupEngine(t)
 	defer ctrl.Finish()
 	createTasks := 25
 	createHosts := 10
@@ -601,7 +661,7 @@ func TestEnginePlaceReservedTasks(t *testing.T) {
 }
 
 func TestEngineFindUsedOffers(t *testing.T) {
-	ctrl, engine, _, _, _ := setupEngine(t)
+	ctrl, engine, _, _, _, _ := setupEngine(t)
 	defer ctrl.Finish()
 
 	now := time.Now()
@@ -621,7 +681,7 @@ func TestEngineFindUsedOffers(t *testing.T) {
 }
 
 func TestEngineFilterAssignments(t *testing.T) {
-	ctrl, engine, _, _, _ := setupEngine(t)
+	ctrl, engine, _, _, _, _ := setupEngine(t)
 	defer ctrl.Finish()
 
 	deadline1 := time.Now()
@@ -666,7 +726,7 @@ func TestEngineFilterAssignments(t *testing.T) {
 }
 
 func TestEngineCleanup(t *testing.T) {
-	ctrl, engine, _, mockTaskService, _ := setupEngine(t)
+	ctrl, engine, _, mockTaskService, _, _ := setupEngine(t)
 	defer ctrl.Finish()
 
 	host := testutil.SetupHostOffers()
@@ -687,7 +747,7 @@ func TestEngineCleanup(t *testing.T) {
 }
 
 func TestEngineFindUnusedOffers(t *testing.T) {
-	ctrl, engine, _, _, _ := setupEngine(t)
+	ctrl, engine, _, _, _, _ := setupEngine(t)
 	defer ctrl.Finish()
 
 	deadline := time.Now().Add(30 * time.Second)

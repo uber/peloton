@@ -9,6 +9,7 @@ from tests.integration.aurorabridge_test.util import (
     start_job_update,
     wait_for_rolled_forward,
     wait_for_update_status,
+    verify_host_limit_1,
 )
 
 pytestmark = [pytest.mark.default, pytest.mark.aurorabridge]
@@ -258,6 +259,58 @@ def test__override_rolling_forward_update_with_diff(client):
         res.detailsList[1].updateEvents[-1].status
         == api.JobUpdateStatus.ABORTED
     )
+
+
+def test__host_limit_1(client, hostmgr):
+    """
+    - Create a job with host limit 1 constraint and validate each pod 
+    is running on different host.
+    - Update a job, wait for it to complete and verify host limit 1 constraint.
+    - Update a job, restart host manager, then wait for update to complete and 
+    lastly verify host limit 1 constraint.
+    """
+    # Create job.
+    job_key = start_job_update(
+        client, "test_dc_labrat.yaml", "start job update test/dc/labrat"
+    )
+
+    # Add some wait time for lucene index to build
+    time.sleep(10)
+
+    res = client.get_tasks_without_configs(api.TaskQuery(jobKeys={job_key}))
+    assert len(res.tasks) == 3
+
+    verify_host_limit_1(res.tasks)
+
+    # Start a update with host limit 1 constraint
+    job_key = start_job_update(
+        client, "test_dc_labrat_1.yaml", "start job update test/dc/labrat_1"
+    )
+
+    res = client.get_tasks_without_configs(api.TaskQuery(
+        jobKeys={job_key},
+        statuses={api.ScheduleStatus.RUNNING}))
+    assert len(res.tasks) == 3
+
+    verify_host_limit_1(res.tasks)
+
+    # Start an update, and restart hostmanager before update completes.
+    res = client.start_job_update(
+        get_job_update_request("test_dc_labrat.yaml"),
+        "start job update test/dc/labrat",
+    )
+
+    # restart host manager
+    hostmgr.restart()
+
+    wait_for_rolled_forward(client, res.key)
+
+    res = client.get_tasks_without_configs(api.TaskQuery(
+        jobKeys={job_key},
+        statuses={api.ScheduleStatus.RUNNING}))
+    assert len(res.tasks) == 3
+
+    verify_host_limit_1(res.tasks)
 
 
 def test__start_job_update_with_get_jobs(client, aurorabridge):

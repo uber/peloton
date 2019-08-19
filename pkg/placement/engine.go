@@ -317,6 +317,28 @@ func (e *engine) placeAssignmentGroup(
 		// should be retried or were unassigned.
 		assigned, retryable, unassigned := e.filterAssignments(time.Now(), assignments)
 
+		// If number of hosts returned by host manager are more than number of tasks,
+		// still tasks are unassigned then it reflects potential error on
+		// affinity check at host manager.
+		if len(unassigned) != 0 &&
+			len(tasks) <= len(hosts) {
+
+			var hostnames, taskIDs []string
+			for _, task := range tasks {
+				taskIDs = append(taskIDs, task.PelotonID())
+			}
+
+			for _, hostname := range hosts {
+				hostnames = append(hostnames, hostname.ToMimirGroup().Name)
+			}
+
+			e.metrics.TaskAffinityFail.Inc(1)
+			log.WithFields(log.Fields{
+				"hostnames": hostnames,
+				"tasks":     taskIDs,
+			}).Info("Unassigned tasks even when more hosts available")
+		}
+
 		// We will retry the retryable tasks
 		assignments = retryable
 

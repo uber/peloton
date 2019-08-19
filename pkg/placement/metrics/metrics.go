@@ -91,6 +91,10 @@ type Metrics struct {
 	// HostGetFail indicates the number of times the scheduler requested
 	// an Host and it failed
 	HostGetFail tally.Counter
+
+	// TaskAffinityFail indicates failure on host manager to return
+	// host with affinity constraint satisfied.
+	TaskAffinityFail tally.Counter
 }
 
 // NewMetrics returns a new Metrics struct with all metrics initialized and
@@ -138,5 +142,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		HostGet:     HostSuccessScope.Counter("get"),
 		HostGetFail: HostFailScope.Counter("get"),
+
+		TaskAffinityFail: placementFailScope.Counter("host_limit"),
 	}
 }
