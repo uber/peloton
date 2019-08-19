@@ -28,7 +28,6 @@ import (
 	"github.com/uber/peloton/pkg/common/taskconfig"
 	"github.com/uber/peloton/pkg/common/util"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
-	taskutil "github.com/uber/peloton/pkg/jobmgr/util/task"
 	"github.com/uber/peloton/pkg/storage"
 	"github.com/uber/peloton/pkg/storage/objects"
 
@@ -1193,7 +1192,7 @@ func (u *update) addWorkflowEventForInstances(
 	}
 
 	// add workflow events for provided instances in parallel batches.
-	return taskutil.RunInParallel(u.id.GetValue(), instances, addWorkflowEvent)
+	return util.RunInParallel(u.id.GetValue(), instances, addWorkflowEvent)
 }
 
 // contains is a helper function to check if an element is present in the list

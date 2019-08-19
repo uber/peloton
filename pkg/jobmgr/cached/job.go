@@ -38,7 +38,6 @@ import (
 	stringsutil "github.com/uber/peloton/pkg/common/util/strings"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 	goalstateutil "github.com/uber/peloton/pkg/jobmgr/util/goalstate"
-	taskutil "github.com/uber/peloton/pkg/jobmgr/util/task"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/pborman/uuid"
@@ -537,7 +536,7 @@ func (j *job) CreateTaskConfigs(
 		}
 	}
 
-	return taskutil.RunInParallel(
+	return util.RunInParallel(
 		j.ID().GetValue(),
 		instanceIDList,
 		createSingleTaskConfig)
@@ -563,7 +562,7 @@ func (j *job) CreateTaskRuntimes(
 		t := j.addTaskToJobMap(id)
 		return t.createTask(ctx, runtime, owner)
 	}
-	return taskutil.RunInParallel(
+	return util.RunInParallel(
 		j.ID().GetValue(),
 		getIdsFromRuntimeMap(runtimes),
 		createSingleTask)
@@ -597,7 +596,7 @@ func (j *job) PatchTasks(
 		return t.(*task).patchTask(ctx, runtimeDiffs[id])
 	}
 
-	err = taskutil.RunInParallel(
+	err = util.RunInParallel(
 		j.ID().GetValue(),
 		instancesSucceeded,
 		patchSingleTask)
@@ -628,7 +627,7 @@ func (j *job) ReplaceTasks(
 	}
 
 	instancesReplaced = getIdsFromTaskInfoMap(taskInfos)
-	err = taskutil.RunInParallel(
+	err = util.RunInParallel(
 		j.ID().GetValue(),
 		instancesReplaced,
 		replaceSingleTask)
