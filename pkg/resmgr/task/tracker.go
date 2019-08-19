@@ -111,8 +111,8 @@ type tracker struct {
 	scope   tally.Scope
 	metrics *Metrics
 
-	// mutex for the state counters
-	cMutex sync.Mutex
+	// mutex for the task state metrics
+	metricsLock sync.Mutex
 
 	// map of task state to the count of tasks in the tracker
 	counters map[task.TaskState]float64
@@ -446,6 +446,9 @@ func (tr *tracker) AddResources(
 		tr.resourcesHeldByTaskState[taskState] = val.Add(res)
 	}
 
+	tr.metricsLock.Lock()
+	defer tr.metricsLock.Unlock()
+
 	// publish metrics
 	if gauge, ok := tr.metrics.ResourcesHeldByTaskState[taskState]; ok {
 		gauge.Update(tr.resourcesHeldByTaskState[taskState])
@@ -516,17 +519,17 @@ func (tr *tracker) UpdateMetrics(
 	to task.TaskState,
 	taskResources *scalar.Resources,
 ) {
-	tr.cMutex.Lock()
-	defer tr.cMutex.Unlock()
+	tr.metricsLock.Lock()
+	defer tr.metricsLock.Unlock()
 
 	// Reducing the count from state
-	tr.counters[from] -= 1
+	tr.counters[from]--
 	if tr.counters[from] < 0 {
 		tr.counters[from] = 0
 	}
 
 	// Incrementing the state counter to +1
-	tr.counters[to] += 1
+	tr.counters[to]++
 
 	// Subtract resources from 'from' state
 	if res, ok := tr.resourcesHeldByTaskState[from]; ok {
