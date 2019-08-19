@@ -71,6 +71,7 @@ def get_host_to_task_count(hosts, job):
         host_task_count[h] = 0
 
     for p in job.query_pods():
-        host_task_count[p.status.host] += 1
+        if p.status.host in hosts:
+            host_task_count[p.status.host] += 1
 
     return host_task_count
