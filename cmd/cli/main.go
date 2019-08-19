@@ -487,6 +487,10 @@ var (
 	jobMgrQueryJobCacheLabels = jobMgrQueryJobCache.Flag("labels", "labels").Default("").Short('l').String()
 	jobMgrQueryJobCacheName   = jobMgrQueryJobCache.Flag("name", "name of the job to return").Default("").Short('n').String()
 
+	jobMgrInstanceAvailability          = jobMgr.Command("instance-availability", "get instance availability information")
+	jobMgrInstanceAvailabilityName      = jobMgrInstanceAvailability.Arg("job", "job identifier").Required().String()
+	jobMgrInstanceAvailabilityInstances = jobMgrInstanceAvailability.Flag("instances", "comma separated instance ids to filter").Default("").Short('i').String()
+
 	// Top level resource manager state command
 	resMgr      = app.Command("resmgr", "fetch resource manager state")
 	resMgrTasks = resMgr.Command("tasks", "fetch resource manager task state")
@@ -907,6 +911,8 @@ func main() {
 		err = client.JobGetCacheAction(*jobGetCacheName)
 	case jobGetActiveJobs.FullCommand():
 		err = client.JobGetActiveJobsAction()
+	case jobMgrInstanceAvailability.FullCommand():
+		err = client.JobMgrGetInstanceAvailabilityInfoForJob(*jobMgrInstanceAvailabilityName, *jobMgrInstanceAvailabilityInstances)
 	case taskGet.FullCommand():
 		err = client.TaskGetAction(*taskGetJobName, *taskGetInstanceID)
 	case taskGetCache.FullCommand():

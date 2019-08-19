@@ -37,6 +37,14 @@ const (
 	InstanceAvailability_UNAVAILABLE InstanceAvailability_Type = 4
 )
 
+var InstanceAvailability_name = map[InstanceAvailability_Type]string{
+	InstanceAvailability_INVALID:     "InstanceAvailability_INVALID",
+	InstanceAvailability_AVAILABLE:   "InstanceAvailability_AVAILABLE",
+	InstanceAvailability_KILLED:      "InstanceAvailability_KILLED",
+	InstanceAvailability_DELETED:     "InstanceAvailability_DELETED",
+	InstanceAvailability_UNAVAILABLE: "InstanceAvailability_UNAVAILABLE",
+}
+
 // JobConfig stores the job configurations in cache which is fetched multiple
 // times during normal job/task operations.
 // JobConfig makes the job interface cleaner by having the caller request

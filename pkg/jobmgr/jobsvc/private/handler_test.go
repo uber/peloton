@@ -30,6 +30,7 @@ import (
 
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/jobmgr/cached"
+	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 
 	"github.com/uber/peloton/pkg/common/api"
 	leadermocks "github.com/uber/peloton/pkg/common/leader/mocks"
@@ -566,4 +567,37 @@ func (suite *privateHandlerTestSuite) TestQueryJobCacheGoalStateEngineNotStarted
 	)
 	suite.Nil(result)
 	suite.Error(err)
+}
+
+// TestGetInstanceAvailabilityInfoForJobSuccess tests the success
+// case of getting instance availability information for a job
+func (suite *privateHandlerTestSuite) TestGetInstanceAvailabilityInfoForJobSuccess() {
+	job := cachedmocks.NewMockJob(suite.ctrl)
+	instanceAvailabilityMap := map[uint32]jobmgrcommon.InstanceAvailability_Type{
+		0: jobmgrcommon.InstanceAvailability_AVAILABLE,
+		1: jobmgrcommon.InstanceAvailability_UNAVAILABLE,
+		2: jobmgrcommon.InstanceAvailability_KILLED,
+		3: jobmgrcommon.InstanceAvailability_DELETED,
+		4: jobmgrcommon.InstanceAvailability_INVALID,
+	}
+
+	suite.jobFactory.EXPECT().GetJob(testPelotonJobID).Return(job)
+	job.EXPECT().
+		GetInstanceAvailabilityType(gomock.Any()).
+		Return(instanceAvailabilityMap)
+
+	response, err := suite.handler.GetInstanceAvailabilityInfoForJob(
+		context.Background(),
+		&jobmgrsvc.GetInstanceAvailabilityInfoForJobRequest{
+			JobId: &v1alphapeloton.JobID{Value: testJobID},
+		},
+	)
+	suite.NoError(err)
+
+	for i, a := range instanceAvailabilityMap {
+		suite.Equal(
+			jobmgrcommon.InstanceAvailability_name[a],
+			response.InstanceAvailabilityMap[i],
+		)
+	}
 }

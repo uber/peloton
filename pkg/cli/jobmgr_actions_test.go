@@ -92,3 +92,23 @@ func (suite *jobmgrActionsTestSuite) TestQueryJobCacheFailure() {
 		Return(nil, errors.New("test error"))
 	suite.Error(suite.client.JobMgrQueryJobCache("key1=val1,key2=val2", "testName"))
 }
+
+// TestJobGetInstanceAvailabilityInfoSuccess tests the success case of
+// getting instance availability information of a job
+func (suite *jobmgrActionsTestSuite) TestJobGetInstanceAvailabilityInfoSuccess() {
+	suite.jobmgrClient.
+		EXPECT().
+		GetInstanceAvailabilityInfoForJob(gomock.Any(), gomock.Any()).
+		Return(&jobmgrsvc.GetInstanceAvailabilityInfoForJobResponse{}, nil)
+	suite.NoError(suite.client.JobMgrGetInstanceAvailabilityInfoForJob("jobID", "0,2"))
+}
+
+// TestJobGetInstanceAvailabilityInfoFailure tests the failure case of
+// getting instance availability information of a job
+func (suite *jobmgrActionsTestSuite) TestJobGetInstanceAvailabilityInfoFailure() {
+	suite.jobmgrClient.
+		EXPECT().
+		GetInstanceAvailabilityInfoForJob(gomock.Any(), gomock.Any()).
+		Return(nil, errors.New("test error"))
+	suite.Error(suite.client.JobMgrGetInstanceAvailabilityInfoForJob("jobID", ""))
+}

@@ -16,8 +16,15 @@ package cli
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/private/jobmgrsvc"
+)
+
+const (
+	instanceIDSeparator = ","
 )
 
 func (c *Client) JobMgrGetThrottledPods() error {
@@ -73,4 +80,51 @@ func (c *Client) JobMgrQueryJobCache(
 	}
 	fmt.Printf("%v\n", string(out))
 	return nil
+}
+
+func (c *Client) JobMgrGetInstanceAvailabilityInfoForJob(
+	jobID string,
+	instances string,
+) error {
+	instanceIDs, err := parseInstances(instances)
+	if err != nil {
+		return err
+	}
+
+	resp, err := c.jobmgrClient.GetInstanceAvailabilityInfoForJob(
+		c.ctx,
+		&jobmgrsvc.GetInstanceAvailabilityInfoForJobRequest{
+			JobId:     &peloton.JobID{Value: jobID},
+			Instances: instanceIDs,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	out, err := marshallResponse("yaml", resp)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%v\n", string(out))
+	return nil
+}
+
+func parseInstances(instances string) ([]uint32, error) {
+	if len(instances) == 0 {
+		return nil, nil
+	}
+
+	var instanceIDs []uint32
+	for _, i := range strings.Split(instances, instanceIDSeparator) {
+		if i != "" {
+			instanceID, err := strconv.ParseUint(i, 10, 32)
+			if err != nil {
+				return nil, err
+			}
+			instanceIDs = append(instanceIDs, uint32(instanceID))
+		}
+	}
+
+	return instanceIDs, nil
 }

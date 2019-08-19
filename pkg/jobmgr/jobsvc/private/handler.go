@@ -302,6 +302,38 @@ func (h *serviceHandler) QueryJobCache(
 	return &jobmgrsvc.QueryJobCacheResponse{Result: result}, nil
 }
 
+func (h *serviceHandler) GetInstanceAvailabilityInfoForJob(
+	ctx context.Context,
+	req *jobmgrsvc.GetInstanceAvailabilityInfoForJobRequest,
+) (resp *jobmgrsvc.GetInstanceAvailabilityInfoForJobResponse, err error) {
+	defer func() {
+		headers := yarpcutil.GetHeaders(ctx)
+		if err != nil {
+			log.WithField("request", req).
+				WithField("headers", headers).
+				WithError(err).
+				Warn("JobSVC.GetInstanceAvailabilityInfoForJob failed")
+			err = yarpcutil.ConvertToYARPCError(err)
+			return
+		}
+
+		log.WithField("request", req).
+			WithField("response", resp).
+			WithField("headers", headers).
+			Debug("JobSVC.GetInstanceAvailabilityInfoForJob succeeded")
+	}()
+
+	job := h.jobFactory.GetJob(&peloton.JobID{Value: req.GetJobId().GetValue()})
+
+	instanceAvailabilityMap := make(map[uint32]string)
+	for i, t := range job.GetInstanceAvailabilityType(ctx, req.GetInstances()...) {
+		instanceAvailabilityMap[i] = jobmgrcommon.InstanceAvailability_name[t]
+	}
+	return &jobmgrsvc.GetInstanceAvailabilityInfoForJobResponse{
+		InstanceAvailabilityMap: instanceAvailabilityMap,
+	}, nil
+}
+
 // nameMatch returns true if queryName not set, or jobName
 // and queryName are the same
 func nameMatch(jobName string, queryName string) bool {

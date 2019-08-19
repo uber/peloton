@@ -35,8 +35,8 @@ import (
 	"github.com/golang/protobuf/ptypes"
 	"go.uber.org/multierr"
 	"go.uber.org/yarpc/yarpcerrors"
-	"gopkg.in/cheggaaa/pb.v1"
-	"gopkg.in/yaml.v2"
+	pb "gopkg.in/cheggaaa/pb.v1"
+	yaml "gopkg.in/yaml.v2"
 )
 
 const (

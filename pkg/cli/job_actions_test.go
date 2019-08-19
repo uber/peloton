@@ -31,14 +31,13 @@ import (
 	respoolmocks "github.com/uber/peloton/.gen/peloton/api/v0/respool/mocks"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	taskmocks "github.com/uber/peloton/.gen/peloton/api/v0/task/mocks"
-
 	jobmgrtask "github.com/uber/peloton/pkg/jobmgr/task"
+	yaml "gopkg.in/yaml.v2"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/yarpc/yarpcerrors"
-	"gopkg.in/yaml.v2"
 )
 
 const (

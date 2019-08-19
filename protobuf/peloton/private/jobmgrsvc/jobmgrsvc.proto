@@ -79,6 +79,25 @@ message GetJobCacheResponse {
   api.v1alpha.job.stateless.JobStatus status = 2;
 }
 
+// Request message for JobManagerService.GetInstanceAvailabilityInfoForJob
+message GetInstanceAvailabilityInfoForJobRequest {
+  // The job ID to look up the job.
+  api.v1alpha.peloton.JobID job_id = 1;
+
+  // optional field
+  // instance ids to filter. If no instances are specified then instance
+  // availability information for all instances of the job would be returned.
+  repeated uint32 instances = 2;
+}
+
+// Response message for JobManagerService.GetInstanceAvailabilityInfoForJob
+// Return errors:
+//   NOT_FOUND:         if the job ID is not found.
+message GetInstanceAvailabilityInfoForJobResponse {
+  // map of instance id to instance availability type.
+  map<uint32, string> instance_availability_map = 1;
+}
+
 service JobManagerService {
   // Get the list of throttled tasks in the system
   rpc GetThrottledPods(GetThrottledPodsRequest) returns(GetThrottledPodsResponse);
@@ -90,6 +109,11 @@ service JobManagerService {
   // GetJobCache gets the job state in the cache.
   rpc GetJobCache(GetJobCacheRequest) returns(GetJobCacheResponse);
 
-  // QueryJobCache query jobs in the cache
+  // QueryJobCache queries jobs in the cache
   rpc QueryJobCache(QueryJobCacheRequest) returns (QueryJobCacheResponse);
+
+  // GetInstanceAvailabilityInfoForJob gets instance
+  // availability information for the job.
+  rpc GetInstanceAvailabilityInfoForJob(GetInstanceAvailabilityInfoForJobRequest)
+  returns (GetInstanceAvailabilityInfoForJobResponse);
 }
