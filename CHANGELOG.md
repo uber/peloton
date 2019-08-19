@@ -3,6 +3,13 @@
 0.9.0 (unreleased)
 ------------------
 
+0.8.10.1
+------------------
+* 2019-08-19    Fix archiver context cancel issues                                                     amitbose@uber.com
+* 2019-08-19    Skip the job in getJobs if instance count is 0                                         amitbose@uber.com
+* 2019-08-19    Fix concurrency issue in resmgr                                                        amitbose@uber.com
+* 2019-08-19    Fix in-place update behavior on fail retry                                             zhixin@uber.com
+
 0.8.10
 ------------------
 * 2019-08-16    Wait for all agents to register to master before running integration tests             sachins@uber.com
