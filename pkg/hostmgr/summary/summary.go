@@ -342,6 +342,45 @@ type Match struct {
 	Offer *Offer
 }
 
+// isHostLimitConstraintSatisfy validates task to task affinity constraint.
+// It limits number of tasks for same service to run on same host.
+func (a *hostSummary) isHostLimitConstraintSatisfy(
+	labelConstraint *task.LabelConstraint,
+) bool {
+
+	// Aggregates label count for all tasks running on this host.
+	// label_key -> label_value -> count
+	labelsCount := make(map[string]map[string]uint32)
+	for _, task := range a.tasks {
+		labels := task.GetConfig().GetLabels()
+
+		for _, label := range labels {
+			key := label.GetKey()
+			value := label.GetValue()
+
+			if _, ok := labelsCount[key]; !ok {
+				labelsCount[key] = map[string]uint32{value: 1}
+				continue
+			}
+
+			labelsCount[key][value] = labelsCount[key][value] + 1
+		}
+	}
+
+	// Checks whether label constraint requirement is met or not.
+	// requirement = 1 && zero task running -> satisfies the requirement
+	// requirement = 1 && one task running -> does not satisfy requirement
+	// requirement = 2 && one task running -> satisfies the requirement
+	label := labelConstraint.GetLabel()
+	if labelCountValue, ok := labelsCount[label.GetKey()]; ok {
+		if labelCountValue[label.GetValue()] >= labelConstraint.GetRequirement() {
+			return false
+		}
+	}
+
+	return true
+}
+
 // matchHostFilter determines whether given HostFilter matches
 // the given map of offers.
 func matchHostFilter(
@@ -449,6 +488,14 @@ func (a *hostSummary) TryMatch(
 			return Match{
 				Result: hostsvc.HostFilterResult_MISMATCH_STATUS,
 			}
+		}
+	}
+
+	// Validates task affinity constraint for stateless workload
+	constraint := filter.GetSchedulingConstraint()
+	if constraint.GetType() == task.Constraint_LABEL_CONSTRAINT {
+		if !a.isHostLimitConstraintSatisfy(constraint.GetLabelConstraint()) {
+			return Match{Result: hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS}
 		}
 	}
 
