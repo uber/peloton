@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hashicorp/go-multierror"
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
@@ -992,38 +993,73 @@ func (h *serviceHandler) GetJob(
 		return nil, errors.Wrap(err, "failed to get job status")
 	}
 
-	jobConfig, _, err := h.jobConfigOps.Get(
-		ctx,
-		pelotonJobID,
-		jobRuntime.GetConfigurationVersion(),
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get job spec")
-	}
-
-	// Do not display the secret volumes in defaultconfig that were added by
-	// handleSecrets. They should remain internal to peloton logic.
-	// Secret ID and Path should be returned using the peloton.Secret
-	// proto message.
-	secretVolumes := util.RemoveSecretVolumesFromJobConfig(jobConfig)
-
+	var wg sync.WaitGroup
+	var secretVolumes []*mesos.Volume
+	var jobConfig *pbjob.JobConfig
 	var updateInfo *models.UpdateModel
 	var workflowEvents []*stateless.WorkflowEvent
-	if len(jobRuntime.GetUpdateID().GetValue()) > 0 {
-		updateInfo, err = h.updateStore.GetUpdate(
+	errs := make(chan error)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		var er error
+		if jobConfig, _, er = h.jobConfigOps.Get(
 			ctx,
-			jobRuntime.GetUpdateID(),
-		)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to get update information")
+			pelotonJobID,
+			jobRuntime.GetConfigurationVersion(),
+		); er != nil {
+			errs <- errors.Wrap(er, "failed to get job spec")
 		}
 
-		workflowEvents, err = h.jobUpdateEventsOps.GetAll(
-			ctx,
-			jobRuntime.GetUpdateID())
-		if err != nil {
-			return nil, errors.Wrap(err, "fail to get job update events")
+		// Do not display the secret volumes in defaultconfig that were added by
+		// handleSecrets. They should remain internal to peloton logic.
+		// Secret ID and Path should be returned using the peloton.Secret
+		// proto message.
+		secretVolumes = util.RemoveSecretVolumesFromJobConfig(jobConfig)
+	}()
+
+	if len(jobRuntime.GetUpdateID().GetValue()) > 0 {
+		wg.Add(2)
+
+		go func() {
+			defer wg.Done()
+
+			var er error
+			if updateInfo, er = h.updateStore.GetUpdate(
+				ctx,
+				jobRuntime.GetUpdateID(),
+			); er != nil {
+				errs <- errors.Wrap(er, "failed to get update information")
+			}
+		}()
+
+		go func() {
+			defer wg.Done()
+
+			var er error
+			if workflowEvents, er = h.jobUpdateEventsOps.GetAll(
+				ctx,
+				jobRuntime.GetUpdateID()); er != nil {
+				errs <- errors.Wrap(er, "fail to get job update events")
+			}
+		}()
+	}
+
+	go func() {
+		wg.Wait()
+		close(errs)
+	}()
+
+	for e := range errs {
+		if e != nil {
+			err = multierror.Append(err, e)
 		}
+	}
+
+	if err != nil {
+		return nil, err
 	}
 
 	return &svc.GetJobResponse{

@@ -450,10 +450,151 @@ func (suite *statelessHandlerTestSuite) TestGetJobUpdateGetError() {
 		GetUpdate(gomock.Any(), &peloton.UpdateID{Value: testUpdateID}).
 		Return(nil, fmt.Errorf("fake db error"))
 
+	suite.jobUpdateEventsOps.EXPECT().
+		GetAll(gomock.Any(), &peloton.UpdateID{Value: testUpdateID}).
+		Return([]*stateless.WorkflowEvent{{
+			Type:      stateless.WorkflowType_WORKFLOW_TYPE_UPDATE,
+			State:     stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+			Timestamp: time.Now().Format(time.RFC3339),
+		}}, nil)
+
 	resp, err := suite.handler.GetJob(context.Background(),
 		&statelesssvc.GetJobRequest{
 			JobId: &v1alphapeloton.JobID{Value: testJobID},
 		})
+
+	suite.Error(err)
+	suite.Nil(resp)
+}
+
+// TestGetJobUpdateEventsGetError tests invoking GetJob API to get job
+// configuration, runtime and workflow information with DB error
+// when trying to fetch job update events information
+func (suite *statelessHandlerTestSuite) TestGetJobUpdateEventsGetError() {
+	instanceCount := uint32(5)
+
+	suite.jobRuntimeOps.EXPECT().
+		Get(
+			gomock.Any(),
+			testPelotonJobID,
+		).
+		Return(&pbjob.RuntimeInfo{
+			State:    pbjob.JobState_RUNNING,
+			UpdateID: &peloton.UpdateID{Value: testUpdateID},
+		}, nil)
+
+	suite.jobConfigOps.EXPECT().
+		Get(
+			gomock.Any(),
+			testPelotonJobID,
+			gomock.Any(),
+		).
+		Return(&pbjob.JobConfig{
+			InstanceCount: instanceCount,
+		}, nil, nil)
+
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), &peloton.UpdateID{Value: testUpdateID}).
+		Return(&models.UpdateModel{
+			UpdateID:         &peloton.UpdateID{Value: testUpdateID},
+			Type:             models.WorkflowType_UPDATE,
+			State:            pbupdate.State_ROLLING_FORWARD,
+			InstancesAdded:   []uint32{3, 4},
+			InstancesUpdated: []uint32{0, 1, 2},
+		}, nil)
+
+	suite.jobUpdateEventsOps.EXPECT().
+		GetAll(gomock.Any(), &peloton.UpdateID{Value: testUpdateID}).
+		Return(nil, errors.New("fake DB error"))
+
+	resp, err := suite.handler.GetJob(context.Background(),
+		&statelesssvc.GetJobRequest{
+			JobId: &v1alphapeloton.JobID{Value: testJobID},
+		})
+
+	suite.Error(err)
+	suite.Nil(resp)
+}
+
+// TestGetJobGetErrors tests invoking GetJob API to get job
+// configuration, runtime and workflow information with DB error
+// when trying to fetch job config, job update and job update events information
+func (suite *statelessHandlerTestSuite) TestGetJobGetErrors() {
+
+	suite.jobRuntimeOps.EXPECT().
+		Get(
+			gomock.Any(),
+			testPelotonJobID,
+		).
+		Return(&pbjob.RuntimeInfo{
+			State:    pbjob.JobState_RUNNING,
+			UpdateID: &peloton.UpdateID{Value: testUpdateID},
+		}, nil)
+
+	suite.jobConfigOps.EXPECT().
+		Get(
+			gomock.Any(),
+			testPelotonJobID,
+			gomock.Any(),
+		).
+		Return(nil, nil, errors.New("fake DB error"))
+
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), &peloton.UpdateID{Value: testUpdateID}).
+		Return(nil, errors.New("fake DB error"))
+
+	suite.jobUpdateEventsOps.EXPECT().
+		GetAll(gomock.Any(), &peloton.UpdateID{Value: testUpdateID}).
+		Return(nil, errors.New("fake DB error"))
+
+	resp, err := suite.handler.GetJob(context.Background(),
+		&statelesssvc.GetJobRequest{
+			JobId: &v1alphapeloton.JobID{Value: testJobID},
+		})
+
+	suite.Error(err)
+	suite.Nil(resp)
+}
+
+// TestGetJobUpdateGetErrors tests invoking GetJob API to get job
+// configuration, runtime and workflow information with DB error
+// when trying to fetch job update and job update events information
+func (suite *statelessHandlerTestSuite) TestGetJobUpdateGetErrors() {
+	instanceCount := uint32(5)
+
+	suite.jobRuntimeOps.EXPECT().
+		Get(
+			gomock.Any(),
+			testPelotonJobID,
+		).
+		Return(&pbjob.RuntimeInfo{
+			State:    pbjob.JobState_RUNNING,
+			UpdateID: &peloton.UpdateID{Value: testUpdateID},
+		}, nil)
+
+	suite.jobConfigOps.EXPECT().
+		Get(
+			gomock.Any(),
+			testPelotonJobID,
+			gomock.Any(),
+		).
+		Return(&pbjob.JobConfig{
+			InstanceCount: instanceCount,
+		}, nil, nil)
+
+	suite.updateStore.EXPECT().
+		GetUpdate(gomock.Any(), &peloton.UpdateID{Value: testUpdateID}).
+		Return(nil, errors.New("fake DB error"))
+
+	suite.jobUpdateEventsOps.EXPECT().
+		GetAll(gomock.Any(), &peloton.UpdateID{Value: testUpdateID}).
+		Return(nil, errors.New("fake DB error"))
+
+	resp, err := suite.handler.GetJob(context.Background(),
+		&statelesssvc.GetJobRequest{
+			JobId: &v1alphapeloton.JobID{Value: testJobID},
+		})
+
 	suite.Error(err)
 	suite.Nil(resp)
 }
