@@ -109,9 +109,11 @@ def test__host_maintenance_lifecycle(host_affinity_job, maintenance):
 #                    preemption queue is not polled. On resmgr recovery, the
 #                    draining process should resume and host should transition
 #                    to DOWN
-@pytest.mark.skip(reason="flaky integration test")
 def test__host_draining_resumes_on_resmgr_recovery(
-    host_affinity_job, maintenance, jobmgr, resmgr
+    host_affinity_job,
+    maintenance,
+    jobmgr,
+    resmgr,
 ):
     # Pick a host that is UP and start maintenance on it
     test_host = get_host_in_state(hpb.HOST_STATE_UP)
@@ -122,7 +124,6 @@ def test__host_draining_resumes_on_resmgr_recovery(
     )
 
     host_affinity_job.create()
-    host_affinity_job.wait_for_state(goal_state="RUNNING")
 
     def all_running():
         return all(
@@ -156,9 +157,11 @@ def test__host_draining_resumes_on_resmgr_recovery(
 #                    maintenance queue is not polled. On hostmgr recovery, the
 #                    draining process should resume and host should transition
 #                    to DOWN
-@pytest.mark.skip(reason="flaky integration test")
 def test__host_draining_resumes_on_hostmgr_recovery(
-    host_affinity_job, maintenance, resmgr, hostmgr
+    host_affinity_job,
+    maintenance,
+    resmgr,
+    hostmgr,
 ):
     # Pick a host that is UP and start maintenance on it
     test_host = get_host_in_state(hpb.HOST_STATE_UP)
@@ -169,7 +172,6 @@ def test__host_draining_resumes_on_hostmgr_recovery(
     )
 
     host_affinity_job.create()
-    host_affinity_job.wait_for_state(goal_state="RUNNING")
 
     def all_running():
         return all(
