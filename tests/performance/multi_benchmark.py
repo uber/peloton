@@ -226,17 +226,17 @@ def main():
     # (total use 90% of capacity)
     pupdate_df = t.perf_test_stateless_parallel_updates()
     if pupdate_df is not None:
-        pupdate_df.to_csv(output_csv_files_list[4], sep='\t')
+        pupdate_df.to_csv(output_csv_files_list[5], sep='\t')
 
     # create a stateless job with host-limit-1 constraint (use 60% of the cluster)
     host_limit_1_create_df = t.perf_test_job_stateless_host_limit_1_create()
     if host_limit_1_create_df is not None:
-        host_limit_1_create_df.to_csv(output_csv_files_list[5], sep='\t')
+        host_limit_1_create_df.to_csv(output_csv_files_list[6], sep='\t')
 
     # update a stateless job with host-limit-1 constraint (use 60% of the cluster)
     host_limit_1_update_df = t.perf_test_stateless_job_host_limit_1_update()
     if host_limit_1_update_df is not None:
-        host_limit_1_update_df.to_csv(output_csv_files_list[6], sep='\t')
+        host_limit_1_update_df.to_csv(output_csv_files_list[7], sep='\t')
 
 
 def run_one_test(pf_client, num_tasks, instance_config, sleep_time, agent_num):
@@ -408,13 +408,13 @@ class PerformanceTest:
 
         record = [
             {
-                "NumStartTasks": num_tasks,
+                "NumTasks": num_tasks,
                 "Sleep(s)": sleep_time,
                 "TotalTimeInSeconds": total_time_in_seconds,
             }
         ]
         df = pd.DataFrame(
-            record, columns=["NumStartTasks", "Sleep(s)", "TotalTimeInSeconds"],
+            record, columns=["NumTasks", "Sleep(s)", "TotalTimeInSeconds"],
             dtype=np.int64
         )
         print("Test StatelessCreate")
@@ -483,7 +483,7 @@ class PerformanceTest:
 
         record = [
             {
-                "NumStartTasks": num_tasks,
+                "NumTasks": num_tasks,
                 "Sleep(s)": sleep_time,
                 "BatchSize": batch_size,
                 "TotalTimeInSeconds": total_time_in_seconds,
@@ -492,7 +492,7 @@ class PerformanceTest:
         df = pd.DataFrame(
             record,
             columns=[
-                "NumStartTasks",
+                "NumTasks",
                 "Sleep(s)",
                 "BatchSize",
                 "TotalTimeInSeconds",
@@ -549,7 +549,7 @@ class PerformanceTest:
         record = [
             {
                 "NumJobs": num_jobs,
-                "NumStartTasks": num_tasks,
+                "NumTasks": num_tasks,
                 "Sleep(s)": sleep_time,
                 "BatchSize": batch_size,
                 "AverageTimeInSeconds": average_time_in_seconds,
@@ -559,7 +559,7 @@ class PerformanceTest:
             record,
             columns=[
                 "NumJobs",
-                "NumStartTasks",
+                "NumTasks",
                 "Sleep(s)",
                 "BatchSize",
                 "AverageTimeInSeconds",
@@ -722,7 +722,7 @@ class PerformanceTest:
 
         record = [
             {
-                "NumStartTasks": num_tasks,
+                "NumTasks": num_tasks,
                 "Sleep(s)": sleep_time,
                 "TotalTimeInSeconds": total_time_in_seconds,
             }
@@ -807,7 +807,7 @@ class PerformanceTest:
 
         record = [
             {
-                "NumStartTasks": num_tasks,
+                "NumTasks": num_tasks,
                 "Sleep(s)": sleep_time,
                 "BatchSize": batch_size,
                 "TotalTimeInSeconds": total_time_in_seconds,
@@ -816,7 +816,7 @@ class PerformanceTest:
         df = pd.DataFrame(
             record,
             columns=[
-                "NumStartTasks",
+                "NumTasks",
                 "Sleep(s)",
                 "BatchSize",
                 "TotalTimeInSeconds",

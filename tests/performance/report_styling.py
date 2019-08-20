@@ -106,7 +106,7 @@ STATELESS_CREATE_TABLE_HEADER_TEMPLATE = """
     <tr style="text-align: right;">
         <th class="blank level0" rowspan="2"></th>
         <th class="col_heading level0 col0" rowspan="2">
-          NumStartTasks
+          NumTasks
         </th>
         <th class="col_heading level0 col1" rowspan="2">
           Sleep(s)
@@ -128,6 +128,31 @@ STATELESS_CREATE_TABLE_HEADER_TEMPLATE = """
     </tr>
 """
 
+STATELESS_UPDATE_TABLE_HEADER_TEMPLATE = """
+    <tr style="text-align: right;">
+        <th class="blank level0" rowspan="2"></th>
+        <th class="col_heading level0 col1" rowspan="2">
+          NumTasks
+        </th>
+        <th class="col_heading level0 col2" rowspan="2">Sleep(s)</th>
+        <th class="col_heading level0 col3" rowspan="2">BatchSize</th>
+        <th class="col_heading level0 col4 beforeCommit">Baseline {}</th>
+        <th class="col_heading level0 col5 afterCommit">Current {}</th>
+        <th class="col_heading level0 col6 results" rowspan="2">
+          Execution Duration Change (%)
+        </th>
+    </tr>
+
+    <tr>
+        <th class="col_heading level1 col1 beforeGranular1B">
+          TotalTimeInSeconds
+        </th>
+        <th class="col_heading level1 col2 afterGranular1B">
+          TotalTimeInSeconds
+        </th>
+    </tr>
+"""
+
 PARALLEL_STATELESS_UPDATE_TABLE_HEADER_TEMPLATE = """
     <tr style="text-align: right;">
         <th class="blank level0" rowspan="2"></th>
@@ -135,7 +160,7 @@ PARALLEL_STATELESS_UPDATE_TABLE_HEADER_TEMPLATE = """
           NumJobs
         </th>
         <th class="col_heading level0 col1" rowspan="2">
-          NumStartTasks
+          NumTasks
         </th>
         <th class="col_heading level0 col2" rowspan="2">Sleep(s)</th>
         <th class="col_heading level0 col3" rowspan="2">BatchSize</th>
@@ -156,12 +181,64 @@ PARALLEL_STATELESS_UPDATE_TABLE_HEADER_TEMPLATE = """
     </tr>
 """
 
+STATELESS_HOST_LIMIT_1_CREATE = """
+    <tr style="text-align: right;">
+        <th class="blank level0" rowspan="2"></th>
+        <th class="col_heading level0 col1" rowspan="2">
+          NumTasks
+        </th>
+        <th class="col_heading level0 col2" rowspan="2">Sleep(s)</th>
+        <th class="col_heading level0 col4 beforeCommit">Baseline {}</th>
+        <th class="col_heading level0 col5 afterCommit">Current {}</th>
+        <th class="col_heading level0 col6 results" rowspan="2">
+          Execution Duration Change (%)
+        </th>
+    </tr>
+
+    <tr>
+        <th class="col_heading level1 col1 beforeGranular1B">
+          TotalTimeInSeconds
+        </th>
+        <th class="col_heading level1 col2 afterGranular1B">
+          TotalTimeInSeconds
+        </th>
+    </tr>
+"""
+
+STATELESS_HOST_LIMIT_1_UPDATE = """
+    <tr style="text-align: right;">
+        <th class="blank level0" rowspan="2"></th>
+        <th class="col_heading level0 col1" rowspan="2">
+          NumTasks
+        </th>
+        <th class="col_heading level0 col2" rowspan="2">Sleep(s)</th>
+        <th class="col_heading level0 col3" rowspan="2">BatchSize</th>
+        <th class="col_heading level0 col4 beforeCommit">Baseline {}</th>
+        <th class="col_heading level0 col5 afterCommit">Current {}</th>
+        <th class="col_heading level0 col6 results" rowspan="2">
+          Execution Duration Change (%)
+        </th>
+    </tr>
+
+    <tr>
+        <th class="col_heading level1 col1 beforeGranular1B">
+          TotalTimeInSeconds
+        </th>
+        <th class="col_heading level1 col2 afterGranular1B">
+          TotalTimeInSeconds
+        </th>
+    </tr>
+"""
+
 HEADER = {
     "create": CREATE_TABLE_HEADER_TEMPLATE,
     "get": GET_TABLE_HEADER_TEMPLATE,
     "update": UPDATE_TABLE_HEADER_TEMPLATE,
     "stateless_create": STATELESS_CREATE_TABLE_HEADER_TEMPLATE,
+    "stateless_update": STATELESS_UPDATE_TABLE_HEADER_TEMPLATE,
     "parallel_stateless_update": PARALLEL_STATELESS_UPDATE_TABLE_HEADER_TEMPLATE,
+    "stateless_host_limit_1_create": STATELESS_HOST_LIMIT_1_CREATE,
+    "stateless_host_limit_1_update": STATELESS_HOST_LIMIT_1_UPDATE,
 }
 
 CSS_STYLE = """
