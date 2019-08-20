@@ -43,6 +43,10 @@ const (
 	getIter = "get_iter"
 	update  = "update"
 	del     = "delete"
+
+	// default limit for select statements.
+	_defaultQueryLimit = 1
+	_ignoredQueryLimit = 0
 )
 
 type cassandraConnector struct {
@@ -316,12 +320,15 @@ func (c *cassandraConnector) create(
 	return nil
 }
 
-// buildSelectQuery builds a select query using base object and key columns
+// buildSelectQuery builds a select query using base object and key columns.
+// If limit is non-zero, it will be enforced in the select query.
+// If limit is 0, the select query will fetch all rows that match.
 func (c *cassandraConnector) buildSelectQuery(
 	ctx context.Context,
 	e *base.Definition,
 	keyCols []base.Column,
 	colNamesToRead []string,
+	limit int,
 ) (*gocql.Query, error) {
 
 	// split keyCols into a list of names and values to compose query stmt using
@@ -334,6 +341,7 @@ func (c *cassandraConnector) buildSelectQuery(
 		Table(e.Name),
 		Columns(colNamesToRead),
 		Conditions(keyColNames),
+		Limit(limit),
 	)
 	if err != nil {
 		return nil, err
@@ -353,7 +361,12 @@ func (c *cassandraConnector) Get(
 		colNamesToRead = e.GetColumnsToRead()
 	}
 
-	q, err := c.buildSelectQuery(ctx, e, keyCols, colNamesToRead)
+	q, err := c.buildSelectQuery(
+		ctx,
+		e,
+		keyCols,
+		colNamesToRead,
+		_defaultQueryLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -408,7 +421,12 @@ func (c *cassandraConnector) GetAllIter(
 ) (iter orm.Iterator, err error) {
 	colNamesToRead := e.GetColumnsToRead()
 
-	q, err := c.buildSelectQuery(ctx, e, keyCols, colNamesToRead)
+	q, err := c.buildSelectQuery(
+		ctx,
+		e,
+		keyCols,
+		colNamesToRead,
+		_ignoredQueryLimit)
 	if err != nil {
 		return nil, err
 	}

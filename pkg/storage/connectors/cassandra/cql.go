@@ -35,6 +35,8 @@ const (
 	updates = "Updates"
 	// ifNotExist is used to indicate CAS write in the insert query
 	ifNotExist = "IfNotExist"
+	// limit is used to indicate the query limit for number of rows.
+	limit = "Limit"
 
 	// insertTemplate is used to construct an insert query
 	insertTemplate = `INSERT INTO {{.Table}} ({{ColumnFunc .Columns ", "}})` +
@@ -42,7 +44,8 @@ const (
 
 	// selectTemplate is used to construct a select query
 	selectTemplate = `SELECT {{ColumnFunc .Columns ", "}} FROM {{.Table}}` +
-		`{{WhereFunc .Conditions}}{{ConditionsFunc .Conditions " AND "}};`
+		`{{WhereFunc .Conditions}}{{ConditionsFunc .Conditions " AND "}}` +
+		`{{LimitFunc .Limit}};`
 
 	// deleteTemplate is used to construct a delete query
 	deleteTemplate = `DELETE FROM {{.Table}} WHERE ` +
@@ -61,6 +64,7 @@ var (
 		"ConditionsFunc": conditionsFunc,
 		"WhereFunc":      whereFunc,
 		"ExistsFunc":     existsFunc,
+		"LimitFunc":      limitFunc,
 	}
 
 	// insert CQL query template implementation
@@ -107,6 +111,14 @@ func whereFunc(conds []string) string {
 func existsFunc(exists bool) string {
 	if exists {
 		return " IF NOT EXISTS"
+	}
+	return ""
+}
+
+// limitFunc adds a LIMIT clause to the select query.
+func limitFunc(num int) string {
+	if num > 0 {
+		return fmt.Sprintf(" LIMIT %d", num)
 	}
 	return ""
 }
@@ -163,6 +175,13 @@ func IfNotExist(v interface{}) OptFunc {
 	}
 }
 
+// Limit sets the `limit` to the cql statement.
+func Limit(v interface{}) OptFunc {
+	return func(opt Option) {
+		opt[limit] = v
+	}
+}
+
 // InsertStmt creates insert statement
 func InsertStmt(opts ...OptFunc) (string, error) {
 	var bb bytes.Buffer
@@ -177,7 +196,9 @@ func InsertStmt(opts ...OptFunc) (string, error) {
 // SelectStmt creates select statement
 func SelectStmt(opts ...OptFunc) (string, error) {
 	var bb bytes.Buffer
-	option := Option{}
+	option := Option{
+		limit: 0,
+	}
 	for _, opt := range opts {
 		opt(option)
 	}

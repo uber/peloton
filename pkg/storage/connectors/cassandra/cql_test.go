@@ -76,6 +76,7 @@ func (suite *CassandraConnSuite) TestSelectStmt() {
 		cols    []string
 		keyCols []string
 		stmt    string
+		limit   int
 	}{
 		{
 			table:   "table1",
@@ -96,12 +97,20 @@ func (suite *CassandraConnSuite) TestSelectStmt() {
 			keyCols: []string{},
 			stmt:    "SELECT \"c1\", \"c2\", \"c3\" FROM \"table3\";",
 		},
+		{
+			table:   "table3",
+			cols:    []string{"c1", "c2", "c3"},
+			keyCols: []string{},
+			limit:   10,
+			stmt:    "SELECT \"c1\", \"c2\", \"c3\" FROM \"table3\" LIMIT 10;",
+		},
 	}
 	for _, d := range data {
 		stmt, err := SelectStmt(
 			Table(d.table),
 			Columns(d.cols),
 			Conditions(d.keyCols),
+			Limit(d.limit),
 		)
 		suite.NoError(err)
 		suite.Equal(stmt, d.stmt)

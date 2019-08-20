@@ -30,6 +30,7 @@ import (
 	"github.com/gocql/gocql"
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 // init adds a PodEvents instance to the global list of storage objects
@@ -181,8 +182,8 @@ func (d *podEventsOps) Create(
 	return nil
 }
 
-// GetAll returns pod events for a Job + Instance + PodID (optional)
-// Pod events are sorted by PodID + Timestamp
+// GetAll returns pod events for a Job + Instance + PodID (optional).
+// Pod events are sorted by PodID + Timestamp.
 func (d *podEventsOps) GetAll(
 	ctx context.Context,
 	jobID string,
@@ -194,52 +195,59 @@ func (d *podEventsOps) GetAll(
 	}
 	var result []base.Object
 	var runID uint64
+	var err error
 	if len(podID) > 0 && len(podID[0]) > 0 {
-		runID, err := util.ParseRunID(podID[0])
+		runID, err = util.ParseRunID(podID[0])
 		if err != nil {
 			return nil, errors.Wrap(err, "Failed to parse runID")
 		}
-		podEventsObject = &PodEventsObject{
-			JobID:      jobID,
-			InstanceID: instanceID,
-			RunID:      base.NewOptionalUInt64(runID),
-		}
-		result, err = d.store.oClient.GetAll(ctx,
-			podEventsObject)
-		if err != nil {
-			d.store.metrics.OrmTaskMetrics.PodEventsGetFail.Inc(1)
-			return nil, err
-		}
 	} else {
 		// Events are sorted in descending order by run_id and then update_time.
-		// if pod event is not specified, we will get the latest run_id
+		// If pod event is not specified, we will get the latest run_id.
 		podEventsObject = &PodEventsObject{
 			JobID:      jobID,
 			InstanceID: instanceID,
 		}
-		allResult, err := d.store.oClient.GetAll(ctx,
-			podEventsObject)
+		// By default, the Get will fetch the latest row of the latest run_id.
+		err := d.store.oClient.Get(
+			ctx,
+			podEventsObject,
+		)
 
 		if err != nil {
+			if yarpcerrors.IsNotFound(err) {
+				// If we query C* with `GetAll`, gocql will not return
+				// gocql.ErrNotFound even if the query returns 0 rows.
+				// However, for the same query if we use `Get` it will return
+				// gocql.ErrNotFound. Current `GetAll` usage as well as legacy
+				// GetAll usage (from store.go) assumes this and checks for
+				// len(results) instead of NotFoundError. So we should
+				// catch not found error here and return an empty slice instead.
+				return []*task.PodEvent{}, nil
+			}
 			d.store.metrics.OrmTaskMetrics.PodEventsGetFail.Inc(1)
 			return nil, err
 		}
 
-		if len(allResult) > 0 {
-			runID = base.ConvertFromOptionalToRawType(reflect.ValueOf(
-				allResult[0].(*PodEventsObject).RunID)).(uint64)
+		runID = base.ConvertFromOptionalToRawType(
+			reflect.ValueOf(
+				podEventsObject.RunID),
+		).(uint64)
+	}
 
-			for _, value := range allResult {
-				podEventsObjectValue := value.(*PodEventsObject)
-				currRunID := base.ConvertFromOptionalToRawType(reflect.ValueOf(
-					podEventsObjectValue.RunID)).(uint64)
-				// we only want the pod events of the latest run ID
-				if currRunID != runID {
-					break
-				}
-				result = append(result, podEventsObjectValue)
-			}
-		}
+	podEventsObject = &PodEventsObject{
+		JobID:      jobID,
+		InstanceID: instanceID,
+		RunID:      base.NewOptionalUInt64(runID),
+	}
+
+	result, err = d.store.oClient.GetAll(
+		ctx,
+		podEventsObject,
+	)
+	if err != nil {
+		d.store.metrics.OrmTaskMetrics.PodEventsGetFail.Inc(1)
+		return nil, err
 	}
 
 	var podEvents []*task.PodEvent
