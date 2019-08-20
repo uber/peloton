@@ -130,7 +130,7 @@ peloton:
   resource:
     cpuLimit: 2.0
     memLimitMb: 4096
-    diskLimitMb: 2048
+    diskLimitMb: 10240
   dynamic_env:
     - APP
     - DB_HOST
