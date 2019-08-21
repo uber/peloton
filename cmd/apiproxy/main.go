@@ -19,7 +19,7 @@ import (
 
 	"github.com/uber/peloton/pkg/apiproxy"
 	"github.com/uber/peloton/pkg/auth"
-	auth_impl "github.com/uber/peloton/pkg/auth/impl"
+	authimpl "github.com/uber/peloton/pkg/auth/impl"
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/buildversion"
 	"github.com/uber/peloton/pkg/common/config"
@@ -166,6 +166,23 @@ func main() {
 	// configure the YARPC Peer dynamically.
 	t := rpc.NewTransport()
 
+	// Setup resmgr peer chooser.
+	resmgrPeerChooser, err := peer.NewSmartChooser(
+		cfg.Election,
+		discoveryScope,
+		common.ResourceManagerRole,
+		t,
+	)
+	if err != nil {
+		log.WithFields(
+			log.Fields{"error": err, "role": common.ResourceManagerRole},
+		).Fatal("Could not create smart peer chooser")
+	}
+	defer resmgrPeerChooser.Stop()
+
+	// Create resmgr outbound.
+	resmgrOutbound := t.NewOutbound(resmgrPeerChooser)
+
 	// Setup hostmgr peer chooser.
 	hostmgrPeerChooser, err := peer.NewSmartChooser(
 		cfg.Election,
@@ -174,8 +191,9 @@ func main() {
 		t,
 	)
 	if err != nil {
-		log.WithFields(log.Fields{"error": err, "role": common.HostManagerRole}).
-			Fatal("Could not create smart peer chooser")
+		log.WithFields(
+			log.Fields{"error": err, "role": common.HostManagerRole},
+		).Fatal("Could not create smart peer chooser")
 	}
 	defer hostmgrPeerChooser.Stop()
 
@@ -184,13 +202,16 @@ func main() {
 
 	// Add all required outbounds.
 	outbounds := yarpc.Outbounds{
+		common.PelotonResourceManager: transport.Outbounds{
+			Unary: resmgrOutbound,
+		},
 		common.PelotonHostManager: transport.Outbounds{
 			Unary: hostmgrOutbound,
 		},
 	}
 
 	// Create security manager for inbound authentication middleware.
-	securityManager, err := auth_impl.CreateNewSecurityManager(&cfg.Auth)
+	securityManager, err := authimpl.CreateNewSecurityManager(&cfg.Auth)
 	if err != nil {
 		log.WithError(err).
 			Fatal("Could not enable security feature")
@@ -207,7 +228,7 @@ func main() {
 	authInboundMiddleware := inbound.NewAuthInboundMiddleware(securityManager)
 
 	// Create security client for outbound authentication middleware.
-	securityClient, err := auth_impl.CreateNewSecurityClient(&cfg.Auth)
+	securityClient, err := authimpl.CreateNewSecurityClient(&cfg.Auth)
 	if err != nil {
 		log.WithError(err).
 			Fatal("Could not establish secure inter-component communication")
@@ -236,8 +257,15 @@ func main() {
 		},
 	})
 
-	// Register host service procedures in dispatcher.
-	dispatcher.Register(apiproxy.BuildHostServiceProcedures(hostmgrOutbound))
+	// Register procedures in dispatcher.
+	var procedures []transport.Procedure
+	procedures = append(procedures, apiproxy.BuildResourceManagerProcedures(resmgrOutbound)...)
+	procedures = append(procedures, apiproxy.BuildHostManagerProcedures(hostmgrOutbound)...)
+	dispatcher.Register(procedures)
+
+	for _, p := range procedures {
+		log.Debug("Registering procedure: " + p.Name)
+	}
 
 	// Start YARPC dispatcher.
 	if err := dispatcher.Start(); err != nil {

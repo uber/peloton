@@ -1633,3 +1633,8 @@ func parseTaskIDsFromMesosTaskIDs(ids []*mesos.TaskID) []*peloton.TaskID {
 
 	return result
 }
+
+// NewTestServiceHandler returns an empty new ServiceHandler ptr for testing.
+func NewTestServiceHandler() *ServiceHandler {
+	return &ServiceHandler{}
+}

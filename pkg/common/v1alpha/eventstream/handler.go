@@ -295,3 +295,8 @@ func (h *Handler) purgeEvents(
 	h.metrics.Tail.Update(float64(tail))
 	h.metrics.Size.Update(float64(head - tail))
 }
+
+// NewTestHandler returns an empty new Handler ptr for testing.
+func NewTestHandler() *Handler {
+	return &Handler{}
+}

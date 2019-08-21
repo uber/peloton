@@ -612,3 +612,8 @@ func (h *ServiceHandler) Query(
 	log.WithField("response", resp).Debug("Query returned")
 	return resp, nil
 }
+
+// NewTestServiceHandler returns an empty new ServiceHandler ptr for testing.
+func NewTestServiceHandler() *ServiceHandler {
+	return &ServiceHandler{}
+}

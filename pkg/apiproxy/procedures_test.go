@@ -17,8 +17,19 @@ package apiproxy
 import (
 	"testing"
 
-	pb_api_v0_host_svc "github.com/uber/peloton/.gen/peloton/api/v0/host/svc"
+	pbv0hostsvc "github.com/uber/peloton/.gen/peloton/api/v0/host/svc"
+	pbv0resmgr "github.com/uber/peloton/.gen/peloton/api/v0/respool"
+	pbprivateeventstreamsvc "github.com/uber/peloton/.gen/peloton/private/eventstream/v1alpha/eventstreamsvc"
+	pbprivatehostsvc "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	pbprivatehostmgrsvc "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc"
+	pbprivateresmgrsvc "github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
+
+	"github.com/uber/peloton/pkg/common/v1alpha/eventstream"
+	"github.com/uber/peloton/pkg/hostmgr"
 	"github.com/uber/peloton/pkg/hostmgr/hostsvc"
+	"github.com/uber/peloton/pkg/hostmgr/p2k/hostmgrsvc"
+	"github.com/uber/peloton/pkg/resmgr"
+	"github.com/uber/peloton/pkg/resmgr/respool/respoolsvc"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
@@ -33,14 +44,27 @@ type ProceduresTestSuite struct {
 	ctrl              *gomock.Controller
 	mockUnaryOutbound *transporttest.MockUnaryOutbound
 
-	hostSvcHandler pb_api_v0_host_svc.HostServiceYARPCServer
+	hostSvcV0Handler      pbv0hostsvc.HostServiceYARPCServer
+	eventstreamSvcHandler pbprivateeventstreamsvc.EventStreamServiceYARPCServer
+	privateHostSvcHandler pbprivatehostsvc.InternalHostServiceYARPCServer
+	hostMgrSvcHandler     pbprivatehostmgrsvc.HostManagerServiceYARPCServer
+
+	resmgrHandler    pbv0resmgr.ResourceManagerYARPCServer
+	resmgrSvcHandler pbprivateresmgrsvc.ResourceManagerServiceYARPCServer
 }
 
 // SetupTest is setup function for each test in this suite.
 func (suite *ProceduresTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.mockUnaryOutbound = transporttest.NewMockUnaryOutbound(suite.ctrl)
-	suite.hostSvcHandler = hostsvc.NewTestServiceHandler()
+
+	suite.hostSvcV0Handler = hostsvc.NewTestServiceHandler()
+	suite.eventstreamSvcHandler = eventstream.NewTestHandler()
+	suite.privateHostSvcHandler = hostmgr.NewTestServiceHandler()
+	suite.hostMgrSvcHandler = hostmgrsvc.NewTestServiceHandler()
+
+	suite.resmgrHandler = respoolsvc.NewTestServiceHandler()
+	suite.resmgrSvcHandler = resmgr.NewTestServiceHandler()
 }
 
 // TearDownTest is teardown function for each test in this suite.
@@ -53,11 +77,74 @@ func TestProceduresTestSuite(t *testing.T) {
 	suite.Run(t, new(ProceduresTestSuite))
 }
 
-// TestBuildHostServiceProcedures tests building Peloton host service procedures.
-func (suite *ProceduresTestSuite) TestBuildHostServiceProcedures() {
-	expectedProcedures := pb_api_v0_host_svc.BuildHostServiceYARPCProcedures(suite.hostSvcHandler)
+// TestBuildHostManagerProcedures tests building Peloton Host Manager
+// procedures.
+func (suite *ProceduresTestSuite) TestBuildHostManagerProcedures() {
+	expectedProcedures :=
+		pbv0hostsvc.BuildHostServiceYARPCProcedures(suite.hostSvcV0Handler)
+	expectedProcedures =
+		append(
+			expectedProcedures,
+			pbprivateeventstreamsvc.BuildEventStreamServiceYARPCProcedures(
+				suite.eventstreamSvcHandler,
+			)...,
+		)
+	expectedProcedures =
+		append(
+			expectedProcedures,
+			pbprivatehostsvc.BuildInternalHostServiceYARPCProcedures(
+				suite.privateHostSvcHandler,
+			)...,
+		)
+	expectedProcedures =
+		append(
+			expectedProcedures,
+			pbprivatehostmgrsvc.BuildHostManagerServiceYARPCProcedures(
+				suite.hostMgrSvcHandler,
+			)...,
+		)
 
-	procedures := BuildHostServiceProcedures(suite.mockUnaryOutbound)
+	procedures := BuildHostManagerProcedures(suite.mockUnaryOutbound)
+
+	suite.Equal(len(expectedProcedures), len(procedures))
+
+	expectedService := ""
+
+	epMap := map[string]map[transport.Encoding]struct{}{}
+	for _, p := range expectedProcedures {
+		if expectedService == "" {
+			expectedService = p.Service
+		}
+		epMap[p.Name] = map[transport.Encoding]struct{}{
+			p.Encoding: {},
+		}
+	}
+
+	pMap := map[string]map[transport.Encoding]struct{}{}
+	for _, p := range procedures {
+		suite.Equal(expectedService, p.Service)
+		pMap[p.Name] = map[transport.Encoding]struct{}{
+			p.Encoding: {},
+		}
+	}
+
+	suite.EqualValues(epMap, pMap)
+}
+
+// TestBuildResourceManagerProcedures tests building Peloton Resource Manager
+// procedures.
+func (suite *ProceduresTestSuite) TestBuildResourceManagerProcedures() {
+	expectedProcedures :=
+		pbv0resmgr.BuildResourceManagerYARPCProcedures(suite.resmgrHandler)
+	expectedProcedures =
+		append(
+			expectedProcedures,
+			pbprivateresmgrsvc.BuildResourceManagerServiceYARPCProcedures(
+				suite.resmgrSvcHandler,
+			)...,
+		)
+
+	procedures := BuildResourceManagerProcedures(suite.mockUnaryOutbound)
 
 	suite.Equal(len(expectedProcedures), len(procedures))
 

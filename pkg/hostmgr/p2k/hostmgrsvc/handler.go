@@ -299,3 +299,8 @@ func toHostMgrSvcResources(r scalar.Resources) []*hostmgr.Resource {
 		},
 	}
 }
+
+// NewTestServiceHandler returns an empty new ServiceHandler ptr for testing.
+func NewTestServiceHandler() *ServiceHandler {
+	return &ServiceHandler{}
+}

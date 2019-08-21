@@ -165,6 +165,33 @@ const (
 )
 
 const (
-	// RPCPelotonV0HostServiceName is the name of Peloton rpc host service.
+	// RPCPelotonV0ResourceManagerName is the name of Peloton Resource Manager's
+	// RPC v0.
+	RPCPelotonV0ResourceManagerName = "peloton.api.respool.ResourceManager"
+	// RPCPelotonV0ResourceServiceName is the name of Peloton Resource Service's
+	// RPC v0.
+	RPCPelotonV0ResourceServiceName = "peloton.api.v0.respool.ResourcePoolService"
+	// RPCPelotonV1AlphaResourceServiceName is the name of Peloton Resource
+	// Service's RPC v1 alpha.
+	RPCPelotonV1AlphaResourceServiceName = "peloton.api.v1alpha.respool.ResourcePoolService"
+	// RPCPelotonPrivateTaskQueueName is the name of Peloton Task Queue's
+	// private RPC.
+	RPCPelotonPrivateTaskQueueName = "peloton.private.resmgr.taskqueue.TaskQueue"
+	// RPCPelotonV0HostServiceName is the name of Peloton Host Service's RPC v0.
 	RPCPelotonV0HostServiceName = "peloton.api.v0.host.svc.HostService"
+	// RPCPelotonV1AlphaHostServiceName is the name of Peloton Host Service's
+	// RPC v1 alpha.
+	RPCPelotonV1AlphaHostServiceName = "peloton.api.v1alpha.host.svc.HostService"
+	// RPCPelotonPrivateEventStreamServiceName is the name of Peloton Event
+	// Stream Service's private RPC.
+	RPCPelotonPrivateEventStreamServiceName = "peloton.private.eventstream.v1alpha.eventstreamsvc.EventStreamService"
+	// RPCPelotonPrivateHostServiceName is the name of Peloton Host Service's
+	// private RPC.
+	RPCPelotonPrivateHostServiceName = "peloton.private.hostmgr.hostsvc.InternalHostService"
+	// RPCPelotonPrivateResourceManagerServiceName  is the name of Peloton
+	// Resource Manager Service's private RPC.
+	RPCPelotonPrivateResourceManagerServiceName = "peloton.private.resmgr.ResourceManagerService"
+	// RPCPelotonPrivateV1AlphaHostManagerServiceName is the name of Peloton
+	// Host Manager Service's private RPC.
+	RPCPelotonPrivateV1AlphaHostManagerServiceName = "peloton.private.hostmgr.v1alpha.svc.HostManagerService"
 )

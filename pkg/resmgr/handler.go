@@ -1197,3 +1197,8 @@ func (h *ServiceHandler) GetHostsByScores(
 	}, nil
 
 }
+
+// NewTestServiceHandler returns an empty new ServiceHandler ptr for testing.
+func NewTestServiceHandler() *ServiceHandler {
+	return &ServiceHandler{}
+}
