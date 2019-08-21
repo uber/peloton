@@ -163,3 +163,8 @@ const (
 	// code that is private to generated code, and should not be used by peloton.
 	ReservedProtobufFieldPrefix = "XXX_"
 )
+
+const (
+	// RPCPelotonV0HostServiceName is the name of Peloton rpc host service.
+	RPCPelotonV0HostServiceName = "peloton.api.v0.host.svc.HostService"
+)

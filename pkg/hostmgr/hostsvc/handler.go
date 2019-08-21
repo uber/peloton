@@ -438,3 +438,8 @@ func buildMachineIDForHost(hostname string) (*mesos.MachineID, error) {
 	}
 	return machineID, nil
 }
+
+// NewTestServiceHandler returns an empty new serviceHandler ptr for testing.
+func NewTestServiceHandler() *serviceHandler {
+	return &serviceHandler{}
+}

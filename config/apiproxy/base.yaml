@@ -9,3 +9,6 @@ api_proxy:
 
 rate_limit:
   enabled: false
+
+election:
+  root: "/peloton"

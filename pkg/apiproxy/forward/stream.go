@@ -12,18 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package apiproxy
+package forward
 
 import (
-	"sync"
+	"go.uber.org/yarpc/api/transport"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
-// Server contains all structs necessary to run API Proxy server.
-type Server struct {
-	mu sync.Mutex
-}
+var _ transport.StreamHandler = (*streamForward)(nil)
 
-// NewServer creates an new API Proxy instance.
-func NewServer() *Server {
-	return &Server{}
+// streamForward implements a StreamHandler.
+type streamForward struct{}
+
+// Handle implements HandleStream function of StreamHandler.
+func (sf *streamForward) HandleStream(stream *transport.ServerStream) error {
+	return yarpcerrors.UnimplementedErrorf("HandleStream not implemented")
 }

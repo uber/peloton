@@ -12,21 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package forward
 
 import (
-	"github.com/uber/peloton/pkg/apiproxy"
-	"github.com/uber/peloton/pkg/auth"
-	"github.com/uber/peloton/pkg/common/leader"
-	"github.com/uber/peloton/pkg/common/metrics"
-	"github.com/uber/peloton/pkg/middleware/inbound"
+	"io"
+	"sync"
 )
 
-// Config contains all configuration to run Peloton API Proxy
-type Config struct {
-	Metrics   metrics.Config          `yaml:"metrics"`
-	APIProxy  apiproxy.Config         `yaml:"api_proxy"`
-	Auth      auth.Config             `yaml:"auth"`
-	RateLimit inbound.RateLimitConfig `yaml:"rate_limit"`
-	Election  leader.ElectionConfig   `yaml:"election"`
+const (
+	_copyBufSize = 1024 * 32
+)
+
+var _pool = sync.Pool{
+	New: func() interface{} {
+		return &buffer{make([]byte, _copyBufSize)}
+	},
+}
+
+type buffer struct {
+	b []byte
+}
+
+// copy copies bytes from the Reader to the Writer until the Reader is exhausted.
+func copy(dst io.Writer, src io.Reader) (int64, error) {
+	// To avoid unnecessary memory allocations we maintain our own pool of buffers.
+	buf := _pool.Get().(*buffer)
+	written, err := io.CopyBuffer(dst, src, buf.b)
+	_pool.Put(buf)
+	return written, err
 }
