@@ -64,6 +64,7 @@ message HTTPGetSpec {
   string scheme = 1;
 
   // Port to send the HTTP GET.
+  // Deprecated.
   uint32 port = 2;
 
   // The request path on the HTTP server.
@@ -72,6 +73,9 @@ message HTTPGetSpec {
   // Custom HTTP headers to set in the request.
   // HTTP allows repeated headers.
   repeated HTTPHeader http_headers = 4;
+
+  // Port to send the HTTP GET.
+  PortSpec port_spec = 5;
 }
 
 // Health check configuration for a container.
@@ -162,17 +166,39 @@ message HealthCheckSpec {
 
 // Network port configuration for a container.
 message PortSpec {
+  // Type of the port
+  enum PortType {
+    // Invalid port type
+    PORT_TYPE_INVALID = 0;
+    // Static port
+    PORT_TYPE_STATIC = 1;
+    // Dynamic port that will be exported into environment variable
+    PORT_TYPE_DYNAMIC_ENV_VAR = 2;
+    // Dynamic port specified as a template variable
+    PORT_TYPE_DYNAMIC_TEMPLATE_VAR = 3;
+  }
 
   // Name of the network port, e.g. http, tchannel. Required field.
   string name = 1;
 
-  // Static port number if any. If unset, will be dynamically allocated
-  // by the scheduler
+  // Static port number assigned. Only applicable when type is PORT_TYPE_STATIC.
   uint32 value = 2;
 
   // Environment variable name to be exported when running a container for this
-  // port. Required field for dynamic port.
+  // port. Only applicable when type is PORT_TYPE_DYNAMIC_ENV_VAR.
   string env_name = 3;
+
+  // Template variable for a dynamic port in the format: {{port.$NAME}}, where
+  // $NAME is a unique name of the port that can contain characters 'a'-'z',
+  // '-', '_' and '.'.
+  // This variable can be used in other parts of PodSpec to reference a port
+  // value (for example in env variables). Specifying a port as a template
+  // variable allows communicating the value of the port between containers
+  // in the pod. Only applicable when type is PORT_TYPE_DYNAMIC_TEMPLATE_VAR.
+  string template_name = 4;
+
+  // Type of the port
+  PortType type = 5;
 }
 
 // Constraint represents a host label constraint or a related pods label constraint.
@@ -314,7 +340,11 @@ message ContainerSpec {
   // This is currently not supported.
   HealthCheckSpec readiness_check = 6;
 
-  // List of network ports to be allocated for the pod
+  // List of network ports to be allocated for the container.
+  // These ports will be assigned on the pod network namespace
+  // if the pod has its own network name space.
+  // If the pod does not have its own network name space, the
+  // ports will be assigned on the host network.
   repeated PortSpec ports = 7;
 
   // Entrypoint command.
@@ -388,6 +418,10 @@ message PodSpec {
   // Extra configuration specific to the Mesos runtime.
   // Experimental and is subject to change.
   apachemesos.PodSpec mesos_spec = 13;
+
+  // List of network ports to be allocated for all the containers in the pod
+  // on the host network.
+  repeated PortSpec host_ports = 14;
 }
 
 // Runtime states of a container in a pod.
