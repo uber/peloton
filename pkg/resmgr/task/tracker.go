@@ -441,13 +441,13 @@ func (tr *tracker) AddResources(
 			"rmTask %s for respool %s ", tID, rmTask.respool.Name())
 	}
 
+	tr.metricsLock.Lock()
+	defer tr.metricsLock.Unlock()
+
 	taskState := rmTask.GetCurrentState().State
 	if val, ok := tr.resourcesHeldByTaskState[taskState]; ok {
 		tr.resourcesHeldByTaskState[taskState] = val.Add(res)
 	}
-
-	tr.metricsLock.Lock()
-	defer tr.metricsLock.Unlock()
 
 	// publish metrics
 	if gauge, ok := tr.metrics.ResourcesHeldByTaskState[taskState]; ok {

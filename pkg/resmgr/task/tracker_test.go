@@ -75,7 +75,7 @@ func (suite *trackerTestSuite) setup(conf *Config, invalid bool) {
 		nil,
 		tally.Scope(tally.NoopScope))
 	suite.hostname = "hostname"
-	suite.task = suite.createTask(1)
+	suite.task = suite.createTask(0)
 	if invalid {
 		suite.addTaskToTrackerWithTimeoutConfig(suite.task, &Config{
 			PolicyName:             ExponentialBackOffPolicy,
@@ -825,4 +825,44 @@ func (suite *trackerTestSuite) TestResourcesHeldByTaskState() {
 				rmTask2.task.GetResource().GetGpuLimit(), resourcesHeld.GetGPU())
 		}
 	}
+}
+
+// TestResourcesHeldByTaskStateConcurrencyControl tests for race and deadlock
+// while updating ResourcesHeldByTaskState tracker metric
+func (suite *trackerTestSuite) TestResourcesHeldByTaskStateConcurrencyControl() {
+	numTasks := 50
+	tasks := []*resmgr.Task{suite.task}
+	for i := 1; i < numTasks; i++ {
+		t := suite.createTask(i)
+		tasks = append(tasks, t)
+		suite.addTaskToTracker(t)
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(numTasks)
+	for i := 0; i < numTasks; i++ {
+		if i%2 == 0 {
+			go func(id int) {
+				defer wg.Done()
+
+				suite.tracker.AddResources(tasks[id].GetId())
+			}(i)
+		} else {
+			go func(id int) {
+				defer wg.Done()
+
+				t := suite.tracker.GetTask(tasks[id].GetId())
+				suite.NotNil(t)
+				t.TransitTo(task.TaskState_PENDING.String())
+				t.TransitTo(task.TaskState_READY.String())
+				t.TransitTo(task.TaskState_PLACING.String())
+				t.TransitTo(task.TaskState_PLACED.String())
+				t.TransitTo(task.TaskState_LAUNCHING.String())
+				t.TransitTo(task.TaskState_LAUNCHED.String())
+				t.TransitTo(task.TaskState_RUNNING.String())
+			}(i)
+		}
+	}
+
+	wg.Wait()
 }
