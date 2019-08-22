@@ -721,12 +721,17 @@ func main() {
 		hostPoolManager,
 	)
 
-	hostsvc.InitServiceHandler(
-		dispatcher,
-		rootScope,
+	drainer := host.NewDrainer(
+		cfg.HostManager.HostDrainerPeriod,
 		masterOperatorClient,
 		maintenanceQueue,
 		maintenanceHostInfoMap,
+	)
+
+	hostsvc.InitServiceHandler(
+		dispatcher,
+		rootScope,
+		drainer,
 		hostPoolManager,
 	)
 
@@ -736,13 +741,6 @@ func main() {
 		ormStore,
 		maintenanceQueue,
 		masterOperatorClient,
-		maintenanceHostInfoMap,
-	)
-
-	drainer := host.NewDrainer(
-		cfg.HostManager.HostDrainerPeriod,
-		masterOperatorClient,
-		maintenanceQueue,
 		maintenanceHostInfoMap,
 	)
 
