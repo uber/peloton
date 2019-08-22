@@ -80,7 +80,11 @@ func (suite *HostPoolManagerTestSuite) SetupTest() {
 		[]string{"client1"},
 		nil,
 		testScope)
-	suite.manager = New(suite.eventStreamHandler)
+	suite.manager = New(
+		_testReconcileInterval,
+		suite.eventStreamHandler,
+		tally.NoopScope,
+	)
 }
 
 // TestHostPoolManagerTestSuite runs HostPoolManagerTestSuite.
@@ -129,7 +133,7 @@ func (suite *HostPoolManagerTestSuite) TestGetPoolByHostname() {
 		manager := setupTestManager(
 			tc.poolIndex,
 			tc.hostToPoolMap,
-			nil,
+			suite.eventStreamHandler,
 		)
 
 		_, err := manager.GetPoolByHostname(testHostname)
@@ -188,14 +192,55 @@ func (suite *HostPoolManagerTestSuite) TestDeregisterPool() {
 			poolID := fmt.Sprintf(_testPoolIDTemplate, i)
 			notFoundErrMsg := fmt.Sprintf(
 				"host pool %s not found", poolID)
-			suite.manager.DeregisterPool(poolID)
-			_, err := suite.manager.GetPool(poolID)
+			err := suite.manager.DeregisterPool(poolID)
+			suite.NoError(err)
+			_, err = suite.manager.GetPool(poolID)
 			suite.EqualError(err, notFoundErrMsg)
 			wg.Done()
 		}(i)
 	}
 
 	wg.Wait()
+
+	// Test deleting default host pool.
+	err := suite.manager.DeregisterPool(common.DefaultHostPoolID)
+	suite.EqualError(err, "code:invalid-argument "+
+		"message:can't delete default host pool")
+}
+
+// TestDeregisterPoolWithHosts tests removing a pool that has hosts associated
+func (suite *HostPoolManagerTestSuite) TestDeregisterPoolWithHosts() {
+	hostToPoolMap := map[string]string{
+		"host0": "pool0",
+		"host1": "pool0",
+		"host2": "pool0",
+	}
+	poolIndex := map[string][]string{
+		"pool0": {"host0", "host1", "host2"},
+	}
+	manager := setupTestManager(
+		poolIndex,
+		hostToPoolMap,
+		suite.eventStreamHandler)
+	manager.RegisterPool("default")
+
+	manager.DeregisterPool("pool0")
+
+	for h := range hostToPoolMap {
+		p, err := manager.GetPoolByHostname(h)
+		suite.NoError(err)
+		suite.Equal("default", p.ID())
+	}
+	defpool, err := manager.GetPool("default")
+	suite.NoError(err)
+	defpoolHosts := defpool.Hosts()
+	suite.Contains(defpoolHosts, "host0")
+	suite.Contains(defpoolHosts, "host1")
+	suite.Contains(defpoolHosts, "host2")
+
+	events, err := suite.eventStreamHandler.GetEvents()
+	suite.NoError(err)
+	suite.Equal(3, len(events))
 }
 
 // TestGetHostPoolLabelValuesGetHostPoolLabelValues tests creating a LabelValues
@@ -233,7 +278,7 @@ func (suite *HostPoolManagerTestSuite) TestGetHostPoolLabelValues() {
 		manager := setupTestManager(
 			tc.poolIndex,
 			tc.hostToPoolMap,
-			nil,
+			suite.eventStreamHandler,
 		)
 		res, err := GetHostPoolLabelValues(manager, tc.hostname)
 		if tc.expectedErrMsg != "" {
@@ -272,6 +317,14 @@ func (suite *HostPoolManagerTestSuite) TestReconcile() {
 		hostToPoolMap map[string]string
 		expectedCache map[string]string
 	}{
+		"default-host-pool-not-exist": {
+			poolIndex:     map[string][]string{},
+			hostToPoolMap: map[string]string{},
+			expectedCache: map[string]string{
+				"host1": common.DefaultHostPoolID,
+				"host2": common.DefaultHostPoolID,
+			},
+		},
 		"host-pool-cache-in-sync": {
 			poolIndex: map[string][]string{
 				common.DefaultHostPoolID: {"host1", "host2"},
@@ -360,7 +413,7 @@ func (suite *HostPoolManagerTestSuite) TestReconcile() {
 		manager := setupTestManager(
 			tc.poolIndex,
 			tc.hostToPoolMap,
-			nil,
+			suite.eventStreamHandler,
 		)
 
 		manager.Start()
@@ -381,41 +434,6 @@ func (suite *HostPoolManagerTestSuite) TestReconcile() {
 
 		manager.Stop()
 	}
-}
-
-// TestDeregisterPoolWithHosts tests removing a pool that has hosts associated
-func (suite *HostPoolManagerTestSuite) TestDeregisterPoolWithHosts() {
-	hostToPoolMap := map[string]string{
-		"host0": "pool0",
-		"host1": "pool0",
-		"host2": "pool0",
-	}
-	poolIndex := map[string][]string{
-		"pool0": {"host0", "host1", "host2"},
-	}
-	manager := setupTestManager(
-		poolIndex,
-		hostToPoolMap,
-		suite.eventStreamHandler)
-	manager.RegisterPool("default")
-
-	manager.DeregisterPool("pool0")
-
-	for h := range hostToPoolMap {
-		p, err := manager.GetPoolByHostname(h)
-		suite.NoError(err)
-		suite.Equal("default", p.ID())
-	}
-	defpool, err := manager.GetPool("default")
-	suite.NoError(err)
-	defpoolHosts := defpool.Hosts()
-	suite.Contains(defpoolHosts, "host0")
-	suite.Contains(defpoolHosts, "host1")
-	suite.Contains(defpoolHosts, "host2")
-
-	events, err := suite.eventStreamHandler.GetEvents()
-	suite.NoError(err)
-	suite.Equal(3, len(events))
 }
 
 // TestChangeHostPool tests various cases of changing pool for a host.
@@ -563,12 +581,15 @@ func setupTestManager(
 	hostToPoolMap map[string]string,
 	eventStreamHandler *eventstream.Handler,
 ) HostPoolManager {
+	scope := tally.NoopScope
 	manager := &hostPoolManager{
 		reconcileInternal:  _testReconcileInterval,
 		eventStreamHandler: eventStreamHandler,
 		poolIndex:          map[string]hostpool.HostPool{},
 		hostToPoolMap:      map[string]string{},
 		lifecycle:          lifecycle.NewLifeCycle(),
+		parentScope:        scope,
+		metrics:            NewMetrics(scope),
 	}
 
 	for poolID, hosts := range poolIndex {

@@ -59,6 +59,7 @@ host_manager:
   # we can refresh the list of hosts based on bin packing algorithm
   bin_packing_refresh_interval: 30s
   enable_host_pool: false
+  host_pool_reconcile_interval: 10s
 
 mesos:
   encoding: "x-protobuf"

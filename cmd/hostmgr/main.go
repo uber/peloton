@@ -650,7 +650,10 @@ func main() {
 	var hostPoolManager manager.HostPoolManager
 	if cfg.HostManager.EnableHostPool {
 		hostPoolManager = manager.New(
-			offer.GetEventHandler().GetEventStreamHandler())
+			cfg.HostManager.HostPoolReconcileInterval,
+			offer.GetEventHandler().GetEventStreamHandler(),
+			rootScope,
+		)
 		hostPoolManager.Start()
 		defer hostPoolManager.Stop()
 

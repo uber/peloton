@@ -163,7 +163,8 @@ func (suite *RecoveryTestSuite) SetupTest() {
 		[]string{"client1"},
 		nil,
 		suite.testScope)
-	suite.manager = manager.New(suite.eventStreamHandler)
+	suite.manager = manager.New(
+		0, suite.eventStreamHandler, tally.NoopScope)
 	suite.driver = hostmgr_mesos.InitSchedulerDriver(
 		&hostmgr_mesos.Config{
 			Framework: &hostmgr_mesos.FrameworkConfig{

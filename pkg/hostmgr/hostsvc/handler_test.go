@@ -387,11 +387,12 @@ func (suite *HostSvcHandlerTestSuite) TestHostPoolsNotEnabled() {
 
 // TestListHostPools tests ListHostPools API method
 func (suite *HostSvcHandlerTestSuite) TestListHostPools() {
-	pool1 := hostpool.New("pool1")
+	scope := tally.NoopScope
+	pool1 := hostpool.New("pool1", scope)
 	pool1.Add("h1")
 	pool1.Add("h2")
 
-	pool2 := hostpool.New("pool2")
+	pool2 := hostpool.New("pool2", scope)
 	pool2.Add("h3")
 
 	pools := map[string]hostpool.HostPool{

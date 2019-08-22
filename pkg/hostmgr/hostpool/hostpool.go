@@ -18,6 +18,7 @@ import (
 	"sync"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/uber-go/tally"
 )
 
 // HostPool represents a set of hosts as a virtual host pool
@@ -27,7 +28,6 @@ type HostPool interface {
 	ID() string
 
 	// Hosts returns all hosts in the pool as a map from hostname to host summary.
-	// TODO: Consider what host data host pool needs to track.
 	Hosts() map[string]struct{}
 
 	// Add adds given host to the pool.
@@ -38,24 +38,31 @@ type HostPool interface {
 
 	// Cleanup deletes all hosts from the pool.
 	Cleanup()
+
+	// RefreshMetrics refreshes metrics of the host pool.
+	RefreshMetrics()
 }
 
 // hostPool implements HostPool interface.
-// TODO: Add metrics instrumentation where needed.
 type hostPool struct {
 	mu sync.RWMutex
 
 	// id is the host pool id.
 	id string
+
 	// hosts contains all hosts belong to the host pool.
 	hosts map[string]struct{}
+
+	// Metrics.
+	metrics *Metrics
 }
 
 // New returns a new hostPool instance.
-func New(id string) HostPool {
+func New(id string, parentScope tally.Scope) HostPool {
 	return &hostPool{
-		id:    id,
-		hosts: make(map[string]struct{}),
+		id:      id,
+		hosts:   make(map[string]struct{}),
+		metrics: NewMetrics(parentScope, id),
 	}
 }
 
@@ -123,4 +130,12 @@ func (hp *hostPool) Cleanup() {
 
 	hp.hosts = map[string]struct{}{}
 	log.WithField(HostPoolKey, poolID).Info("Deleted all hosts from host pool")
+}
+
+// RefreshMetrics refreshes metrics of the host pool.
+func (hp *hostPool) RefreshMetrics() {
+	hp.mu.RLock()
+	defer hp.mu.RUnlock()
+
+	hp.metrics.TotalHosts.Update(float64(len(hp.hosts)))
 }

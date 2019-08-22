@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
 )
 
 // HostPoolTestSuite is test suite for host pool.
@@ -29,7 +30,7 @@ type HostPoolTestSuite struct {
 
 // SetupTest is setup function for this suite.
 func (suite *HostPoolTestSuite) SetupTest() {
-	suite.hp = New("test_pool")
+	suite.hp = New("test_pool", tally.NoopScope)
 }
 
 // TestHostPoolTestSuite runs HostPoolTestSuite.
