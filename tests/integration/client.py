@@ -23,6 +23,9 @@ class Client(object):
         if not class_._client:
             config = load_config("config.yaml")["client"]
             cluster = os.getenv("CLUSTER")
+            use_apiserver = False
+            if os.getenv("USE_APISERVER") == 'True':
+                use_apiserver = True
             if cluster is not None and cluster != "local":
                 cluster = os.getenv("CLUSTER")
                 if os.getenv("ELECTION_ZK_SERVERS", ""):
@@ -32,12 +35,16 @@ class Client(object):
                 else:
                     raise Exception("Unsupported cluster %s" % cluster)
                 _client = PelotonClient(
-                    name=config["name"], zk_servers=zk_servers
+                    name=config["name"],
+                    enable_apiserver=use_apiserver,
+                    zk_servers=zk_servers,
                 )
             else:
                 # TODO: remove url overrides once T839783 is resolved
                 _client = PelotonClient(
                     name=config["name"],
+                    enable_apiserver=use_apiserver,
+                    api_url=config["apiserver_url"],
                     jm_url=config["jobmgr_url"],
                     rm_url=config["resmgr_url"],
                     hm_url=config["hostmgr_url"],

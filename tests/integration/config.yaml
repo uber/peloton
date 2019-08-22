@@ -1,4 +1,6 @@
 client:
+  apiserver_url: grpc://localhost:5397
+  apiserver_service_name: peloton-apiproxy
   jobmgr_url: grpc://localhost:5392
   jobmgr_service_name: peloton-jobmgr
   resmgr_url: grpc://localhost:5394
