@@ -738,7 +738,7 @@ class PerformanceTest:
     def perf_test_stateless_job_host_limit_1_update(
             self,
             num_tasks=600,
-            batch_size=600,
+            batch_size=20,
             sleep_time=1000,
     ):
         """
