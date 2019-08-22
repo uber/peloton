@@ -528,7 +528,7 @@ func convertPodStatusToPodEvent(
 		Timestamp:      receivedTimestamp,
 		Version:        podStatus.GetVersion(),
 		DesiredVersion: podStatus.GetDesiredVersion(),
-		AgentId:        podStatus.GetAgentId().GetValue(),
+		AgentId:        podStatus.GetHostId(),
 		Hostname:       podStatus.GetHost(),
 		Message:        podStatus.GetMessage(),
 		Reason:         podStatus.GetReason(),

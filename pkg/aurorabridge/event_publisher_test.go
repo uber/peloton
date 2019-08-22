@@ -27,7 +27,6 @@ import (
 	"testing"
 	"time"
 
-	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	statelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
 	jobmocks "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc/mocks"
@@ -404,12 +403,10 @@ func (suite *EventPublisherTestSuite) TestEventPublisher_ReceivePods() {
 						Containers: []*pod.ContainerSpec{{}},
 					},
 					Status: &pod.PodStatus{
-						PodId: podSummary.GetStatus().GetPodId(),
-						Host:  host,
-						State: pod.PodState_POD_STATE_RUNNING,
-						AgentId: &mesos.AgentID{
-							Value: ptr.String(hostID),
-						},
+						PodId:  podSummary.GetStatus().GetPodId(),
+						Host:   host,
+						State:  pod.PodState_POD_STATE_RUNNING,
+						HostId: hostID,
 					},
 				},
 			}, nil)

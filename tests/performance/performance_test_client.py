@@ -19,6 +19,7 @@ from peloton_client.pbgen.peloton.api.v1alpha import (
     peloton_pb2 as v1alpha_peloton,
 )
 from peloton_client.pbgen.peloton.api.v1alpha.pod import pod_pb2 as pod
+from peloton_client.pbgen.peloton.api.v1alpha.pod.apachemesos import apachemesos_pb2 as apachemesos
 from peloton_client.pbgen.peloton.api.v1alpha.job.stateless import (
     stateless_pb2 as stateless,
 )
@@ -322,8 +323,7 @@ class StatelessJob(Job):
                 mem_limit_mb=32,
                 disk_limit_mb=32,
             ),
-            command=mesos.CommandInfo(
-                shell=True,
+            entrypoint=pod.CommandSpec(
                 value="echo %s && sleep %s"
                 % (str(dynamic_factor), str(sleep_time)),
             ),
@@ -345,9 +345,15 @@ class StatelessJob(Job):
             )
 
         containers = [container_spec]
+
+        mesos_pod_spec = apachemesos.PodSpec(
+            shell=True,
+        )
+
         return pod.PodSpec(containers=containers,
                            labels=[instance_label],
-                           constraint=host_limit_1_constraint)
+                           constraint=host_limit_1_constraint,
+                           mesos_spec=mesos_pod_spec)
 
     def get_job_info(self):
         request = stateless_svc.GetJobRequest(
