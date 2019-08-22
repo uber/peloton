@@ -7,6 +7,8 @@ import grpc
 import time
 from deepdiff import DeepDiff
 
+from aurora_bridge_client import Client as aurora_bridge_client
+
 from peloton_client.client import PelotonClient
 from peloton_client.pbgen.mesos.v1 import mesos_pb2 as mesos
 from peloton_client.pbgen.peloton.api.v0 import peloton_pb2 as peloton
@@ -527,25 +529,28 @@ class PerformanceTestClient(object):
             },
         )
 
-        self.client = PelotonClient(
+        self.peloton_client = PelotonClient(
             name="peloton-client", zk_servers=zk_server
         )
+
+        self.aurora_bridge_client = aurora_bridge_client(zk_server)
+
         self.respool_id = self.ensure_respool()
 
     def get_batch_job(self):
-        return BatchJob(self.client, self.respool_id)
+        return BatchJob(self.peloton_client, self.respool_id)
 
     def get_stateless_job(self):
-        return StatelessJob(self.client, self.respool_id)
+        return StatelessJob(self.peloton_client, self.respool_id)
 
     def ensure_respool(self):
         # lookup respool
         request = respool.LookupRequest(
             path=respool.ResourcePoolPath(value="/" + RESPOOL_PATH)
         )
-        resp = self.client.respool_svc.LookupResourcePoolID(
+        resp = self.peloton_client.respool_svc.LookupResourcePoolID(
             request,
-            metadata=self.client.resmgr_metadata,
+            metadata=self.peloton_client.resmgr_metadata,
             timeout=default_timeout,
         )
 

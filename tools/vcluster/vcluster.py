@@ -17,6 +17,7 @@ class VCluster(object):
         "placement",
         "placement_stateless",
         "jobmgr",
+        "aurorabridge",
     ]
 
     def __init__(
@@ -231,6 +232,9 @@ class VCluster(object):
                     .get("enable_revocable_resources")
                 )
 
+            if app == "aurorabridge":
+                dynamic_env_master["RESPOOL_PATH"] = '/DefaultResPool'
+
             if app == "placement_stateless":
                 dynamic_env_master["APP"] = "placement"
                 dynamic_env_master["APP_TYPE"] = "placement_stateless"
@@ -273,6 +277,11 @@ class VCluster(object):
         app_name = app
         if app_name.startswith("placement_"):
             app_name = "placement"
+
+        if app_name.startswith("aurorabridge"):
+            config_path = os.path.join(
+                peloton_apps_configs, "config", "{}", "vcluster.yaml"
+            )
 
         prod_config_path = config_path.format(app_name)
         with open(prod_config_path, "rb") as config_file:

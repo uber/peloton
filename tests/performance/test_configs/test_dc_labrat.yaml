@@ -1,0 +1,108 @@
+taskConfig:
+    job:
+        role: test
+        environment: dc
+        name: labrat
+    owner:
+        user: 'testuser'
+    isService: true
+    priority: 5
+    tier: preemptible
+    production: false
+    resources:
+        - numCpus: 0.25
+        - ramMb: 128
+        - diskMb: 128
+        - namedPort: "http"
+        - namedPort: "grpc"
+    metadata:
+        - key: test_key_1
+          value: test_value_1
+        - key: test_key_2
+          value: test_value_2
+    constraints:
+        - name: host
+          constraint:
+            limit:
+                limit: 1
+    executorConfig:
+        name: AuroraExecutor
+        data: |-
+            {
+                "cluster": "peloton",
+                "cron_collision_policy": "KILL_EXISTING",
+                "enable_hooks": false,
+                "environment": "dc",
+                "executor_config": {
+                    "data": "",
+                    "name": "AuroraExecutor"
+                },
+                "health_check_config": {
+                    "health_checker": {
+                        "http": {
+                            "endpoint": "/health",
+                            "expected_response": "ok",
+                            "expected_response_code": 0
+                        }
+                    },
+                    "initial_interval_secs": 15.0,
+                    "interval_secs": 10.0,
+                    "max_consecutive_failures": 0,
+                    "min_consecutive_successes": 1,
+                    "timeout_secs": 1.0
+                },
+                "lifecycle": {
+                    "http": {
+                        "graceful_shutdown_endpoint": "/quitquitquit",
+                        "graceful_shutdown_wait_secs": 5,
+                        "port": "health",
+                        "shutdown_endpoint": "/abortabortabort",
+                        "shutdown_wait_secs": 5
+                    }
+                },
+                "max_task_failures": 1,
+                "metadata": [],
+                "name": "labrat",
+                "priority": 0,
+                "production": false,
+                "role": "test",
+                "service": true,
+                "task": {
+                    "constraints": [
+                        {
+                            "order": [
+                                "hello"
+                            ]
+                        }
+                    ],
+                    "finalization_wait": 30,
+                    "max_concurrency": 0,
+                    "max_failures": 1,
+                    "name": "hello",
+                    "processes": [
+                        {
+                            "cmdline": "while :; do echo running; sleep 10; done",
+                            "daemon": false,
+                            "ephemeral": false,
+                            "final": false,
+                            "max_failures": 1,
+                            "min_duration": 5,
+                            "name": "hello"
+                        }
+                    ],
+                    "resources": {
+                        "cpu": 0.25,
+                        "disk": 134217728,
+                        "gpu": 0,
+                        "ram": 134217728
+                    }
+                },
+                "tier": "preemptible"
+            }
+instanceCount: 3
+settings:
+    updateGroupSize: 1
+    minWaitInInstanceRunningMs: 45000
+    maxFailedInstances: 1
+    maxPerInstanceFailures: 1
+    rollbackOnFailure: true

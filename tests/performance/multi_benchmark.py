@@ -26,6 +26,17 @@ from performance_test_client import (
     ResPoolNotFoundException,
 )
 
+from aurora_bridge_client import api
+from aurora_bridge_util import (
+    assert_keys_equal,
+    get_job_update_request,
+    get_update_status,
+    start_job_update,
+    wait_for_rolled_forward,
+    wait_for_update_status,
+    verify_host_limit_1,
+)
+
 # Perf tests conducted. Serves as a single source of truth.
 # Within each tuple, first item explains the perf test purpose;
 # second item shows the corresponding csv file structure.
@@ -40,7 +51,7 @@ PERF_TEST_CONDUCTED = [
     ('JOB_STATELESS_HOST_LIMIT_1_UPDATE', '_job_stateless_host_limit_1_update.csv'),
 ]
 
-NUM_TASKS = [10000, 50000]
+NUM_TASKS = [50000]
 SLEEP_TIME_SEC = [10]
 USE_INSTANCE_CONFIG = [True, False]
 
@@ -238,6 +249,9 @@ def main():
     if host_limit_1_update_df is not None:
         host_limit_1_update_df.to_csv(output_csv_files_list[7], sep='\t')
 
+    # Create a simple aurorabridge job
+    t.perf_test_aurora_bridge_create()
+
 
 def run_one_test(pf_client, num_tasks, instance_config, sleep_time, agent_num):
     job = pf_client.get_batch_job()
@@ -367,7 +381,11 @@ class PerformanceTest:
         print(df)
         return df
 
-    def perf_test_stateless_job_create(self, num_tasks=9000, sleep_time=1000):
+    def perf_test_stateless_job_create(
+        self,
+        num_tasks=9000,
+        sleep_time=1000,
+    ):
         """
         perf_test_stateless_job_create is used to test creating a stateless
         job. The test creates one job with num_tasks and measures the time
@@ -825,6 +843,29 @@ class PerformanceTest:
         print("Test StatelessHostLimit1Update")
         print(df)
         return df
+
+    def perf_test_aurora_bridge_create(self):
+        """
+        Create a stateless job via AuroraBridge and measure the time is 
+        takes for rolling_forward.
+        """
+        try:
+            start_time = time.time()
+
+            resp = self.client.aurora_bridge_client.start_job_update(
+                get_job_update_request("test_dc_labrat.yaml"),
+                "start job update",
+            )
+
+            wait_for_rolled_forward(
+                self.client.aurora_bridge_client,
+                resp.key)
+
+            elapsed_time = time.time() - start_time
+            print elapsed_time
+
+        except Exception as e:
+            print e
 
 
 class statelessUpdateWorker(threading.Thread):

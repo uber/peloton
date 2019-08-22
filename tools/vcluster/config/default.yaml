@@ -92,11 +92,14 @@ mesos-slave:
     - name: 'GLOG_v'
       value: '1'
   dynamic_env: 'MESOS_MASTER'
-  start_command: 'rm -rf /var/lib/mesos/meta/slaves/latest && mesos-slave'
+  start_command: 'bash /mnt/mesos/sandbox/mesos-slave-run.sh'
   fetch_files:
     - source: 'https://gist.githubusercontent.com/scy0208/8aac814650845e778de9a8cb6e744645/raw/294bb7c6b0a788cea68013b55e359be9699b95ad/modules.json'
       name: 'modules.json'
-
+    - source: 'https://raw.githubusercontent.com/uber/peloton/0.8.9.11/tools/minicluster/files/thermos_executor_0.19.1.pex'
+      name: 'thermos_executor_0.19.1.pex'
+    - source: 'https://gist.githubusercontent.com/varungup90/0a3bb4eaaf6404dd1547ad17760addcd/raw/c2bccd21206dc874285b67ea00b218691f6a94b6/mesos-slave-run.sh'
+      name: 'mesos-slave-run.sh'
 
 cassandra:
   docker_registry: ''
@@ -160,6 +163,8 @@ peloton:
   placement:
     instance_count: 2
   placement_stateless:
+    instance_count: 2
+  aurorabridge:
     instance_count: 2
   fetch_files:
     - source: 'https://gist.githubusercontent.com/scy0208/08a66afe3a7837e5e1c1528d16b47e6f/raw/2119f0fe20b7a1e827e4e43b288545799d6b4e5e/hostmgr_mesos_secret'

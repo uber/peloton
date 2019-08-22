@@ -25,7 +25,7 @@ default_timeout = 60
 RESPOOL_PATH = "DefaultResPool"
 
 
-@retry(tries=10, delay=10)
+@retry(tries=100, delay=10)
 def create_respool_for_new_peloton(
     config, zk_server, agent_num, respool_name=RESPOOL_PATH
 ):
