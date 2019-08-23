@@ -304,13 +304,17 @@ func (tr *tracker) DeleteTask(t *peloton.TaskID) {
 // this method is not protected, we need to lock tracker
 // before we use this.
 func (tr *tracker) deleteTask(t *peloton.TaskID) {
-	if rmTask, exists := tr.tasks[t.Value]; exists {
-		tr.clearPlacement(
-			rmTask.task.GetHostname(),
-			rmTask.task.GetType(),
-			rmTask.task.GetTaskId().GetValue(),
-		)
+	rmTask, exists := tr.tasks[t.Value]
+	if !exists {
+		return
 	}
+
+	tr.clearPlacement(
+		rmTask.task.GetHostname(),
+		rmTask.task.GetType(),
+		rmTask.task.GetTaskId().GetValue(),
+	)
+
 	delete(tr.tasks, t.Value)
 	tr.metrics.TasksCountInTracker.Update(float64(tr.GetSize()))
 }
@@ -391,6 +395,22 @@ func (tr *tracker) markItDone(mesosTaskID string) error {
 		err := t.respool.SubtractFromAllocation(scalar.GetTaskAllocation(t.Task()))
 		if err != nil {
 			return errors.Errorf("failed update task %s ", taskID)
+		}
+
+		tr.metricsLock.Lock()
+		defer tr.metricsLock.Unlock()
+
+		// update metrics
+		taskState := t.GetCurrentState().State
+		if val, ok := tr.resourcesHeldByTaskState[taskState]; ok {
+			tr.resourcesHeldByTaskState[taskState] = val.Subtract(
+				scalar.ConvertToResmgrResource(t.task.GetResource()),
+			)
+		}
+
+		// publish metrics
+		if gauge, ok := tr.metrics.ResourcesHeldByTaskState[taskState]; ok {
+			gauge.Update(tr.resourcesHeldByTaskState[taskState])
 		}
 	}
 
@@ -605,6 +625,22 @@ func (tr *tracker) deleteOrphanTask(mesosTaskID string) error {
 	}
 
 	delete(tr.orphanTasks, mesosTaskID)
+
+	// update metrics
+	tr.metricsLock.Lock()
+	defer tr.metricsLock.Unlock()
+
+	taskState := rmTask.GetCurrentState().State
+	if val, ok := tr.resourcesHeldByTaskState[taskState]; ok {
+		tr.resourcesHeldByTaskState[taskState] = val.Subtract(
+			scalar.ConvertToResmgrResource(rmTask.task.GetResource()),
+		)
+	}
+
+	// publish metrics
+	if gauge, ok := tr.metrics.ResourcesHeldByTaskState[taskState]; ok {
+		gauge.Update(tr.resourcesHeldByTaskState[taskState])
+	}
 
 	log.WithFields(log.Fields{
 		"orphan_task": mesosTaskID,

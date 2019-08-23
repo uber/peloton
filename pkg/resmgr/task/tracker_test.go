@@ -866,3 +866,111 @@ func (suite *trackerTestSuite) TestResourcesHeldByTaskStateConcurrencyControl() 
 
 	wg.Wait()
 }
+
+// TestResourcesHeldByTaskStateRelease ensures ResourcesHeldByTaskState is
+// updated when a task is cleaned up from tracker
+func (suite *trackerTestSuite) TestResourcesHeldByTaskStateRelease() {
+	rmTask := suite.tracker.GetTask(suite.task.GetId())
+
+	// transit the RMTask to RUNNING state
+	err := rmTask.TransitTo(task.TaskState_PENDING.String())
+	suite.NoError(err)
+	err = rmTask.TransitTo(task.TaskState_READY.String())
+	suite.NoError(err)
+	err = rmTask.TransitTo(task.TaskState_PLACING.String())
+	suite.NoError(err)
+	err = rmTask.TransitTo(task.TaskState_PLACED.String())
+	suite.NoError(err)
+	err = rmTask.TransitTo(task.TaskState_LAUNCHING.String())
+	suite.NoError(err)
+	err = rmTask.TransitTo(task.TaskState_LAUNCHED.String())
+	suite.NoError(err)
+	err = rmTask.TransitTo(task.TaskState_RUNNING.String())
+	suite.NoError(err)
+	resourcesHeld := suite.tracker.(*tracker).resourcesHeldByTaskState[task.TaskState_RUNNING]
+	suite.Equal(rmTask.task.GetResource().GetCpuLimit(), resourcesHeld.GetCPU())
+	suite.Equal(rmTask.task.GetResource().GetMemLimitMb(), resourcesHeld.GetMem())
+	suite.Equal(rmTask.task.GetResource().GetDiskLimitMb(), resourcesHeld.GetDisk())
+	suite.Equal(rmTask.task.GetResource().GetGpuLimit(), resourcesHeld.GetGPU())
+
+	err = suite.tracker.MarkItDone(rmTask.task.GetTaskId().GetValue())
+	suite.NoError(err)
+
+	// verify that the metrics are updated
+	suite.Equal(
+		scalar.ZeroResource,
+		suite.tracker.(*tracker).resourcesHeldByTaskState[task.TaskState_RUNNING],
+	)
+}
+
+// TestResourcesHeldByTaskStateReleaseResourceOrphanTasks ensures
+// ResourcesHeldByTaskState is updated when orphan task resources are released
+func (suite *trackerTestSuite) TestResourcesHeldByTaskStateReleaseResourceOrphanTasks() {
+	rmTask := suite.tracker.GetTask(suite.task.GetId())
+
+	// transit the RMTask to LAUNCHED state
+	err := rmTask.TransitTo(task.TaskState_PENDING.String())
+	suite.NoError(err)
+	err = rmTask.TransitTo(task.TaskState_READY.String())
+	suite.NoError(err)
+	err = rmTask.TransitTo(task.TaskState_PLACING.String())
+	suite.NoError(err)
+	err = rmTask.TransitTo(task.TaskState_PLACED.String())
+	suite.NoError(err)
+	err = rmTask.TransitTo(task.TaskState_LAUNCHING.String())
+	suite.NoError(err)
+	err = rmTask.TransitTo(task.TaskState_LAUNCHED.String())
+	suite.NoError(err)
+	resourcesHeld := suite.tracker.(*tracker).resourcesHeldByTaskState[task.TaskState_LAUNCHED]
+	suite.Equal(rmTask.task.GetResource().GetCpuLimit(), resourcesHeld.GetCPU())
+	suite.Equal(rmTask.task.GetResource().GetMemLimitMb(), resourcesHeld.GetMem())
+	suite.Equal(rmTask.task.GetResource().GetDiskLimitMb(), resourcesHeld.GetDisk())
+	suite.Equal(rmTask.task.GetResource().GetGpuLimit(), resourcesHeld.GetGPU())
+
+	// Add new run of the task so that an orphan task is created
+	newMesosTaskID := fmt.Sprintf("%s-%d", suite.task.GetId().GetValue(), 2)
+	newResmgrTask := proto.Clone(rmTask.task).(*resmgr.Task)
+	newResmgrTask.TaskId.Value = &newMesosTaskID
+	err = suite.tracker.AddTask(
+		newResmgrTask,
+		suite.eventStreamHandler,
+		suite.respool,
+		&Config{},
+	)
+	suite.NoError(err)
+
+	// transit the new run of the RMTask to RUNNING
+	newRMTask := suite.tracker.GetTask(suite.task.GetId())
+	suite.Equal(newResmgrTask, newRMTask.task)
+	err = newRMTask.TransitTo(task.TaskState_PENDING.String())
+	suite.NoError(err)
+	err = newRMTask.TransitTo(task.TaskState_READY.String())
+	suite.NoError(err)
+	err = newRMTask.TransitTo(task.TaskState_PLACING.String())
+	suite.NoError(err)
+	err = newRMTask.TransitTo(task.TaskState_PLACED.String())
+	suite.NoError(err)
+	err = newRMTask.TransitTo(task.TaskState_LAUNCHING.String())
+	suite.NoError(err)
+	err = newRMTask.TransitTo(task.TaskState_LAUNCHED.String())
+	suite.NoError(err)
+	err = newRMTask.TransitTo(task.TaskState_RUNNING.String())
+	suite.NoError(err)
+
+	// verify that the resources of the orphan task are still held
+	resourcesHeld = suite.tracker.(*tracker).resourcesHeldByTaskState[task.TaskState_LAUNCHED]
+	suite.Equal(rmTask.task.GetResource().GetCpuLimit(), resourcesHeld.GetCPU())
+	suite.Equal(rmTask.task.GetResource().GetMemLimitMb(), resourcesHeld.GetMem())
+	suite.Equal(rmTask.task.GetResource().GetDiskLimitMb(), resourcesHeld.GetDisk())
+	suite.Equal(rmTask.task.GetResource().GetGpuLimit(), resourcesHeld.GetGPU())
+
+	// clean up orphan task
+	err = suite.tracker.MarkItDone(rmTask.task.GetTaskId().GetValue())
+	suite.NoError(err)
+
+	// verify that the metrics are updated
+	suite.Equal(
+		scalar.ZeroResource,
+		suite.tracker.(*tracker).resourcesHeldByTaskState[task.TaskState_LAUNCHED],
+	)
+}
