@@ -108,7 +108,7 @@ type HostSummary interface {
 
 	// HandlePodEvent is called when a pod event occurs for a pod
 	// that affects this host.
-	HandlePodEvent(event *p2kscalar.PodEvent) error
+	HandlePodEvent(event *p2kscalar.PodEvent)
 
 	// HoldForPod holds the host for the pod specified.
 	// If an error is returned, hostsummary would guarantee that
@@ -489,8 +489,8 @@ func (a *baseHostSummary) GetAvailable() scalar.Resources {
 
 // HandlePodEvent is a noop for baseHostSummary, corresponding subclasses should
 // overwrite the method
-func (a *baseHostSummary) HandlePodEvent(event *p2kscalar.PodEvent) error {
-	return nil
+func (a *baseHostSummary) HandlePodEvent(event *p2kscalar.PodEvent) {
+	return
 }
 
 // SetCapacity sets the capacity of the host.

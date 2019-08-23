@@ -685,8 +685,6 @@ func main() {
 	// Create host cache instance.
 	hostCache = hostcache.New(
 		hostEventCh,
-		podEventCh,
-		plugin,
 		backgroundManager,
 		rootScope,
 	)
@@ -695,6 +693,7 @@ func main() {
 		dispatcher,
 		podEventCh,
 		plugin,
+		hostCache,
 		cfg.HostManager.TaskUpdateBufferSize,
 		rootScope)
 

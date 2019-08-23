@@ -64,22 +64,24 @@ func newKubeletHostSummary(
 // noop because a pod update can only change the image of the pod, not the
 // resource profile.
 // Delete events should release the resources of the pod that was deleted.
-func (a *kubeletHostSummary) HandlePodEvent(event *p2kscalar.PodEvent) error {
+func (a *kubeletHostSummary) HandlePodEvent(event *p2kscalar.PodEvent) {
 	switch event.EventType {
 	case p2kscalar.AddPod, p2kscalar.UpdatePod:
 		// We do not need to do anything during an Add event, as it will
 		// always follow a Launch, which already populated this host summary.
 		// Update events only change the image of the pod, and as such the
 		// resource accounting doesn't change.
-		return nil
+		return
 	case p2kscalar.DeletePod:
 		// The release error scenario is handled inside release. If the pod
 		// was already deleted, ReleasePodResources no-ops, which is correct
 		// here.
 		a.releasePodResources(context.Background(), event.Event.PodId.Value)
-		return nil
+		return
+	default:
+		log.WithField("pod_event", event).
+			Error("unsupported pod event type")
 	}
-	return fmt.Errorf("unsupported pod event type: %v", event.EventType)
 }
 
 // SetCapacity sets the capacity of the host.

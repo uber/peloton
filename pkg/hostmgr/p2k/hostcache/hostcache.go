@@ -22,7 +22,6 @@ import (
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
 	"github.com/uber/peloton/pkg/common/background"
 	"github.com/uber/peloton/pkg/common/lifecycle"
-	"github.com/uber/peloton/pkg/hostmgr/p2k/plugins"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 	hmscalar "github.com/uber/peloton/pkg/hostmgr/scalar"
 
@@ -65,6 +64,9 @@ type HostCache interface {
 	// managing.
 	GetSummaries() (summaries []HostSummary)
 
+	// HandlePodEvent is called by pod events manager on receiving a pod event.
+	HandlePodEvent(event *scalar.PodEvent)
+
 	// ResetExpiredHeldHostSummaries resets the status of each hostSummary if
 	// the helds have expired and returns the hostnames which got reset.
 	ResetExpiredHeldHostSummaries(now time.Time) []string
@@ -93,13 +95,6 @@ type hostCache struct {
 	// host events to host cache.
 	hostEventCh chan *scalar.HostEvent
 
-	// The event channel on which the underlying cluster manager plugin will send
-	// pod events to host cache.
-	podEventCh chan *scalar.PodEvent
-
-	// Cluster manager plugin.
-	plugin plugins.Plugin
-
 	// Lifecycle manager.
 	lifecycle lifecycle.LifeCycle
 
@@ -113,16 +108,12 @@ type hostCache struct {
 // New returns a new instance of host cache.
 func New(
 	hostEventCh chan *scalar.HostEvent,
-	podEventCh chan *scalar.PodEvent,
-	plugin plugins.Plugin,
 	backgroundMgr background.Manager,
 	parent tally.Scope,
 ) HostCache {
 	return &hostCache{
 		hostIndex:     make(map[string]HostSummary),
 		hostEventCh:   hostEventCh,
-		podEventCh:    podEventCh,
-		plugin:        plugin,
 		lifecycle:     lifecycle.NewLifeCycle(),
 		metrics:       NewMetrics(parent),
 		backgroundMgr: backgroundMgr,
@@ -417,22 +408,11 @@ func (c *hostCache) waitForHostEvents() {
 	}
 }
 
-// waitForPodEvents will start a goroutine that waits on the pod events
-// channel. The underlying plugin manager will send events to this channel
-// when a pod status changes. Example: pod P1 on host H1 was deleted, or
-// evicted.
-func (c *hostCache) waitForPodEvents() {
-	for {
-		select {
-		case event := <-c.podEventCh:
-			c.handlePodEvent(event)
-		case <-c.lifecycle.StopCh():
-			return
-		}
-	}
-}
-
-func (c *hostCache) handlePodEvent(event *scalar.PodEvent) {
+// Handle pod event which is sent by the pod events manager. This is relevant
+// only in case of K8S where we do resource accounting based on pod events.
+// Example: a pod delete event will lead to giving back pod's resources to the
+// host.
+func (c *hostCache) HandlePodEvent(event *scalar.PodEvent) {
 	// TODO: evaluate locking strategy
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -450,13 +430,7 @@ func (c *hostCache) handlePodEvent(event *scalar.PodEvent) {
 		return
 	}
 
-	err := summary.HandlePodEvent(event)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"hostname": hostname,
-			"pod_id":   event.Event.GetPodId().GetValue(),
-		}).WithError(err).Error("handle pod event")
-	}
+	summary.HandlePodEvent(event)
 }
 
 func (c *hostCache) addHost(event *scalar.HostEvent) {
@@ -624,7 +598,6 @@ func (c *hostCache) Start() {
 	)
 
 	go c.waitForHostEvents()
-	go c.waitForPodEvents()
 
 	log.Warn("hostCache started")
 }

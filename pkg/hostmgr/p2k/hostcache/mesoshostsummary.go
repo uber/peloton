@@ -43,8 +43,8 @@ func newMesosHostSummary(hostname string, version string) HostSummary {
 
 // HandlePodEvent is noop for mesos, because mesos host does not rely
 // on pod status to calculate resources available/allocated.
-func (a *mesosHostSummary) HandlePodEvent(event *p2kscalar.PodEvent) error {
-	return nil
+func (a *mesosHostSummary) HandlePodEvent(event *p2kscalar.PodEvent) {
+	return
 }
 
 // SetCapacity sets the capacity of the host.

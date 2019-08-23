@@ -53,7 +53,7 @@ func (suite *HostCacheTestSuite) TestMesosHostSummarySetCapacity() {
 // event does nothing for mesos
 func (suite *HostCacheTestSuite) TestMesosHostSummaryHandlePodEvent() {
 	ms := newMesosHostSummary(_hostname, _version).(*mesosHostSummary)
-	suite.NoError(ms.HandlePodEvent(nil))
+	ms.HandlePodEvent(nil)
 }
 
 // TestMesosHostSummarySetAvailable

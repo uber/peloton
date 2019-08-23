@@ -192,8 +192,7 @@ func (suite *HostCacheTestSuite) TestKubeletHostSummaryHandlePodEvent() {
 						},
 					},
 				}
-				err = s.HandlePodEvent(evt)
-				suite.NoError(err)
+				s.HandlePodEvent(evt)
 			}
 		}()
 	}
