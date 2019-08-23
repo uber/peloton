@@ -746,7 +746,7 @@ class PerformanceTest:
             }
         ]
         df = pd.DataFrame(
-            record, columns=["NumStartTasks", "Sleep(s)", "TotalTimeInSeconds"],
+            record, columns=["NumTasks", "Sleep(s)", "TotalTimeInSeconds"],
             dtype=np.int64
         )
         print("Test StatelessHostLimit1Create")

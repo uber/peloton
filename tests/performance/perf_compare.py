@@ -447,8 +447,8 @@ def generate_test_results(
     for i, combo in enumerate(zip(operations, base_df, current_df)):
         func, f1, f2 = combo
         print("Operation " + func.__name__ + " has the following dataframes: ")
-        print(base_df)
-        print(current_df)
+        print(f1)
+        print(f2)
         try:
             results[i] = func(base_version, current_version, f1, f2)
         except Exception as e:
