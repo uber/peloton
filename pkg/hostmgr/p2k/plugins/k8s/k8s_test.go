@@ -15,12 +15,14 @@
 package k8s
 
 import (
+	"context"
 	"testing"
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/pkg/hostmgr/models"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -28,143 +30,163 @@ import (
 	testclient "k8s.io/client-go/kubernetes/fake"
 )
 
-func TestLaunchAndKillPod(t *testing.T) {
-	require := require.New(t)
+type K8SManagerTestSuite struct {
+	suite.Suite
 
+	podEventCh     chan *scalar.PodEvent
+	hostEventCh    chan *scalar.HostEvent
+	testKubeClient *testclient.Clientset
+	testManager    *K8SManager
+}
+
+func (suite *K8SManagerTestSuite) SetupTest() {
+	suite.podEventCh = make(chan *scalar.PodEvent, 1000)
+	suite.hostEventCh = make(chan *scalar.HostEvent, 1000)
+	suite.testKubeClient = testclient.NewSimpleClientset()
+	suite.testManager = newK8sManagerWithClient(
+		suite.testKubeClient,
+		suite.podEventCh,
+		suite.hostEventCh,
+	)
+}
+
+func TestK8SManagerTestSuite(t *testing.T) {
+	suite.Run(t, &K8SManagerTestSuite{})
+}
+
+func (suite *K8SManagerTestSuite) TestLaunchAndKillPod() {
 	testPodName := "test_pod"
 	testHostName := "test_host"
-	podEventCh := make(chan *scalar.PodEvent, 1000)
-	hostEventCh := make(chan *scalar.HostEvent, 1000)
-	fakeClient := testclient.NewSimpleClientset()
-	testManager := newK8sManagerWithClient(
-		fakeClient,
-		podEventCh,
-		hostEventCh,
-	)
-	testManager.Start()
+
+	suite.testManager.Start()
 
 	// Launch pod and verify.
 	testPodSpec := newTestPelotonPodSpec(testPodName)
-	err := testManager.LaunchPod(testPodSpec, testPodName, testHostName)
-	require.NoError(err)
+	err := suite.testManager.LaunchPods(
+		context.Background(),
+		[]*models.LaunchablePod{
+			{PodId: &peloton.PodID{Value: testPodName}, Spec: testPodSpec},
+		},
+		testHostName,
+	)
+	suite.NoError(err)
 
-	returnedPod, err := fakeClient.CoreV1().Pods("default").Get(testPodName, metav1.GetOptions{})
-	require.NoError(err)
-	require.NotNil(returnedPod)
-	require.Equal(testPodName, returnedPod.Name)
+	returnedPod, err := suite.
+		testKubeClient.
+		CoreV1().
+		Pods("default").
+		Get(testPodName, metav1.GetOptions{})
+	suite.NoError(err)
+	suite.NotNil(returnedPod)
+	suite.Equal(testPodName, returnedPod.Name)
 
 	// Kill pod and verify.
-	err = testManager.KillPod(testPodName)
-	require.NoError(err)
+	err = suite.testManager.KillPod(context.Background(), testPodName)
+	suite.NoError(err)
 
-	returnedPod, err = fakeClient.CoreV1().Pods("default").Get(testPodName, metav1.GetOptions{})
-	require.Error(err)
-	require.Nil(returnedPod)
+	returnedPod, err = suite.
+		testKubeClient.
+		CoreV1().
+		Pods("default").
+		Get(testPodName, metav1.GetOptions{})
+	suite.Error(err)
+	suite.Nil(returnedPod)
 	_, ok := err.(*apierrors.StatusError)
-	require.True(ok)
+	suite.True(ok)
 }
 
-func TestPodEventHandlers(t *testing.T) {
-	require := require.New(t)
-
+func (suite *K8SManagerTestSuite) TestPodEventHandlers() {
 	testPodName := "test_pod"
 	testHostName := "test_host"
-	podEventCh := make(chan *scalar.PodEvent, 1000)
-	hostEventCh := make(chan *scalar.HostEvent, 1000)
-	fakeClient := testclient.NewSimpleClientset()
-	testManager := newK8sManagerWithClient(
-		fakeClient,
-		podEventCh,
-		hostEventCh,
-	)
-	testManager.Start()
 
-	// Add pod via LaunchPod().
+	suite.testManager.Start()
+
+	// Add pod via LaunchPods().
 	testPodSpec := newTestPelotonPodSpec(testPodName)
-	err := testManager.LaunchPod(testPodSpec, testPodName, testHostName)
-	require.NoError(err)
+	err := suite.testManager.LaunchPods(
+		context.Background(),
+		[]*models.LaunchablePod{
+			{PodId: &peloton.PodID{Value: testPodName}, Spec: testPodSpec},
+		},
+		testHostName,
+	)
+	suite.NoError(err)
 
-	evt := <-podEventCh
-	require.Equal(scalar.AddPod, evt.EventType)
-	require.Equal(&peloton.PodID{Value: testPodName}, evt.Event.PodId)
+	evt := <-suite.podEventCh
+	suite.Equal(scalar.AddPod, evt.EventType)
+	suite.Equal(&peloton.PodID{Value: testPodName}, evt.Event.PodId)
 
 	// Update pod with new phase.
-	returnedPod, err := fakeClient.CoreV1().Pods("default").Get(testPodName, metav1.GetOptions{})
-	require.NoError(err)
-	require.NotNil(returnedPod)
-	require.Equal(corev1.PodPhase(""), returnedPod.Status.Phase)
+	returnedPod, err := suite.
+		testKubeClient.
+		CoreV1().
+		Pods("default").
+		Get(testPodName, metav1.GetOptions{})
+	suite.NoError(err)
+	suite.NotNil(returnedPod)
+	suite.Equal(corev1.PodPhase(""), returnedPod.Status.Phase)
 	returnedPod.Status.Phase = corev1.PodRunning
-	_, err = fakeClient.CoreV1().Pods("default").UpdateStatus(returnedPod)
-	require.NoError(err)
+	_, err = suite.testKubeClient.CoreV1().Pods("default").UpdateStatus(returnedPod)
+	suite.NoError(err)
 
-	evt = <-podEventCh
-	require.Equal(scalar.UpdatePod, evt.EventType)
-	require.Equal(&peloton.PodID{Value: testPodName}, evt.Event.PodId)
-	require.Equal(corev1.PodRunning, returnedPod.Status.Phase)
+	evt = <-suite.podEventCh
+	suite.Equal(scalar.UpdatePod, evt.EventType)
+	suite.Equal(&peloton.PodID{Value: testPodName}, evt.Event.PodId)
+	suite.Equal(corev1.PodRunning, returnedPod.Status.Phase)
 
 	// Delete pod via KillPod().
-	err = testManager.KillPod(testPodName)
-	require.NoError(err)
+	err = suite.testManager.KillPod(context.Background(), testPodName)
+	suite.NoError(err)
 
-	evt = <-podEventCh
-	require.Equal(scalar.DeletePod, evt.EventType)
-	require.Equal(&peloton.PodID{Value: testPodName}, evt.Event.PodId)
+	evt = <-suite.podEventCh
+	suite.Equal(scalar.DeletePod, evt.EventType)
+	suite.Equal(&peloton.PodID{Value: testPodName}, evt.Event.PodId)
 
 	// Verify channel is empty.
 	select {
-	case <-podEventCh:
+	case <-suite.podEventCh:
 	default:
 	}
 }
 
-func TestHostEventHandlers(t *testing.T) {
-	require := require.New(t)
-
+func (suite *K8SManagerTestSuite) TestHostEventHandlers() {
 	testHostName := "test_host"
-	podEventCh := make(chan *scalar.PodEvent, 1000)
-	hostEventCh := make(chan *scalar.HostEvent, 1000)
-	fakeClient := testclient.NewSimpleClientset()
-	testManager := newK8sManagerWithClient(
-		fakeClient,
-		podEventCh,
-		hostEventCh,
-	)
-	testManager.Start()
+	suite.testManager.Start()
 
 	// Add host.
 	testNode := newTestK8sNode(testHostName)
-	fakeClient.CoreV1().Nodes().Create(testNode)
+	suite.testKubeClient.CoreV1().Nodes().Create(testNode)
 
-	evt := <-hostEventCh
-	require.Equal(scalar.AddHost, evt.GetEventType())
-	require.Equal(testHostName, evt.GetHostInfo().GetHostName())
+	evt := <-suite.hostEventCh
+	suite.Equal(scalar.AddHost, evt.GetEventType())
+	suite.Equal(testHostName, evt.GetHostInfo().GetHostName())
 
 	// Update host allocatable resource.
-	returnedNode, err := fakeClient.CoreV1().Nodes().Get(testHostName, metav1.GetOptions{})
-	require.NoError(err)
-	require.NotNil(returnedNode)
+	returnedNode, err := suite.testKubeClient.CoreV1().Nodes().Get(testHostName, metav1.GetOptions{})
+	suite.NoError(err)
+	suite.NotNil(returnedNode)
 	returnedNode.Status.Allocatable = corev1.ResourceList{
 		corev1.ResourceCPU:    resource.MustParse("16"),
 		corev1.ResourceMemory: resource.MustParse("96Gi"),
 	}
-	_, err = fakeClient.CoreV1().Nodes().UpdateStatus(returnedNode)
-	require.NoError(err)
+	_, err = suite.testKubeClient.CoreV1().Nodes().UpdateStatus(returnedNode)
+	suite.NoError(err)
 
-	evt = <-hostEventCh
-	require.Equal(scalar.UpdateHostSpec, evt.GetEventType())
-	require.Equal(testHostName, evt.GetHostInfo().GetHostName())
+	evt = <-suite.hostEventCh
+	suite.Equal(scalar.UpdateHostSpec, evt.GetEventType())
+	suite.Equal(testHostName, evt.GetHostInfo().GetHostName())
 
 	// Delete host.
-	err = fakeClient.CoreV1().Nodes().Delete(testHostName, &metav1.DeleteOptions{})
-	require.NoError(err)
+	err = suite.testKubeClient.CoreV1().Nodes().Delete(testHostName, &metav1.DeleteOptions{})
+	suite.NoError(err)
 
-	evt = <-hostEventCh
-	require.Equal(scalar.DeleteHost, evt.GetEventType())
-	require.Equal(testHostName, evt.GetHostInfo().GetHostName())
+	evt = <-suite.hostEventCh
+	suite.Equal(scalar.DeleteHost, evt.GetEventType())
+	suite.Equal(testHostName, evt.GetHostInfo().GetHostName())
 
 	// Verify channel is empty.
 	select {
-	case <-hostEventCh:
+	case <-suite.hostEventCh:
 	default:
 	}
 }

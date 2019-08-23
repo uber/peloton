@@ -235,7 +235,7 @@ func (l *launcher) launchOnK8S(
 		launchablePods = append(launchablePods, &launchablePod)
 	}
 
-	// Launch pod on Hostmgr using v1alpha LaunchPod
+	// Launch pods on Hostmgr using v1alpha LaunchPods
 	ctx, cancel := context.WithTimeout(ctx, _rpcTimeout)
 	defer cancel()
 	var request = &svc.LaunchPodsRequest{

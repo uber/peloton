@@ -89,7 +89,7 @@ func (l *v1LifecycleMgr) Launch(
 		launchablePods = append(launchablePods, &launchablePod)
 	}
 
-	// Launch pod on Hostmgr using v1alpha LaunchPod
+	// Launch pods on Hostmgr using v1alpha LaunchPods
 	ctx, cancel := context.WithTimeout(ctx, _defaultHostmgrAPITimeout)
 	defer cancel()
 	var request = &v1_hostsvc.LaunchPodsRequest{

@@ -24,6 +24,7 @@ import (
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc"
+	"github.com/uber/peloton/pkg/hostmgr/models"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/hostcache"
 	hostcache_mocks "github.com/uber/peloton/pkg/hostmgr/p2k/hostcache/mocks"
 	plugins_mocks "github.com/uber/peloton/pkg/hostmgr/p2k/plugins/mocks"
@@ -31,6 +32,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
@@ -235,14 +237,19 @@ func (suite *HostMgrHandlerTestSuite) TestLaunchPods() {
 		suite.hostCache.EXPECT().
 			CompleteLease(tt.hostname, tt.leaseID.GetValue(), gomock.Any()).
 			Return(nil)
+
+		var launchablePods []*models.LaunchablePod
 		for _, pod := range tt.launchablePods {
-			suite.plugin.EXPECT().
-				LaunchPod(
-					pod.GetSpec(),
-					pod.GetPodId().GetValue(),
-					tt.hostname,
-				).Return(nil)
+			launchablePods = append(launchablePods, &models.LaunchablePod{
+				PodId: pod.GetPodId(),
+				Spec:  pod.GetSpec(),
+			})
 		}
+
+		suite.plugin.
+			EXPECT().
+			LaunchPods(gomock.Any(), launchablePods, tt.hostname).
+			Return(nil)
 
 		resp, err := suite.handler.LaunchPods(rootCtx, req)
 		if tt.errMsg != "" {
@@ -252,6 +259,41 @@ func (suite *HostMgrHandlerTestSuite) TestLaunchPods() {
 		suite.NoError(err, "test case %s", ttName)
 		suite.Equal(&svc.LaunchPodsResponse{}, resp)
 	}
+}
+
+// TestLaunchPods tests LaunchPods API fails due to plugin error
+func (suite *HostMgrHandlerTestSuite) TestLaunchPodsPluginFailure() {
+	defer suite.ctrl.Finish()
+
+	hostname := "host-name"
+	leaseID := &hostmgr.LeaseID{Value: uuid.New()}
+	pods := generateLaunchablePods(10)
+
+	req := &svc.LaunchPodsRequest{
+		LeaseId:  leaseID,
+		Hostname: hostname,
+		Pods:     pods,
+	}
+	suite.hostCache.EXPECT().
+		CompleteLease(hostname, leaseID.GetValue(), gomock.Any()).
+		Return(nil)
+
+	var launchablePods []*models.LaunchablePod
+	for _, pod := range pods {
+		launchablePods = append(launchablePods, &models.LaunchablePod{
+			PodId: pod.GetPodId(),
+			Spec:  pod.GetSpec(),
+		})
+	}
+
+	suite.plugin.
+		EXPECT().
+		LaunchPods(gomock.Any(), launchablePods, hostname).
+		Return(errors.New("test error"))
+
+	resp, err := suite.handler.LaunchPods(rootCtx, req)
+	suite.Error(err)
+	suite.Nil(resp)
 }
 
 func (suite *HostMgrHandlerTestSuite) TestTerminateLease() {

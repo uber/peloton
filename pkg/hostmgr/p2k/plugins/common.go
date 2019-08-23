@@ -17,7 +17,7 @@ package plugins
 import (
 	"context"
 
-	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+	"github.com/uber/peloton/pkg/hostmgr/models"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/plugins/k8s"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 )
@@ -45,13 +45,17 @@ func (p *NoopPlugin) Start() error {
 // Stop the plugin.
 func (p *NoopPlugin) Stop() {}
 
-// LaunchPod launches a pod on a host.
-func (p *NoopPlugin) LaunchPod(podSpec *pbpod.PodSpec, podID, hostname string) error {
+// LaunchPods launch a list of pods on a host.
+func (p *NoopPlugin) LaunchPods(
+	ctx context.Context,
+	pods []*models.LaunchablePod,
+	hostname string,
+) error {
 	return nil
 }
 
 // KillPod kills a pod on a host.
-func (p *NoopPlugin) KillPod(podID string) error {
+func (p *NoopPlugin) KillPod(context context.Context, podID string) error {
 	return nil
 }
 

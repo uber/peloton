@@ -23,6 +23,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc"
 
 	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/hostmgr/models"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/hostcache"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/plugins"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/podeventmanager"
@@ -146,24 +147,22 @@ func (h *ServiceHandler) LaunchPods(
 		"pods":     podToResMap,
 	}).Debug("LaunchPods success")
 
-	// Resource accounting done. Now launch pod.
+	var launchablePods []*models.LaunchablePod
+
 	for _, pod := range req.GetPods() {
-		// Should we check for repeat podID here?
-		if err := h.plugin.LaunchPod(
-			pod.GetSpec(),
-			pod.GetPodId().GetValue(),
-			req.GetHostname(),
-		); err != nil {
-			// For now can we just fail this call and keep the earlier pods
-			// launched. They will generate events which will go to JM, JM can
-			// then decide to issue kills to these orphan pods because it does
-			// not recognize them. The kills will then take care of giving back
-			// resources for these pods. This is inline with how we schedule
-			// pods "at least" and not "exactly" once
-			// TODO: see if you can delete the pods actively here and get their
-			// allocation reduced on hosts upfront
-			return nil, err
-		}
+		launchablePods = append(launchablePods, &models.LaunchablePod{
+			PodId: pod.GetPodId(),
+			Spec:  pod.GetSpec(),
+		})
+	}
+
+	// Should we check for repeat podID here?
+	if err := h.plugin.LaunchPods(
+		ctx,
+		launchablePods,
+		req.GetHostname(),
+	); err != nil {
+		return nil, err
 	}
 
 	return &svc.LaunchPodsResponse{}, nil
@@ -187,7 +186,7 @@ func (h *ServiceHandler) KillPods(
 	}).Debug("KillPods success")
 
 	for _, podID := range req.GetPodIds() {
-		err := h.plugin.KillPod(podID.GetValue())
+		err := h.plugin.KillPod(ctx, podID.GetValue())
 		if err != nil {
 			return nil, err
 		}

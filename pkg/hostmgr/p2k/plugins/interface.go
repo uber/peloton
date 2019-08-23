@@ -17,8 +17,7 @@ package plugins
 import (
 	"context"
 
-	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
-
+	"github.com/uber/peloton/pkg/hostmgr/models"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 )
 
@@ -31,11 +30,11 @@ type Plugin interface {
 	// Stop the plugin.
 	Stop()
 
-	// LaunchPod launches a pod on a host.
-	LaunchPod(podSpec *pbpod.PodSpec, podID, hostname string) error
+	// LaunchPods launch a list of pods on a host.
+	LaunchPods(ctx context.Context, pods []*models.LaunchablePod, hostname string) error
 
 	// KillPod kills a pod on a host.
-	KillPod(podID string) error
+	KillPod(ctx context.Context, podID string) error
 
 	// AckPodEvent is only implemented by mesos plugin. For K8s this is a noop.
 	AckPodEvent(ctx context.Context, event *scalar.PodEvent)

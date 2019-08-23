@@ -20,25 +20,28 @@ import (
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
+	v0peloton "github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"github.com/uber/peloton/pkg/common/api"
+	"github.com/uber/peloton/pkg/hostmgr/factory/task"
 	hostmgrmesos "github.com/uber/peloton/pkg/hostmgr/mesos"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
+	"github.com/uber/peloton/pkg/hostmgr/models"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 	hostmgrscalar "github.com/uber/peloton/pkg/hostmgr/scalar"
 	hmutil "github.com/uber/peloton/pkg/hostmgr/util"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
-)
-
-const (
-	unreservedRole = "*"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 // MesosManager implements the plugin for the Mesos cluster manager.
 type MesosManager struct {
-	// dispatcher for yarpcer
+	// dispatcher for yarpc
 	d *yarpc.Dispatcher
 
 	// Pod events channel.
@@ -48,52 +51,154 @@ type MesosManager struct {
 	hostEventCh chan<- *scalar.HostEvent
 
 	offerManager *offerManager
+
+	frameworkInfoProvider hostmgrmesos.FrameworkInfoProvider
+
+	schedulerClient mpb.SchedulerClient
+
+	metrics *metrics
+
+	once sync.Once
 }
 
 func NewMesosManager(
 	d *yarpc.Dispatcher,
+	frameworkInfoProvider hostmgrmesos.FrameworkInfoProvider,
+	schedulerClient mpb.SchedulerClient,
+	scope tally.Scope,
 	podEventCh chan<- *scalar.PodEvent,
 	hostEventCh chan<- *scalar.HostEvent,
 ) *MesosManager {
 	return &MesosManager{
-		d:            d,
-		podEventCh:   podEventCh,
-		hostEventCh:  hostEventCh,
-		offerManager: &offerManager{offers: make(map[string]*mesosOffers)},
+		d:                     d,
+		metrics:               newMetrics(scope.SubScope("mesos_manager")),
+		frameworkInfoProvider: frameworkInfoProvider,
+		schedulerClient:       schedulerClient,
+		podEventCh:            podEventCh,
+		hostEventCh:           hostEventCh,
+		offerManager:          &offerManager{offers: make(map[string]*mesosOffers)},
+		once:                  sync.Once{},
 	}
 }
 
 // Start the plugin.
-func (m *MesosManager) Start() {
-	procedures := map[sched.Event_Type]interface{}{
-		sched.Event_OFFERS:  m.Offers,
-		sched.Event_RESCIND: m.Rescind,
-	}
+func (m *MesosManager) Start() error {
+	m.once.Do(func() {
+		procedures := map[sched.Event_Type]interface{}{
+			sched.Event_OFFERS:  m.Offers,
+			sched.Event_RESCIND: m.Rescind,
+		}
 
-	for typ, hdl := range procedures {
-		name := typ.String()
-		mpb.Register(m.d, hostmgrmesos.ServiceName, mpb.Procedure(name, hdl))
-	}
+		for typ, hdl := range procedures {
+			name := typ.String()
+			mpb.Register(m.d, hostmgrmesos.ServiceName, mpb.Procedure(name, hdl))
+		}
+	})
+	return nil
 }
 
 // Stop the plugin.
 func (m *MesosManager) Stop() {
 }
 
-// LaunchPod launches a pod on a host.
-func (m *MesosManager) LaunchPod(
-	podSpec *pbpod.PodSpec,
-	podID,
+// LaunchPods launch a list of pods on a host.
+func (m *MesosManager) LaunchPods(
+	ctx context.Context,
+	pods []*models.LaunchablePod,
 	hostname string,
 ) error {
-	// TODO: fill in implementation
-	return nil
+	var offerIds []*mesos.OfferID
+	var mesosResources []*mesos.Resource
+	var mesosTasks []*mesos.TaskInfo
+	var mesosTaskIds []string
+
+	offers := m.offerManager.getOffers(hostname)
+
+	for _, offer := range offers {
+		offerIds = append(offerIds, offer.GetId())
+		mesosResources = append(mesosResources, offer.GetResources()...)
+	}
+
+	if len(offerIds) == 0 {
+		return yarpcerrors.InternalErrorf("no offer found to launch pods on %s", hostname)
+	}
+
+	builder := task.NewBuilder(mesosResources)
+	// assume only one agent on a host,
+	// i.e. agentID is the same for all offers from the same host
+	agentID := offers[offerIds[0].GetValue()].GetAgentId()
+
+	for _, pod := range pods {
+		launchableTask, err := convertPodSpecToLaunchableTask(pod.PodId, pod.Spec)
+		if err != nil {
+			return err
+		}
+
+		mesosTask, err := builder.Build(launchableTask)
+		if err != nil {
+			return err
+		}
+		mesosTask.AgentId = agentID
+		mesosTasks = append(mesosTasks, mesosTask)
+		mesosTaskIds = append(mesosTaskIds, mesosTask.GetTaskId().GetValue())
+	}
+
+	callType := sched.Call_ACCEPT
+	opType := mesos.Offer_Operation_LAUNCH
+	msg := &sched.Call{
+		FrameworkId: m.frameworkInfoProvider.GetFrameworkID(ctx),
+		Type:        &callType,
+		Accept: &sched.Call_Accept{
+			OfferIds: offerIds,
+			Operations: []*mesos.Offer_Operation{
+				{
+					Type: &opType,
+					Launch: &mesos.Offer_Operation_Launch{
+						TaskInfos: mesosTasks,
+					},
+				},
+			},
+		},
+	}
+
+	msid := m.frameworkInfoProvider.GetMesosStreamID(ctx)
+	err := m.schedulerClient.Call(msid, msg)
+
+	if err != nil {
+		m.metrics.LaunchPodFail.Inc(1)
+	} else {
+		// call to mesos is successful,
+		// remove the offers so no new task would be placed
+		m.offerManager.removeOfferForHost(hostname)
+		m.metrics.LaunchPod.Inc(1)
+	}
+
+	return err
 }
 
 // KillPod kills a pod on a host.
-func (m *MesosManager) KillPod(podID string) error {
-	// TODO: fill in implementation
-	return nil
+func (m *MesosManager) KillPod(ctx context.Context, podID string) error {
+	callType := sched.Call_KILL
+	msg := &sched.Call{
+		FrameworkId: m.frameworkInfoProvider.GetFrameworkID(ctx),
+		Type:        &callType,
+		Kill: &sched.Call_Kill{
+			TaskId: &mesos.TaskID{Value: &podID},
+		},
+	}
+
+	err := m.schedulerClient.Call(
+		m.frameworkInfoProvider.GetMesosStreamID(ctx),
+		msg,
+	)
+
+	if err != nil {
+		m.metrics.KillPodFail.Inc(1)
+	} else {
+		m.metrics.KillPod.Inc(1)
+	}
+
+	return err
 }
 
 // AckPodEvent is only implemented by mesos plugin. For K8s this is a noop.
@@ -184,6 +289,28 @@ func (m *offerManager) removeOffer(offerID string) []string {
 	return nil
 }
 
+// getOffers returns offers on a host, result is a map of offerID -> offer
+func (m *offerManager) getOffers(hostname string) map[string]*mesos.Offer {
+	m.RLock()
+	defer m.RUnlock()
+
+	mesosOffers, ok := m.offers[hostname]
+	if !ok {
+		return nil
+	}
+
+	return mesosOffers.unreservedOffers
+}
+
+func (m *offerManager) removeOfferForHost(hostname string) {
+	m.Lock()
+	defer m.Unlock()
+
+	if mesosOffer, ok := m.offers[hostname]; ok {
+		mesosOffer.unreservedOffers = make(map[string]*mesos.Offer)
+	}
+}
+
 func (m *offerManager) getResources(hostname string) *peloton.Resources {
 	m.RLock()
 	defer m.RUnlock()
@@ -200,4 +327,19 @@ func (m *offerManager) getResources(hostname string) *peloton.Resources {
 		DiskMb: resources.GetDisk(),
 		Gpu:    resources.GetGPU(),
 	}
+}
+
+func convertPodSpecToLaunchableTask(id *peloton.PodID, spec *pbpod.PodSpec) (*hostsvc.LaunchableTask, error) {
+	config, err := api.ConvertPodSpecToTaskConfig(spec)
+	if err != nil {
+		return nil, err
+	}
+
+	taskId := id.GetValue()
+	return &hostsvc.LaunchableTask{
+		// TODO: handle dynamic ports
+		TaskId: &mesos.TaskID{Value: &taskId},
+		Config: config,
+		Id:     &v0peloton.TaskID{Value: spec.GetPodName().GetValue()},
+	}, nil
 }

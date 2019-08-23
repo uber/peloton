@@ -18,10 +18,9 @@ import (
 	"context"
 	"fmt"
 
-	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
-
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/lifecycle"
+	"github.com/uber/peloton/pkg/hostmgr/models"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 
 	log "github.com/sirupsen/logrus"
@@ -308,34 +307,49 @@ func (k *K8SManager) deletePod(obj interface{}) {
 
 // K8S API calls.
 
-// LaunchPod creates a pod object, binds it to the node specified by hostname.
-func (k *K8SManager) LaunchPod(
-	podSpec *pbpod.PodSpec,
-	podID, hostname string,
+// LaunchPods creates a slice of pod objects, binds them to the node specified by hostname.
+func (k *K8SManager) LaunchPods(
+	ctx context.Context,
+	pods []*models.LaunchablePod,
+	hostname string,
 ) error {
-	// Convert v1alpha podSpec to k8s podSpec.
-	pod := toK8SPodSpec(podSpec)
+	for _, lp := range pods {
+		// Convert v1alpha podSpec to k8s podSpec.
+		pod := toK8SPodSpec(lp.Spec)
 
-	pod.Spec.SchedulerName = common.PelotonRole
+		pod.Spec.SchedulerName = common.PelotonRole
 
-	// Bind the pod to the host.
-	pod.Spec.NodeName = hostname
+		// Bind the pod to the host.
+		pod.Spec.NodeName = hostname
 
-	// Overload pod.Name as pod ID. This needs to be done because jobmgr will
-	// create a podID for its tracking purposes and store it as the key for
-	// pod_runtime/task_runtime table. We need to associate that ID to the
-	// pod in etcd. The best place to do this seems pod.Name.
-	// Note that the UID in the object metadata associated with this pod is
-	// system generated and is read only, so we cannot set it here.
-	pod.Name = podID
+		// Overload pod.Name as pod ID. This needs to be done because jobmgr will
+		// create a podID for its tracking purposes and store it as the key for
+		// pod_runtime/task_runtime table. We need to associate that ID to the
+		// pod in etcd. The best place to do this seems pod.Name.
+		// Note that the UID in the object metadata associated with this pod is
+		// system generated and is read only, so we cannot set it here.
+		pod.Name = lp.PodId.GetValue()
 
-	// Create the pod
-	_, err := k.kubeClient.CoreV1().Pods("default").Create(pod)
-	return err
+		// Create the pod
+		_, err := k.kubeClient.CoreV1().Pods("default").Create(pod)
+		if err != nil {
+			// For now can we just fail this call and keep the earlier pods
+			// launched. They will generate events which will go to JM, JM can
+			// then decide to issue kills to these orphan pods because it does
+			// not recognize them. The kills will then take care of giving back
+			// resources for these pods. This is inline with how we schedule
+			// pods "at least" and not "exactly" once
+			// TODO: see if you can delete the pods actively here and get their
+			// allocation reduced on hosts upfront
+			return err
+		}
+	}
+
+	return nil
 }
 
 // KillPod stops and deletes the given pod
-func (k *K8SManager) KillPod(podID string) error {
+func (k *K8SManager) KillPod(ctx context.Context, podID string) error {
 	// There is no concept of "stopping" a pod in kubernetes (so nothing like
 	// mesos Task Kill exists). So we need to treat this pod like a REST object
 	// and just delete it from the API server. Special considerations need to be
