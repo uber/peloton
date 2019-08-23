@@ -35,8 +35,6 @@ health:
 
 storage:
   cassandra:
-    # FIXME: need to increase batch size limit dynamically in cassandra (T968823)
-    max_batch_size_rows: 1
     max_parallel_batches: 1000
     max_updates_job: 10
     connection:

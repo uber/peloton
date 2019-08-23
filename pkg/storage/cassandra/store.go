@@ -111,10 +111,6 @@ type Config struct {
 	CassandraConn *impl.CassandraConn `yaml:"connection"`
 	StoreName     string              `yaml:"store_name"`
 	Migrations    string              `yaml:"migrations"`
-	// MaxBatchSize makes sure we avoid batching too many statements and avoid
-	// http://docs.datastax.com/en/archived/cassandra/3.x/cassandra/configuration/configCassandra_yaml.html#configCassandra_yaml__batch_size_fail_threshold_in_kb
-	// This value is the number of records that are included in a single transaction/commit RPC request
-	MaxBatchSize int `yaml:"max_batch_size_rows"`
 	// MaxParallelBatches controls the maximum number of go routines run to create tasks
 	MaxParallelBatches int `yaml:"max_parallel_batches"`
 	// MaxUpdatesPerJob controls the maximum number of
