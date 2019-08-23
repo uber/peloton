@@ -37,7 +37,7 @@ var (
 	_defaultResourceValue = 1
 )
 
-type HostMapTestSuite struct {
+type hostMapTestSuite struct {
 	suite.Suite
 
 	ctrl           *gomock.Controller
@@ -45,7 +45,7 @@ type HostMapTestSuite struct {
 	operatorClient *mock_mpb.MockMasterOperatorClient
 }
 
-func (suite *HostMapTestSuite) SetupTest() {
+func (suite *hostMapTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.testScope = tally.NewTestScope("", map[string]string{})
 	suite.operatorClient = mock_mpb.NewMockMasterOperatorClient(suite.ctrl)
@@ -86,6 +86,15 @@ func makeAgentsResponse(numAgents int) *mesos_master.Response_GetAgents {
 				WithRevocable(&mesos.Resource_RevocableInfo{}).
 				Build(),
 		}
+
+		for _, r := range resources {
+			r.Reservations = []*mesos.Resource_ReservationInfo{
+				{
+					Role: &[]string{pelotonAgentRole}[0],
+				},
+			}
+		}
+
 		getAgent := &mesos_master.Response_GetAgents_Agent{
 			AgentInfo: &mesos.AgentInfo{
 				Hostname:  &tmpID,
@@ -99,7 +108,7 @@ func makeAgentsResponse(numAgents int) *mesos_master.Response_GetAgents {
 	return response
 }
 
-func (suite *HostMapTestSuite) TestRefresh() {
+func (suite *hostMapTestSuite) TestRefresh() {
 	defer suite.ctrl.Finish()
 
 	mockMaintenanceMap := hm.NewMockMaintenanceHostInfoMap(suite.ctrl)
@@ -163,7 +172,7 @@ func (suite *HostMapTestSuite) TestRefresh() {
 	suite.Equal(float64(numRegisteredAgents*_defaultResourceValue), gauges["gpus+"].Value())
 }
 
-func (suite *HostMapTestSuite) TestMaintenanceHostInfoMap() {
+func (suite *hostMapTestSuite) TestMaintenanceHostInfoMap() {
 	maintenanceHostInfoMap := NewMaintenanceHostInfoMap(tally.NoopScope)
 	suite.NotNil(maintenanceHostInfoMap)
 
@@ -313,21 +322,6 @@ func (suite *HostMapTestSuite) TestMaintenanceHostInfoMap() {
 	suite.Empty(maintenanceHostInfoMap.GetDrainingHostInfos([]string{}))
 }
 
-// TestIsHostUp tests IsHostUp()
-func (suite *HostMapTestSuite) TestIsHostUp() {
-	loader := &Loader{
-		OperatorClient:         suite.operatorClient,
-		Scope:                  suite.testScope,
-		SlackResourceTypes:     []string{common.MesosCPU},
-		MaintenanceHostInfoMap: NewMaintenanceHostInfoMap(tally.NoopScope),
-	}
-	// Mock 1 host `id-0` as an Up registered agent
-	suite.operatorClient.EXPECT().Agents().Return(makeAgentsResponse(1), nil)
-	loader.Load(nil)
-	suite.True(IsHostUp("id-0"))
-	suite.False(IsHostUp("testfalse"))
-}
-
 func TestHostMapTestSuite(t *testing.T) {
-	suite.Run(t, new(HostMapTestSuite))
+	suite.Run(t, new(hostMapTestSuite))
 }

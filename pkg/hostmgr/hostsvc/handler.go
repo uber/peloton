@@ -146,7 +146,7 @@ func (m *serviceHandler) StartMaintenance(
 	}
 	// StartMaintenanceRequest using prefered field `hostname`
 	if err := m.startMaintenance(ctx, request.GetHostname()); err != nil {
-		if yarpcerrors.IsYARPCError(err) {
+		if yarpcerrors.IsStatus(err) {
 			// Allow YARPC NotFound error to be returned as such
 			return nil, err
 		}

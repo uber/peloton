@@ -62,6 +62,7 @@ type Drainer interface {
 // the hosts which are to be put into maintenance
 type drainer struct {
 	drainerPeriod          time.Duration
+	pelotonAgentRole       string
 	masterOperatorClient   mpb.MasterOperatorClient
 	maintenanceQueue       queue.MaintenanceQueue
 	lifecycle              lifecycle.LifeCycle // lifecycle manager
@@ -71,12 +72,14 @@ type drainer struct {
 // NewDrainer creates a new host drainer
 func NewDrainer(
 	drainerPeriod time.Duration,
+	pelotonAgentRole string,
 	masterOperatorClient mpb.MasterOperatorClient,
 	maintenanceQueue queue.MaintenanceQueue,
 	hostInfoMap MaintenanceHostInfoMap,
 ) Drainer {
 	return &drainer{
 		drainerPeriod:          drainerPeriod,
+		pelotonAgentRole:       pelotonAgentRole,
 		masterOperatorClient:   masterOperatorClient,
 		maintenanceQueue:       maintenanceQueue,
 		lifecycle:              lifecycle.NewLifeCycle(),
@@ -172,9 +175,8 @@ func (d *drainer) StartMaintenance(
 	ctx context.Context,
 	hostname string,
 ) error {
-	// Validate requested host is registered in UP state
-	if !IsHostUp(hostname) {
-		return yarpcerrors.NotFoundErrorf("Host is not registered as an UP agent")
+	if !d.isPelotonAgent(hostname) {
+		return yarpcerrors.AbortedErrorf("host is not a Peloton agent")
 	}
 
 	machineID, err := buildMachineIDForHost(hostname)
@@ -270,6 +272,31 @@ func (d *drainer) GetDrainingHostInfos(hostFilter []string) []*pbhost.HostInfo {
 // If the hostFilter is empty then HostInfos of all DOWN hosts is returned
 func (d *drainer) GetDownHostInfos(hostFilter []string) []*pbhost.HostInfo {
 	return d.maintenanceHostInfoMap.GetDownHostInfos(hostFilter)
+}
+
+// isPelotonAgent returns true if the host is registered as Peloton agent
+func (d *drainer) isPelotonAgent(hostname string) bool {
+	agentInfo := GetAgentInfo(hostname)
+	if agentInfo == nil {
+		return false
+	}
+
+	// For Peloton agents, AgentInfo->Resources->Reservations->Role would be set
+	// to Peloton role because of how agents are configured
+	// (check mesos.framework in /config/hostmgr/base.yaml)
+	for _, r := range agentInfo.GetResources() {
+		reservations := r.GetReservations()
+		// look at the latest(active) reservation info and check if the
+		// agent is registered to peloton framework. This check is necessary
+		// to ensure Peloton does not put into maintenance a host which
+		// it does not manage.
+		if len(reservations) > 0 &&
+			reservations[len(reservations)-1].GetRole() == d.pelotonAgentRole {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Build machine ID for a specified host

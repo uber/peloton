@@ -726,6 +726,7 @@ func main() {
 
 	drainer := host.NewDrainer(
 		cfg.HostManager.HostDrainerPeriod,
+		cfg.Mesos.Framework.Role,
 		masterOperatorClient,
 		maintenanceQueue,
 		maintenanceHostInfoMap,

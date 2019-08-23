@@ -155,20 +155,6 @@ func getResourcesByType(
 	})
 }
 
-// IsHostUp returns whether the host is registered as an UP agent
-func IsHostUp(hostname string) bool {
-	agentMap := GetAgentMap()
-	if agentMap == nil || len(agentMap.RegisteredAgents) == 0 {
-		return false
-	}
-	for _, agent := range agentMap.RegisteredAgents {
-		if hostname == agent.GetAgentInfo().GetHostname() {
-			return true
-		}
-	}
-	return false
-}
-
 // MaintenanceHostInfoMap defines an interface of a map of
 // HostInfos of hosts in maintenance
 // TODO: remove this once GetAgents Response has maintenance state of the agents

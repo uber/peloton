@@ -37,7 +37,7 @@ import (
 	"github.com/uber-go/tally"
 )
 
-type HostSvcHandlerTestSuite struct {
+type hostSvcHandlerTestSuite struct {
 	suite.Suite
 
 	ctx                      context.Context
@@ -55,7 +55,7 @@ type HostSvcHandlerTestSuite struct {
 	mockHostPoolManager      *hpm_mock.MockHostPoolManager
 }
 
-func (suite *HostSvcHandlerTestSuite) SetupSuite() {
+func (suite *hostSvcHandlerTestSuite) SetupSuite() {
 	suite.handler = &serviceHandler{
 		metrics: NewMetrics(tally.NoopScope),
 	}
@@ -85,7 +85,7 @@ func (suite *HostSvcHandlerTestSuite) SetupSuite() {
 	suite.drainingMachines = append(suite.drainingMachines, suite.drainingMachine)
 }
 
-func (suite *HostSvcHandlerTestSuite) SetupTest() {
+func (suite *hostSvcHandlerTestSuite) SetupTest() {
 	suite.mockCtrl = gomock.NewController(suite.T())
 	suite.ctx = context.Background()
 	suite.mockMasterOperatorClient = ym.NewMockMasterOperatorClient(suite.mockCtrl)
@@ -111,7 +111,7 @@ func (suite *HostSvcHandlerTestSuite) SetupTest() {
 	loader.Load(nil)
 }
 
-func (suite *HostSvcHandlerTestSuite) makeAgentsResponse() *mesosmaster.Response_GetAgents {
+func (suite *hostSvcHandlerTestSuite) makeAgentsResponse() *mesosmaster.Response_GetAgents {
 	response := &mesosmaster.Response_GetAgents{
 		Agents: []*mesosmaster.Response_GetAgents_Agent{},
 	}
@@ -140,15 +140,15 @@ func (suite *HostSvcHandlerTestSuite) makeAgentsResponse() *mesosmaster.Response
 }
 
 func TestHostSvcHandler(t *testing.T) {
-	suite.Run(t, new(HostSvcHandlerTestSuite))
+	suite.Run(t, new(hostSvcHandlerTestSuite))
 }
 
-func (suite *HostSvcHandlerTestSuite) TearDownTest() {
-	log.Info("tearing down HostSvcHandlerTestSuite")
+func (suite *hostSvcHandlerTestSuite) TearDownTest() {
+	log.Info("tearing down hostSvcHandlerTestSuite")
 	suite.mockCtrl.Finish()
 }
 
-func (suite *HostSvcHandlerTestSuite) TestStartMaintenance() {
+func (suite *hostSvcHandlerTestSuite) TestStartMaintenance() {
 	hostname := "host1"
 	suite.mockDrainer.EXPECT().StartMaintenance(gomock.Any(), hostname).Return(nil)
 	resp, err := suite.handler.StartMaintenance(
@@ -174,7 +174,7 @@ func (suite *HostSvcHandlerTestSuite) TestStartMaintenance() {
 	suite.Nil(resp)
 }
 
-func (suite *HostSvcHandlerTestSuite) TestCompleteMaintenance() {
+func (suite *hostSvcHandlerTestSuite) TestCompleteMaintenance() {
 	hostname := "host1"
 	suite.mockDrainer.EXPECT().CompleteMaintenance(gomock.Any(), hostname).Return(nil)
 	resp, err := suite.handler.CompleteMaintenance(
@@ -189,7 +189,7 @@ func (suite *HostSvcHandlerTestSuite) TestCompleteMaintenance() {
 
 	hostname = "host2"
 	suite.mockDrainer.EXPECT().CompleteMaintenance(gomock.Any(), hostname).
-		Return(fmt.Errorf("sonmething went wrong"))
+		Return(fmt.Errorf("something went wrong"))
 	resp, err = suite.handler.CompleteMaintenance(
 		suite.ctx,
 		&svcpb.CompleteMaintenanceRequest{
@@ -200,7 +200,7 @@ func (suite *HostSvcHandlerTestSuite) TestCompleteMaintenance() {
 	suite.Nil(resp)
 }
 
-func (suite *HostSvcHandlerTestSuite) TestQueryHosts() {
+func (suite *hostSvcHandlerTestSuite) TestQueryHosts() {
 	var (
 		hostInfos         []*hpb.HostInfo
 		drainingHostInfos []*hpb.HostInfo
@@ -310,7 +310,7 @@ func (suite *HostSvcHandlerTestSuite) TestQueryHosts() {
 	}
 }
 
-func (suite *HostSvcHandlerTestSuite) TestQueryHostsError() {
+func (suite *hostSvcHandlerTestSuite) TestQueryHostsError() {
 	// Test ExtractIPFromMesosAgentPID error
 	hostname := "testhost"
 	pid := "invalidPID"
@@ -357,7 +357,7 @@ func (suite *HostSvcHandlerTestSuite) TestQueryHostsError() {
 
 // TestHostPoolsNotEnabled exercises the host-pools APIs when
 // host-pool is disabled
-func (suite *HostSvcHandlerTestSuite) TestHostPoolsNotEnabled() {
+func (suite *hostSvcHandlerTestSuite) TestHostPoolsNotEnabled() {
 	suite.handler.hostPoolManager = nil
 
 	_, err := suite.handler.ListHostPools(
@@ -386,7 +386,7 @@ func (suite *HostSvcHandlerTestSuite) TestHostPoolsNotEnabled() {
 }
 
 // TestListHostPools tests ListHostPools API method
-func (suite *HostSvcHandlerTestSuite) TestListHostPools() {
+func (suite *hostSvcHandlerTestSuite) TestListHostPools() {
 	scope := tally.NoopScope
 	pool1 := hostpool.New("pool1", scope)
 	pool1.Add("h1")
@@ -422,7 +422,7 @@ func (suite *HostSvcHandlerTestSuite) TestListHostPools() {
 }
 
 // TestCreateHostPools tests CreateHostPools API method
-func (suite *HostSvcHandlerTestSuite) TestCreateHostPool() {
+func (suite *hostSvcHandlerTestSuite) TestCreateHostPool() {
 
 	// success case
 	suite.mockHostPoolManager.EXPECT().GetPool("new-pool").
@@ -454,7 +454,7 @@ func (suite *HostSvcHandlerTestSuite) TestCreateHostPool() {
 }
 
 // TestDeleteHostPools tests DeleteHostPools API method
-func (suite *HostSvcHandlerTestSuite) TestDeleteHostPool() {
+func (suite *hostSvcHandlerTestSuite) TestDeleteHostPool() {
 
 	// success case
 	suite.mockHostPoolManager.EXPECT().GetPool("old-pool").
@@ -486,7 +486,7 @@ func (suite *HostSvcHandlerTestSuite) TestDeleteHostPool() {
 }
 
 // TestChangeHostPools tests ChangeHostPools API method
-func (suite *HostSvcHandlerTestSuite) TestChangeHostPool() {
+func (suite *hostSvcHandlerTestSuite) TestChangeHostPool() {
 	// success case
 	suite.mockHostPoolManager.EXPECT().
 		ChangeHostPool("h1", "p1", "p2").
