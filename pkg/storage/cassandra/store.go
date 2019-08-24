@@ -106,18 +106,6 @@ const (
 	_jobUpdatesCleanupTimeout = 120 * time.Second
 )
 
-// Config is the config for cassandra Store
-type Config struct {
-	CassandraConn *impl.CassandraConn `yaml:"connection"`
-	StoreName     string              `yaml:"store_name"`
-	Migrations    string              `yaml:"migrations"`
-	// MaxParallelBatches controls the maximum number of go routines run to create tasks
-	MaxParallelBatches int `yaml:"max_parallel_batches"`
-	// MaxUpdatesPerJob controls the maximum number of
-	// updates per job kept in the database
-	MaxUpdatesPerJob int `yaml:"max_updates_job"`
-}
-
 // GenerateTestCassandraConfig generates a test config for local C* client
 // This is meant for sharing testing code only, not for production
 func GenerateTestCassandraConfig() *Config {
@@ -130,6 +118,15 @@ func GenerateTestCassandraConfig() *Config {
 		},
 		StoreName:  "peloton_test",
 		Migrations: "migrations",
+		Replication: &Replication{
+			Strategy: "SimpleStrategy",
+			Replicas: []*Replica{
+				{
+					Name:  "replication_factor",
+					Value: 1,
+				},
+			},
+		},
 	}
 }
 

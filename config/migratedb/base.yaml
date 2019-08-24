@@ -1,0 +1,24 @@
+storage:
+  cassandra:
+    # FIXME: need to increase batch size limit dynamically in cassandra (T968823)
+    max_batch_size_rows: 1
+    max_parallel_batches: 1000
+    max_updates_job: 10
+    connection:
+      contactPoints: ["127.0.0.1"]
+      port: 9042
+      consistency: LOCAL_QUORUM
+      serialConsistency: LOCAL_SERIAL
+      hostPolicy: TokenAwareHostPolicy
+      # Need to increase timeout from 10s to 20s to avoid recovery code from timing out
+      # We saw recovery code timing out when peloton was recovering from a
+      # Cassandra latency spike issue.
+      timeout: 20s
+    store_name: peloton_test
+    replication:
+      strategy: SimpleStrategy
+      replicas:
+      - name: replication_factor
+        value: 3
+    migrations: pkg/storage/cassandra/migrations/
+  use_cassandra: true

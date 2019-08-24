@@ -22,6 +22,11 @@ fi
 
 if [[ $app == "client" ]] ; then
     exec peloton "$@"
+elif [[ $app == "migratedb" ]] ; then
+    exec migratedb \
+        -c "${cfgdir}/${apptype}/base.yaml" \
+        -c "${cfgdir}/${apptype}/${env}.yaml" \
+	    "$@"
 elif [ ! -z "$secretcfgdir" ]; then
     exec "peloton-${app}" \
         -c "${cfgdir}/${apptype}/base.yaml" \

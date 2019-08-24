@@ -59,6 +59,32 @@ func CreateStore(storeConfig *CassandraConn, keySpace string, scope tally.Scope)
 	return &cb, nil
 }
 
+// CreateStoreSession is to create clusters and connections
+func CreateStoreSession(
+	storeConfig *CassandraConn, keySpace string) (*gocql.Session, error) {
+	cluster := newCluster(storeConfig)
+	cluster.Keyspace = keySpace
+
+	if len(storeConfig.Username) != 0 {
+		cluster.Authenticator = gocql.PasswordAuthenticator{
+			Username: storeConfig.Username,
+			Password: storeConfig.Password,
+		}
+	}
+
+	cSession, err := cluster.CreateSession()
+	if err != nil {
+		log.WithError(err).Error("Fail to create C* session")
+		return nil, err
+	}
+
+	log.WithFields(log.Fields{
+		"key_space":      keySpace,
+		"cassandra_port": storeConfig.Port,
+	}).Info("C* Session Created.")
+	return cSession, nil
+}
+
 const (
 	defaultConnectionsPerHost = 3
 	// defaultTimeout is overwritten by timeout provided

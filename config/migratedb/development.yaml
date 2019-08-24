@@ -1,0 +1,10 @@
+logging:
+  level: info
+
+metrics:
+  multi_reporter: true
+  prometheus:
+    enable: true
+
+storage:
+  use_cassandra: true

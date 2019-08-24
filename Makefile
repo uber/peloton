@@ -1,7 +1,7 @@
 .PHONY: all apiproxy placement install cli test unit_test cover lint clean \
 	hostmgr jobmgr resmgr docker version debs docker-push \
 	test-containers archiver failure-test-minicluster \
-	failure-test-vcluster aurorabridge docs
+	failure-test-vcluster aurorabridge docs migratedb
 
 .DEFAULT_GOAL := all
 
@@ -49,7 +49,7 @@ endif
 
 .PRECIOUS: $(GENS) $(LOCAL_MOCKS) $(VENDOR_MOCKS) mockgens
 
-all: gens placement cli hostmgr resmgr jobmgr archiver aurorabridge apiproxy
+all: gens placement cli hostmgr resmgr jobmgr archiver aurorabridge apiproxy migratedb
 
 cli:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton cmd/cli/*.go
@@ -74,6 +74,9 @@ aurorabridge:
 
 apiproxy:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-apiproxy cmd/apiproxy/*.go
+
+migratedb:
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/migratedb cmd/migratedb/*.go
 
 # Use the same version of mockgen in unit tests as in mock generation
 build-mockgen:

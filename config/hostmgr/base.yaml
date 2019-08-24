@@ -15,7 +15,7 @@ storage:
     store_name: peloton_test
     migrations: pkg/storage/cassandra/migrations/
   use_cassandra: true
-  auto_migrate: true
+  auto_migrate: false
 
 host_manager:
   http_port: 5291
