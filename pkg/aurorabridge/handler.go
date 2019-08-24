@@ -40,7 +40,9 @@ import (
 	"github.com/uber/peloton/pkg/aurorabridge/ptoa"
 	"github.com/uber/peloton/pkg/common/concurrency"
 	"github.com/uber/peloton/pkg/common/util"
+	versionutil "github.com/uber/peloton/pkg/common/util/entityversion"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
@@ -1599,7 +1601,7 @@ func (h *ServiceHandler) rollbackJobUpdate(
 		return nil, auroraErrorf("get job id: %s", err)
 	}
 
-	j, w, err := h.getJobAndWorkflow(ctx, id)
+	j, jobSpec, w, err := h.getJobAndWorkflow(ctx, id)
 	if err != nil {
 		return nil, auroraErrorf("get job: %s", err)
 	}
@@ -1631,9 +1633,27 @@ func (h *ServiceHandler) rollbackJobUpdate(
 		return nil, auroraErrorf("serialize opaque data: %s", err)
 	}
 
-	prevJob, err := h.getFullJobInfoByVersion(ctx, id, w.GetStatus().GetPrevVersion())
+	prevVersion := w.GetStatus().GetPrevVersion()
+	prevConfigVersion, _, _, err := versionutil.ParseJobEntityVersion(prevVersion)
 	if err != nil {
-		return nil, auroraErrorf("get previous job: %s", err)
+		return nil, auroraErrorf("parse previous job entity version: %s", err)
+	}
+
+	var prevSpec *stateless.JobSpec
+	if prevConfigVersion == 0 {
+		// First deployment, no previous version config, use current spec
+		// so that we can still get a valid spec on read path
+		prevSpec = proto.Clone(jobSpec).(*stateless.JobSpec)
+		// Set instance count to 0, so the rollback would bring existing
+		// instances down
+		prevSpec.InstanceCount = 0
+	} else {
+		prevJob, err := h.getFullJobInfoByVersion(ctx, id, prevVersion)
+		if err != nil {
+			return nil, auroraErrorf("get previous job: %s", err)
+		}
+
+		prevSpec = prevJob.GetSpec()
 	}
 
 	updateSpec := w.GetUpdateSpec()
@@ -1646,7 +1666,7 @@ func (h *ServiceHandler) rollbackJobUpdate(
 	req := &statelesssvc.ReplaceJobRequest{
 		JobId:   id,
 		Version: j.GetVersion(),
-		Spec:    prevJob.GetSpec(),
+		Spec:    prevSpec,
 		//Secrets: nil,
 		UpdateSpec: updateSpec,
 		OpaqueData: od,
@@ -1726,7 +1746,7 @@ func (h *ServiceHandler) pulseJobUpdate(
 		return nil, aerr
 	}
 
-	j, w, err := h.getJobAndWorkflow(ctx, id)
+	j, _, w, err := h.getJobAndWorkflow(ctx, id)
 	if err != nil {
 		return nil, auroraErrorf("get job status: %s", err)
 	}
@@ -2147,7 +2167,7 @@ func (h *ServiceHandler) matchJobUpdateID(
 	updateID string,
 ) (*peloton.EntityVersion, *auroraError) {
 
-	j, w, err := h.getJobAndWorkflow(ctx, jobID)
+	j, _, w, err := h.getJobAndWorkflow(ctx, jobID)
 	if err != nil {
 		return nil, auroraErrorf("get job status: %s", err)
 	}
@@ -2213,13 +2233,13 @@ func (h *ServiceHandler) getJobInfoSummary(
 func (h *ServiceHandler) getJobAndWorkflow(
 	ctx context.Context,
 	id *peloton.JobID,
-) (*stateless.JobStatus, *stateless.WorkflowInfo, error) {
+) (*stateless.JobStatus, *stateless.JobSpec, *stateless.WorkflowInfo, error) {
 
 	resp, err := h.jobClient.GetJob(ctx, &statelesssvc.GetJobRequest{JobId: id})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return resp.GetJobInfo().GetStatus(), resp.GetWorkflowInfo(), nil
+	return resp.GetJobInfo().GetStatus(), resp.GetJobInfo().GetSpec(), resp.GetWorkflowInfo(), nil
 }
 
 // queryPods calls jobmgr to query a list of PodInfo based on input JobID.

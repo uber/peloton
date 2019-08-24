@@ -142,6 +142,33 @@ def wait_for_running(client, job_key):
     )
 
 
+def wait_for_failed(client, job_key, instances=None):
+    """Wait for certain tasks in a specific job to be in "FAILED" state,
+    triggers assertion failure if timed out.
+
+    Args:
+        client: aurora client object
+        job_key: aurora JobKey struct specifying the job to wait for
+        instances: a list of instance ids to wait for, wait for all instances
+            passed as None
+    """
+    wait_for_task_status(
+        client,
+        job_key,
+        set(
+            [
+                api.ScheduleStatus.INIT,
+                api.ScheduleStatus.PENDING,
+                api.ScheduleStatus.ASSIGNED,
+                api.ScheduleStatus.STARTING,
+                api.ScheduleStatus.RUNNING,
+            ]
+        ),
+        api.ScheduleStatus.FAILED,
+        instances=instances,
+    )
+
+
 def wait_for_killed(client, job_key, instances=None):
     """Wait for all tasks in a specific job to be in "KILLED" state, triggers
     assertion failure if timed out.

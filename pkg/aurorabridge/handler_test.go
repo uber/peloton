@@ -2344,6 +2344,89 @@ func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_Success() {
 	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
 }
 
+// Ensures that RollbackJobUpdate calls ReplaceJob using the current job spec
+// but instance count set to 0 when RollbackJobUpdate is called on the very
+// first deployment
+func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_FirstDeployment_Success() {
+	defer goleak.VerifyNoLeaks(suite.T())
+
+	k := fixture.AuroraJobUpdateKey()
+	id := fixture.PelotonJobID()
+
+	prevVersion := fixture.PelotonEntityVersion(0, 1, 1)
+	curVersion := fixture.PelotonEntityVersion(1, 1, 1)
+
+	updateSpec := &stateless.UpdateSpec{
+		BatchSize:         1,
+		StartPaused:       true,
+		RollbackOnFailure: true,
+		InPlace:           true,
+	}
+
+	spec := &stateless.JobSpec{
+		Name:          atop.NewJobName(k.GetJob()),
+		Description:   "the current job spec",
+		InstanceCount: 5,
+	}
+	prevSpec := &stateless.JobSpec{
+		Name:          atop.NewJobName(k.GetJob()),
+		Description:   "the current job spec",
+		InstanceCount: 0,
+	}
+
+	d := &opaquedata.Data{UpdateID: k.GetID()}
+
+	curOD, err := d.Serialize()
+	suite.NoError(err)
+
+	d.AppendUpdateAction(opaquedata.Rollback)
+
+	newOD, err := d.Serialize()
+	suite.NoError(err)
+
+	suite.expectGetJobIDFromJobName(k.GetJob(), id)
+
+	suite.jobClient.EXPECT().
+		GetJob(gomock.Any(), &statelesssvc.GetJobRequest{
+			JobId: id,
+		}).
+		Return(&statelesssvc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: spec,
+				Status: &stateless.JobStatus{
+					Version: curVersion,
+				},
+			},
+			WorkflowInfo: &stateless.WorkflowInfo{
+				OpaqueData: curOD,
+				Status: &stateless.WorkflowStatus{
+					State:       stateless.WorkflowState_WORKFLOW_STATE_ROLLING_FORWARD,
+					PrevVersion: prevVersion,
+				},
+				UpdateSpec: updateSpec,
+			},
+		}, nil)
+
+	suite.jobClient.EXPECT().
+		ReplaceJob(gomock.Any(), &statelesssvc.ReplaceJobRequest{
+			JobId:   id,
+			Version: curVersion,
+			Spec:    prevSpec,
+			UpdateSpec: &stateless.UpdateSpec{
+				BatchSize:         1,
+				StartPaused:       false,
+				RollbackOnFailure: false,
+				InPlace:           true,
+			},
+			OpaqueData: newOD,
+		}).
+		Return(&statelesssvc.ReplaceJobResponse{}, nil)
+
+	resp, err := suite.handler.RollbackJobUpdate(suite.ctx, k, nil)
+	suite.NoError(err)
+	suite.Equal(api.ResponseCodeOk, resp.GetResponseCode())
+}
+
 // Ensures RollbackJobUpdate returns INVALID_REQUEST if the update id does not
 // match the current workflow.
 func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_InvalidUpdateID() {

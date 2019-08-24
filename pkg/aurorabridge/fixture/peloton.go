@@ -31,9 +31,23 @@ import (
 )
 
 // PelotonEntityVersion returns a random EntityVersion.
-func PelotonEntityVersion() *peloton.EntityVersion {
+func PelotonEntityVersion(vs ...int) *peloton.EntityVersion {
+	entityVersion := make([]int, 3)
+	for i := range entityVersion {
+		if i < len(vs) {
+			entityVersion[i] = vs[i]
+			continue
+		}
+		entityVersion[i] = rand.Intn(10)
+	}
+
 	return &peloton.EntityVersion{
-		Value: fmt.Sprintf("version-%s", randutil.Text(8)),
+		Value: fmt.Sprintf(
+			"%d-%d-%d",
+			entityVersion[0],
+			entityVersion[1],
+			entityVersion[2],
+		),
 	}
 }
 

@@ -9,6 +9,7 @@ from tests.integration.aurorabridge_test.util import (
     wait_for_rolled_back,
     wait_for_rolled_forward,
     wait_for_update_status,
+    wait_for_failed,
     verify_events_sorted,
     verify_first_and_last_job_update_status,
     verify_task_config,
@@ -169,6 +170,49 @@ def test__simple_manual_rollback(client):
         job_key,
         {"test_key_1": "test_value_1", "test_key_2": "test_value_2"},
     )  # rolled back to previous task config
+
+
+def test__job_create_fail_manual_rollback(client):
+    """
+    Start a failed job update, while half-way in the update,
+    trigger a manual rollback
+    """
+    res = client.start_job_update(
+        get_job_update_request("test_dc_labrat_large_job_bad_config.yaml"),
+        "start job update test/dc/labrat_large_job (failed)",
+    )
+    job_update_key = res.key
+    job_key = res.key.job
+
+    # wait for the first instance starting
+    time.sleep(5)
+    wait_for_failed(client, job_key, instances=[0])
+
+    res = client.get_job_update_details(
+        None, api.JobUpdateQuery(jobKey=job_key)
+    )
+    assert len(res.detailsList[0].updateEvents) > 0
+    assert len(res.detailsList[0].instanceEvents) > 0
+
+    # rollback update
+    client.rollback_job_update(job_update_key)
+    wait_for_rolled_back(client, job_update_key)
+
+    res = client.get_job_update_details(
+        None, api.JobUpdateQuery(jobKey=job_key)
+    )
+    assert len(res.detailsList[0].updateEvents) > 0
+    assert len(res.detailsList[0].instanceEvents) > 0
+
+    # validate no tasks are running
+    res = client.get_tasks_without_configs(
+        api.TaskQuery(
+            jobKeys={job_key}, statuses={api.ScheduleStatus.RUNNING}
+        )
+    )
+
+    tasks = res.tasks
+    assert len(tasks) == 0
 
 
 def test__abort_auto_rollback_and_update(client):
