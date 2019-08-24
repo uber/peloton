@@ -17,6 +17,7 @@ package mesos
 import (
 	"context"
 	"testing"
+	"time"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
@@ -45,6 +46,7 @@ type MesosManagerTestSuite struct {
 	hostEventCh     chan *scalar.HostEvent
 	provider        *hostmgrmesosmocks.MockFrameworkInfoProvider
 	schedulerClient *mpbmocks.MockSchedulerClient
+	operatorClient  *mpbmocks.MockMasterOperatorClient
 	mesosManager    *MesosManager
 }
 
@@ -52,6 +54,7 @@ func (suite *MesosManagerTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.provider = hostmgrmesosmocks.NewMockFrameworkInfoProvider(suite.ctrl)
 	suite.schedulerClient = mpbmocks.NewMockSchedulerClient(suite.ctrl)
+	suite.operatorClient = mpbmocks.NewMockMasterOperatorClient(suite.ctrl)
 	suite.podEventCh = make(chan *scalar.PodEvent, 1000)
 	suite.hostEventCh = make(chan *scalar.HostEvent, 1000)
 	d := yarpc.NewDispatcher(yarpc.Config{
@@ -61,6 +64,8 @@ func (suite *MesosManagerTestSuite) SetupTest() {
 		d,
 		suite.provider,
 		suite.schedulerClient,
+		suite.operatorClient,
+		10*time.Second,
 		tally.NoopScope,
 		suite.podEventCh,
 		suite.hostEventCh,
@@ -75,11 +80,15 @@ func TestMesosManagerTestSuite(t *testing.T) {
 	suite.Run(t, new(MesosManagerTestSuite))
 }
 
-func (suite *MesosManagerTestSuite) TestMesosManagerStart() {
-	suite.mesosManager.Start()
-}
+func (suite *MesosManagerTestSuite) TestMesosManagerStartStop() {
+	// Agents method should be called at least once upon start
+	suite.operatorClient.
+		EXPECT().
+		Agents().
+		Return(nil, nil).
+		MinTimes(1)
 
-func (suite *MesosManagerTestSuite) TestMesosManagerStop() {
+	suite.mesosManager.Start()
 	suite.mesosManager.Stop()
 }
 

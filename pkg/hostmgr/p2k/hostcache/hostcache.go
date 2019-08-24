@@ -401,6 +401,8 @@ func (c *hostCache) waitForHostEvents() {
 				c.deleteHost(event)
 			case scalar.UpdateHostAvailableRes:
 				c.updateHostAvailable(event)
+			case scalar.UpdateAgent:
+				c.updateAgent(event)
 			}
 		case <-c.lifecycle.StopCh():
 			return
@@ -551,6 +553,34 @@ func (c *hostCache) deleteHost(event *scalar.HostEvent) {
 		"capacity": hostInfo.GetCapacity(),
 		"version":  version,
 	}).Debug("delete host from cache")
+}
+
+// only applicable to mesos
+func (c *hostCache) updateAgent(event *scalar.HostEvent) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	var hs HostSummary
+	var ok bool
+
+	hostInfo := event.GetHostInfo()
+	evtVersion := hostInfo.GetResourceVersion()
+
+	hs, ok = c.hostIndex[hostInfo.GetHostName()]
+
+	if !ok {
+		hs = newMesosHostSummary(hostInfo.GetHostName(), evtVersion)
+		c.hostIndex[hostInfo.GetHostName()] = hs
+	}
+
+	r := hmscalar.FromPelotonResources(hostInfo.GetCapacity())
+	hs.SetCapacity(r)
+	hs.SetVersion(evtVersion)
+	log.WithFields(log.Fields{
+		"hostname":  hostInfo.GetHostName(),
+		"available": hostInfo.GetAvailable(),
+		"version":   evtVersion,
+	}).Debug("update agent info in host cache")
 }
 
 // only applicable to mesos

@@ -3,7 +3,10 @@ package scalar
 import (
 	"strconv"
 
+	mesosmaster "github.com/uber/peloton/.gen/mesos/v1/master"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/pkg/hostmgr/scalar"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -21,6 +24,8 @@ const (
 	DeleteHost
 	// UpdateHostAvailableRes event type, used by mesos only
 	UpdateHostAvailableRes
+	//  UpdateAgent event type, used by mesos only
+	UpdateAgent
 )
 
 // HostEvent contains information about the host, event type and resource
@@ -136,6 +141,26 @@ func BuildHostEventFromResource(
 			hostname:  hostname,
 			podMap:    podMap,
 			available: resources,
+		},
+		eventType: e,
+	}
+}
+
+// BuildHostEventFromAgent builds host event from agent info
+func BuildHostEventFromAgent(
+	agent *mesosmaster.Response_GetAgents_Agent,
+	e HostEventType,
+) *HostEvent {
+	resource := scalar.FromMesosResources(agent.GetTotalResources())
+	return &HostEvent{
+		hostInfo: &HostInfo{
+			hostname: agent.GetAgentInfo().GetHostname(),
+			capacity: &peloton.Resources{
+				Cpu:    resource.GetCPU(),
+				MemMb:  resource.GetMem(),
+				DiskMb: resource.GetDisk(),
+				Gpu:    resource.GetGPU(),
+			},
 		},
 		eventType: e,
 	}

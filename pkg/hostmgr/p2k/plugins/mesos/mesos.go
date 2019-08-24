@@ -17,6 +17,7 @@ package mesos
 import (
 	"context"
 	"sync"
+	"time"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
@@ -59,12 +60,16 @@ type MesosManager struct {
 	metrics *metrics
 
 	once sync.Once
+
+	agentSyncer *agentSyncer
 }
 
 func NewMesosManager(
 	d *yarpc.Dispatcher,
 	frameworkInfoProvider hostmgrmesos.FrameworkInfoProvider,
 	schedulerClient mpb.SchedulerClient,
+	operatorClient mpb.MasterOperatorClient,
+	agentInfoRefreshInterval time.Duration,
 	scope tally.Scope,
 	podEventCh chan<- *scalar.PodEvent,
 	hostEventCh chan<- *scalar.HostEvent,
@@ -78,6 +83,11 @@ func NewMesosManager(
 		hostEventCh:           hostEventCh,
 		offerManager:          &offerManager{offers: make(map[string]*mesosOffers)},
 		once:                  sync.Once{},
+		agentSyncer: newAgentSyncer(
+			operatorClient,
+			hostEventCh,
+			agentInfoRefreshInterval,
+		),
 	}
 }
 
@@ -94,11 +104,15 @@ func (m *MesosManager) Start() error {
 			mpb.Register(m.d, hostmgrmesos.ServiceName, mpb.Procedure(name, hdl))
 		}
 	})
+
+	m.agentSyncer.Start()
+
 	return nil
 }
 
 // Stop the plugin.
 func (m *MesosManager) Stop() {
+	m.agentSyncer.Stop()
 }
 
 // LaunchPods launch a list of pods on a host.
