@@ -31,8 +31,6 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
 	"github.com/uber/peloton/pkg/hostmgr/models"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
-	hostmgrscalar "github.com/uber/peloton/pkg/hostmgr/scalar"
-	hmutil "github.com/uber/peloton/pkg/hostmgr/util"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
@@ -113,6 +111,7 @@ func (m *MesosManager) Start() error {
 // Stop the plugin.
 func (m *MesosManager) Stop() {
 	m.agentSyncer.Stop()
+	m.offerManager.Clear()
 }
 
 // LaunchPods launch a list of pods on a host.
@@ -126,7 +125,7 @@ func (m *MesosManager) LaunchPods(
 	var mesosTasks []*mesos.TaskInfo
 	var mesosTaskIds []string
 
-	offers := m.offerManager.getOffers(hostname)
+	offers := m.offerManager.GetOffers(hostname)
 
 	for _, offer := range offers {
 		offerIds = append(offerIds, offer.GetId())
@@ -183,7 +182,7 @@ func (m *MesosManager) LaunchPods(
 	} else {
 		// call to mesos is successful,
 		// remove the offers so no new task would be placed
-		m.offerManager.removeOfferForHost(hostname)
+		m.offerManager.RemoveOfferForHost(hostname)
 		m.metrics.LaunchPod.Inc(1)
 	}
 
@@ -232,9 +231,9 @@ func (m *MesosManager) Offers(ctx context.Context, body *sched.Event) error {
 	event := body.GetOffers()
 	log.WithField("event", event).Info("MesosManager: processing Offer event")
 
-	hosts := m.offerManager.addOffers(event.Offers)
+	hosts := m.offerManager.AddOffers(event.Offers)
 	for _, host := range hosts {
-		resources := m.offerManager.getResources(host)
+		resources := m.offerManager.GetResources(host)
 		evt := scalar.BuildHostEventFromResource(host, resources, scalar.UpdateHostAvailableRes)
 		m.hostEventCh <- evt
 	}
@@ -246,101 +245,8 @@ func (m *MesosManager) Offers(ctx context.Context, body *sched.Event) error {
 func (m *MesosManager) Rescind(ctx context.Context, body *sched.Event) error {
 	event := body.GetRescind()
 	log.WithField("event", event).Info("OfferManager: processing Rescind event")
-	m.offerManager.removeOffer(event.GetOfferId().GetValue())
+	m.offerManager.RemoveOffer(event.GetOfferId().GetValue())
 	return nil
-}
-
-type offerManager struct {
-	sync.RWMutex
-
-	// map hostname -> offers
-	offers map[string]*mesosOffers
-}
-
-type mesosOffers struct {
-	// mesos offerID -> unreserved offer
-	unreservedOffers map[string]*mesos.Offer
-}
-
-// addOffers add offers into offerManager.offers, and returns the hosts
-// updated
-func (m *offerManager) addOffers(offers []*mesos.Offer) []string {
-	// TODO: handle timed offers, similar to offerPool.AddOffers
-	m.Lock()
-	defer m.Unlock()
-
-	var hostUpdated []string
-	for _, offer := range offers {
-		hostUpdated = append(hostUpdated, offer.GetHostname())
-
-		if _, ok := m.offers[offer.GetHostname()]; !ok {
-			m.offers[offer.GetHostname()] =
-				&mesosOffers{unreservedOffers: make(map[string]*mesos.Offer)}
-		}
-
-		mesosOffers := m.offers[offer.GetHostname()]
-
-		// filter out revocable resources whose type we don't recognize
-		offerID := offer.GetId().GetValue()
-
-		offer.Resources, _ = hostmgrscalar.FilterMesosResources(
-			offer.Resources,
-			func(r *mesos.Resource) bool {
-				if r.GetRevocable() == nil {
-					return true
-				}
-				return hmutil.IsSlackResourceType(r.GetName(), nil)
-			})
-
-		mesosOffers.unreservedOffers[offerID] = offer
-	}
-
-	return hostUpdated
-}
-
-func (m *offerManager) removeOffer(offerID string) []string {
-	// TODO: handle remove offer
-	return nil
-}
-
-// getOffers returns offers on a host, result is a map of offerID -> offer
-func (m *offerManager) getOffers(hostname string) map[string]*mesos.Offer {
-	m.RLock()
-	defer m.RUnlock()
-
-	mesosOffers, ok := m.offers[hostname]
-	if !ok {
-		return nil
-	}
-
-	return mesosOffers.unreservedOffers
-}
-
-func (m *offerManager) removeOfferForHost(hostname string) {
-	m.Lock()
-	defer m.Unlock()
-
-	if mesosOffer, ok := m.offers[hostname]; ok {
-		mesosOffer.unreservedOffers = make(map[string]*mesos.Offer)
-	}
-}
-
-func (m *offerManager) getResources(hostname string) *peloton.Resources {
-	m.RLock()
-	defer m.RUnlock()
-
-	mesosOffers, ok := m.offers[hostname]
-	if !ok {
-		return &peloton.Resources{}
-	}
-
-	resources := hmutil.GetResourcesFromOffers(mesosOffers.unreservedOffers)
-	return &peloton.Resources{
-		Cpu:    resources.GetCPU(),
-		MemMb:  resources.GetMem(),
-		DiskMb: resources.GetDisk(),
-		Gpu:    resources.GetGPU(),
-	}
 }
 
 func convertPodSpecToLaunchableTask(id *peloton.PodID, spec *pbpod.PodSpec) (*hostsvc.LaunchableTask, error) {
