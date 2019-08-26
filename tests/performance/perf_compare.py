@@ -263,7 +263,7 @@ def compare_stateless_update(base_version, current_version, f1, f2):
     enriched_table = styling.enrich_table_layout(
         merge_table,
         "Execution Duration Change (%)",
-        "parallel_stateless_update",
+        "stateless_update",
         base_version,
         current_version,
     )
@@ -367,7 +367,7 @@ def compare_stateless_host_limit_1_create(base_version, current_version, f1, f2)
     enriched_table = styling.enrich_table_layout(
         merge_table,
         "Execution Duration Change (%)",
-        "stateless_create",
+        "stateless_host_limit_1_create",
         base_version,
         current_version,
     )
@@ -402,7 +402,7 @@ def compare_stateless_host_limit_1_update(base_version, current_version, f1, f2)
     enriched_table = styling.enrich_table_layout(
         merge_table,
         "Execution Duration Change (%)",
-        "parallel_stateless_update",
+        "stateless_host_limit_1_update",
         base_version,
         current_version,
     )
