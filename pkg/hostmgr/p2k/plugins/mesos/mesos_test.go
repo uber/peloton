@@ -66,6 +66,7 @@ func (suite *MesosManagerTestSuite) SetupTest() {
 		suite.schedulerClient,
 		suite.operatorClient,
 		10*time.Second,
+		60*time.Second,
 		tally.NoopScope,
 		suite.podEventCh,
 		suite.hostEventCh,
@@ -316,21 +317,197 @@ func (suite *MesosManagerTestSuite) TestNewMesosManagerOffersMultipleHost() {
 		},
 	})
 
-	he := <-suite.hostEventCh
-	suite.Equal(he.GetEventType(), scalar.UpdateHostAvailableRes)
-	suite.Equal(he.GetHostInfo().GetAvailable(), &peloton.Resources{
+	he1 := <-suite.hostEventCh
+	he2 := <-suite.hostEventCh
+
+	var host1Event *scalar.HostEvent
+	var host2Event *scalar.HostEvent
+
+	if he1.GetHostInfo().GetHostName() == host1 {
+		host1Event = he1
+	} else if he2.GetHostInfo().GetHostName() == host1 {
+		host1Event = he2
+	} else {
+		suite.Fail("no event from host 1 received")
+	}
+
+	if he1.GetHostInfo().GetHostName() == host2 {
+		host2Event = he1
+	} else if he2.GetHostInfo().GetHostName() == host2 {
+		host2Event = he2
+	} else {
+		suite.Fail("no event from host 2 received")
+	}
+
+	suite.Equal(host1Event.GetEventType(), scalar.UpdateHostAvailableRes)
+	suite.Equal(host1Event.GetHostInfo().GetAvailable(), &peloton.Resources{
 		Cpu:   1.0,
 		MemMb: 100.0,
 	})
-	suite.Equal(he.GetHostInfo().GetHostName(), host1)
+	suite.Equal(host1Event.GetHostInfo().GetHostName(), host1)
 
+	suite.Equal(host2Event.GetEventType(), scalar.UpdateHostAvailableRes)
+	suite.Equal(host2Event.GetHostInfo().GetAvailable(), &peloton.Resources{
+		Cpu:   2.0,
+		MemMb: 300.0,
+	})
+	suite.Equal(host2Event.GetHostInfo().GetHostName(), host2)
+}
+
+// TestNewMesosManagerRescindOffer tests normal cases of rescinding offers
+func (suite *MesosManagerTestSuite) TestNewMesosManagerRescindOffer() {
+	// First, add offers to the host
+	host := "hostname1"
+	uuid1 := uuid.New()
+	uuid2 := uuid.New()
+
+	suite.mesosManager.Offers(context.Background(), &sched.Event{
+		Offers: &sched.Event_Offers{
+			Offers: []*mesos.Offer{
+				{Resources: []*mesos.Resource{
+					util.NewMesosResourceBuilder().
+						WithName(common.MesosCPU).
+						WithValue(1.0).
+						Build(),
+					util.NewMesosResourceBuilder().
+						WithName(common.MesosMem).
+						WithValue(100.0).
+						Build(),
+				},
+					Hostname: &host,
+					Id:       &mesos.OfferID{Value: &uuid1},
+				},
+				{
+					Resources: []*mesos.Resource{
+						util.NewMesosResourceBuilder().
+							WithName(common.MesosCPU).
+							WithValue(2.0).
+							Build(),
+						util.NewMesosResourceBuilder().
+							WithName(common.MesosMem).
+							WithValue(300.0).
+							Build(),
+					},
+					Hostname: &host,
+					Id:       &mesos.OfferID{Value: &uuid2},
+				},
+			},
+		},
+	})
+
+	he := <-suite.hostEventCh
+	suite.Equal(he.GetEventType(), scalar.UpdateHostAvailableRes)
+	suite.Equal(he.GetHostInfo().GetAvailable(), &peloton.Resources{
+		Cpu:   3.0,
+		MemMb: 400.0,
+	})
+	suite.Equal(he.GetHostInfo().GetHostName(), host)
+
+	// Second, rescind the first offer
+	suite.mesosManager.Rescind(context.Background(), &sched.Event{
+		Rescind: &sched.Event_Rescind{
+			OfferId: &mesos.OfferID{Value: &uuid1},
+		},
+	})
 	he = <-suite.hostEventCh
 	suite.Equal(he.GetEventType(), scalar.UpdateHostAvailableRes)
 	suite.Equal(he.GetHostInfo().GetAvailable(), &peloton.Resources{
 		Cpu:   2.0,
 		MemMb: 300.0,
 	})
-	suite.Equal(he.GetHostInfo().GetHostName(), host2)
+	suite.Equal(he.GetHostInfo().GetHostName(), host)
+
+	// Finally, rescind the second offer
+	suite.mesosManager.Rescind(context.Background(), &sched.Event{
+		Rescind: &sched.Event_Rescind{
+			OfferId: &mesos.OfferID{Value: &uuid2},
+		},
+	})
+	he = <-suite.hostEventCh
+	suite.Equal(he.GetEventType(), scalar.UpdateHostAvailableRes)
+	suite.Equal(he.GetHostInfo().GetAvailable(), &peloton.Resources{
+		Cpu:   0.0,
+		MemMb: 0.0,
+	})
+	suite.Equal(he.GetHostInfo().GetHostName(), host)
+}
+
+// TestNewMesosManagerRescindOffer tests rescinding nonexistent offers
+func (suite *MesosManagerTestSuite) TestNewMesosManagerRescindNonexistentOffer() {
+	// First, add offers to the host
+	host := "hostname1"
+	uuid1 := uuid.New()
+	uuid2 := uuid.New()
+
+	suite.mesosManager.Offers(context.Background(), &sched.Event{
+		Offers: &sched.Event_Offers{
+			Offers: []*mesos.Offer{
+				{Resources: []*mesos.Resource{
+					util.NewMesosResourceBuilder().
+						WithName(common.MesosCPU).
+						WithValue(1.0).
+						Build(),
+					util.NewMesosResourceBuilder().
+						WithName(common.MesosMem).
+						WithValue(100.0).
+						Build(),
+				},
+					Hostname: &host,
+					Id:       &mesos.OfferID{Value: &uuid1},
+				},
+			},
+		},
+	})
+
+	he := <-suite.hostEventCh
+	suite.Equal(he.GetEventType(), scalar.UpdateHostAvailableRes)
+	suite.Equal(he.GetHostInfo().GetAvailable(), &peloton.Resources{
+		Cpu:   1.0,
+		MemMb: 100.0,
+	})
+	suite.Equal(he.GetHostInfo().GetHostName(), host)
+
+	// Second, rescind the first offer
+	suite.mesosManager.Rescind(context.Background(), &sched.Event{
+		Rescind: &sched.Event_Rescind{
+			OfferId: &mesos.OfferID{Value: &uuid1},
+		},
+	})
+	he = <-suite.hostEventCh
+	suite.Equal(he.GetEventType(), scalar.UpdateHostAvailableRes)
+	suite.Equal(he.GetHostInfo().GetAvailable(), &peloton.Resources{
+		Cpu:   0.0,
+		MemMb: 0.0,
+	})
+	suite.Equal(he.GetHostInfo().GetHostName(), host)
+
+	// Third, rescind the first offer again.
+	// Should be a noop without event sent
+	suite.mesosManager.Rescind(context.Background(), &sched.Event{
+		Rescind: &sched.Event_Rescind{
+			OfferId: &mesos.OfferID{Value: &uuid1},
+		},
+	})
+	select {
+	case <-suite.hostEventCh:
+		suite.Fail("no event should be sent for " +
+			"rescinding offer already rescinded")
+	default:
+	}
+
+	// Fourth, rescind the offer never seen.
+	// Should be a noop without event sent
+	suite.mesosManager.Rescind(context.Background(), &sched.Event{
+		Rescind: &sched.Event_Rescind{
+			OfferId: &mesos.OfferID{Value: &uuid2},
+		},
+	})
+	select {
+	case <-suite.hostEventCh:
+		suite.Fail("no event should be sent for " +
+			"rescinding offer never seen")
+	default:
+	}
 }
 
 // TestNewMesosManagerStatusUpdates tests receiving task status update events.

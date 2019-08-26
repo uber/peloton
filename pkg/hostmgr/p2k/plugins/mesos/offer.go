@@ -16,18 +16,35 @@ package mesos
 
 import (
 	"sync"
+	"time"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	hostmgrscalar "github.com/uber/peloton/pkg/hostmgr/scalar"
 	hmutil "github.com/uber/peloton/pkg/hostmgr/util"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type offerManager struct {
 	sync.RWMutex
 
-	// map hostname -> offers
-	offers map[string]*mesosOffers
+	// map hostname -> hostToOffers
+	hostToOffers map[string]*mesosOffers
+
+	// map offerID -> offer, which include all of the offers
+	offers map[string]*timedOffer
+
+	// Time to hold offer in offer manager
+	offerHoldTime time.Duration
+}
+
+func newOfferManager(offerHoldTime time.Duration) *offerManager {
+	return &offerManager{
+		hostToOffers:  make(map[string]*mesosOffers),
+		offers:        make(map[string]*timedOffer),
+		offerHoldTime: offerHoldTime,
+	}
 }
 
 type mesosOffers struct {
@@ -35,23 +52,27 @@ type mesosOffers struct {
 	unreservedOffers map[string]*mesos.Offer
 }
 
-// AddOffers add offers into offerManager.offers, and returns the hosts
-// updated
-func (m *offerManager) AddOffers(offers []*mesos.Offer) []string {
-	// TODO: handle timed offers, similar to offerPool.AddOffers
+type timedOffer struct {
+	expiration time.Time
+	hostname   string
+}
+
+// AddOffers add hostToOffers into offerManager.hostToOffers, and returns the set
+// of hosts updated
+func (m *offerManager) AddOffers(offers []*mesos.Offer) map[string]struct{} {
 	m.Lock()
 	defer m.Unlock()
 
-	var hostUpdated []string
+	hostUpdated := make(map[string]struct{})
 	for _, offer := range offers {
-		hostUpdated = append(hostUpdated, offer.GetHostname())
+		hostUpdated[offer.GetHostname()] = struct{}{}
 
-		if _, ok := m.offers[offer.GetHostname()]; !ok {
-			m.offers[offer.GetHostname()] =
+		if _, ok := m.hostToOffers[offer.GetHostname()]; !ok {
+			m.hostToOffers[offer.GetHostname()] =
 				&mesosOffers{unreservedOffers: make(map[string]*mesos.Offer)}
 		}
 
-		mesosOffers := m.offers[offer.GetHostname()]
+		mesosOffers := m.hostToOffers[offer.GetHostname()]
 
 		// filter out revocable resources whose type we don't recognize
 		offerID := offer.GetId().GetValue()
@@ -66,22 +87,66 @@ func (m *offerManager) AddOffers(offers []*mesos.Offer) []string {
 			})
 
 		mesosOffers.unreservedOffers[offerID] = offer
+
+		// add the offer to the timedOffer map
+		m.offers[offerID] = &timedOffer{
+			hostname:   offer.GetHostname(),
+			expiration: time.Now().Add(m.offerHoldTime),
+		}
 	}
 
 	return hostUpdated
 }
 
-func (m *offerManager) RemoveOffer(offerID string) []string {
-	// TODO: handle remove offer
-	return nil
+// RemoveOffer remove the offer specified with offerID in the
+// offerManager.
+// It returns the host that has the name, and an empty string
+// if no host info is provided.
+func (m *offerManager) RemoveOffer(offerID string) string {
+	m.Lock()
+	defer m.Unlock()
+
+	timedOffer, ok := m.offers[offerID]
+	if !ok {
+		log.WithField("offer_id", offerID).
+			Error("RemoveOffer: cannot find timed offers with offerID")
+		return ""
+	}
+
+	mesosOffers, ok := m.hostToOffers[timedOffer.hostname]
+	if !ok {
+		log.WithField("offer_id", offerID).
+			WithField("hostname", timedOffer.hostname).
+			Error("RemoveOffer: cannot find any mesos offer on host")
+		return ""
+	}
+
+	offer, ok := mesosOffers.unreservedOffers[offerID]
+	if !ok {
+		log.WithField("offer_id", offerID).
+			WithField("hostname", timedOffer.hostname).
+			Error("RemoveOffer: cannot find the specified mesos offer on host")
+		return ""
+	}
+
+	delete(mesosOffers.unreservedOffers, offerID)
+	delete(m.offers, offerID)
+
+	// all of the offers on the host is removed,
+	// delete the entry from m.hostToOffers
+	if len(mesosOffers.unreservedOffers) == 0 {
+		delete(m.hostToOffers, timedOffer.hostname)
+	}
+
+	return offer.GetHostname()
 }
 
-// GetOffers returns offers on a host, result is a map of offerID -> offer
+// GetOffers returns hostToOffers on a host, result is a map of offerID -> offer
 func (m *offerManager) GetOffers(hostname string) map[string]*mesos.Offer {
 	m.RLock()
 	defer m.RUnlock()
 
-	mesosOffers, ok := m.offers[hostname]
+	mesosOffers, ok := m.hostToOffers[hostname]
 	if !ok {
 		return nil
 	}
@@ -93,7 +158,11 @@ func (m *offerManager) RemoveOfferForHost(hostname string) {
 	m.Lock()
 	defer m.Unlock()
 
-	if mesosOffer, ok := m.offers[hostname]; ok {
+	if mesosOffer, ok := m.hostToOffers[hostname]; ok {
+		for offerID := range mesosOffer.unreservedOffers {
+			delete(m.offers, offerID)
+		}
+
 		mesosOffer.unreservedOffers = make(map[string]*mesos.Offer)
 	}
 }
@@ -102,7 +171,7 @@ func (m *offerManager) GetResources(hostname string) *peloton.Resources {
 	m.RLock()
 	defer m.RUnlock()
 
-	mesosOffers, ok := m.offers[hostname]
+	mesosOffers, ok := m.hostToOffers[hostname]
 	if !ok {
 		return &peloton.Resources{}
 	}
@@ -117,5 +186,9 @@ func (m *offerManager) GetResources(hostname string) *peloton.Resources {
 }
 
 func (m *offerManager) Clear() {
+	m.Lock()
+	m.Unlock()
 
+	m.hostToOffers = make(map[string]*mesosOffers)
+	m.offers = make(map[string]*timedOffer)
 }

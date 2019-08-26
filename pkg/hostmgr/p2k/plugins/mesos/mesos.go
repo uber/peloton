@@ -70,6 +70,7 @@ func NewMesosManager(
 	schedulerClient mpb.SchedulerClient,
 	operatorClient mpb.MasterOperatorClient,
 	agentInfoRefreshInterval time.Duration,
+	offerHoldTime time.Duration,
 	scope tally.Scope,
 	podEventCh chan<- *scalar.PodEvent,
 	hostEventCh chan<- *scalar.HostEvent,
@@ -81,7 +82,7 @@ func NewMesosManager(
 		schedulerClient:       schedulerClient,
 		podEventCh:            podEventCh,
 		hostEventCh:           hostEventCh,
-		offerManager:          &offerManager{offers: make(map[string]*mesosOffers)},
+		offerManager:          newOfferManager(offerHoldTime),
 		once:                  sync.Once{},
 		agentSyncer: newAgentSyncer(
 			operatorClient,
@@ -238,7 +239,7 @@ func (m *MesosManager) Offers(ctx context.Context, body *sched.Event) error {
 	log.WithField("event", event).Info("MesosManager: processing Offer event")
 
 	hosts := m.offerManager.AddOffers(event.Offers)
-	for _, host := range hosts {
+	for host := range hosts {
 		resources := m.offerManager.GetResources(host)
 		evt := scalar.BuildHostEventFromResource(host, resources, scalar.UpdateHostAvailableRes)
 		m.hostEventCh <- evt
@@ -251,7 +252,14 @@ func (m *MesosManager) Offers(ctx context.Context, body *sched.Event) error {
 func (m *MesosManager) Rescind(ctx context.Context, body *sched.Event) error {
 	event := body.GetRescind()
 	log.WithField("event", event).Info("OfferManager: processing Rescind event")
-	m.offerManager.RemoveOffer(event.GetOfferId().GetValue())
+	host := m.offerManager.RemoveOffer(event.GetOfferId().GetValue())
+
+	if len(host) != 0 {
+		resources := m.offerManager.GetResources(host)
+		evt := scalar.BuildHostEventFromResource(host, resources, scalar.UpdateHostAvailableRes)
+		m.hostEventCh <- evt
+	}
+
 	return nil
 }
 
