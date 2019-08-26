@@ -33,6 +33,7 @@ from aurora_bridge_util import (
     get_update_status,
     start_job_update,
     wait_for_rolled_forward,
+    wait_for_rolled_back,
     wait_for_update_status,
     verify_host_limit_1,
 )
@@ -249,8 +250,8 @@ def main():
     if host_limit_1_update_df is not None:
         host_limit_1_update_df.to_csv(output_csv_files_list[7], sep='\t')
 
-    # Create a simple aurorabridge job
-    t.perf_test_aurora_bridge_create()
+    # Test AuroraBridge write path
+    t.perf_aurora_bridge_test_write_path()
 
 
 def run_one_test(pf_client, num_tasks, instance_config, sleep_time, agent_num):
@@ -844,25 +845,127 @@ class PerformanceTest:
         print(df)
         return df
 
-    def perf_test_aurora_bridge_create(self):
+    def perf_aurora_bridge_test_write_path(self):
         """
-        Create a stateless job via AuroraBridge and measure the time is 
-        takes for rolling_forward.
+        - Create a stateless job via AuroraBridge, #tasks = 600 and batch_size = 50
+        - Create a healthy update for stateless job, with #tasks = 600 and batch_size = 50
+        - Create a unhealthy update with auto-rollback at 200 failed instances.
+        - Create pinned instances, where C1: 0-100, C2: 101-300, C3: 301-599
+        - Deploy C4 for all tasks, and trigger manual rollback.
+        - Once manual rollback completes, validate the correctness and calculate the time taken.
         """
         try:
             start_time = time.time()
 
-            resp = self.client.aurora_bridge_client.start_job_update(
+            print 'Create Stateless Job of 600 instances and batch size 50'
+            step_start_time = time.time()
+            start_job_update(
+                self.client.aurora_bridge_client,
                 get_job_update_request("test_dc_labrat.yaml"),
+                "create job",
+            )
+            print('Time Taken:: %f' % (time.time() - step_start_time))
+
+            print '\nUpdate Stateless Job of 600 instances with healthy config and batch size 50'
+            step_start_time = time.time()
+            start_job_update(
+                self.client.aurora_bridge_client,
+                get_job_update_request("test_dc_labrat_update.yaml"),
                 "start job update",
             )
+            print('Time Taken:: %f' % (time.time() - step_start_time))
 
-            wait_for_rolled_forward(
+            print '\nRollout bad config which will trigger auto-rollback after 200 failed instances'
+            step_start_time = time.time()
+            resp = self.client.aurora_bridge_client.start_job_update(
+                get_job_update_request("test_dc_labrat_bad_config.yaml"),
+                "start job update bad config",
+            )
+            job_update_key = resp.key
+            wait_for_rolled_back(
+                self.client.aurora_bridge_client, job_update_key)
+            print('Time Taken:: %f' % (time.time() - step_start_time))
+
+            print '\nRollout Pinned Instance Config (C1) for Instance: 0-99'
+            step_start_time = time.time()
+            instances = []
+            for i in xrange(100):
+                instances.append(i)
+            pinned_req = get_job_update_request(
+                "test_dc_labrat.yaml"
+            )
+            pinned_req.settings.updateOnlyTheseInstances = set(
+                [api.Range(first=i, last=i) for i in instances]
+            )
+            job_key = start_job_update(
                 self.client.aurora_bridge_client,
-                resp.key)
+                pinned_req,
+                "update pinned instance req",
+            )
+            print('Time Taken:: %f' % (time.time() - step_start_time))
+
+            print '\nRollout Pinned Instance Config (C3) for Instance: 301-599'
+            step_start_time = time.time()
+            instances = []
+            for i in xrange(301, 600):
+                instances.append(i)
+            pinned_req = get_job_update_request(
+                "test_dc_labrat_update2.yaml"
+            )
+            pinned_req.settings.updateOnlyTheseInstances = set(
+                [api.Range(first=i, last=i) for i in instances]
+            )
+            start_job_update(
+                self.client.aurora_bridge_client,
+                pinned_req,
+                "update pinned instance req",
+            )
+            print('Time Taken:: %f' % (time.time() - step_start_time))
+
+            print '\nRollout update and trigger manual rollback'
+            step_start_time = time.time()
+            start_job_update(
+                self.client.aurora_bridge_client,
+                get_job_update_request("test_dc_labrat.yaml"),
+                "create job",
+            )
+            time.sleep(100)
+            self.client.aurora_bridge_client.rollback_job_update(job_update_key)
+            wait_for_rolled_back(
+                self.client.aurora_bridge_client, job_update_key)
+            print('Time Taken:: %f' % (time.time() - step_start_time))
+
+            print 'Validate pinned instance configs are set correctly'
+            step_start_time = time.time()
+            resp = self.client.aurora_bridge_client.get_tasks_without_configs(
+                api.TaskQuery(jobKeys={job_key}, statuses={
+                              api.ScheduleStatus.RUNNING})
+            )
+            assert len(resp.tasks) == 600
+
+            print('Time Taken:: %f' % (time.time() - step_start_time))
 
             elapsed_time = time.time() - start_time
-            print elapsed_time
+            print('\n\nTotal Time Taken:: %f' % (elapsed_time))
+
+            for t in resp.tasks:
+                _, instance_id, _ = t.assignedTask.taskId.rsplit("-", 2)
+                if int(instance_id) < 100:
+                    for m in t.assignedTask.task.metadata:
+                        if m.key == "test_key_1":
+                            assert m.value == "test_value_1"
+                        elif m.key == "test_key_2":
+                            assert m.value == "test_value_2"
+                elif int(instance_id) >= 100 and int(instance_id) < 300:
+                    if m.key == "test_key_11":
+                        assert m.value == "test_value_11"
+                    elif m.key == "test_key_22":
+                        assert m.value == "test_value_22"
+                else:
+                    if m.key == "test_key_111":
+                        assert m.value == "test_value_111"
+                    elif m.key == "test_key_222":
+                        assert m.value == "test_value_222"
 
         except Exception as e:
             print e

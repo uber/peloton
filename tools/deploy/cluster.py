@@ -75,7 +75,7 @@ class Cluster(object):
         """
         with open(cfg_file, "r") as f:
             try:
-                cfg = yaml.load(f)
+                cfg = yaml.safe_load(f)
             except yaml.YAMLError as ex:
                 print("Failed to unmarshal cluster config %s" % cfg_file)
                 raise ex

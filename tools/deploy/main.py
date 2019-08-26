@@ -36,7 +36,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    cluster = Cluster.load(args.config)
+    cluster = Cluster.safe_load(args.config)
 
     if cluster.update(args.force, args.verbose):
         print(

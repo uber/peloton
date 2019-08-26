@@ -10,7 +10,7 @@ from aurora_bridge_client import api
 TEST_CONFIG_DIR = "/test_configs"
 
 
-def wait_for_rolled_forward(client, job_update_key, timeout_secs=120):
+def wait_for_rolled_forward(client, job_update_key, timeout_secs=1200):
     """Wait for job update to be in "ROLLED_FORWARD" state, triggers
     assertion failure if timed out.
 
@@ -28,7 +28,7 @@ def wait_for_rolled_forward(client, job_update_key, timeout_secs=120):
     )
 
 
-def wait_for_auto_rolling_back(client, job_update_key, timeout_secs=120):
+def wait_for_auto_rolling_back(client, job_update_key, timeout_secs=1200):
     wait_for_update_status(
         client,
         job_update_key,
@@ -38,7 +38,7 @@ def wait_for_auto_rolling_back(client, job_update_key, timeout_secs=120):
     )
 
 
-def wait_for_rolled_back(client, job_update_key, timeout_secs=600):
+def wait_for_rolled_back(client, job_update_key, timeout_secs=1200):
     wait_for_update_status(
         client,
         job_update_key,
@@ -56,7 +56,7 @@ def wait_for_update_status(
     job_update_key,
     allowed_intermediate_statuses,
     status,
-    timeout_secs=120,
+    timeout_secs=1200,
 ):
     """Wait for job update to be in specific state, triggers assertion
     failure if timed out.
@@ -166,7 +166,7 @@ def wait_for_task_status(
     job_key,
     allowed_intermediate_statuses,
     status,
-    timeout_secs=120,
+    timeout_secs=1200,
     instances=None,
 ):
     """Wait for all tasks in a job to be in specific state, triggers assertion
@@ -363,5 +363,5 @@ def load_config(config, dir=""):
         os.path.dirname(os.path.abspath(__file__)) + dir, config
     )
     with open(config_file, "r") as f:
-        config = yaml.load(f)
+        config = yaml.safe_load(f)
     return config

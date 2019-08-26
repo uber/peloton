@@ -10,16 +10,16 @@ taskConfig:
     tier: preemptible
     production: false
     resources:
-        - numCpus: 0.60
+        - numCpus: 0.75
         - ramMb: 128
         - diskMb: 128
         - namedPort: "http"
         - namedPort: "grpc"
     metadata:
-        - key: test_key_1
-          value: test_value_1
-        - key: test_key_2
-          value: test_value_2
+        - key: test_key_11
+          value: test_value_11
+        - key: test_key_22
+          value: test_value_22
     constraints:
         - name: host
           constraint:

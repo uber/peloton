@@ -3,32 +3,18 @@ taskConfig:
         role: test
         environment: dc
         name: labrat
-    owner:
-        user: 'testuser'
     isService: true
-    priority: 5
+    priority: 0
     tier: preemptible
     production: false
     resources:
-        - numCpus: 0.60
+        - numCpus: 0.5
         - ramMb: 128
-        - diskMb: 128
-        - namedPort: "http"
-        - namedPort: "grpc"
-    metadata:
-        - key: test_key_1
-          value: test_value_1
-        - key: test_key_2
-          value: test_value_2
-    constraints:
-        - name: host
-          constraint:
-            limit:
-                limit: 1
+        - diskMb: 256
     executorConfig:
         name: AuroraExecutor
-        data: |-
-            {
+        data:
+            '{
                 "cluster": "peloton",
                 "cron_collision_policy": "KILL_EXISTING",
                 "enable_hooks": false,
@@ -39,10 +25,8 @@ taskConfig:
                 },
                 "health_check_config": {
                     "health_checker": {
-                        "http": {
-                            "endpoint": "/health",
-                            "expected_response": "ok",
-                            "expected_response_code": 0
+                        "shell": {
+                            "shell_command": "exit 1"
                         }
                     },
                     "initial_interval_secs": 15.0,
@@ -81,7 +65,7 @@ taskConfig:
                     "name": "hello",
                     "processes": [
                         {
-                            "cmdline": "while :; do echo running; sleep 10; done",
+                            "cmdline": "exit 1",
                             "daemon": false,
                             "ephemeral": false,
                             "final": false,
@@ -91,18 +75,18 @@ taskConfig:
                         }
                     ],
                     "resources": {
-                        "cpu": 0.25,
-                        "disk": 134217728,
+                        "cpu": 1,
+                        "disk": 268435456,
                         "gpu": 0,
                         "ram": 134217728
                     }
                 },
                 "tier": "preemptible"
-            }
+            }'
 instanceCount: 600
 settings:
-    updateGroupSize: 50
+    updateGroupSize: 200
     minWaitInInstanceRunningMs: 45000
-    maxFailedInstances: 199
+    maxFailedInstances: 149
     maxPerInstanceFailures: 0
     rollbackOnFailure: true
