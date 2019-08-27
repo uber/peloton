@@ -84,7 +84,8 @@ func (m *Matcher) tryMatchImpl(
 	if m.hostPoolManager != nil {
 		lv, err = manager.GetHostPoolLabelValues(m.hostPoolManager, hostname)
 		if err != nil {
-			log.WithField("host", hostname).
+			log.WithError(err).
+				WithField("host", hostname).
 				Error("Failed to get host pool label")
 		}
 	}
