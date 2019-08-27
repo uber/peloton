@@ -204,6 +204,9 @@ func newMesosPodSpec(
 		result.Type = apachemesos.PodSpec_CONTAINER_TYPE_DOCKER
 		result.DockerParameters = newDockerParameters(
 			c.GetDocker().GetParameters())
+		result.NetworkSpec = &apachemesos.PodSpec_NetworkSpec{
+			Type: apachemesos.PodSpec_NetworkSpec_NETWORK_TYPE_HOST,
+		}
 	}
 
 	// Fill the URI

@@ -231,6 +231,8 @@ func (suite *apiConverterTestSuite) TestConvertTaskConfigToPodSpecAndViceVersa()
 		podContainerType apachemesos.PodSpec_ContainerType
 		executorType     mesos.ExecutorInfo_Type
 		podExecutorType  apachemesos.PodSpec_ExecutorSpec_ExecutorType
+		networkType      mesos.ContainerInfo_DockerInfo_Network
+		podNetworkType   apachemesos.PodSpec_NetworkSpec_NetworkType
 		executorCPU      float64
 		executorMemMB    float64
 	}{
@@ -241,6 +243,8 @@ func (suite *apiConverterTestSuite) TestConvertTaskConfigToPodSpecAndViceVersa()
 			podExecutorType:  apachemesos.PodSpec_ExecutorSpec_EXECUTOR_TYPE_CUSTOM,
 			executorCPU:      float64(1),
 			executorMemMB:    float64(100),
+			networkType:      mesos.ContainerInfo_DockerInfo_HOST,
+			podNetworkType:   apachemesos.PodSpec_NetworkSpec_NETWORK_TYPE_HOST,
 		},
 		{
 			containerType:    mesos.ContainerInfo_MESOS,
@@ -249,6 +253,8 @@ func (suite *apiConverterTestSuite) TestConvertTaskConfigToPodSpecAndViceVersa()
 			podExecutorType:  apachemesos.PodSpec_ExecutorSpec_EXECUTOR_TYPE_CUSTOM,
 			executorCPU:      float64(0),
 			executorMemMB:    float64(0),
+			networkType:      mesos.ContainerInfo_DockerInfo_BRIDGE,
+			podNetworkType:   apachemesos.PodSpec_NetworkSpec_NETWORK_TYPE_BRIDGE,
 		},
 		{
 			containerType:    mesos.ContainerInfo_DOCKER,
@@ -257,6 +263,38 @@ func (suite *apiConverterTestSuite) TestConvertTaskConfigToPodSpecAndViceVersa()
 			podExecutorType:  apachemesos.PodSpec_ExecutorSpec_EXECUTOR_TYPE_DEFAULT,
 			executorCPU:      float64(1),
 			executorMemMB:    float64(100),
+			networkType:      mesos.ContainerInfo_DockerInfo_HOST,
+			podNetworkType:   apachemesos.PodSpec_NetworkSpec_NETWORK_TYPE_HOST,
+		},
+		{
+			containerType:    mesos.ContainerInfo_DOCKER,
+			podContainerType: apachemesos.PodSpec_CONTAINER_TYPE_DOCKER,
+			executorType:     mesos.ExecutorInfo_DEFAULT,
+			podExecutorType:  apachemesos.PodSpec_ExecutorSpec_EXECUTOR_TYPE_DEFAULT,
+			executorCPU:      float64(1),
+			executorMemMB:    float64(100),
+			networkType:      mesos.ContainerInfo_DockerInfo_BRIDGE,
+			podNetworkType:   apachemesos.PodSpec_NetworkSpec_NETWORK_TYPE_BRIDGE,
+		},
+		{
+			containerType:    mesos.ContainerInfo_DOCKER,
+			podContainerType: apachemesos.PodSpec_CONTAINER_TYPE_DOCKER,
+			executorType:     mesos.ExecutorInfo_DEFAULT,
+			podExecutorType:  apachemesos.PodSpec_ExecutorSpec_EXECUTOR_TYPE_DEFAULT,
+			executorCPU:      float64(1),
+			executorMemMB:    float64(100),
+			networkType:      mesos.ContainerInfo_DockerInfo_NONE,
+			podNetworkType:   apachemesos.PodSpec_NetworkSpec_NETWORK_TYPE_NONE,
+		},
+		{
+			containerType:    mesos.ContainerInfo_DOCKER,
+			podContainerType: apachemesos.PodSpec_CONTAINER_TYPE_DOCKER,
+			executorType:     mesos.ExecutorInfo_DEFAULT,
+			podExecutorType:  apachemesos.PodSpec_ExecutorSpec_EXECUTOR_TYPE_DEFAULT,
+			executorCPU:      float64(1),
+			executorMemMB:    float64(100),
+			networkType:      mesos.ContainerInfo_DockerInfo_USER,
+			podNetworkType:   apachemesos.PodSpec_NetworkSpec_NETWORK_TYPE_USER,
 		},
 		{
 			containerType:    mesos.ContainerInfo_MESOS,
@@ -265,6 +303,8 @@ func (suite *apiConverterTestSuite) TestConvertTaskConfigToPodSpecAndViceVersa()
 			podExecutorType:  apachemesos.PodSpec_ExecutorSpec_EXECUTOR_TYPE_INVALID,
 			executorCPU:      float64(1),
 			executorMemMB:    float64(100),
+			networkType:      mesos.ContainerInfo_DockerInfo_USER,
+			podNetworkType:   apachemesos.PodSpec_NetworkSpec_NETWORK_TYPE_USER,
 		},
 	}
 
@@ -380,6 +420,8 @@ func (suite *apiConverterTestSuite) TestConvertTaskConfigToPodSpecAndViceVersa()
 		cpuName := cpuNameMesos
 		memName := memNameMesos
 
+		networkName := "new-network"
+
 		jobID := uuid.New()
 		instanceID := uint32(0)
 
@@ -481,11 +523,15 @@ func (suite *apiConverterTestSuite) TestConvertTaskConfigToPodSpecAndViceVersa()
 				},
 			}
 		} else if test.containerType == mesos.ContainerInfo_DOCKER {
-			hostNetwork := mesos.ContainerInfo_DockerInfo_HOST
 			taskConfig.Container.Docker = &mesos.ContainerInfo_DockerInfo{
 				Image:      &testImage,
 				Parameters: dockerParameters,
-				Network:    &hostNetwork,
+				Network:    &test.networkType,
+			}
+			taskConfig.Container.NetworkInfos = []*mesos.NetworkInfo{
+				{
+					Name: &networkName,
+				},
 			}
 		}
 
@@ -583,6 +629,10 @@ func (suite *apiConverterTestSuite) TestConvertTaskConfigToPodSpecAndViceVersa()
 
 		if test.containerType == mesos.ContainerInfo_DOCKER {
 			podSpec.MesosSpec.DockerParameters = podDockerParameters
+			podSpec.MesosSpec.NetworkSpec = &apachemesos.PodSpec_NetworkSpec{
+				Type: test.podNetworkType,
+				Name: networkName,
+			}
 		}
 
 		suite.Equal(podSpec, ConvertTaskConfigToPodSpec(taskConfig, jobID, instanceID))

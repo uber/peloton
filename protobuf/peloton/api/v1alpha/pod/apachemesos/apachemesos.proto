@@ -100,6 +100,34 @@ message PodSpec {
     Resources resources = 4;
   }
 
+  // Network specification to determine which network should the container
+  // connect to. By default, the container connects to the host network.
+  // TODO Move to PodSpec once we determine how the network namespace in
+  // kubelets will get configured.
+  message NetworkSpec {
+    // Type of the network the container will connect to.
+    enum NetworkType {
+      NETWORK_TYPE_INVALID =  0;
+      // Connect container to host network.
+      NETWORK_TYPE_HOST = 1;
+      // Connect container to bridge on the host to allow containers
+      // running on the same host to connect to each other.
+      NETWORK_TYPE_BRIDGE = 2;
+      // Disable networking for the container.
+      NETWORK_TYPE_NONE = 3;
+      // Connect to a user defined network.
+      NETWORK_TYPE_USER = 4;
+    }
+
+    // The network type.
+    NetworkType type = 1;
+
+    // Name of the user network which will be used by network isolator to determine
+    // the network that the container joins. It is up to the network isolator
+    // on the host to decide how to interpret this field.
+    string name = 2;
+  }
+
   // Type of containerizer to use.
   ContainerType type = 1;
 
@@ -115,6 +143,10 @@ message PodSpec {
   // is provided as part of the pod specification.
   bool shell = 4;
 
-  // The executor configuration
+  // The executor configuration.
   ExecutorSpec executor_spec = 5;
+
+  // The docker network configuration. This is only applicable when the container
+  // type is selected to be DOCKER.
+  NetworkSpec network_spec = 6;
 }

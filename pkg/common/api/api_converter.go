@@ -811,6 +811,23 @@ func ConvertMesosContainerToPodSpec(
 		if len(dockerInfo.GetImage()) > 0 {
 			container.Image = dockerInfo.GetImage()
 		}
+
+		spec.MesosSpec.NetworkSpec = &apachemesos.PodSpec_NetworkSpec{}
+		switch dockerInfo.GetNetwork() {
+		case mesosv1.ContainerInfo_DockerInfo_HOST:
+			spec.MesosSpec.NetworkSpec.Type = apachemesos.PodSpec_NetworkSpec_NETWORK_TYPE_HOST
+		case mesosv1.ContainerInfo_DockerInfo_BRIDGE:
+			spec.MesosSpec.NetworkSpec.Type = apachemesos.PodSpec_NetworkSpec_NETWORK_TYPE_BRIDGE
+		case mesosv1.ContainerInfo_DockerInfo_NONE:
+			spec.MesosSpec.NetworkSpec.Type = apachemesos.PodSpec_NetworkSpec_NETWORK_TYPE_NONE
+		case mesosv1.ContainerInfo_DockerInfo_USER:
+			spec.MesosSpec.NetworkSpec.Type = apachemesos.PodSpec_NetworkSpec_NETWORK_TYPE_USER
+		}
+
+		if len(containerInfo.GetNetworkInfos()) > 0 {
+			spec.MesosSpec.NetworkSpec.Name = containerInfo.GetNetworkInfos()[0].GetName()
+		}
+
 	} else {
 		if len(containerInfo.GetMesos().GetImage().GetDocker().GetName()) > 0 {
 			container.Image = containerInfo.GetMesos().GetImage().GetDocker().GetName()
@@ -890,7 +907,32 @@ func ConvertPodSpecToMesosContainer(spec *pod.PodSpec) *mesosv1.ContainerInfo {
 				parameters = append(parameters, mesosParameter)
 			}
 
+			// Fill in the network
 			hostNetwork := mesosv1.ContainerInfo_DockerInfo_HOST
+			if mesosPodSpec.GetNetworkSpec() != nil {
+				switch mesosPodSpec.GetNetworkSpec().GetType() {
+				case apachemesos.PodSpec_NetworkSpec_NETWORK_TYPE_INVALID:
+					// This should never be set and will be mapped to NONE for now.
+					hostNetwork = mesosv1.ContainerInfo_DockerInfo_NONE
+				case apachemesos.PodSpec_NetworkSpec_NETWORK_TYPE_HOST:
+					hostNetwork = mesosv1.ContainerInfo_DockerInfo_HOST
+				case apachemesos.PodSpec_NetworkSpec_NETWORK_TYPE_BRIDGE:
+					hostNetwork = mesosv1.ContainerInfo_DockerInfo_BRIDGE
+				case apachemesos.PodSpec_NetworkSpec_NETWORK_TYPE_NONE:
+					hostNetwork = mesosv1.ContainerInfo_DockerInfo_NONE
+				case apachemesos.PodSpec_NetworkSpec_NETWORK_TYPE_USER:
+					hostNetwork = mesosv1.ContainerInfo_DockerInfo_USER
+				}
+
+				networkName := mesosPodSpec.GetNetworkSpec().GetName()
+				if len(networkName) > 0 {
+					containerInfo.NetworkInfos = []*mesosv1.NetworkInfo{
+						{
+							Name: &networkName,
+						},
+					}
+				}
+			}
 
 			containerInfo.Docker = &mesosv1.ContainerInfo_DockerInfo{
 				Image:      &image,
