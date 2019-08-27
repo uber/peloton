@@ -333,6 +333,40 @@ func (suite *MesosManagerTestSuite) TestNewMesosManagerOffersMultipleHost() {
 	suite.Equal(he.GetHostInfo().GetHostName(), host2)
 }
 
+// TestNewMesosManagerStatusUpdates tests receiving task status update events.
+func (suite *MesosManagerTestSuite) TestNewMesosManagerStatusUpdates() {
+	host1 := "hostname1"
+	uuid1 := uuid.New()
+	state := mesos.TaskState_TASK_STARTING
+
+	status := &mesos.TaskStatus{
+		TaskId: &mesos.TaskID{
+			Value: &uuid1,
+		},
+		State: &state,
+		AgentId: &mesos.AgentID{
+			Value: &host1,
+		},
+	}
+
+	suite.mesosManager.Update(context.Background(), &sched.Event{
+		Update: &sched.Event_Update{
+			Status: status,
+		},
+	})
+
+	pe := <-suite.podEventCh
+
+	suite.Equal(pe.EventType, scalar.UpdatePod)
+	suite.Equal(pe.Event.GetHostname(), host1)
+	suite.Equal(pe.Event.GetAgentId(), host1)
+	suite.Equal(pe.Event.GetPodId().GetValue(), uuid1)
+	suite.Equal(
+		pe.Event.GetActualState(),
+		pbpod.PodState_POD_STATE_STARTING.String(),
+	)
+}
+
 func newTestPelotonPodSpec(podName string) *pbpod.PodSpec {
 	return &pbpod.PodSpec{
 		Containers: []*pbpod.ContainerSpec{

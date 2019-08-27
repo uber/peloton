@@ -28,6 +28,8 @@ import (
 	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/hostmgr/factory/task"
 	hostmgrmesos "github.com/uber/peloton/pkg/hostmgr/mesos"
+
+	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
 	"github.com/uber/peloton/pkg/hostmgr/models"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
@@ -95,6 +97,7 @@ func (m *MesosManager) Start() error {
 		procedures := map[sched.Event_Type]interface{}{
 			sched.Event_OFFERS:  m.Offers,
 			sched.Event_RESCIND: m.Rescind,
+			sched.Event_UPDATE:  m.Update,
 		}
 
 		for typ, hdl := range procedures {
@@ -215,7 +218,10 @@ func (m *MesosManager) KillPod(ctx context.Context, podID string) error {
 }
 
 // AckPodEvent is only implemented by mesos plugin. For K8s this is a noop.
-func (m *MesosManager) AckPodEvent(ctx context.Context, event *scalar.PodEvent) {
+func (m *MesosManager) AckPodEvent(
+	ctx context.Context,
+	event *scalar.PodEvent,
+) {
 	// TODO: fill in implementation
 }
 
@@ -249,6 +255,27 @@ func (m *MesosManager) Rescind(ctx context.Context, body *sched.Event) error {
 	return nil
 }
 
+// Update is the Mesos callback on mesos task status updates
+func (m *MesosManager) Update(ctx context.Context, body *sched.Event) error {
+	//var err error
+	taskUpdate := body.GetUpdate()
+
+	defer func() {
+		// Todo implement watch processor notifications.
+
+		// Update the metrics in go routine to unblock API callback
+		go func() {
+			m.metrics.TaskUpdateCounter.Inc(1)
+			taskStateCounter := m.metrics.scope.Counter(
+				"task_state_" + taskUpdate.GetStatus().GetState().String())
+			taskStateCounter.Inc(1)
+		}()
+	}()
+
+	m.podEventCh <- buildPodEventFromMesosTaskStatus(taskUpdate)
+	return nil
+}
+
 func convertPodSpecToLaunchableTask(id *peloton.PodID, spec *pbpod.PodSpec) (*hostsvc.LaunchableTask, error) {
 	config, err := api.ConvertPodSpecToTaskConfig(spec)
 	if err != nil {
@@ -262,4 +289,30 @@ func convertPodSpecToLaunchableTask(id *peloton.PodID, spec *pbpod.PodSpec) (*ho
 		Config: config,
 		Id:     &v0peloton.TaskID{Value: spec.GetPodName().GetValue()},
 	}, nil
+}
+
+func buildPodEventFromMesosTaskStatus(
+	evt *sched.Event_Update,
+) *scalar.PodEvent {
+	healthy := pbpod.HealthState_HEALTH_STATE_UNHEALTHY.String()
+	if evt.GetStatus().GetHealthy() {
+		healthy = pbpod.HealthState_HEALTH_STATE_HEALTHY.String()
+	}
+	taskState := util.MesosStateToPelotonState(evt.GetStatus().GetState())
+	return &scalar.PodEvent{
+		Event: &pbpod.PodEvent{
+			PodId:       &peloton.PodID{Value: evt.GetStatus().GetTaskId().GetValue()},
+			ActualState: api.ConvertTaskStateToPodState(taskState).String(),
+			Timestamp: util.FormatTime(
+				evt.GetStatus().GetTimestamp(),
+				time.RFC3339Nano,
+			),
+			AgentId:  evt.GetStatus().GetAgentId().GetValue(),
+			Hostname: evt.GetStatus().GetAgentId().GetValue(),
+			Message:  evt.GetStatus().GetMessage(),
+			Reason:   evt.GetStatus().GetReason().String(),
+			Healthy:  healthy,
+		},
+		EventType: scalar.UpdatePod,
+	}
 }

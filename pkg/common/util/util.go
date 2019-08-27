@@ -638,3 +638,15 @@ func GetDereferencedJobIDsList(jobIDs []*peloton.JobID) []peloton.JobID {
 	}
 	return result
 }
+
+// FormatTime converts a Unix timestamp to a string format of the
+// given layout in UTC. See https://golang.org/pkg/time/ for possible
+// time layout in golang. For example, it will return RFC3339 format
+// string like 2017-01-02T11:00:00.123456789Z if the layout is
+// time.RFC3339Nano
+func FormatTime(timestamp float64, layout string) string {
+	seconds := int64(timestamp)
+	nanoSec := int64((timestamp - float64(seconds)) *
+		float64(time.Second/time.Nanosecond))
+	return time.Unix(seconds, nanoSec).UTC().Format(layout)
+}

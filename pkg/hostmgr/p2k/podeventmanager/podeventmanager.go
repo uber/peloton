@@ -87,6 +87,9 @@ func (pep purgedEventsProcessor) EventPurged(events []*cirbuf.CircularBufferItem
 			continue
 		}
 
-		pep.plugin.AckPodEvent(context.Background(), &scalar.PodEvent{Event: pe})
+		pep.plugin.AckPodEvent(
+			context.Background(),
+			&scalar.PodEvent{Event: pe},
+		)
 	}
 }

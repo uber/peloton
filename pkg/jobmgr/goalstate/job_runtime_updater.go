@@ -99,18 +99,6 @@ var allTaskStates = []task.TaskState{
 	task.TaskState_DELETED,
 }
 
-// formatTime converts a Unix timestamp to a string format of the
-// given layout in UTC. See https://golang.org/pkg/time/ for possible
-// time layout in golang. For example, it will return RFC3339 format
-// string like 2017-01-02T11:00:00.123456789Z if the layout is
-// time.RFC3339Nano
-func formatTime(timestamp float64, layout string) string {
-	seconds := int64(timestamp)
-	nanoSec := int64((timestamp - float64(seconds)) *
-		float64(time.Second/time.Nanosecond))
-	return time.Unix(seconds, nanoSec).UTC().Format(layout)
-}
-
 // JobEvaluateMaxRunningInstancesSLA evaluates the maximum running instances job SLA
 // and determines instances to start if any.
 func JobEvaluateMaxRunningInstancesSLA(ctx context.Context, entity goalstate.Entity) error {
@@ -660,7 +648,7 @@ func setStartTime(
 		}
 
 		if count > 0 {
-			jobRuntimeUpdate.StartTime = formatTime(getFirstTaskUpdateTime, time.RFC3339Nano)
+			jobRuntimeUpdate.StartTime = util.FormatTime(getFirstTaskUpdateTime, time.RFC3339Nano)
 		}
 	}
 	return jobRuntimeUpdate
@@ -680,7 +668,7 @@ func setCompletionTime(
 		completionTime := time.Now().UTC().Format(time.RFC3339Nano)
 		lastTaskUpdateTime := cachedJob.GetLastTaskUpdateTime()
 		if lastTaskUpdateTime != 0 {
-			completionTime = formatTime(lastTaskUpdateTime, time.RFC3339Nano)
+			completionTime = util.FormatTime(lastTaskUpdateTime, time.RFC3339Nano)
 		}
 		jobRuntimeUpdate.CompletionTime = completionTime
 	} else {
