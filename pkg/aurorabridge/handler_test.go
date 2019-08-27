@@ -2266,8 +2266,8 @@ func (suite *ServiceHandlerTestSuite) TestRollbackJobUpdate_Success() {
 	k := fixture.AuroraJobUpdateKey()
 	id := fixture.PelotonJobID()
 
-	prevVersion := fixture.PelotonEntityVersion()
-	curVersion := fixture.PelotonEntityVersion()
+	prevVersion := fixture.PelotonEntityVersion(1)
+	curVersion := fixture.PelotonEntityVersion(2)
 
 	updateSpec := &stateless.UpdateSpec{
 		BatchSize:         1,
