@@ -239,23 +239,41 @@ func (suite *v1LifecycleTestSuite) TestLaunchErrors() {
 	tmp := createTestTask(1)
 	taskID := tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId)
 	taskInfos[taskID] = tmp
+	hostname := "host"
+	leaseID := uuid.New()
+
+	suite.mockHostMgr.EXPECT().
+		TerminateLeases(gomock.Any(), &v1_hostsvc.TerminateLeasesRequest{
+			Leases: []*v1_hostsvc.TerminateLeasesRequest_LeasePair{{
+				Hostname: hostname,
+				LeaseId:  &pbhostmgr.LeaseID{Value: leaseID},
+			}},
+		}).Return(&v1_hostsvc.TerminateLeasesResponse{}, nil)
 
 	err := suite.lm.Launch(
 		context.Background(),
-		"",
-		"host",
-		"host",
+		leaseID,
+		hostname,
+		hostname,
 		nil,
 		nil,
 	)
 	suite.Error(err)
 	suite.True(yarpcerrors.IsInvalidArgument(err))
 
+	suite.mockHostMgr.EXPECT().
+		TerminateLeases(gomock.Any(), &v1_hostsvc.TerminateLeasesRequest{
+			Leases: []*v1_hostsvc.TerminateLeasesRequest_LeasePair{{
+				Hostname: hostname,
+				LeaseId:  &pbhostmgr.LeaseID{Value: leaseID},
+			}},
+		}).Return(&v1_hostsvc.TerminateLeasesResponse{}, nil)
+
 	err = suite.lm.Launch(
 		context.Background(),
-		"",
-		"host",
-		"host",
+		leaseID,
+		hostname,
+		hostname,
 		taskInfos,
 		rate.NewLimiter(0, 0),
 	)

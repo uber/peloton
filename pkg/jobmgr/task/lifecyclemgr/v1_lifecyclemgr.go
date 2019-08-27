@@ -65,7 +65,20 @@ func (l *v1LifecycleMgr) Launch(
 	agentID string,
 	pods map[string]*LaunchableTaskInfo,
 	rateLimiter *rate.Limiter,
-) error {
+) (err error) {
+	defer func() {
+		if err != nil {
+			if newErr := l.TerminateLease(
+				ctx,
+				hostname,
+				agentID,
+				leaseID,
+			); newErr != nil {
+				err = errors.Wrap(err, newErr.Error())
+			}
+		}
+	}()
+
 	if len(pods) == 0 {
 		return errEmptyPods
 	}
@@ -105,7 +118,7 @@ func (l *v1LifecycleMgr) Launch(
 		Pods:     launchablePods,
 	}
 
-	_, err := l.hostManagerV1.LaunchPods(ctx, request)
+	_, err = l.hostManagerV1.LaunchPods(ctx, request)
 	callDuration := time.Since(callStart)
 
 	if err != nil {
