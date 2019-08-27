@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"go.uber.org/yarpc/yarpcerrors"
 	"io/ioutil"
 	"time"
 
@@ -57,6 +58,18 @@ type JobConfigObject struct {
 	ApiVersion string `column:"name=api_version"`
 	// Creation time of the job
 	CreationTime time.Time `column:"name=creation_time"`
+}
+
+// transform will convert all the value from DB into the corresponding type
+// in ORM object to be interpreted by base store client
+func (o *JobConfigObject) transform(row map[string]interface{}) {
+	o.JobID = row["job_id"].(string)
+	o.Version = row["version"].(uint64)
+	o.Config = row["config"].([]byte)
+	o.ConfigAddOn = row["config_addon"].([]byte)
+	o.Spec = row["spec"].([]byte)
+	o.ApiVersion = row["api_version"].(string)
+	o.CreationTime = row["creation_time"].(time.Time)
 }
 
 // JobConfigOpsResult contains the unmarshalled result of a job_config Get()
@@ -296,11 +309,16 @@ func (d *jobConfigOps) Get(
 		Version: version,
 	}
 
-	if err := d.store.oClient.Get(ctx, obj); err != nil {
+	row, err := d.store.oClient.Get(ctx, obj)
+	if err != nil {
 		d.store.metrics.OrmJobMetrics.JobConfigGetFail.Inc(1)
 		return nil, nil, err
 	}
-
+	if len(row) == 0 {
+		return nil, nil, yarpcerrors.NotFoundErrorf(
+			"Job config not found %s", id.Value)
+	}
+	obj.transform(row)
 	config, err := obj.toConfig()
 	if err != nil {
 		d.store.metrics.OrmJobMetrics.JobConfigGetFail.Inc(1)
@@ -340,11 +358,15 @@ func (d *jobConfigOps) GetResult(
 		JobID:   id.GetValue(),
 		Version: version,
 	}
-	if err := d.store.oClient.Get(ctx, obj); err != nil {
+	row, err := d.store.oClient.Get(ctx, obj)
+	if err != nil {
 		d.store.metrics.OrmJobMetrics.JobConfigGetFail.Inc(1)
 		return nil, err
 	}
-
+	if len(row) == 0 {
+		return nil, nil
+	}
+	obj.transform(row)
 	config, err := obj.toConfig()
 	if err != nil {
 		d.store.metrics.OrmJobMetrics.JobConfigGetFail.Inc(1)

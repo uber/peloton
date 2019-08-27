@@ -71,65 +71,6 @@ func (suite *ORMTestSuite) TestTableFromObject() {
 	}
 }
 
-// TestSetObjectFromRow tests setting base object from a row
-func (suite *ORMTestSuite) TestSetObjectFromRow() {
-	e := &ValidObject{}
-	table, err := orm.TableFromObject(e)
-	suite.NoError(err)
-
-	table.SetObjectFromRow(e, testRow)
-	suite.Equal(e.ID, testRow[0].Value)
-	suite.Equal(e.Name, testRow[1].Value)
-	suite.Equal(e.Data, testRow[2].Value)
-
-	// error case where one of the columns in that row is nil
-	var testRowNil = []base.Column{
-		{
-			Name:  "id",
-			Value: uint64(1),
-		},
-		{
-			Name:  "name",
-			Value: "random name",
-		},
-		{
-			Name: "data",
-			// When the value in DB column is set to null, this is returned
-			// by gocql
-			Value: (*string)(nil),
-		},
-	}
-
-	e = &ValidObject{}
-	table.SetObjectFromRow(e, testRowNil)
-	suite.Equal(testRowNil[0].Value, e.ID)
-	suite.Equal(testRowNil[1].Value, e.Name)
-	// Expect 0 value of the type which in this case is "" for string
-	suite.Equal("", e.Data)
-}
-
-// TestSetObjectFromRowWithOptionalString tests setting from a row
-// an object with an optional string type as primary key
-func (suite *ORMTestSuite) TestSetObjectFromRowWithOptionalString() {
-	e := &ValidObjectWithOptString{}
-	table, err := orm.TableFromObject(e)
-	suite.NoError(err)
-
-	var testRow = []base.Column{
-		{
-			Name:  "name",
-			Value: "some_name",
-		},
-		{
-			Name:  "data",
-			Value: "random data",
-		},
-	}
-	table.SetObjectFromRow(e, testRow)
-	suite.Equal(e.Name, &base.OptionalString{Value: "some_name"})
-	suite.Equal(e.Data, testRow[1].Value)
-}
-
 // TestGetRowFromObject tests building a row (list of base.Column) from base
 // object
 func (suite *ORMTestSuite) TestGetRowFromObject() {

@@ -39,7 +39,7 @@ type Connector interface {
 		e *base.Definition,
 		keys []base.Column,
 		colNamesToRead ...string,
-	) ([]base.Column, error)
+	) (map[string]interface{}, error)
 
 	// GetAll fetches a list of base objects for the partition key
 	// and the given clustering keys
@@ -47,7 +47,7 @@ type Connector interface {
 		ctx context.Context,
 		e *base.Definition,
 		keys []base.Column,
-	) ([][]base.Column, error)
+	) ([]map[string]interface{}, error)
 
 	GetAllIter(
 		ctx context.Context,

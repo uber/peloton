@@ -212,24 +212,6 @@ func (t *Table) SetObjectFromRow(e base.Object, row []base.Column) {
 	}
 }
 
-// BuildObjectsFromRows is a helper for creating a list of base objects from the
-// given list of rows
-func (t *Table) BuildObjectsFromRows(
-	e base.Object,
-	rows [][]base.Column,
-) []base.Object {
-	actualType := reflect.TypeOf(e).Elem()
-	baseType := reflect.TypeOf((*base.Object)(nil)).Elem()
-	objects := reflect.MakeSlice(reflect.SliceOf(baseType), 0, len(rows))
-	for _, row := range rows {
-		newObject := reflect.New(actualType).Interface()
-		t.SetObjectFromRow(newObject, row)
-		objects = reflect.Append(
-			objects, reflect.ValueOf(newObject.(base.Object)))
-	}
-	return objects.Interface().([]base.Object)
-}
-
 // TableFromObject creates a orm.Table from a storage.Object
 // instance.
 func TableFromObject(e base.Object) (*Table, error) {

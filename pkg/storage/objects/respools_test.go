@@ -124,7 +124,7 @@ func (s *ResPoolsObjectTestSuite) TestRespoolOpsClientFail() {
 	mockClient.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(errors.New("update failed")).AnyTimes()
 	mockClient.EXPECT().Get(gomock.Any(), gomock.Any()).
-		Return(errors.New("get failed"))
+		Return(nil, errors.New("get failed"))
 	mockClient.EXPECT().Delete(gomock.Any(), gomock.Any()).
 		Return(errors.New("delete failed"))
 

@@ -50,6 +50,16 @@ type ResPoolObject struct {
 	UpdateTime time.Time `column:"name=update_time"`
 }
 
+// transform will convert all the value from DB into the corresponding type
+// in ORM object to be interpreted by base store client
+func (o *ResPoolObject) transform(row map[string]interface{}) {
+	o.RespoolID = base.NewOptionalString(row["respool_id"])
+	o.RespoolConfig = row["respool_config"].(string)
+	o.Owner = row["owner"].(string)
+	o.UpdateTime = row["update_time"].(time.Time)
+	o.CreationTime = row["creation_time"].(time.Time)
+}
+
 // ResPoolOpsResult contains the unmarshalled result of a respool_config Get()
 // From this object, the caller can retrieve respool config.
 type ResPoolOpsResult struct {
@@ -167,14 +177,15 @@ func (r *resPoolOps) Create(
 func (r *resPoolOps) GetAll(ctx context.Context) (map[string]*respool.ResourcePoolConfig, error) {
 	resultObjs := map[string]*respool.ResourcePoolConfig{}
 
-	objs, err := r.store.oClient.GetAll(ctx, &ResPoolObject{})
+	rows, err := r.store.oClient.GetAll(ctx, &ResPoolObject{})
 	if err != nil {
 		r.store.metrics.OrmRespoolMetrics.RespoolGetAllFail.Inc(1)
 		return nil, err
 	}
 
-	for _, obj := range objs {
-		resPoolObj := obj.(*ResPoolObject)
+	for _, row := range rows {
+		resPoolObj := &ResPoolObject{}
+		resPoolObj.transform(row)
 		respoolConfig, err := resPoolObj.toConfig()
 		if err != nil {
 			r.store.metrics.OrmRespoolMetrics.RespoolGetAllFail.Inc(1)
@@ -195,10 +206,15 @@ func (r *resPoolOps) GetResult(
 	respoolObj := &ResPoolObject{
 		RespoolID: base.NewOptionalString(respoolId),
 	}
-	if err := r.store.oClient.Get(ctx, respoolObj); err != nil {
+	row, err := r.store.oClient.Get(ctx, respoolObj)
+	if err != nil {
 		r.store.metrics.OrmRespoolMetrics.RespoolGetFail.Inc(1)
 		return nil, err
 	}
+	if len(row) == 0 {
+		return nil, nil
+	}
+	respoolObj.transform(row)
 	config, err := respoolObj.toConfig()
 	if err != nil {
 		r.store.metrics.OrmRespoolMetrics.RespoolGetFail.Inc(1)
@@ -227,10 +243,15 @@ func (r *resPoolOps) Update(
 	obj := &ResPoolObject{
 		RespoolID: base.NewOptionalString(id.GetValue()),
 	}
-	if err := r.store.oClient.Get(ctx, obj); err != nil {
+	row, err := r.store.oClient.Get(ctx, obj)
+	if err != nil {
 		r.store.metrics.OrmRespoolMetrics.RespoolGetFail.Inc(1)
 		return err
 	}
+	if len(row) == 0 {
+		return nil
+	}
+	obj.transform(row)
 	configBuffer, err := json.Marshal(config)
 	if err != nil {
 		return errors.Wrap(err, "Failed to marshal resourcePoolConfig")

@@ -1338,8 +1338,8 @@ func (suite *podHandlerTestSuite) TestGetPodSuccess() {
 			nil,
 		),
 
-		suite.podStore.EXPECT().
-			GetPodEvents(
+		suite.mockedPodEventsOps.EXPECT().
+			GetAll(
 				gomock.Any(),
 				testJobID,
 				uint32(testInstanceID),
@@ -1354,8 +1354,8 @@ func (suite *podHandlerTestSuite) TestGetPodSuccess() {
 				configVersion,
 			),
 
-		suite.podStore.EXPECT().
-			GetPodEvents(
+		suite.mockedPodEventsOps.EXPECT().
+			GetAll(
 				gomock.Any(),
 				testJobID,
 				uint32(testInstanceID),
@@ -1521,8 +1521,8 @@ func (suite *podHandlerTestSuite) TestGetPodSuccessLimit() {
 			nil,
 		),
 
-		suite.podStore.EXPECT().
-			GetPodEvents(
+		suite.mockedPodEventsOps.EXPECT().
+			GetAll(
 				gomock.Any(),
 				testJobID,
 				uint32(testInstanceID),
@@ -1537,8 +1537,8 @@ func (suite *podHandlerTestSuite) TestGetPodSuccessLimit() {
 				configVersion,
 			),
 
-		suite.podStore.EXPECT().
-			GetPodEvents(
+		suite.mockedPodEventsOps.EXPECT().
+			GetAll(
 				gomock.Any(),
 				testJobID,
 				uint32(testInstanceID),
@@ -1654,8 +1654,8 @@ func (suite *podHandlerTestSuite) TestGetPodFailureToGetPreviousPodEvents() {
 			nil,
 		),
 
-		suite.podStore.EXPECT().
-			GetPodEvents(
+		suite.mockedPodEventsOps.EXPECT().
+			GetAll(
 				gomock.Any(),
 				testJobID,
 				uint32(testInstanceID),
@@ -1690,8 +1690,8 @@ func (suite *podHandlerTestSuite) TestGetPodEvents() {
 		},
 	}
 
-	suite.podStore.EXPECT().
-		GetPodEvents(gomock.Any(), testJobID, uint32(testInstanceID), "").
+	suite.mockedPodEventsOps.EXPECT().
+		GetAll(gomock.Any(), testJobID, uint32(testInstanceID), "").
 		Return(events, nil)
 	response, err := suite.handler.GetPodEvents(context.Background(), request)
 	suite.NoError(err)
@@ -1714,8 +1714,8 @@ func (suite *podHandlerTestSuite) TestGetPodEventsStoreError() {
 			Value: testPodName,
 		},
 	}
-	suite.podStore.EXPECT().
-		GetPodEvents(gomock.Any(), testJobID, uint32(testInstanceID), "").
+	suite.mockedPodEventsOps.EXPECT().
+		GetAll(gomock.Any(), testJobID, uint32(testInstanceID), "").
 		Return(nil, fmt.Errorf("fake GetPodEvents error"))
 	_, err := suite.handler.GetPodEvents(context.Background(), request)
 	suite.Error(err)

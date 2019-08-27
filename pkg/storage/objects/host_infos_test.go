@@ -144,7 +144,7 @@ func (s *HostInfoObjectTestSuite) TestCreateGetGetAllDeleteHostInfoFail() {
 
 	mockClient.EXPECT().Create(gomock.Any(), gomock.Any()).Return(errors.New("Create failed"))
 	mockClient.EXPECT().Get(gomock.Any(), gomock.Any()).
-		Return(errors.New("Get failed"))
+		Return(nil, errors.New("Get failed"))
 	mockClient.EXPECT().GetAll(gomock.Any(), gomock.Any()).
 		Return(nil, errors.New("GetAll failed"))
 	mockClient.EXPECT().Delete(gomock.Any(), gomock.Any()).

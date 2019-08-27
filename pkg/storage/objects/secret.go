@@ -16,6 +16,7 @@ package objects
 
 import (
 	"context"
+	"go.uber.org/yarpc/yarpcerrors"
 	"time"
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
@@ -56,6 +57,18 @@ type SecretInfoObject struct {
 	Version int64 `column:"name=version"`
 	// This flag indicates that the secret is valid or invalid
 	Valid bool `column:"name=valid"`
+}
+
+// transform will convert all the value from DB into the corresponding type
+// in ORM object to be interpreted by base store client
+func (o *SecretInfoObject) transform(row map[string]interface{}) {
+	o.SecretID = row["secret_id"].(string)
+	o.JobID = row["job_id"].(string)
+	o.Path = row["path"].(string)
+	o.Data = row["data"].(string)
+	o.CreationTime = row["creation_time"].(time.Time)
+	o.Version = int64(row["version"].(uint64))
+	o.Valid = row["valid"].(bool)
 }
 
 // SecretInfoOps provides methods for manipulating secret table.
@@ -154,10 +167,17 @@ func (s *secretInfoOps) GetSecret(
 		SecretID: secretID,
 		Valid:    true,
 	}
-	if err := s.store.oClient.Get(ctx, secretInfoObject); err != nil {
+	row, err := s.store.oClient.Get(ctx, secretInfoObject)
+	if err != nil {
 		s.store.metrics.OrmJobMetrics.SecretInfoGetFail.Inc(1)
 		return nil, err
 	}
+
+	if len(row) == 0 {
+		return nil, yarpcerrors.NotFoundErrorf(
+			"Secret is not found %s", secretID)
+	}
+	secretInfoObject.transform(row)
 	s.store.metrics.OrmJobMetrics.SecretInfoGet.Inc(1)
 	return secretInfoObject, nil
 }

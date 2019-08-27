@@ -47,6 +47,15 @@ type JobUpdateEventsObject struct {
 	CreateTime *base.OptionalString `column:"name=create_time"`
 }
 
+// transform will convert all the value from DB into the corresponding type
+// in ORM object to be interpreted by base store client
+func (o *JobUpdateEventsObject) transform(row map[string]interface{}) {
+	o.UpdateID = row["update_id"].(string)
+	o.Type = row["type"].(string)
+	o.State = row["state"].(string)
+	o.CreateTime = base.NewOptionalString(row["create_time"])
+}
+
 // JobUpdateEventsOps provides methods for manipulating job_update_events table.
 type JobUpdateEventsOps interface {
 	// Create upserts single job state state change for a job.
@@ -119,16 +128,16 @@ func (d *jobUpdateEventsOps) GetAll(
 		UpdateID: updateID.GetValue(),
 	}
 
-	result, err := d.store.oClient.GetAll(ctx, obj)
+	rows, err := d.store.oClient.GetAll(ctx, obj)
 	if err != nil {
 		d.store.metrics.OrmJobUpdateEventsMetrics.JobUpdateEventsGetFail.Inc(1)
 		return nil, err
 	}
 
 	var workflowEvents []*stateless.WorkflowEvent
-	for _, value := range result {
-		jobUpdateEventsObjectValue := value.(*JobUpdateEventsObject)
-
+	for _, row := range rows {
+		jobUpdateEventsObjectValue := &JobUpdateEventsObject{}
+		jobUpdateEventsObjectValue.transform(row)
 		timeUUID, err := gocql.ParseUUID(jobUpdateEventsObjectValue.CreateTime.Value)
 		if err != nil {
 			d.store.metrics.OrmJobUpdateEventsMetrics.JobUpdateEventsGetFail.Inc(1)

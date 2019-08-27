@@ -357,7 +357,7 @@ func (s *JobIndexObjectTestSuite) TestJobIndexOpsClientFail() {
 	mockClient.EXPECT().Create(gomock.Any(), gomock.Any()).
 		Return(errors.New("create failed"))
 	mockClient.EXPECT().Get(gomock.Any(), gomock.Any()).
-		Return(errors.New("get failed")).Times(2)
+		Return(nil, errors.New("get failed")).Times(2)
 	mockClient.EXPECT().GetAll(gomock.Any(), gomock.Any()).
 		Return(nil, errors.New("getAll failed"))
 	mockClient.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).

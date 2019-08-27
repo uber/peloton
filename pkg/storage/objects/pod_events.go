@@ -30,7 +30,6 @@ import (
 	"github.com/gocql/gocql"
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
-	"go.uber.org/yarpc/yarpcerrors"
 )
 
 // init adds a PodEvents instance to the global list of storage objects
@@ -76,6 +75,28 @@ type PodEventsObject struct {
 	Reason string `column:"name=reason"`
 	// VolumeID of the pod event
 	VolumeID string `column:"name=volumeid"`
+}
+
+// transform will convert all the value from DB into the corresponding type
+// in ORM object to be interpreted by base store client
+func (o *PodEventsObject) transform(row map[string]interface{}) {
+	o.JobID = row["job_id"].(string)
+	o.InstanceID = row["instance_id"].(uint32)
+	o.RunID = base.NewOptionalUInt64(row["run_id"])
+	o.AgentID = row["agent_id"].(string)
+	o.ActualState = row["actual_state"].(string)
+	o.GoalState = row["goal_state"].(string)
+	o.UpdateTime = base.NewOptionalString(row["update_time"])
+	o.ConfigVersion = row["config_version"].(uint64)
+	o.DesiredConfigVersion = row["desired_config_version"].(uint64)
+	o.DesiredRunID = row["desired_run_id"].(uint64)
+	o.Healthy = row["healthy"].(string)
+	o.Hostname = row["hostname"].(string)
+	o.Message = row["message"].(string)
+	o.PodStatus = row["pod_status"].([]byte)
+	o.PreviousRunID = row["previous_run_id"].(uint64)
+	o.Reason = row["reason"].(string)
+	o.VolumeID = row["volumeid"].(string)
 }
 
 // PodEventsOps provides methods for manipulating pod_events table.
@@ -209,30 +230,19 @@ func (d *podEventsOps) GetAll(
 			InstanceID: instanceID,
 		}
 		// By default, the Get will fetch the latest row of the latest run_id.
-		err := d.store.oClient.Get(
+		row, err := d.store.oClient.Get(
 			ctx,
 			podEventsObject,
 		)
 
 		if err != nil {
-			if yarpcerrors.IsNotFound(err) {
-				// If we query C* with `GetAll`, gocql will not return
-				// gocql.ErrNotFound even if the query returns 0 rows.
-				// However, for the same query if we use `Get` it will return
-				// gocql.ErrNotFound. Current `GetAll` usage as well as legacy
-				// GetAll usage (from store.go) assumes this and checks for
-				// len(results) instead of NotFoundError. So we should
-				// catch not found error here and return an empty slice instead.
-				return []*task.PodEvent{}, nil
-			}
 			d.store.metrics.OrmTaskMetrics.PodEventsGetFail.Inc(1)
 			return nil, err
 		}
-
-		runID = base.ConvertFromOptionalToRawType(
-			reflect.ValueOf(
-				podEventsObject.RunID),
-		).(uint64)
+		if len(row) == 0 {
+			return []*task.PodEvent{}, nil
+		}
+		runID = row["run_id"].(uint64)
 	}
 
 	podEventsObject = &PodEventsObject{
@@ -240,14 +250,11 @@ func (d *podEventsOps) GetAll(
 		InstanceID: instanceID,
 		RunID:      base.NewOptionalUInt64(runID),
 	}
-
-	result, err = d.store.oClient.GetAll(
-		ctx,
-		podEventsObject,
-	)
-	if err != nil {
-		d.store.metrics.OrmTaskMetrics.PodEventsGetFail.Inc(1)
-		return nil, err
+	rows, err := d.store.oClient.GetAll(ctx, podEventsObject)
+	for _, row := range rows {
+		podEventsObjectValue := &PodEventsObject{}
+		podEventsObjectValue.transform(row)
+		result = append(result, podEventsObjectValue)
 	}
 
 	var podEvents []*task.PodEvent

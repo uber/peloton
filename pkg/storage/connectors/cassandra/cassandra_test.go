@@ -64,7 +64,7 @@ var testRowsWithCK = [][]base.Column{
 	{
 		{
 			Name:  "id",
-			Value: uint64(1),
+			Value: 1,
 		},
 		{
 			Name:  "ck",
@@ -82,7 +82,7 @@ var testRowsWithCK = [][]base.Column{
 	{
 		{
 			Name:  "id",
-			Value: uint64(1),
+			Value: 1,
 		},
 		{
 			Name:  "ck",
@@ -104,6 +104,17 @@ var keyRow = []base.Column{
 	{
 		Name:  "id",
 		Value: uint64(1),
+	},
+}
+
+var keyRowForGet = []base.Column{
+	{
+		Name:  "id",
+		Value: uint64(1),
+	},
+	{
+		Name:  "ck",
+		Value: uint64(20),
 	},
 }
 
@@ -201,8 +212,8 @@ func (suite *CassandraConnSuite) TestCreateGetDelete() {
 
 	// read the row from C* test table for given keys
 	row, err = connector.Get(context.Background(), obj, keyRow)
-	suite.Error(err)
-	suite.True(yarpcerrors.IsNotFound(err))
+	suite.NoError(err)
+	suite.Nil(row)
 
 	// delete this row again from C*. It is a noop for C*
 	// this should not result in error.
@@ -244,10 +255,10 @@ func (suite *CassandraConnSuite) TestCreateUpdateGet() {
 	row, err := connector.Get(context.Background(), obj, keyRow)
 	suite.NoError(err)
 	suite.Len(row, 3)
-	for _, col := range row {
-		if col.Name == "name" {
-			name := col.Value.(*string)
-			suite.Equal("test-update", *name)
+	for colName, colValue := range row {
+		if colName == "name" {
+			name := colValue.(string)
+			suite.Equal("test-update", name)
 		}
 	}
 
@@ -285,7 +296,7 @@ func (suite *CassandraConnSuite) TestCreateGetAll() {
 		},
 		// Column name to data type mapping of the object
 		ColumnToType: map[string]reflect.Type{
-			"id":   reflect.TypeOf(1),
+			"id":   reflect.TypeOf(&base.OptionalUInt64{Value: 1}),
 			"ck":   reflect.TypeOf(1),
 			"data": reflect.TypeOf("data"),
 			"name": reflect.TypeOf("name"),
@@ -298,87 +309,33 @@ func (suite *CassandraConnSuite) TestCreateGetAll() {
 		suite.NoError(err)
 	}
 
-	// read the row from C* test table for given keys
+	// read the rows from C* test table for given keys
 	rows, err := connector.GetAll(context.Background(), obj, keyRow)
 	suite.NoError(err)
 	suite.Len(rows, 2)
 
-	for _, row := range rows {
-		for _, col := range row {
-			if col.Name == "ck" {
-				ck := col.Value.(*int)
-				suite.True(*ck == 10 || *ck == 20)
-			} else if col.Name == "name" {
-				testStr := "test"
-				suite.Equal(col.Value, &testStr)
-			} else if col.Name == "data" {
-				data := col.Value.(*string)
-				suite.True(*data == "testdata20" || *data == "testdata10")
-			} else {
-				id := col.Value.(*int)
-				suite.Equal(*id, 1)
-			}
-		}
-	}
-}
-
-// TestCreateGetAllIter tests the GetAllIter operation
-func (suite *CassandraConnSuite) TestCreateGetAllIter() {
-	// Definition stores schema information about an Object
-	obj := &base.Definition{
-		Name: testTableName2,
-		Key: &base.PrimaryKey{
-			PartitionKeys: []string{"id"},
-			ClusteringKeys: []*base.ClusteringKey{
-				{
-					Name:       "ck",
-					Descending: true,
-				},
-			},
-		},
-		// Column name to data type mapping of the object
-		ColumnToType: map[string]reflect.Type{
-			"id":   reflect.TypeOf(1),
-			"ck":   reflect.TypeOf(1),
-			"data": reflect.TypeOf("data"),
-			"name": reflect.TypeOf("name"),
-		},
-	}
-
-	// create the test rows in C*
-	for _, row := range testRowsWithCK {
-		err := connector.Create(context.Background(), obj, row)
-		suite.NoError(err)
-	}
-
-	// read the row from C* test table for given keys using iterator
-	iter, err := connector.GetAllIter(context.Background(), obj, keyRow)
+	// row the row from C* test table for given keys(optional parition key and
+	// clustering key
+	// verify in Get slice map only return one row
+	row, err := connector.Get(context.Background(), obj, keyRowForGet)
 	suite.NoError(err)
+	// verify this map is only one row and has 4 column fields.
+	suite.Len(row, 4)
 
-	numRows := 0
-	for {
-		row, err := iter.Next()
-		suite.NoError(err)
-
-		if row == nil {
-			iter.Close()
-			suite.Equal(2, numRows)
-			break
-		}
-		numRows++
-		for _, col := range row {
-			if col.Name == "ck" {
-				ck := col.Value.(*int)
-				suite.True(*ck == 10 || *ck == 20)
-			} else if col.Name == "name" {
+	for _, row := range rows {
+		for colName, colValue := range row {
+			if colName == "ck" {
+				ck := colValue.(uint32)
+				suite.True(ck == uint32(10) || ck == uint32(20))
+			} else if colName == "name" {
 				testStr := "test"
-				suite.Equal(col.Value, &testStr)
-			} else if col.Name == "data" {
-				data := col.Value.(*string)
-				suite.True(*data == "testdata20" || *data == "testdata10")
+				suite.Equal(colValue, testStr)
+			} else if colName == "data" {
+				data := colValue.(string)
+				suite.True(data == "testdata20" || data == "testdata10")
 			} else {
-				id := col.Value.(*int)
-				suite.Equal(*id, 1)
+				id := colValue.(uint32)
+				suite.Equal(id, uint32(1))
 			}
 		}
 	}
@@ -430,13 +387,13 @@ func (suite *CassandraConnSuite) TestCreateGetAllOptionalStringType() {
 	suite.Len(rows, 2)
 
 	for _, row := range rows {
-		for _, col := range row {
-			val := col.Value.(*string)
-			if col.Name == "name" {
-				suite.True(*val == "name0" || *val == "name1")
+		for colName, colVal := range row {
+			val := colVal.(string)
+			if colName == "name" {
+				suite.True(val == "name0" || val == "name1")
 			} else { // col.Name == "data"
-				suite.Equal("data", col.Name)
-				suite.True(*val == "testdata0" || *val == "testdata1")
+				suite.Equal("data", colName)
+				suite.True(val == "testdata0" || val == "testdata1")
 			}
 		}
 	}

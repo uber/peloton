@@ -31,10 +31,11 @@ type Client interface {
 	// Create creates the storage object in the database
 	Create(ctx context.Context, e base.Object) error
 	// Get gets the storage object from the database
-	Get(ctx context.Context, e base.Object, fieldsToRead ...string) error
+	Get(ctx context.Context, e base.Object, fieldsToRead ...string) (
+		map[string]interface{}, error)
 	// GetAll gets all the storage objects for the partition key from the
 	// database
-	GetAll(ctx context.Context, e base.Object) ([]base.Object, error)
+	GetAll(ctx context.Context, e base.Object) ([]map[string]interface{}, error)
 	// GetAllIter provides an iterative way to fetch all storage objects
 	// for the partition key
 	GetAllIter(ctx context.Context, e base.Object) (Iterator, error)
@@ -110,12 +111,15 @@ func (c *client) Create(ctx context.Context, e base.Object) error {
 
 // Get fetches an base by primary key, The base provided must contain
 // values for all components of its primary key for the operation to succeed.
-func (c *client) Get(ctx context.Context, e base.Object, fieldsToRead ...string) error {
+func (c *client) Get(
+	ctx context.Context,
+	e base.Object,
+	fieldsToRead ...string) (map[string]interface{}, error) {
 
 	// lookup if a table exists for this object, return error if not found
 	table, err := c.getTable(e)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// build a primary key row from storage object
@@ -123,13 +127,10 @@ func (c *client) Get(ctx context.Context, e base.Object, fieldsToRead ...string)
 
 	row, err := c.connector.Get(ctx, &table.Definition, keyRow, fieldsToRead...)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// build a storage object from the row
-	table.SetObjectFromRow(e, row)
-
-	return nil
+	return row, nil
 }
 
 // GetAll fetches a list of base objects for the given partition key and
@@ -139,7 +140,7 @@ func (c *client) Get(ctx context.Context, e base.Object, fieldsToRead ...string)
 func (c *client) GetAll(
 	ctx context.Context,
 	e base.Object,
-) ([]base.Object, error) {
+) ([]map[string]interface{}, error) {
 
 	// lookup if a table exists for this object, return error if not found
 	table, err := c.getTable(e)
@@ -155,7 +156,7 @@ func (c *client) GetAll(
 		return nil, err
 	}
 
-	return table.BuildObjectsFromRows(e, rows), nil
+	return rows, nil
 }
 
 // GetAllIter fetches a list of base objects for the given partition key

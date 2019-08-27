@@ -59,6 +59,20 @@ type TaskConfigV2Object struct {
 	APIVersion string `column:"name=api_version"`
 }
 
+// transform will convert all the value from DB into the corresponding type
+// in ORM object to be interpreted by base store client
+func (o *TaskConfigV2Object) transform(row map[string]interface{}) {
+	o.JobID = row["job_id"].(string)
+	o.Version = row["version"].(uint64)
+	o.InstanceID = int64(row["instance_id"].(uint64))
+	o.Config = row["config"].([]byte)
+	o.ConfigAddOn = row["config_addon"].([]byte)
+	o.CreationTime = row["creation_time"].(time.Time)
+	o.Spec = row["spec"].([]byte)
+	o.APIVersion = row["api_version"].(string)
+
+}
+
 // TaskConfigObject corresponds to a row in task_config table. This is a legacy
 // table to which nothing should be written, only used for reading.
 type TaskConfigObject struct {
@@ -76,6 +90,15 @@ type TaskConfigObject struct {
 	ConfigAddOn []byte `column:"name=config_addon"`
 	// CreationTime of the task config
 	CreationTime time.Time `column:"name=creation_time"`
+}
+
+func (o *TaskConfigObject) transform(row map[string]interface{}) {
+	o.JobID = row["job_id"].(string)
+	o.Version = row["version"].(uint64)
+	o.InstanceID = int64(row["instance_id"].(uint64))
+	o.Config = row["config"].([]byte)
+	o.ConfigAddOn = row["config_addon"].([]byte)
+	o.CreationTime = row["creation_time"].(time.Time)
 }
 
 const (
@@ -203,18 +226,24 @@ func (d *taskConfigV2Object) GetPodSpec(
 		Version:    version,
 	}
 
-	if err := d.store.oClient.Get(ctx, obj, specColumn); err != nil {
-		if yarpcerrors.IsNotFound(errors.Cause(err)) {
-			// per-instance spec not found, return default spec in this case.
-			obj.InstanceID = common.DefaultTaskConfigID
-			if err = d.store.oClient.Get(ctx, obj, specColumn); err != nil {
-				return nil, err
-			}
-		} else {
+	row, err := d.store.oClient.Get(ctx, obj, specColumn)
+	if err != nil {
+		return nil, err
+	}
+	if len(row) == 0 {
+		// per-instance spec not found, return default spec in this case.
+		obj.InstanceID = common.DefaultTaskConfigID
+		row, err = d.store.oClient.Get(ctx, obj, specColumn)
+		if err != nil {
 			return nil, err
 		}
 	}
 
+	if len(row) == 0 {
+		return nil, yarpcerrors.NotFoundErrorf("pod spec " +
+			"not found")
+	}
+	obj.Spec = row["spec"].([]byte)
 	// no spec set, return nil
 	if len(obj.Spec) == 0 {
 		return nil, nil
@@ -244,11 +273,14 @@ func (d *taskConfigV2Object) GetTaskConfig(
 		}
 	}()
 
-	taskConfig, configAddOn, err = d.getTaskConfig(ctx, id, int64(instanceID), version)
+	taskConfig, configAddOn, err = d.getTaskConfig(ctx, id, int64(instanceID),
+		version)
 
 	// no instance config, return default config
-	if yarpcerrors.IsNotFound(errors.Cause(err)) {
-		return d.getTaskConfig(ctx, id, common.DefaultTaskConfigID, version)
+	if taskConfig == nil {
+		return d.getTaskConfig(ctx, id,
+			common.DefaultTaskConfigID,
+			version)
 	}
 
 	// either an error occurs or there is instance config
@@ -271,18 +303,25 @@ func (d *taskConfigV2Object) getTaskConfig(
 		Version:    version,
 	}
 
-	if err := d.store.oClient.Get(
-		ctx, obj, configColumn, configAddOnColumn); err != nil {
+	row, err := d.store.oClient.Get(
+		ctx, obj, configColumn, configAddOnColumn)
+	if err != nil {
 		if yarpcerrors.IsNotFound(errors.Cause(err)) {
 			return d.handleLegacyConfig(ctx, id, instanceID, version)
 		}
 		return nil, nil, err
 	}
+	// if db return no row, return legacy config
+	if len(row) == 0 {
+		return d.handleLegacyConfig(ctx, id, instanceID, version)
+	}
 
 	// no config set, return nil
-	if len(obj.Config) == 0 {
+	if row["config"] == nil {
 		return nil, nil, nil
 	}
+	obj.Config = row["config"].([]byte)
+	obj.ConfigAddOn = row["config_addon"].([]byte)
 
 	taskConfig := &pbtask.TaskConfig{}
 	if err := proto.Unmarshal(obj.Config, taskConfig); err != nil {
@@ -328,11 +367,23 @@ func (d *taskConfigV2Object) handleLegacyConfig(
 		Version:    version,
 	}
 
-	if err = d.store.oClient.Get(
-		ctx, objLegacy, configColumn, configAddOnColumn); err != nil {
+	row, err := d.store.oClient.Get(
+		ctx, objLegacy, configColumn, configAddOnColumn)
+	if err != nil {
 		return nil, nil, err
 	}
+	// if db return no row, return nil
+	if len(row) == 0 {
+		return nil, nil, yarpcerrors.NotFoundErrorf(
+			"task config not found")
+	}
 
+	// no config set, return nil
+	if row["config"] == nil {
+		return nil, nil, nil
+	}
+	objLegacy.Config = row["config"].([]byte)
+	objLegacy.ConfigAddOn = row["config_addon"].([]byte)
 	// no config set, return nil
 	if len(objLegacy.Config) == 0 {
 		return nil, nil, nil

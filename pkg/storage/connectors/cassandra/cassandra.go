@@ -23,6 +23,7 @@ import (
 	"github.com/uber/peloton/pkg/storage/orm"
 
 	"github.com/gocql/gocql"
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc/yarpcerrors"
@@ -40,6 +41,7 @@ const (
 	create  = "create"
 	cas     = "cas"
 	get     = "get"
+	getAll  = "get_all"
 	getIter = "get_iter"
 	update  = "update"
 	del     = "delete"
@@ -351,12 +353,15 @@ func (c *cassandraConnector) buildSelectQuery(
 }
 
 // Get fetches a record from DB using primary keys
+// returns a map describing a row from DB, key is columnName,
+// value is columnValue.
 func (c *cassandraConnector) Get(
 	ctx context.Context,
 	e *base.Definition,
 	keyCols []base.Column,
 	colNamesToRead ...string,
-) ([]base.Column, error) {
+) (map[string]interface{}, error) {
+	var result []map[string]interface{}
 	if len(colNamesToRead) == 0 {
 		colNamesToRead = e.GetColumnsToRead()
 	}
@@ -368,47 +373,90 @@ func (c *cassandraConnector) Get(
 		colNamesToRead,
 		_defaultQueryLimit)
 	if err != nil {
-		return nil, err
-	}
-
-	// build a result row
-	result := buildResultRow(e, colNamesToRead)
-
-	if err := q.Scan(result...); err != nil {
-		if err == gocql.ErrNotFound {
-			err = yarpcerrors.NotFoundErrorf(err.Error())
-		}
 		sendCounters(c.executeFailScope, e.Name, get, err)
 		return nil, err
 	}
 
-	sendLatency(c.scope, e.Name, get, time.Duration(q.Latency()))
-	sendCounters(c.executeSuccessScope, e.Name, get, nil)
+	// execute query and get iterator
+	cqlIter := q.Iter()
+	result, err = cqlIter.SliceMap()
+	if err != nil {
+		sendCounters(c.executeFailScope, e.Name, get, err)
+		return nil, errors.Wrap(err, "SliceMap failed")
+	}
 
-	// translate the read result into a row ([]base.Column)
-	return getRowFromResult(e, colNamesToRead, result), nil
+	if len(result) > 1 {
+		log.WithField("rows len",
+			len(result)).Info("Get SliceMap returns more than 1 row")
+		sendCounters(c.executeFailScope, e.Name, get, err)
+		return nil, nil
+	}
+	if len(result) == 0 {
+		return nil, nil
+	}
+	// at this stage, we know result should be an array size of 1
+	c.processDBData(result)
+	sendLatency(c.scope, e.Name, get, time.Duration(q.Latency()))
+	sendCounters(c.executeSuccessScope, e.Name, get, err)
+
+	return result[0], err
 }
 
 // GetAll fetches all rows from DB using partition keys
+// returns an array of map[string]interface{}
+// the key of the map is the columnName, the value of the map is ColumnValue
 func (c *cassandraConnector) GetAll(
 	ctx context.Context,
 	e *base.Definition,
 	keyCols []base.Column,
-) (rows [][]base.Column, errors error) {
-	iter, err := c.GetAllIter(ctx, e, keyCols)
+) ([]map[string]interface{}, error) {
+	var result []map[string]interface{}
+	colNamesToRead := e.GetColumnsToRead()
+	q, err := c.buildSelectQuery(
+		ctx,
+		e,
+		keyCols,
+		colNamesToRead,
+		_ignoredQueryLimit)
 	if err != nil {
+		sendCounters(c.executeFailScope, e.Name, getAll, err)
 		return nil, err
 	}
-	defer iter.Close()
-	for {
-		row, errors := iter.Next()
-		if errors != nil {
-			return nil, errors
-		}
-		if row != nil {
-			rows = append(rows, row)
-		} else {
-			return rows, nil
+
+	// execute query and get iterator
+	cqlIter := q.Iter()
+	defer cqlIter.Close()
+	result, err = cqlIter.SliceMap()
+
+	if err != nil {
+		sendCounters(c.executeFailScope, e.Name, getAll, err)
+		return nil, errors.Wrap(err, "SliceMap failed")
+	}
+	c.processDBData(result)
+	if err != nil {
+		sendCounters(c.executeFailScope, e.Name, getAll, err)
+	} else {
+		sendCounters(c.executeSuccessScope, e.Name, getAll, err)
+	}
+	return result, err
+}
+
+func (c *cassandraConnector) processDBData(
+	result []map[string]interface{}) {
+	for i, mapItem := range result {
+		for k, v := range mapItem {
+			switch v.(type) {
+			case gocql.UUID:
+				result[i][k] = v.(gocql.UUID).String()
+				// C* internally uses int and int64
+				// ORM object use uint32 or uint64
+			case int:
+				result[i][k] = uint32(v.(int))
+			case int64:
+				result[i][k] = uint64(v.(int64))
+			default:
+				continue
+			}
 		}
 	}
 }

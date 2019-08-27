@@ -38,6 +38,13 @@ type ActiveJobsObject struct {
 	JobID *base.OptionalString `column:"name=job_id"`
 }
 
+// transform will convert all the value from DB into the corresponding type
+// in ORM object to be interpreted by base store client
+func (o *ActiveJobsObject) transform(row map[string]interface{}) {
+	o.ShardID = base.NewOptionalUInt64(row["shard_id"])
+	o.JobID = base.NewOptionalString(row["job_id"])
+}
+
 // ActiveJobsOps provides methods for manipulating active_jobs table.
 type ActiveJobsOps interface {
 	// Create inserts a jobID in the active_job table.
@@ -102,7 +109,7 @@ func (a *activeJobsOps) GetAll(ctx context.Context) ([]*peloton.JobID, error) {
 	resultObjs := []*peloton.JobID{}
 
 	callStart := time.Now()
-	objs, err := a.store.oClient.GetAll(ctx, &ActiveJobsObject{})
+	rows, err := a.store.oClient.GetAll(ctx, &ActiveJobsObject{})
 	if err != nil {
 		a.store.metrics.OrmJobMetrics.ActiveJobsGetAllFail.Inc(1)
 		callDuration := time.Since(callStart)
@@ -110,8 +117,9 @@ func (a *activeJobsOps) GetAll(ctx context.Context) ([]*peloton.JobID, error) {
 		return nil, err
 	}
 
-	for _, obj := range objs {
-		activeJobsObj := obj.(*ActiveJobsObject)
+	for _, row := range rows {
+		activeJobsObj := &ActiveJobsObject{}
+		activeJobsObj.transform(row)
 		jobId := activeJobsObj.JobID.Value
 
 		// If we return an error here because of one potentially corrupt

@@ -16,6 +16,7 @@ package objects
 
 import (
 	"context"
+	"go.uber.org/yarpc/yarpcerrors"
 	"time"
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
@@ -45,6 +46,15 @@ type JobRuntimeObject struct {
 	State string `column:"name=state"`
 	// Update time of the job
 	UpdateTime time.Time `column:"name=update_time"`
+}
+
+// transform will convert all the value from DB into the corresponding type
+// in ORM object to be interpreted by base store client
+func (o *JobRuntimeObject) transform(row map[string]interface{}) {
+	o.JobID = row["job_id"].(string)
+	o.RuntimeInfo = row["runtime_info"].([]byte)
+	o.State = row["state"].(string)
+	o.UpdateTime = row["update_time"].(time.Time)
 }
 
 // JobRuntimeOps provides methods for manipulating job_config table.
@@ -128,10 +138,15 @@ func (d *jobRuntimeOps) Get(
 		JobID: id.GetValue(),
 	}
 
-	if err := d.store.oClient.Get(ctx, obj); err != nil {
+	row, err := d.store.oClient.Get(ctx, obj)
+	if err != nil {
 		return nil, err
 	}
-
+	if len(row) == 0 {
+		return nil, yarpcerrors.NotFoundErrorf(
+			"Job runtime not found %s", id.Value)
+	}
+	obj.transform(row)
 	runtime := &job.RuntimeInfo{}
 	if err := proto.Unmarshal(obj.RuntimeInfo, runtime); err != nil {
 		return nil, errors.Wrap(err, "Failed to unmarshal job runtime")

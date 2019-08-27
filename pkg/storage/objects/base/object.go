@@ -83,4 +83,7 @@ func (o *Definition) GetColumnsToRead() []string {
 // connector. The only primary key format supported right now is:
 // ((PK1,PK2..), CK1, CK2..)
 type Object interface {
+	// transform will convert all the value from DB into the corresponding type
+	// in ORM object to be interpreted by base store client
+	transform(map[string]interface{})
 }

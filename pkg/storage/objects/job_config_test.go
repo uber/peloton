@@ -136,7 +136,7 @@ func (s *JobConfigObjectTestSuite) TestCreateGetDeleteJobConfigFail() {
 	mockClient.EXPECT().CreateIfNotExists(gomock.Any(), gomock.Any()).
 		Return(errors.New("createifnotexists failed"))
 	mockClient.EXPECT().Get(gomock.Any(), gomock.Any()).
-		Return(errors.New("get failed")).Times(4)
+		Return(nil, errors.New("get failed")).Times(4)
 	mockClient.EXPECT().Delete(gomock.Any(), gomock.Any()).
 		Return(errors.New("delete failed"))
 

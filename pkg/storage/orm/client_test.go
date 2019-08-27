@@ -52,38 +52,24 @@ var testRow = []base.Column{
 	},
 }
 
+var testRowGet = map[string]interface{}{
+	"id":   uint64(1),
+	"name": "test1",
+	"data": "testdata1",
+}
+
 // testRows that would be returned as part of GetAll query where partition key
 // is "id" and clustering key is "name"
-var testRows = [][]base.Column{
-	// row 0
+var testRows = []map[string]interface{}{
 	{
-		{
-			Name:  "id",
-			Value: uint64(1),
-		},
-		{
-			Name:  "name",
-			Value: "test1",
-		},
-		{
-			Name:  "data",
-			Value: "testdata1",
-		},
+		"id":   uint64(1),
+		"name": "test1",
+		"data": "testdata1",
 	},
-	// row 1
 	{
-		{
-			Name:  "id",
-			Value: uint64(1),
-		},
-		{
-			Name:  "name",
-			Value: "test2",
-		},
-		{
-			Name:  "data",
-			Value: "testdata2",
-		},
+		"id":   uint64(2),
+		"name": "test2",
+		"data": "testdata2",
 	},
 }
 
@@ -180,21 +166,21 @@ func (suite *ORMTestSuite) TestClientGet() {
 			row []base.Column) {
 			suite.Equal("id", row[0].Name)
 			suite.Equal(e.ID, row[0].Value)
-		}).Return(testRow, nil)
+		}).Return(testRowGet, nil)
 
 	client, err := orm.NewClient(conn, &ValidObject{})
 	suite.NoError(err)
 
 	// Do a get on the ValidObject instance and verify that the expected
 	// fields in the object are set as per testRow
-	err = client.Get(suite.ctx, e)
+	row, err := client.Get(suite.ctx, e)
 	suite.NoError(err)
 
 	// compare the values from testRow to that of the entity fields
-	suite.Equal(testRow[1].Value, e.Name)
-	suite.Equal(testRow[2].Value, e.Data)
+	suite.Equal(testRowGet["name"], row["name"])
+	suite.Equal(testRowGet["data"], row["data"])
 
-	err = client.Get(suite.ctx, &InvalidObject1{})
+	_, err = client.Get(suite.ctx, &InvalidObject1{})
 	suite.Error(err)
 }
 
@@ -225,10 +211,9 @@ func (suite *ORMTestSuite) TestClientGetAll() {
 	suite.Len(objs, 2)
 
 	for i, obj := range objs {
-		validObj := obj.(*ValidObject)
 		// compare the values from testRow to that of the entity fields
-		suite.Equal(testRows[i][1].Value, validObj.Name)
-		suite.Equal(testRows[i][2].Value, validObj.Data)
+		suite.Equal(testRows[i]["name"], obj["name"])
+		suite.Equal(testRows[i]["data"], obj["data"])
 	}
 
 	_, err = client.GetAll(suite.ctx, &InvalidObject1{})

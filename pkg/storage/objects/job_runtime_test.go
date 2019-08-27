@@ -79,7 +79,7 @@ func (s *JobRuntimeObjectTestSuite) TestCreateGetDeleteJobRuntimeFail() {
 	mockClient.EXPECT().Create(gomock.Any(), gomock.Any()).
 		Return(errors.New("create failed"))
 	mockClient.EXPECT().Get(gomock.Any(), gomock.Any()).
-		Return(errors.New("get failed"))
+		Return(nil, errors.New("get failed"))
 	mockClient.EXPECT().Delete(gomock.Any(), gomock.Any()).
 		Return(errors.New("delete failed"))
 

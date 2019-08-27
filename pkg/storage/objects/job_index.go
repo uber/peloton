@@ -95,6 +95,26 @@ type JobIndexObject struct {
 	SLA string `column:"name=sla"`
 }
 
+// transform will convert all the value from DB into the corresponding type
+// in ORM object to be interpreted by base store client
+func (o *JobIndexObject) transform(row map[string]interface{}) {
+	o.JobID = base.NewOptionalString(row["job_id"])
+	o.JobType = row["job_type"].(uint32)
+	o.Name = row["name"].(string)
+	o.Owner = row["owner"].(string)
+	o.RespoolID = row["respool_id"].(string)
+	o.Config = row["config"].(string)
+	o.InstanceCount = row["instance_count"].(uint32)
+	o.Labels = row["labels"].(string)
+	o.RuntimeInfo = row["runtime_info"].(string)
+	o.State = row["state"].(string)
+	o.CreationTime = row["creation_time"].(time.Time)
+	o.StartTime = row["start_time"].(time.Time)
+	o.CompletionTime = row["completion_time"].(time.Time)
+	o.UpdateTime = row["update_time"].(time.Time)
+	o.SLA = row["sla"].(string)
+}
+
 // JobIndexOps provides methods for manipulating job_index table.
 type JobIndexOps interface {
 	// Create inserts a row in the table.
@@ -315,10 +335,16 @@ func (d *jobIndexOps) Get(
 		JobID: base.NewOptionalString(id.GetValue()),
 	}
 
-	if err := d.store.oClient.Get(ctx, jobIndexObject); err != nil {
+	row, err := d.store.oClient.Get(ctx, jobIndexObject)
+	if err != nil {
 		d.store.metrics.OrmJobMetrics.JobIndexGetFail.Inc(1)
 		return nil, err
 	}
+	if len(row) == 0 {
+		return nil, yarpcerrors.NotFoundErrorf(
+			"Job Index not found %s", id.Value)
+	}
+	jobIndexObject.transform(row)
 
 	d.store.metrics.OrmJobMetrics.JobIndexGet.Inc(1)
 	return jobIndexObject, nil
@@ -328,14 +354,15 @@ func (d *jobIndexOps) Get(
 func (d *jobIndexOps) GetAll(ctx context.Context) ([]*job.JobSummary, error) {
 	resultObjs := []*job.JobSummary{}
 
-	objs, err := d.store.oClient.GetAll(ctx, &JobIndexObject{})
+	rows, err := d.store.oClient.GetAll(ctx, &JobIndexObject{})
 	if err != nil {
 		d.store.metrics.OrmJobMetrics.JobIndexGetAllFail.Inc(1)
 		return nil, err
 	}
 
-	for _, obj := range objs {
-		jobObj := obj.(*JobIndexObject)
+	for _, row := range rows {
+		jobObj := &JobIndexObject{}
+		jobObj.transform(row)
 		jobSummary, err := jobObj.ToJobSummary()
 		if err != nil {
 			d.store.metrics.OrmJobMetrics.JobIndexGetAllFail.Inc(1)

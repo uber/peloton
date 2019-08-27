@@ -43,6 +43,14 @@ type JobNameToIDObject struct {
 	JobID string `column:"name=job_id"`
 }
 
+// transform will convert all the value from DB into the corresponding type
+// in ORM object to be interpreted by base store client
+func (o *JobNameToIDObject) transform(row map[string]interface{}) {
+	o.JobID = row["job_id"].(string)
+	o.JobName = row["job_name"].(string)
+	o.UpdateTime = base.NewOptionalString(row["update_time"])
+}
+
 // JobNameToIDOps provides methods for manipulating job_name_to_id table.
 type JobNameToIDOps interface {
 	// Create inserts a row in the table.
@@ -107,14 +115,15 @@ func (d *jobNameToIDOps) GetAll(
 		JobName: jobName,
 	}
 
-	objs, err := d.store.oClient.GetAll(ctx, jobNameToIDObject)
+	rows, err := d.store.oClient.GetAll(ctx, jobNameToIDObject)
 	if err != nil {
 		d.store.metrics.OrmJobMetrics.JobNameToIDGetAllFail.Inc(1)
 		return nil, err
 	}
 
-	for _, obj := range objs {
-		jobNameToIDObj := obj.(*JobNameToIDObject)
+	for _, row := range rows {
+		jobNameToIDObj := &JobNameToIDObject{}
+		jobNameToIDObj.transform(row)
 		resultObjs = append(resultObjs, jobNameToIDObj)
 	}
 

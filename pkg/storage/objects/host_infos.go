@@ -17,6 +17,7 @@ package objects
 import (
 	"context"
 	"encoding/json"
+	"go.uber.org/yarpc/yarpcerrors"
 	"time"
 
 	hostpb "github.com/uber/peloton/.gen/peloton/api/v0/host"
@@ -45,6 +46,17 @@ type HostInfoObject struct {
 	Labels string `column:"name=labels"`
 	// Last update time of the host maintenance
 	UpdateTime time.Time `column:"name=update_time"`
+}
+
+// transform will convert all the value from DB into the corresponding type
+// in ORM object to be interpreted by base store client
+func (o *HostInfoObject) transform(row map[string]interface{}) {
+	o.Hostname = base.NewOptionalString(row["hostname"])
+	o.IP = row["ip"].(string)
+	o.State = row["state"].(string)
+	o.GoalState = row["goal_state"].(string)
+	o.Labels = row["labels"].(string)
+	o.UpdateTime = row["update_time"].(time.Time)
 }
 
 // HostInfoOps provides methods for manipulating host_maintenance table.
@@ -128,13 +140,20 @@ func (d *hostInfoOps) Get(
 	ctx context.Context,
 	hostname string,
 ) (*hostpb.HostInfo, error) {
+	var row map[string]interface{}
 	hostInfoObject := &HostInfoObject{
 		Hostname: base.NewOptionalString(hostname),
 	}
-	if err := d.store.oClient.Get(ctx, hostInfoObject); err != nil {
+	row, err := d.store.oClient.Get(ctx, hostInfoObject)
+	if err != nil {
 		d.store.metrics.OrmHostInfoMetrics.HostInfoGetFail.Inc(1)
 		return nil, err
 	}
+	if len(row) == 0 {
+		return nil, yarpcerrors.NotFoundErrorf(
+			"host info not found %s", hostname)
+	}
+	hostInfoObject.transform(row)
 	info, err := newHostInfoFromHostInfoObject(hostInfoObject)
 	if err != nil {
 		d.store.metrics.OrmHostInfoMetrics.HostInfoGetFail.Inc(1)
@@ -146,7 +165,7 @@ func (d *hostInfoOps) Get(
 
 // GetAll gets all host infos from db without any pk specified
 func (d *hostInfoOps) GetAll(ctx context.Context) ([]*hostpb.HostInfo, error) {
-	results, err := d.store.oClient.GetAll(ctx, &HostInfoObject{})
+	rows, err := d.store.oClient.GetAll(ctx, &HostInfoObject{})
 	if err != nil {
 		d.store.metrics.OrmHostInfoMetrics.HostInfoGetAllFail.Inc(1)
 		return nil, err
@@ -154,8 +173,10 @@ func (d *hostInfoOps) GetAll(ctx context.Context) ([]*hostpb.HostInfo, error) {
 	d.store.metrics.OrmHostInfoMetrics.HostInfoGetAll.Inc(1)
 
 	var hostInfos []*hostpb.HostInfo
-	for _, value := range results {
-		info, err := newHostInfoFromHostInfoObject(value.(*HostInfoObject))
+	for _, row := range rows {
+		obj := &HostInfoObject{}
+		obj.transform(row)
+		info, err := newHostInfoFromHostInfoObject(obj)
 		if err != nil {
 			d.store.metrics.OrmHostInfoMetrics.HostInfoGetAllFail.Inc(1)
 			return nil, err
