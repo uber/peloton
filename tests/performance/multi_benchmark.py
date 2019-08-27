@@ -924,11 +924,11 @@ class PerformanceTest:
 
             print '\nRollout update and trigger manual rollback'
             step_start_time = time.time()
-            start_job_update(
-                self.client.aurora_bridge_client,
+            resp = self.client.aurora_bridge_client.start_job_update(
                 get_job_update_request("test_dc_labrat.yaml"),
-                "create job",
+                "start job update with good config",
             )
+            job_update_key = resp.key
             time.sleep(100)
             self.client.aurora_bridge_client.rollback_job_update(job_update_key)
             wait_for_rolled_back(
