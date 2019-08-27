@@ -220,6 +220,16 @@ func newMesosPodSpec(
 		mesosUris = append(mesosUris, &apachemesos.PodSpec_URI{
 			Value:      r,
 			Executable: true,
+			// Previously when we were using mesos.v1.CommandInfo.URI,
+			// "extract" field was left as unfilled, however, since in
+			// the proto definition the field is default to true, the
+			// actual value we passed to mesos is actually true.
+			//
+			// In pod.apachemesos.PodSpec.URI, "extract" field can no
+			// longer have a different value, in order to retain
+			// the previous behavior and to avoid unnecessary instance
+			// restarts, we are hard-code this value to true.
+			Extract: true,
 		})
 	}
 	result.Uris = mesosUris

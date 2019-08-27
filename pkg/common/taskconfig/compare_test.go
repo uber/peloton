@@ -15,10 +15,13 @@
 package taskconfig
 
 import (
+	"github.com/gogo/protobuf/proto"
+	"go.uber.org/thriftrw/ptr"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 
+	mesosv1 "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	v1peloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
@@ -145,6 +148,252 @@ func TestHasPortSpecsChanged(t *testing.T) {
 	assert.True(t, HasPortSpecsChanged(p1, p5))
 }
 
+// TestHasMesosCommandUriChanged checks Mesos CommandUri comparision util function
+func TestHasMesosCommandUriChanged(t *testing.T) {
+	tt := []struct {
+		name          string
+		prevUri       *mesosv1.CommandInfo_URI
+		newUri        *mesosv1.CommandInfo_URI
+		expectChanged bool
+	}{
+		{
+			name:          "empty compare",
+			prevUri:       &mesosv1.CommandInfo_URI{},
+			newUri:        &mesosv1.CommandInfo_URI{},
+			expectChanged: false,
+		},
+		{
+			name:          "default extract compare 1",
+			prevUri:       &mesosv1.CommandInfo_URI{},
+			newUri:        &mesosv1.CommandInfo_URI{Extract: ptr.Bool(false)},
+			expectChanged: true,
+		},
+		{
+			name:    "default extract compare 2",
+			prevUri: &mesosv1.CommandInfo_URI{},
+			newUri: &mesosv1.CommandInfo_URI{
+				Extract: ptr.Bool(true),
+			},
+			expectChanged: false,
+		},
+		{
+			name:    "defaults compare",
+			prevUri: &mesosv1.CommandInfo_URI{},
+			newUri: &mesosv1.CommandInfo_URI{
+				Value:      ptr.String(""),
+				Extract:    ptr.Bool(true),
+				Executable: ptr.Bool(false),
+				Cache:      ptr.Bool(false),
+				OutputFile: ptr.String(""),
+			},
+			expectChanged: false,
+		},
+		{
+			name:    "defaults diff compare",
+			prevUri: &mesosv1.CommandInfo_URI{},
+			newUri: &mesosv1.CommandInfo_URI{
+				Value:      ptr.String(""),
+				Extract:    ptr.Bool(true),
+				Executable: ptr.Bool(true),
+				Cache:      ptr.Bool(false),
+				OutputFile: ptr.String(""),
+			},
+			expectChanged: true,
+		},
+		{
+			name: "values diff compare",
+			prevUri: &mesosv1.CommandInfo_URI{
+				Value:      ptr.String("blah"),
+				Extract:    ptr.Bool(true),
+				Executable: ptr.Bool(true),
+				Cache:      ptr.Bool(false),
+				OutputFile: ptr.String(""),
+			},
+			newUri: &mesosv1.CommandInfo_URI{
+				Value:      ptr.String(""),
+				Extract:    ptr.Bool(true),
+				Executable: ptr.Bool(true),
+				Cache:      ptr.Bool(false),
+				OutputFile: ptr.String(""),
+			},
+			expectChanged: true,
+		},
+	}
+
+	for _, test := range tt {
+		t.Run(test.name, func(t *testing.T) {
+			result := hasMesosCommandUriChanged(test.prevUri, test.newUri)
+			assert.Equal(t, test.expectChanged, result)
+		})
+	}
+}
+
+// TestHasMesosCommandChanged checks Mesos Command comparision util function
+func TestHasMesosCommandChanged(t *testing.T) {
+	tt := []struct {
+		name          string
+		prevCommand   *mesosv1.CommandInfo
+		newCommand    *mesosv1.CommandInfo
+		expectChanged bool
+	}{
+		{
+			name:          "nil compare",
+			prevCommand:   nil,
+			newCommand:    nil,
+			expectChanged: false,
+		},
+		{
+			name:          "one nil compare",
+			prevCommand:   nil,
+			newCommand:    &mesosv1.CommandInfo{},
+			expectChanged: true,
+		},
+		{
+			name:          "empty compare",
+			prevCommand:   &mesosv1.CommandInfo{},
+			newCommand:    &mesosv1.CommandInfo{},
+			expectChanged: false,
+		},
+		{
+			name: "uri length diff compare",
+			prevCommand: &mesosv1.CommandInfo{
+				Uris: []*mesosv1.CommandInfo_URI{{}, {}},
+			},
+			newCommand: &mesosv1.CommandInfo{
+				Uris: []*mesosv1.CommandInfo_URI{{}},
+			},
+			expectChanged: true,
+		},
+		{
+			name: "uri one nil compare",
+			prevCommand: &mesosv1.CommandInfo{
+				Uris: []*mesosv1.CommandInfo_URI{{}, {}},
+			},
+			newCommand:    &mesosv1.CommandInfo{},
+			expectChanged: true,
+		},
+		{
+			name: "uri diff compare",
+			prevCommand: &mesosv1.CommandInfo{
+				Uris: []*mesosv1.CommandInfo_URI{{
+					Cache: ptr.Bool(true),
+				}},
+			},
+			newCommand: &mesosv1.CommandInfo{
+				Uris: []*mesosv1.CommandInfo_URI{{
+					Cache: ptr.Bool(false),
+				}},
+			},
+			expectChanged: true,
+		},
+		{
+			name: "uri equal compare",
+			prevCommand: &mesosv1.CommandInfo{
+				Uris: []*mesosv1.CommandInfo_URI{{
+					Cache: ptr.Bool(true),
+				}},
+			},
+			newCommand: &mesosv1.CommandInfo{
+				Uris: []*mesosv1.CommandInfo_URI{{
+					Cache: ptr.Bool(true),
+				}},
+			},
+			expectChanged: false,
+		},
+	}
+
+	for _, test := range tt {
+		t.Run(test.name, func(t *testing.T) {
+			prevCommandCopy := proto.Clone(test.prevCommand).(*mesosv1.CommandInfo)
+			newCommandCopy := proto.Clone(test.newCommand).(*mesosv1.CommandInfo)
+
+			result := hasMesosCommandChanged(test.prevCommand, test.newCommand)
+			assert.Equal(t, test.expectChanged, result)
+
+			// Verify the commands are not modified after compare
+			assert.True(t, proto.Equal(prevCommandCopy, test.prevCommand))
+			assert.True(t, proto.Equal(newCommandCopy, test.newCommand))
+		})
+	}
+}
+
+// TestHasMesosContainerChanged checks Mesos Container comparision util function
+func TestHasMesosContainerChanged(t *testing.T) {
+	tt := []struct {
+		name          string
+		prevContainer *mesosv1.ContainerInfo
+		newContainer  *mesosv1.ContainerInfo
+		expectChanged bool
+	}{
+		{
+			name:          "nil compare",
+			prevContainer: nil,
+			newContainer:  nil,
+			expectChanged: false,
+		},
+		{
+			name:          "one nil compare",
+			prevContainer: nil,
+			newContainer:  &mesosv1.ContainerInfo{},
+			expectChanged: true,
+		},
+		{
+			name:          "empty compare",
+			prevContainer: &mesosv1.ContainerInfo{},
+			newContainer:  &mesosv1.ContainerInfo{},
+			expectChanged: false,
+		},
+		{
+			name:          "one docker compare",
+			prevContainer: &mesosv1.ContainerInfo{},
+			newContainer: &mesosv1.ContainerInfo{
+				Docker: &mesosv1.ContainerInfo_DockerInfo{},
+			},
+			expectChanged: true,
+		},
+		{
+			name: "docker network default compare",
+			prevContainer: &mesosv1.ContainerInfo{
+				Docker: &mesosv1.ContainerInfo_DockerInfo{},
+			},
+			newContainer: &mesosv1.ContainerInfo{
+				Docker: &mesosv1.ContainerInfo_DockerInfo{
+					Network: mesosv1.ContainerInfo_DockerInfo_HOST.Enum(),
+				},
+			},
+			expectChanged: false,
+		},
+		{
+			name: "docker network value diff compare",
+			prevContainer: &mesosv1.ContainerInfo{
+				Docker: &mesosv1.ContainerInfo_DockerInfo{
+					Network: mesosv1.ContainerInfo_DockerInfo_BRIDGE.Enum(),
+				},
+			},
+			newContainer: &mesosv1.ContainerInfo{
+				Docker: &mesosv1.ContainerInfo_DockerInfo{
+					Network: mesosv1.ContainerInfo_DockerInfo_HOST.Enum(),
+				},
+			},
+			expectChanged: true,
+		},
+	}
+
+	for _, test := range tt {
+		t.Run(test.name, func(t *testing.T) {
+			prevContainerCopy := proto.Clone(test.prevContainer).(*mesosv1.ContainerInfo)
+			newContainerCopy := proto.Clone(test.newContainer).(*mesosv1.ContainerInfo)
+
+			result := hasMesosContainerChanged(test.prevContainer, test.newContainer)
+			assert.Equal(t, test.expectChanged, result)
+
+			// Verify the commands are not modified after compare
+			assert.True(t, proto.Equal(prevContainerCopy, test.prevContainer))
+			assert.True(t, proto.Equal(newContainerCopy, test.newContainer))
+		})
+	}
+}
+
 // TestHasTaskConfigChanged checks TaskConfig comparision util function
 func TestHasTaskConfigChanged(t *testing.T) {
 	t1 := &task.TaskConfig{
@@ -180,6 +429,54 @@ func TestHasTaskConfigChanged(t *testing.T) {
 			{Name: "port-1", Value: 10000},
 		},
 	}
+	t4 := &task.TaskConfig{
+		Name: "task-1",
+		Labels: []*peloton.Label{
+			{Key: "k1", Value: "v1"},
+			{Key: "k2", Value: "v2"},
+		},
+		Ports: []*task.PortConfig{
+			{Name: "port-1", Value: 10000},
+			{Name: "port-2", Value: 10001},
+		},
+		Container: &mesosv1.ContainerInfo{
+			Docker: &mesosv1.ContainerInfo_DockerInfo{
+				Network: mesosv1.ContainerInfo_DockerInfo_HOST.Enum(),
+			},
+		},
+		Command: &mesosv1.CommandInfo{
+			Uris: []*mesosv1.CommandInfo_URI{
+				{
+					Cache:      ptr.Bool(false),
+					Executable: ptr.Bool(true),
+					Extract:    ptr.Bool(true),
+					Value:      ptr.String("value"),
+				},
+			},
+		},
+	}
+	t5 := &task.TaskConfig{
+		Name: "task-1",
+		Labels: []*peloton.Label{
+			{Key: "k1", Value: "v1"},
+			{Key: "k2", Value: "v2"},
+		},
+		Ports: []*task.PortConfig{
+			{Name: "port-1", Value: 10000},
+			{Name: "port-2", Value: 10001},
+		},
+		Container: &mesosv1.ContainerInfo{
+			Docker: &mesosv1.ContainerInfo_DockerInfo{},
+		},
+		Command: &mesosv1.CommandInfo{
+			Uris: []*mesosv1.CommandInfo_URI{
+				{
+					Executable: ptr.Bool(true),
+					Value:      ptr.String("value"),
+				},
+			},
+		},
+	}
 
 	testCases := []struct {
 		name    string
@@ -198,6 +495,12 @@ func TestHasTaskConfigChanged(t *testing.T) {
 			t1,
 			t3,
 			true,
+		},
+		{
+			"command and container info with default values should be the same",
+			t4,
+			t5,
+			false,
 		},
 	}
 
