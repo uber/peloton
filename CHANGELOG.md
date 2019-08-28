@@ -3,6 +3,69 @@
 0.9.0 (unreleased)
 ------------------
 
+0.8.11
+------
+* 2019-08-28    Implement Rescind mesos offers in MesosManager                                         zhixin@uber.com
+* 2019-08-28    Add mesos task status event stream handling to plugin                                  adityacb@uber.com
+* 2019-08-28    Disable k8s tests because misc test is calling them incorrectly                        evelynl@uber.com
+* 2019-08-28    Fix GetUpdatesForJob in store.go                                                       sachins@uber.com
+* 2019-08-28    Add api server to deployment                                                           yunpeng@uber.com
+* 2019-08-27    Fix kill pod in k8s                                                                    evelynl@uber.com
+* 2019-08-27    Revert "Refactor use of UpdateRecord in GetUpdatesForJob in store.go"                  kevinxu@uber.com
+* 2019-08-27    [Dynamic partitioning] - First cut for Host-mover feature                              pgolash@uber.com
+* 2019-08-27    Fix performance test to use current job_update_key                                     varung@uber.com
+* 2019-08-27    Implement resource and host manager services in api proxy                              xuanh@uber.com
+* 2019-08-27    Fix task config compare after migrating to use new mesos spec                          kevinxu@uber.com
+* 2019-08-27    add missing TerminateLeases call to v1 Launch error handling                           adityacb@uber.com
+* 2019-08-27    Fix flaky aurorabridge RollbackJobUpdate unit test                                     kevinxu@uber.com
+* 2019-08-27    Log the error when host-pool is not found                                              amitbose@uber.com
+* 2019-08-27    Nit fix for incorrect text update for Cluster.load()                                   varung@uber.com
+* 2019-08-27    Fix ORM perf degradation for Get Pod events                                            sishi@uber.com
+* 2019-08-27    Launch pods using lifecyclemgr.                                                        adityacb@uber.com
+* 2019-08-26    Performance Test: Use right templates in report                                        sachins@uber.com
+* 2019-08-26    Use a valid job spec on rollback path for first deployment                             kevinxu@uber.com
+* 2019-08-26    Reorgonize OfferManager                                                                zhixin@uber.com
+* 2019-08-26    Add aurorabridge write path performance test                                           varung@uber.com
+* 2019-08-24    mesosHostSummary get capacity from host agent map                                      zhixin@uber.com
+* 2019-08-24    Add migratedb component                                                                kevinxu@uber.com
+* 2019-08-24    Update tracker.resourcesHeldByTaskState when task is cleaned up from tracker           sachins@uber.com
+* 2019-08-23    Fix podEvents channel usage in p2k                                                     adityacb@uber.com
+* 2019-08-23    Add Launch/Kill Pod support in MesosManager                                            zhixin@uber.com
+* 2019-08-23    Performance Test: Fix reporting                                                        sachins@uber.com
+* 2019-08-23    Do not start maintenance on a non-Peloton agent                                        sachins@uber.com
+* 2019-08-22    Remove the use of mesos protobuf from stateless in canary and performance tests        apoorvaj@uber.com
+* 2019-08-22    Add Limit support to ORM                                                               adityacb@uber.com
+* 2019-08-22    Clean up max_batch_size_rows configs                                                   kevinxu@uber.com
+* 2019-08-22    Ensure default host pool always exists                                                 yunpeng@uber.com
+* 2019-08-22    Add bootstap aurorabridge performance test                                             varung@uber.com
+* 2019-08-22    Performance Test: Modify batch size for host-limit-1 update test                       sachins@uber.com
+* 2019-08-22    Remove performance tests for sleep 60seconds                                           varung@uber.com
+* 2019-08-22    Factor out maintenance from host-manager service handler                               amitbose@uber.com
+* 2019-08-22    Add option to use api server in integration tests                                      yunpeng@uber.com
+* 2019-08-21    Add host-limit-1 performance test results to performance report                        sachins@uber.com
+* 2019-08-21    Add support for configuring ports using a template variable                            mfesenko@uber.com
+* 2019-08-21    Initial implementation of unary forwarding in Peloton API server                       yunpeng@uber.com
+* 2019-08-20    Fix concurrent writes to metrics map                                                   sachins@uber.com
+* 2019-08-20    Enable disabled host maintenance integration tests                                     sachins@uber.com
+* 2019-08-20    Refactor use of UpdateRecord in GetUpdatesForJob in store.go                           varung@uber.com
+* 2019-08-20    Simple go-routines for GetJobs API                                                     varung@uber.com
+* 2019-08-20    Bump up disk resource for vcluster                                                     sachins@uber.com
+* 2019-08-20    Fix get_host_to_task_count integration test util function                              sachins@uber.com
+* 2019-08-20    Fix sla_violated_jobs metrics in job factory                                           sachins@uber.com
+* 2019-08-19    Add jobmgr private API to get instance availability information                        sachins@uber.com
+* 2019-08-19    Host mover scorer: implement batch host scorer                                         aihuaxu@uber.com
+* 2019-08-19    Use common RunInParallel function in jobmgr                                            adityacb@uber.com
+* 2019-08-19    Add task-to-task affinity check at host manager                                        varung@uber.com
+* 2019-08-19    Filter hosts by all resource types in CLI                                              sachins@uber.com
+* 2019-08-19    Fix concurrency issue in resmgr                                                        sachins@uber.com
+* 2019-08-16    Fix archiver context cancel issues                                                     adityacb@uber.com
+* 2019-08-16    Skip the job in getJobs if instance count is 0                                         kevinxu@uber.com
+* 2019-08-16    [p2k] add metrics to host cache                                                        adityacb@uber.com
+* 2019-08-16    Task does not restart on job label change                                              zhixin@uber.com
+* 2019-08-16    Fix in-place update behavior on fail retry                                             zhixin@uber.com
+* 2019-08-16    Skip jobs without instances in getJobs endpoint.                                       varung@uber.com
+* 2019-08-16    Dedupe job update event for update.writeWorkflowEvents                                 zhixin@uber.com
+
 0.8.10
 ------------------
 * 2019-08-16    Wait for all agents to register to master before running integration tests             sachins@uber.com
