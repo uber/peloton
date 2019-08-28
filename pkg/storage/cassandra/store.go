@@ -28,7 +28,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/uber/peloton/.gen/mesos/v1"
+	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/query"
@@ -2777,7 +2777,8 @@ func (s *Store) GetUpdatesForJob(
 	var updateList []*SortUpdateInfoTS
 
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("*").From(updatesByJobView).
+	stmt := queryBuilder.Select("update_id", "job_id", "creation_time").
+		From(updatesByJobView).
 		Where(qb.Eq{"job_id": jobID})
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
@@ -2789,7 +2790,7 @@ func (s *Store) GetUpdatesForJob(
 	}
 
 	for _, value := range allResults {
-		var record UpdateRecord
+		var record UpdateViewRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
 		if err != nil {
 			log.WithError(err).

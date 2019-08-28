@@ -143,6 +143,13 @@ type FrameworkInfoRecord struct {
 
 // Resource pool (to be added)
 
+// UpdateViewRecord tracks the job update info from materialized view
+type UpdateViewRecord struct {
+	UpdateID     querybuilder.UUID `cql:"update_id"`
+	JobID        querybuilder.UUID `cql:"job_id"`
+	CreationTime time.Time         `cql:"creation_time"`
+}
+
 // UpdateRecord tracks the job update info
 type UpdateRecord struct {
 	UpdateID             querybuilder.UUID `cql:"update_id"`
