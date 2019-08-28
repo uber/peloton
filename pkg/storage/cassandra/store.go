@@ -2777,7 +2777,7 @@ func (s *Store) GetUpdatesForJob(
 	var updateList []*SortUpdateInfoTS
 
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("update_id").From(updatesByJobView).
+	stmt := queryBuilder.Select("*").From(updatesByJobView).
 		Where(qb.Eq{"job_id": jobID})
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
@@ -2789,7 +2789,7 @@ func (s *Store) GetUpdatesForJob(
 	}
 
 	for _, value := range allResults {
-		var record UpdateViewRecord
+		var record UpdateRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
 		if err != nil {
 			log.WithError(err).
