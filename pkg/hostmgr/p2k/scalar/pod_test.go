@@ -89,8 +89,8 @@ func TestBuildPodEventFromPodPending(t *testing.T) {
 			InitContainerStatus: expectedPelotonContainerStatus[:2],
 			ContainerStatus:     expectedPelotonContainerStatus[2:],
 		},
-		EventType:       AddPod,
-		ResourceVersion: "version1",
+		EventType: AddPod,
+		EventID:   "version1",
 	}
 
 	output := BuildPodEventFromPod(k8sPodEvent, AddPod)
@@ -176,8 +176,8 @@ func TestBuildPodEventFromPodRunning(t *testing.T) {
 			InitContainerStatus: expectedPelotonContainerStatus[:2],
 			ContainerStatus:     expectedPelotonContainerStatus[2:],
 		},
-		EventType:       UpdatePod,
-		ResourceVersion: "version1",
+		EventType: UpdatePod,
+		EventID:   "version1",
 	}
 
 	output := BuildPodEventFromPod(k8sPodEvent, UpdatePod)
@@ -272,8 +272,8 @@ func TestBuildPodEventFromPodSucceeded(t *testing.T) {
 			InitContainerStatus: expectedPelotonContainerStatus[:2],
 			ContainerStatus:     expectedPelotonContainerStatus[2:],
 		},
-		EventType:       DeletePod,
-		ResourceVersion: "version1",
+		EventType: DeletePod,
+		EventID:   "version1",
 	}
 
 	output := BuildPodEventFromPod(k8sPodEvent, DeletePod)

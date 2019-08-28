@@ -28,8 +28,8 @@ type PodEvent struct {
 	Event *pbpod.PodEvent
 	// Type of pod event.
 	EventType PodEventType
-	// K8s pod resource version.
-	ResourceVersion string
+	// Event ID for the event. This should be used for de-duping the event stream.
+	EventID string
 }
 
 func BuildPodEventFromPod(
@@ -58,8 +58,8 @@ func BuildPodEventFromPod(
 			InitContainerStatus: convertedInitStatuses,
 			ContainerStatus:     convertedContainerStatuses,
 		},
-		EventType:       e,
-		ResourceVersion: pod.ResourceVersion,
+		EventType: e,
+		EventID:   pod.ResourceVersion,
 	}
 }
 

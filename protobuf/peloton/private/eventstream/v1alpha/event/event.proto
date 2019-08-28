@@ -15,4 +15,7 @@ message Event {
   // pod_event is an event for a pod sent from hostmgr as part of the event
   // stream.
   api.v1alpha.pod.PodEvent pod_event = 2;
+
+  // event_id is the id for this event. It will be used to dedupe the event stream and the acks.
+  string event_id = 3;
 }

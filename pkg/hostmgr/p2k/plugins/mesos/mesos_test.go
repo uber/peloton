@@ -515,6 +515,7 @@ func (suite *MesosManagerTestSuite) TestNewMesosManagerStatusUpdates() {
 	host1 := "hostname1"
 	uuid1 := uuid.New()
 	state := mesos.TaskState_TASK_STARTING
+	eventID := []byte{201, 117, 104, 168, 54, 76, 69, 143, 185, 116, 159, 95, 198, 94, 162, 38}
 
 	status := &mesos.TaskStatus{
 		TaskId: &mesos.TaskID{
@@ -524,6 +525,7 @@ func (suite *MesosManagerTestSuite) TestNewMesosManagerStatusUpdates() {
 		AgentId: &mesos.AgentID{
 			Value: &host1,
 		},
+		Uuid: eventID,
 	}
 
 	suite.mesosManager.Update(context.Background(), &sched.Event{
@@ -535,6 +537,7 @@ func (suite *MesosManagerTestSuite) TestNewMesosManagerStatusUpdates() {
 	pe := <-suite.podEventCh
 
 	suite.Equal(pe.EventType, scalar.UpdatePod)
+	suite.Equal(pe.EventID, string(eventID))
 	suite.Equal(pe.Event.GetHostname(), host1)
 	suite.Equal(pe.Event.GetAgentId(), host1)
 	suite.Equal(pe.Event.GetPodId().GetValue(), uuid1)

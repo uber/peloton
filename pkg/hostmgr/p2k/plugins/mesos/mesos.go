@@ -322,5 +322,6 @@ func buildPodEventFromMesosTaskStatus(
 			Healthy:  healthy,
 		},
 		EventType: scalar.UpdatePod,
+		EventID:   string(evt.GetStatus().GetUuid()),
 	}
 }
