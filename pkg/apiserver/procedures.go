@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package apiproxy
+package apiserver
 
 import (
 	"fmt"
@@ -25,7 +25,7 @@ import (
 	pbprivatehostmgrsvc "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc"
 	pbprivateresmgrsvc "github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
-	"github.com/uber/peloton/pkg/apiproxy/forward"
+	"github.com/uber/peloton/pkg/apiserver/forward"
 	"github.com/uber/peloton/pkg/common"
 
 	"go.uber.org/yarpc/api/transport"
@@ -73,10 +73,10 @@ func BuildHostManagerProcedures(
 		},
 		// TODO: HostService v1 (not implemented in Peloton)
 		// Private Event Stream Service doesn't actually accept calls from
-		// apiproxy. It inspects RPC caller's service name and only accepts from
+		// api server. It inspects RPC caller's service name and only accepts from
 		// peloton-jobmgr, peloton-resmgr. This is okay because we do not
 		// actually expected these daemons to contact each other through the
-		// apiproxy.
+		// api server.
 		{
 			name:   common.RPCPelotonPrivateEventStreamServiceName,
 			server: (*pbprivateeventstreamsvc.EventStreamServiceYARPCServer)(nil),

@@ -32,7 +32,7 @@ PLACEMENT_ENGINE = 3
 JOB_MANAGER = 4
 ARCHIVER = 5
 AURORABRIDGE = 6
-APIPROXY = 7
+APISERVER = 7
 
 
 # Defines the order in which the apps are started
@@ -46,7 +46,7 @@ APP_START_ORDER = OrderedDict(
         (JOB_MANAGER, minicluster.run_peloton_jobmgr),
         (ARCHIVER, minicluster.run_peloton_archiver),
         (AURORABRIDGE, minicluster.run_peloton_aurorabridge),
-        (APIPROXY, minicluster.run_peloton_apiproxy),
+        (APISERVER, minicluster.run_peloton_apiserver),
     ]
 )
 
@@ -146,9 +146,9 @@ def teardown(stop=False):
         name = config["peloton_aurorabridge_container"] + repr(i)
         func(name)
 
-    # 7 - Remove apiproxy instances
-    for i in range(0, config["peloton_apiproxy_instance_count"]):
-        name = config["peloton_apiproxy_container"] + repr(i)
+    # 7 - Remove apiserver instances
+    for i in range(0, config["peloton_apiserver_instance_count"]):
+        name = config["peloton_apiserver_container"] + repr(i)
         func(name)
 
     minicluster.teardown_mesos(config)
@@ -262,11 +262,11 @@ USAGE
         help="disable peloton aurora bridge app",
     )
     parser_setup.add_argument(
-        "--no-apiproxy",
-        dest="disable_peloton_apiproxy",
+        "--no-apiserver",
+        dest="disable_peloton_apiserver",
         action="store_true",
         default=False,
-        help="disable peloton api proxy app",
+        help="disable peloton api server app",
     )
 
     # Subparser for the 'teardown' command

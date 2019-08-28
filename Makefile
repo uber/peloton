@@ -1,4 +1,4 @@
-.PHONY: all apiproxy placement install cli test unit_test cover lint clean \
+.PHONY: all apiserver placement install cli test unit_test cover lint clean \
 	hostmgr jobmgr resmgr docker version debs docker-push \
 	test-containers archiver failure-test-minicluster \
 	failure-test-vcluster aurorabridge docs migratedb
@@ -49,7 +49,7 @@ endif
 
 .PRECIOUS: $(GENS) $(LOCAL_MOCKS) $(VENDOR_MOCKS) mockgens
 
-all: gens placement cli hostmgr resmgr jobmgr archiver aurorabridge apiproxy migratedb
+all: gens placement cli hostmgr resmgr jobmgr archiver aurorabridge apiserver migratedb
 
 cli:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton cmd/cli/*.go
@@ -72,8 +72,8 @@ archiver:
 aurorabridge:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-aurorabridge cmd/aurorabridge/*.go
 
-apiproxy:
-	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-apiproxy cmd/apiproxy/*.go
+apiserver:
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-apiserver cmd/apiserver/*.go
 
 migratedb:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/migratedb cmd/migratedb/*.go

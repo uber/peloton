@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package apiproxy
+package apiserver
 
-// Config contains APIProxy specific configuration
+// Config contains APIServer specific configuration
 type Config struct {
-	// HTTP port which API Proxy is listening on
+	// HTTP port which API Server is listening on
 	HTTPPort int `yaml:"http_port"`
 
-	// gRPC port which API Proxy is listening on
+	// gRPC port which API Server is listening on
 	GRPCPort int `yaml:"grpc_port"`
 }

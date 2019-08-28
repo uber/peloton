@@ -469,16 +469,16 @@ def run_peloton_placement(config, enable_k8s=False):
 
 
 #
-# Run peloton api proxy
+# Run peloton api server
 #
-def run_peloton_apiproxy(config, enable_k8s=False):
-    for i in range(0, config["peloton_apiproxy_instance_count"]):
+def run_peloton_apiserver(config, enable_k8s=False):
+    for i in range(0, config["peloton_apiserver_instance_count"]):
         ports = [
-            port + i * 10 for port in config["peloton_apiproxy_ports"]
+            port + i * 10 for port in config["peloton_apiserver_ports"]
         ]
-        name = config["peloton_apiproxy_container"] + repr(i)
+        name = config["peloton_apiserver_container"] + repr(i)
         utils.remove_existing_container(name)
-        start_and_wait("apiproxy", name, ports, config)
+        start_and_wait("apiserver", name, ports, config)
 
 
 #

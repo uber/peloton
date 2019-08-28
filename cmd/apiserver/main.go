@@ -17,7 +17,7 @@ package main
 import (
 	"os"
 
-	"github.com/uber/peloton/pkg/apiproxy"
+	"github.com/uber/peloton/pkg/apiserver"
 	"github.com/uber/peloton/pkg/auth"
 	authimpl "github.com/uber/peloton/pkg/auth/impl"
 	"github.com/uber/peloton/pkg/common"
@@ -39,7 +39,7 @@ import (
 var (
 	version string
 
-	app = kingpin.New(common.PelotonAPIProxy, "Peloton API Proxy")
+	app = kingpin.New(common.PelotonAPIServer, "Peloton API Server")
 
 	debug = app.Flag(
 		"debug", "enable debug mode (print full json responses)").
@@ -56,13 +56,13 @@ var (
 		ExistingFiles()
 
 	httpPort = app.Flag(
-		"http-port", "API Proxy HTTP port (apiproxy.http_port override) "+
+		"http-port", "API Server HTTP port (apiserver.http_port override) "+
 			"(set $PORT to override)").
 		Envar("HTTP_PORT").
 		Int()
 
 	grpcPort = app.Flag(
-		"grpc-port", "API Proxy gRPC port (apiproxy.grpc_port override) "+
+		"grpc-port", "API Server gRPC port (apiserver.grpc_port override) "+
 			"(set $PORT to override)").
 		Envar("GRPC_PORT").
 		Int()
@@ -109,19 +109,19 @@ func main() {
 	}
 	log.SetLevel(initialLevel)
 
-	// Load and override API Proxy configurations.
-	log.WithField("files", *cfgFiles).Info("Loading API Proxy config")
+	// Load and override API Server configurations.
+	log.WithField("files", *cfgFiles).Info("Loading API Server config")
 	var cfg Config
 	if err := config.Parse(&cfg, *cfgFiles...); err != nil {
 		log.WithField("error", err).Fatal("Cannot parse yaml config")
 	}
 
 	if *httpPort != 0 {
-		cfg.APIProxy.HTTPPort = *httpPort
+		cfg.APIServer.HTTPPort = *httpPort
 	}
 
 	if *grpcPort != 0 {
-		cfg.APIProxy.GRPCPort = *grpcPort
+		cfg.APIServer.GRPCPort = *grpcPort
 	}
 
 	if len(*electionZkServers) > 0 {
@@ -134,12 +134,12 @@ func main() {
 		cfg.Auth.Path = *authConfigFile
 	}
 
-	log.WithField("config", cfg).Info("Loaded API Proxy configuration")
+	log.WithField("config", cfg).Info("Loaded API Server configuration")
 
 	// Configure tally metrics.
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(
 		&cfg.Metrics,
-		common.PelotonAPIProxy,
+		common.PelotonAPIServer,
 		metrics.TallyFlushInterval,
 	)
 	defer scopeCloser.Close()
@@ -153,8 +153,8 @@ func main() {
 
 	// Create both HTTP and GRPC inbounds.
 	inbounds := rpc.NewInbounds(
-		cfg.APIProxy.HTTPPort,
-		cfg.APIProxy.GRPCPort,
+		cfg.APIServer.HTTPPort,
+		cfg.APIServer.GRPCPort,
 		mux,
 	)
 
@@ -239,7 +239,7 @@ func main() {
 
 	// Create YARPC dispatcher.
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
-		Name:      common.PelotonAPIProxy,
+		Name:      common.PelotonAPIServer,
 		Inbounds:  inbounds,
 		Outbounds: outbounds,
 		Metrics: yarpc.MetricsConfig{
@@ -259,8 +259,8 @@ func main() {
 
 	// Register procedures in dispatcher.
 	var procedures []transport.Procedure
-	procedures = append(procedures, apiproxy.BuildResourceManagerProcedures(resmgrOutbound)...)
-	procedures = append(procedures, apiproxy.BuildHostManagerProcedures(hostmgrOutbound)...)
+	procedures = append(procedures, apiserver.BuildResourceManagerProcedures(resmgrOutbound)...)
+	procedures = append(procedures, apiserver.BuildHostManagerProcedures(hostmgrOutbound)...)
 	dispatcher.Register(procedures)
 
 	for _, p := range procedures {

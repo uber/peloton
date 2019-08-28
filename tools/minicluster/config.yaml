@@ -98,9 +98,9 @@ peloton_placement_instances:
   - BATCH
   - STATELESS
 
-peloton_apiproxy_container: peloton-apiproxy
-peloton_apiproxy_instance_count: 1
-peloton_apiproxy_ports:
+peloton_apiserver_container: peloton-apiserver
+peloton_apiserver_instance_count: 1
+peloton_apiserver_ports:
   - 5297
   - 5397
 

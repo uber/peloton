@@ -22,6 +22,7 @@ PELOTON_APPS = [
     "jobmgr",
     "archiver",
     "aurorabridge",
+    "apiserver",
 ]
 CRON_APPS = ["watchdog"]
 

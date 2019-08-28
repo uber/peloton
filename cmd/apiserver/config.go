@@ -15,17 +15,17 @@
 package main
 
 import (
-	"github.com/uber/peloton/pkg/apiproxy"
+	"github.com/uber/peloton/pkg/apiserver"
 	"github.com/uber/peloton/pkg/auth"
 	"github.com/uber/peloton/pkg/common/leader"
 	"github.com/uber/peloton/pkg/common/metrics"
 	"github.com/uber/peloton/pkg/middleware/inbound"
 )
 
-// Config contains all configuration to run Peloton API Proxy
+// Config contains all configuration to run Peloton API Server
 type Config struct {
 	Metrics   metrics.Config          `yaml:"metrics"`
-	APIProxy  apiproxy.Config         `yaml:"api_proxy"`
+	APIServer apiserver.Config        `yaml:"api_server"`
 	Auth      auth.Config             `yaml:"auth"`
 	RateLimit inbound.RateLimitConfig `yaml:"rate_limit"`
 	Election  leader.ElectionConfig   `yaml:"election"`
