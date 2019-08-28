@@ -16,6 +16,7 @@ log = logging.getLogger(__name__)
 
 
 # TODO: refactor existing stateless tests so they run with both mesos and k8s.
+@pytest.mark.skip("issue with misc test running k8s tests")
 def test__restart_killed_job():
     job = StatelessJob(job_file="test_stateless_job_spec_k8s.yaml")
     job.create()
