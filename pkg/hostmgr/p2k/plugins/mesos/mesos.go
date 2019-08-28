@@ -40,15 +40,17 @@ import (
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
+const mesosTaskUpdateAckChanSize = 1000
+
 // MesosManager implements the plugin for the Mesos cluster manager.
 type MesosManager struct {
 	// dispatcher for yarpc
 	d *yarpc.Dispatcher
 
-	// Pod events channel.
+	// Pod events channel. This channel is used to send pod events up stream to the event stream.
 	podEventCh chan<- *scalar.PodEvent
 
-	// Host events channel.
+	// Host events channel. This channel is used to convert host offers and capacity information to host cache.
 	hostEventCh chan<- *scalar.HostEvent
 
 	offerManager *offerManager
@@ -56,6 +58,16 @@ type MesosManager struct {
 	frameworkInfoProvider hostmgrmesos.FrameworkInfoProvider
 
 	schedulerClient mpb.SchedulerClient
+
+	updateAckConcurrency int
+
+	// ackChannel buffers the pod events to be acknowledged. AckPodEvent adds an event to be acked to this channel.
+	// ackPodEventWorker consumes this event and sends an ack back to Mesos.
+	ackChannel chan *scalar.PodEvent
+
+	// Map to store outstanding mesos task status update acknowledgements
+	// used to dedupe same event.
+	ackStatusMap sync.Map
 
 	metrics *metrics
 
@@ -83,6 +95,7 @@ func NewMesosManager(
 		podEventCh:            podEventCh,
 		hostEventCh:           hostEventCh,
 		offerManager:          newOfferManager(offerHoldTime),
+		ackChannel:            make(chan *scalar.PodEvent, mesosTaskUpdateAckChanSize),
 		once:                  sync.Once{},
 		agentSyncer: newAgentSyncer(
 			operatorClient,
@@ -108,7 +121,7 @@ func (m *MesosManager) Start() error {
 	})
 
 	m.agentSyncer.Start()
-
+	m.startAsyncProcessTaskUpdates()
 	return nil
 }
 
@@ -219,10 +232,77 @@ func (m *MesosManager) KillPod(ctx context.Context, podID string) error {
 
 // AckPodEvent is only implemented by mesos plugin. For K8s this is a noop.
 func (m *MesosManager) AckPodEvent(
-	ctx context.Context,
 	event *scalar.PodEvent,
 ) {
-	// TODO: fill in implementation
+	// Add this to the mesos task status update ack channel and handle it asynchronously.
+	m.ackChannel <- event
+}
+
+// startAsyncProcessTaskUpdates concurrently process task status update events
+// ready to ACK iff uuid is not nil.
+func (m *MesosManager) startAsyncProcessTaskUpdates() {
+	for i := 0; i < m.updateAckConcurrency; i++ {
+		go m.ackPodEventWorker()
+	}
+}
+
+func (m *MesosManager) ackPodEventWorker() {
+	for pe := range m.ackChannel {
+		// dedupe event.
+		if pe.EventID == "" {
+			continue
+		}
+
+		if _, ok := m.ackStatusMap.Load(pe.EventID); ok {
+			m.metrics.TaskUpdateAckDeDupe.Inc(1)
+			continue
+		}
+
+		// This is a new event to be acknowledged. Add it to the dedupe map of acks.
+		m.ackStatusMap.Store(pe.EventID, struct{}{})
+
+		// if ack failed at mesos master then agent will re-sent.
+		if err := m.acknowledgeTaskUpdate(
+			context.Background(),
+			pe,
+		); err != nil {
+			log.WithField("pod_event", pe.Event).
+				WithError(err).
+				Error("Failed to acknowledgeTaskUpdate")
+		}
+		// Once acked, delete this from dedupe map.
+		m.ackStatusMap.Delete(pe.EventID)
+	}
+}
+
+// acknowledgeTaskUpdate, ACK task status update events
+// thru POST scheduler client call to Mesos Master.
+func (m *MesosManager) acknowledgeTaskUpdate(
+	ctx context.Context,
+	e *scalar.PodEvent) error {
+	pe := e.Event
+	m.metrics.TaskUpdateAck.Inc(1)
+	callType := sched.Call_ACKNOWLEDGE
+	msid := hostmgrmesos.GetSchedulerDriver().GetMesosStreamID(ctx)
+	agentIDStr := pe.GetAgentId()
+	taskIdStr := pe.GetPodId().GetValue()
+
+	msg := &sched.Call{
+		FrameworkId: hostmgrmesos.GetSchedulerDriver().GetFrameworkID(ctx),
+		Type:        &callType,
+		Acknowledge: &sched.Call_Acknowledge{
+			AgentId: &mesos.AgentID{Value: &agentIDStr},
+			TaskId:  &mesos.TaskID{Value: &taskIdStr},
+			Uuid:    []byte(e.EventID),
+		},
+	}
+	if err := m.schedulerClient.Call(msid, msg); err != nil {
+		return err
+	}
+
+	log.WithField("task_status", pe).Debug("Acked task update")
+
+	return nil
 }
 
 // ReconcileHosts will return the current state of hosts in the cluster.
@@ -267,19 +347,14 @@ func (m *MesosManager) Update(ctx context.Context, body *sched.Event) error {
 	//var err error
 	taskUpdate := body.GetUpdate()
 
-	defer func() {
-		// Todo implement watch processor notifications.
+	// Todo implement watch processor notifications.
 
-		// Update the metrics in go routine to unblock API callback
-		go func() {
-			m.metrics.TaskUpdateCounter.Inc(1)
-			taskStateCounter := m.metrics.scope.Counter(
-				"task_state_" + taskUpdate.GetStatus().GetState().String())
-			taskStateCounter.Inc(1)
-		}()
-	}()
-
+	// Update the metrics in go routine to unblock API callback
 	m.podEventCh <- buildPodEventFromMesosTaskStatus(taskUpdate)
+	m.metrics.TaskUpdateCounter.Inc(1)
+	taskStateCounter := m.metrics.scope.Counter(
+		"task_state_" + taskUpdate.GetStatus().GetState().String())
+	taskStateCounter.Inc(1)
 	return nil
 }
 

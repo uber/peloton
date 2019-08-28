@@ -48,7 +48,6 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/p2k/hostcache"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/hostmgrsvc"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/plugins"
-	"github.com/uber/peloton/pkg/hostmgr/p2k/plugins/k8s"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/podeventmanager"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 	"github.com/uber/peloton/pkg/hostmgr/queue"
@@ -665,8 +664,8 @@ func main() {
 
 	plugin := plugins.NewNoopPlugin()
 	var hostCache hostcache.HostCache
-	podEventCh := make(chan *scalar.PodEvent, k8s.EventChanSize)
-	hostEventCh := make(chan *scalar.HostEvent, k8s.EventChanSize)
+	podEventCh := make(chan *scalar.PodEvent, plugins.EventChanSize)
+	hostEventCh := make(chan *scalar.HostEvent, plugins.EventChanSize)
 
 	// If k8s is enabled, return a k8s plugin.
 	// TODO: start MesosPlugin after it's implemented.

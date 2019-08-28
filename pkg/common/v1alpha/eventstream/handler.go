@@ -19,7 +19,6 @@ import (
 	"math"
 	"sync"
 
-	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	pbevent "github.com/uber/peloton/.gen/peloton/private/eventstream/v1alpha/event"
 	pbeventstreamsvc "github.com/uber/peloton/.gen/peloton/private/eventstream/v1alpha/eventstreamsvc"
 	"github.com/uber/peloton/pkg/common/cirbuf"
@@ -53,6 +52,8 @@ type Handler struct {
 
 	purgedEventsProcessor PurgedEventsProcessor
 
+	eventIndex map[string]struct{}
+
 	metrics *HandlerMetrics
 }
 
@@ -71,6 +72,7 @@ func NewEventStreamHandler(
 		clientPurgeOffsets:    make(map[string]uint64),
 		purgedEventsProcessor: purgedEventsProcessor,
 		expectedClients:       expectedClients,
+		eventIndex:            make(map[string]struct{}),
 		metrics:               NewHandlerMetrics(scope),
 	}
 	handler.metrics.Capacity.Update(float64(handler.circularBuffer.Capacity()))
@@ -92,21 +94,48 @@ func (h *Handler) isClientExpected(
 	return false
 }
 
+func (h *Handler) isDupEvent(e *pbevent.Event) bool {
+	eventId := e.GetEventId()
+	if eventId != "" {
+		if _, ok := h.eventIndex[eventId]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *Handler) addEventToDedupMap(e *pbevent.Event) {
+	eventId := e.GetEventId()
+	if eventId != "" {
+		h.eventIndex[eventId] = struct{}{}
+	}
+}
+
 // AddEvent adds a task Event or mesos status update into the inner circular
 // buffer.
-func (h *Handler) AddEvent(pe *pbpod.PodEvent) error {
-	if pe == nil {
-		return yarpcerrors.InvalidArgumentErrorf("podevent is nil")
+func (h *Handler) AddEvent(e *pbevent.Event) error {
+	if e == nil {
+		return yarpcerrors.InvalidArgumentErrorf("event is nil")
 	}
 	h.metrics.AddEventAPI.Inc(1)
-	log.WithField("pod_event", pe).Debug("Adding podevent to eventstream")
+	log.WithField("event", e).Debug("Adding event to eventstream")
 
-	item, err := h.circularBuffer.AddItem(pe)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.isDupEvent(e) {
+		h.metrics.AddEventDeDupe.Inc(1)
+		return nil
+	}
+
+	item, err := h.circularBuffer.AddItem(e)
 	if err != nil {
 		h.metrics.AddEventFail.Inc(1)
 		return err
 	}
+
 	h.metrics.AddEventSuccess.Inc(1)
+	h.addEventToDedupMap(e)
 
 	head, tail := h.circularBuffer.GetRange()
 	h.metrics.Head.Update(float64(head))
@@ -131,11 +160,7 @@ func (h *Handler) GetEvents() ([]*pbevent.Event, error) {
 
 	events := make([]*pbevent.Event, 0, len(items))
 	for _, item := range items {
-		if pe, ok := item.Value.(*pbpod.PodEvent); ok {
-			e := &pbevent.Event{
-				Offset:   item.SequenceID,
-				PodEvent: pe,
-			}
+		if e, ok := item.Value.(*pbevent.Event); ok {
 			events = append(events, e)
 		}
 	}
@@ -235,14 +260,14 @@ func (h *Handler) WaitForEvents(
 
 	var events []*pbevent.Event
 	for i, item := range items {
-		if pe, ok := item.Value.(*pbpod.PodEvent); ok {
+		if pe, ok := item.Value.(*pbevent.Event); ok {
 			log.WithFields(log.Fields{
 				"index":  i,
 				"offset": item.SequenceID,
 			}).Debug("event")
 			e := &pbevent.Event{
 				Offset:   item.SequenceID,
-				PodEvent: pe,
+				PodEvent: pe.PodEvent,
 			}
 			events = append(events, e)
 		}
@@ -278,6 +303,11 @@ func (h *Handler) purgeEvents(
 			log.WithField("min_purge_offset", minPurgeOffset).Error("Invalid minPurgeOffset")
 			h.metrics.PurgeEventError.Inc(1)
 		} else {
+			for _, item := range purgedItems {
+				if event, ok := item.Value.(*pbevent.Event); ok {
+					delete(h.eventIndex, event.EventId)
+				}
+			}
 			if h.purgedEventsProcessor != nil {
 				h.purgedEventsProcessor.EventPurged(purgedItems)
 			}

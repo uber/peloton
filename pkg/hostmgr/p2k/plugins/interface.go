@@ -37,7 +37,7 @@ type Plugin interface {
 	KillPod(ctx context.Context, podID string) error
 
 	// AckPodEvent is only implemented by mesos plugin. For K8s this is a noop.
-	AckPodEvent(ctx context.Context, event *scalar.PodEvent)
+	AckPodEvent(event *scalar.PodEvent)
 
 	// ReconcileHosts will return the current state of hosts in the cluster.
 	ReconcileHosts() ([]*scalar.HostInfo, error)

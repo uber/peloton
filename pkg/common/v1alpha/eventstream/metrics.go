@@ -29,6 +29,7 @@ type HandlerMetrics struct {
 
 	AddEventAPI          tally.Counter
 	AddEventSuccess      tally.Counter
+	AddEventDeDupe       tally.Counter
 	AddEventFail         tally.Counter
 	InitStreamAPI        tally.Counter
 	InitStreamSuccess    tally.Counter
@@ -53,6 +54,7 @@ func NewHandlerMetrics(scope tally.Scope) *HandlerMetrics {
 		InvalidStreamIDError:  scope.Counter("invalid_streamid_error"),
 		AddEventAPI:           handlerAPIScope.Counter("add_event"),
 		AddEventSuccess:       handlerSuccessScope.Counter("add_event"),
+		AddEventDeDupe:        handlerSuccessScope.Counter("add_event_dedupe"),
 		AddEventFail:          handlerFailScope.Counter("add_event"),
 		InitStreamAPI:         handlerAPIScope.Counter("init_stream"),
 		InitStreamSuccess:     handlerSuccessScope.Counter("init_stream"),

@@ -192,6 +192,19 @@ func (suite *MesosManagerTestSuite) TestMesosManagerKillPodSuccess() {
 	suite.NoError(suite.mesosManager.KillPod(context.Background(), podID))
 }
 
+func (suite *MesosManagerTestSuite) TestAckPodEvents() {
+	expectedPodEvent := &scalar.PodEvent{
+		Event:     &pbpod.PodEvent{},
+		EventType: 0,
+		EventID:   uuid.New(),
+	}
+
+	suite.mesosManager.AckPodEvent(expectedPodEvent)
+
+	pe := <-suite.mesosManager.ackChannel
+	suite.Equal(pe.EventID, expectedPodEvent.EventID)
+}
+
 func (suite *MesosManagerTestSuite) TestMesosManagerKillPodFail() {
 	podID := "test_pod"
 	streamID := "streamID"
@@ -216,10 +229,6 @@ func (suite *MesosManagerTestSuite) TestMesosManagerKillPodFail() {
 		Return(errors.New("test error"))
 
 	suite.Error(suite.mesosManager.KillPod(context.Background(), podID))
-}
-
-func (suite *MesosManagerTestSuite) TestMesosManagerAckPodEvent() {
-	suite.mesosManager.AckPodEvent(context.Background(), nil)
 }
 
 func (suite *MesosManagerTestSuite) TestMesosManagerReoncileHosts() {

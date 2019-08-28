@@ -1,8 +1,6 @@
 package podeventmanager
 
 import (
-	"context"
-
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	pbevent "github.com/uber/peloton/.gen/peloton/private/eventstream/v1alpha/event"
 	pbeventstreamsvc "github.com/uber/peloton/.gen/peloton/private/eventstream/v1alpha/eventstreamsvc"
@@ -40,14 +38,17 @@ func (pem *podEventManagerImpl) GetEvents() ([]*pbevent.Event, error) {
 }
 
 func (pem *podEventManagerImpl) Run(podEventCh chan *scalar.PodEvent) {
-	for pe := range podEventCh {
-		err := pem.eventStreamHandler.AddEvent(pe.Event)
+	for e := range podEventCh {
+		err := pem.eventStreamHandler.AddEvent(
+			&pbevent.Event{
+				PodEvent: e.Event,
+			})
 		if err != nil {
-			log.WithField("pod_event", pe).Error("add podevent")
+			log.WithField("pod_event", e.Event).Error("add pod event")
 		} else {
 			// This should be called so that we handle resource accounting for
 			// k8s pods using the pod status. This will be a noop for Mesos.
-			pem.hostCache.HandlePodEvent(pe)
+			pem.hostCache.HandlePodEvent(e)
 		}
 	}
 }
@@ -81,15 +82,13 @@ type purgedEventsProcessor struct {
 
 func (pep purgedEventsProcessor) EventPurged(events []*cirbuf.CircularBufferItem) {
 	for _, e := range events {
-		pe, ok := e.Value.(*pbpod.PodEvent)
+		event, ok := e.Value.(*pbpod.PodEvent)
 		if !ok {
-			log.WithField("event", e).Warn("unexpected event to purge")
+			// Ignore events other than PodEvent for post processing.
+			// Also ignore the case where an ack channel is not supplied. This means there is no need to ack event,
+			// which is true for k8s cluster.
 			continue
 		}
-
-		pep.plugin.AckPodEvent(
-			context.Background(),
-			&scalar.PodEvent{Event: pe},
-		)
+		pep.plugin.AckPodEvent(&scalar.PodEvent{Event: event})
 	}
 }

@@ -26,6 +26,7 @@ import (
 
 	pbpeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+	pbevent "github.com/uber/peloton/.gen/peloton/private/eventstream/v1alpha/event"
 	pbeventstreamsvc "github.com/uber/peloton/.gen/peloton/private/eventstream/v1alpha/eventstreamsvc"
 	"github.com/uber/peloton/pkg/common/cirbuf"
 )
@@ -62,12 +63,15 @@ func makeWaitForEventsRequest(
 	}
 }
 
-func makePodEvent(id string) *pbpod.PodEvent {
+func makePodEvent(id string) *pbevent.Event {
 	if id == "" {
 		id = uuid.New()
 	}
-	return &pbpod.PodEvent{
-		PodId: &pbpeloton.PodID{Value: id},
+	return &pbevent.Event{
+		PodEvent: &pbpod.PodEvent{
+			PodId: &pbpeloton.PodID{Value: id},
+		},
+		EventId: id,
 	}
 }
 

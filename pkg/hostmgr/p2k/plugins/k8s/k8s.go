@@ -36,8 +36,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-const EventChanSize = 1000
-
 // K8SManager implements the plugin for the Kubernetes cluster manager.
 type K8SManager struct {
 	// K8s client.
@@ -179,8 +177,8 @@ func (k *K8SManager) ReconcileHosts() ([]*scalar.HostInfo, error) {
 
 // AckPodEvent is relevant to Mesos. For K8s for now, this is a noop.
 // We could use some smarts here if we decide to write the resource version
-// to DB after the event has been acknowledged by both JM and RM
-func (k *K8SManager) AckPodEvent(ctx context.Context, event *scalar.PodEvent) {
+// to DB after the event has been acknowledged by both JM and RM.
+func (k *K8SManager) AckPodEvent(event *scalar.PodEvent) {
 }
 
 // K8s Reconcile logic.

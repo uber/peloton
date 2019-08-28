@@ -22,6 +22,8 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 )
 
+const EventChanSize = 1000
+
 // NewK8sPlugin returns a new instance of k8s plugin.
 func NewK8sPlugin(
 	configPath string,
@@ -60,7 +62,7 @@ func (p *NoopPlugin) KillPod(context context.Context, podID string) error {
 }
 
 // AckPodEvent is only implemented by mesos plugin. For K8s this is a noop.
-func (p *NoopPlugin) AckPodEvent(ctx context.Context, event *scalar.PodEvent) {}
+func (p *NoopPlugin) AckPodEvent(event *scalar.PodEvent) {}
 
 // ReconcileHosts will return the current state of hosts in the cluster.
 func (p *NoopPlugin) ReconcileHosts() ([]*scalar.HostInfo, error) {
