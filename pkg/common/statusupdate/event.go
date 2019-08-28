@@ -219,6 +219,8 @@ func parsePodState(s string) pbpod.PodState {
 		return pbpod.PodState_POD_STATE_FAILED
 	case pbpod.PodState_POD_STATE_LOST.String():
 		return pbpod.PodState_POD_STATE_LOST
+	case pbpod.PodState_POD_STATE_KILLED.String():
+		return pbpod.PodState_POD_STATE_KILLED
 	}
 	return pbpod.PodState_POD_STATE_INVALID
 }

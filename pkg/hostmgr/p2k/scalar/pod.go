@@ -48,7 +48,7 @@ func BuildPodEventFromPod(
 	return &PodEvent{
 		Event: &pbpod.PodEvent{
 			PodId:               &peloton.PodID{Value: pod.Name},
-			ActualState:         buildPodState(pod.Status.Phase),
+			ActualState:         buildPodState(pod.Status.Phase, e),
 			Timestamp:           time.Now().Format(time.RFC3339),
 			AgentId:             pod.Spec.NodeName,
 			Hostname:            pod.Spec.NodeName,
@@ -63,7 +63,15 @@ func BuildPodEventFromPod(
 	}
 }
 
-func buildPodState(phase corev1.PodPhase) string {
+func buildPodState(phase corev1.PodPhase, e PodEventType) string {
+	// Manually set the pod state to KILLED because it is not a valid state in
+	// K8s. When running pod is deleted, only a delete grace period is added to
+	// the pod spec and we get a delete event. No more event is sent when pod
+	// exits.
+	// NOTE: this is assuming delete grade period is relatively short (10 sec).
+	if e == DeletePod && (phase == corev1.PodRunning || phase == corev1.PodPending) {
+		return pbpod.PodState_POD_STATE_KILLED.String()
+	}
 	switch phase {
 	case corev1.PodPending:
 		return pbpod.PodState_POD_STATE_LAUNCHED.String()

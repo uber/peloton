@@ -100,10 +100,11 @@ def wait_for_host_state(hostname, state):
 
 
 def is_host_in_state(hostname, state):
-    resp = query_hosts([state])
+    resp = query_hosts(None)
     for host_info in resp.host_infos:
         if host_info.hostname == hostname:
-            return True
+            log.info("host state: %s, expected: %s", host_info.state, state)
+            return host_info.state == state
     return False
 
 

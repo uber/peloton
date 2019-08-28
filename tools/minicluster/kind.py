@@ -21,7 +21,11 @@ class Kind(object):
         cmd = ["kind", "create", "cluster", "--name={}".format(self.name)]
         if self.config is not None:
             cmd.append("--config={}".format(self.config))
-        assert subprocess.call(cmd) == 0
+        try:
+            return subprocess.call(cmd) == 0
+        except Exception as e:
+            print("Failed to create kind cluster: {}".format(e))
+            return False
 
     def teardown(self):
         cmd = ["kind", "delete", "cluster", "--name={}".format(self.name)]

@@ -1,0 +1,31 @@
+name: TestSpec
+owner: testUser
+owningTeam: testTeam
+ldapGroups:
+- team6
+- otto
+description: "A dummy test stateless job spec for peloton"
+labels:
+- key: testKey0
+  value: testVal0
+- key: testKey1
+  value: testVal1
+- key: testKey2
+  value: testVal2
+instanceCount: 3
+defaultSpec:
+  containers:
+  - resource:
+      cpuLimit: 0.1
+      memLimitMb: 2.0
+      diskLimitMb: 0.1
+    container:
+      type: 1
+      docker:
+        image: "busybox"
+    entrypoint:
+      # k8s does not have the notion of shell:true, and does not take raw command string.
+      # Calling top so the spec works for both mesos and k8s, and runs forever.
+      value: '/bin/top'
+  mesosSpec:
+    shell: true
