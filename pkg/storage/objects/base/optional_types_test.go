@@ -42,6 +42,16 @@ func (s *OptionalTypeTestSuite) TestNewOptionalString() {
 	)
 }
 
+func (s *OptionalTypeTestSuite) TestNewOptionalUInt64() {
+	s.Nil(
+		NewOptionalUInt64(""),
+	)
+	s.Equal(
+		&OptionalUInt64{Value: 1},
+		NewOptionalUInt64(uint64(1)),
+	)
+}
+
 func (s *OptionalTypeTestSuite) TestIsOfTypeOptional() {
 	s.True(
 		IsOfTypeOptional(reflect.ValueOf(&OptionalString{Value: "test"})),
