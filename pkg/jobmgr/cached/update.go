@@ -25,6 +25,7 @@ import (
 	pbupdate "github.com/uber/peloton/.gen/peloton/api/v0/update"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
+	"github.com/uber/peloton/pkg/common/concurrency"
 	"github.com/uber/peloton/pkg/common/taskconfig"
 	"github.com/uber/peloton/pkg/common/util"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
@@ -33,6 +34,12 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc/yarpcerrors"
+)
+
+const (
+	// number of workers to do has task config changed for
+	// get job update diff
+	_defaultHasTaskConfigChangeWorkers = 25
 )
 
 // Update of a job being stored in the cache.
@@ -1000,6 +1007,12 @@ func hasInstanceConfigChanged(
 	return taskconfig.HasTaskConfigChanged(prevTaskConfig, newTaskConfig), nil
 }
 
+type instanceConfigChange struct {
+	instanceID uint32
+	isChanged  bool
+	err        error
+}
+
 // GetInstancesToProcessForUpdate determines the instances which have been updated in a given
 // job update. Both the old and the new job configurations are provided as
 // inputs, and it returns the instances which have been added and existing
@@ -1018,8 +1031,15 @@ func GetInstancesToProcessForUpdate(
 	instancesUnchanged []uint32,
 	err error,
 ) {
-	var taskRuntimes map[uint32]*pbtask.RuntimeInfo
 
+	var lock sync.RWMutex
+	// reason to create instancesUpdate and instancesUnchange because if
+	// one of the go-routine fails in mapper then it does early exit which
+	// leads to assign nil for instancesUpdated and instancesUnchanged
+	var instancesToCheck []uint32
+	var instancesToUpdate []uint32
+	var instancesNotChanged []uint32
+	var taskRuntimes map[uint32]*pbtask.RuntimeInfo
 	taskRuntimes, err = taskStore.GetTaskRuntimesForJobByRange(
 		ctx,
 		jobID,
@@ -1030,48 +1050,76 @@ func GetInstancesToProcessForUpdate(
 	}
 
 	for instID := uint32(0); instID < newJobConfig.GetInstanceCount(); instID++ {
-		if runtime, ok := taskRuntimes[instID]; !ok {
+		if _, ok := taskRuntimes[instID]; !ok {
 			// new instance added
 			instancesAdded = append(instancesAdded, instID)
 		} else {
-			var changed bool
-			changed, err = hasInstanceConfigChanged(
-				ctx,
-				jobID,
-				instID,
-				runtime.GetConfigVersion(),
-				newJobConfig,
-				taskConfigV2Ops,
-			)
-			if err != nil {
-				return
-			}
-
-			if changed || runtime.GetConfigVersion() != runtime.GetDesiredConfigVersion() {
-				// Update if configuration has changed.
-				// Also, if the configuration version is not the same as the desired
-				// configuration version, then lets treat this instance as one
-				// which needs to be updated irrespective of whether the current
-				// config it has is the same as provided in the new configuration.
-				// In some cases it may result in an unneeded restart of a
-				// few instances, but this ensures correctness.
-				instancesUpdated = append(instancesUpdated, instID)
-			} else {
-				instancesUnchanged = append(instancesUnchanged, instID)
-			}
-
-			// TODO what happens if the update does not change the instance
-			// configuration, but it was being updates as part of the
-			// previous aborted update.
-
-			delete(taskRuntimes, instID)
+			instancesToCheck = append(instancesToCheck, instID)
 		}
+	}
+
+	f := func(ctx context.Context, instID interface{}) (interface{}, error) {
+		lock.RLock()
+		instanceID := instID.(uint32)
+		runtime := taskRuntimes[instanceID]
+		lock.RUnlock()
+
+		changed, err := hasInstanceConfigChanged(
+			ctx,
+			jobID,
+			instanceID,
+			runtime.GetConfigVersion(),
+			newJobConfig,
+			taskConfigV2Ops,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		lock.Lock()
+		defer lock.Unlock()
+		if changed || runtime.GetConfigVersion() != runtime.GetDesiredConfigVersion() {
+			// Update if configuration has changed.
+			// Also, if the configuration version is not the same as the desired
+			// configuration version, then lets treat this instance as one
+			// which needs to be updated irrespective of whether the current
+			// config it has is the same as provided in the new configuration.
+			// In some cases it may result in an unneeded restart of a
+			// few instances, but this ensures correctness.
+			instancesToUpdate = append(instancesToUpdate, instanceID)
+		} else {
+			instancesNotChanged = append(instancesNotChanged, instanceID)
+		}
+
+		// TODO what happens if the update does not change the instance
+		// configuration, but it was being updates as part of the
+		// previous aborted update.
+		delete(taskRuntimes, instanceID)
+
+		return nil, nil
+	}
+
+	var inputs []interface{}
+	for _, i := range instancesToCheck {
+		inputs = append(inputs, i)
+	}
+
+	_, err = concurrency.Map(
+		ctx,
+		concurrency.MapperFunc(f),
+		inputs,
+		_defaultHasTaskConfigChangeWorkers)
+	if err != nil {
+		return nil, nil, nil, nil, err
 	}
 
 	for instID := range taskRuntimes {
 		// instance has been removed
 		instancesRemoved = append(instancesRemoved, instID)
 	}
+
+	instancesUpdated = instancesToUpdate
+	instancesUnchanged = instancesNotChanged
 
 	return
 }

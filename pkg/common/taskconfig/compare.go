@@ -211,27 +211,22 @@ func hasMesosCommandChanged(
 		return true
 	}
 
+	prevC := proto.Clone(prevCommand).(*mesosv1.CommandInfo)
+	newC := proto.Clone(newCommand).(*mesosv1.CommandInfo)
+
 	for i := range prevCommand.GetUris() {
 		if hasMesosCommandUriChanged(
-			prevCommand.GetUris()[i],
-			newCommand.GetUris()[i],
+			prevC.GetUris()[i],
+			newC.GetUris()[i],
 		) {
 			return true
 		}
 	}
 
-	prevUris := prevCommand.Uris
-	newUris := newCommand.Uris
+	prevC.Uris = nil
+	newC.Uris = nil
 
-	defer func() {
-		prevCommand.Uris = prevUris
-		newCommand.Uris = newUris
-	}()
-
-	prevCommand.Uris = nil
-	newCommand.Uris = nil
-
-	return !proto.Equal(prevCommand, newCommand)
+	return !proto.Equal(prevC, newC)
 }
 
 // hasMesosContainerChanged checks whether two mesos ContainerInfo have
@@ -247,27 +242,22 @@ func hasMesosContainerChanged(
 		return true
 	}
 
-	if prevContainer.Docker != nil && newContainer.Docker != nil {
+	prevC := proto.Clone(prevContainer).(*mesosv1.ContainerInfo)
+	newC := proto.Clone(newContainer).(*mesosv1.ContainerInfo)
+
+	if prevC.Docker != nil && newC.Docker != nil {
 		// network field has default value if not set, use getter to retrieve
 		// value and compare.
-		if prevContainer.GetDocker().GetNetwork() !=
-			newContainer.GetDocker().GetNetwork() {
+		if prevC.GetDocker().GetNetwork() !=
+			newC.GetDocker().GetNetwork() {
 			return true
 		}
 
-		prevNetwork := prevContainer.Docker.Network
-		newNetwork := newContainer.Docker.Network
-
-		defer func() {
-			prevContainer.Docker.Network = prevNetwork
-			newContainer.Docker.Network = newNetwork
-		}()
-
-		prevContainer.Docker.Network = nil
-		newContainer.Docker.Network = nil
+		prevC.Docker.Network = nil
+		newC.Docker.Network = nil
 	}
 
-	return !proto.Equal(prevContainer, newContainer)
+	return !proto.Equal(prevC, newC)
 }
 
 // HasTaskConfigChanged returns true if the task config (other than the name)

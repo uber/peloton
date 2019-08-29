@@ -1710,9 +1710,19 @@ func (suite *UpdateTestSuite) TestGetInstancesToProcessForUpdateConfigError() {
 		GetTaskRuntimesForJobByRange(gomock.Any(), suite.jobID, nil).
 		Return(taskRuntimes, nil)
 
-	suite.taskConfigV2Ops.EXPECT().
-		GetTaskConfig(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil, nil, fmt.Errorf("fake db error"))
+	for i := uint32(0); i < instanceCount; i++ {
+		if i%2 == 0 {
+			suite.taskConfigV2Ops.EXPECT().
+				GetTaskConfig(gomock.Any(), suite.jobID, i, gomock.Any()).
+				Return(nil, nil, fmt.Errorf("fake db error")).
+				MaxTimes(1)
+		} else {
+			suite.taskConfigV2Ops.EXPECT().
+				GetTaskConfig(gomock.Any(), suite.jobID, i, gomock.Any()).
+				Return(taskConfig, nil, nil).
+				MaxTimes(1)
+		}
+	}
 
 	_, _, _, _, err :=
 		GetInstancesToProcessForUpdate(
