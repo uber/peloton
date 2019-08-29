@@ -335,6 +335,8 @@ func (c *Client) JobStopAction(
 	owner string,
 	labels string,
 	isForceStop bool,
+	jobStopLimit uint32,
+	jobStopMaxLimit uint32,
 ) error {
 	var (
 		errs             error
@@ -417,6 +419,10 @@ func (c *Client) JobStopAction(
 			JobStates: jobStates,
 			Owner:     owner,
 			Labels:    jobStopLabels,
+			Pagination: &query.PaginationSpec{
+				Limit:    jobStopLimit,
+				MaxLimit: jobStopMaxLimit,
+			},
 		}
 		request := &job.QueryRequest{
 			Spec:        spec,

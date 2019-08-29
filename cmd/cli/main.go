@@ -134,9 +134,11 @@ var (
 	jobStopProgress = jobStop.Flag("progress",
 		"show progress of the job stopping").Default(
 		"false").Bool()
-	jobStopOwner  = jobStop.Flag("owner", "job owner").Default("").String()
-	jobStopLabels = jobStop.Flag("labels", "job labels").Default("").Short('l').String()
-	jobStopForce  = jobStop.Flag("force", "force stop").Default("false").Short('f').Bool()
+	jobStopOwner    = jobStop.Flag("owner", "job owner").Default("").String()
+	jobStopLabels   = jobStop.Flag("labels", "job labels").Default("").Short('l').String()
+	jobStopForce    = jobStop.Flag("force", "force stop").Default("false").Short('f').Bool()
+	jobStopLimit    = jobStop.Flag("limit", "maximum number of jobs to return").Default("100").Short('n').Uint32()
+	jobStopMaxLimit = jobStop.Flag("total", "total number of jobs to query").Default("100").Short('q').Uint32()
 
 	jobGet     = job.Command("get", "get a job")
 	jobGetName = jobGet.Arg("job", "job identifier").Required().String()
@@ -889,6 +891,8 @@ func main() {
 			*jobStopOwner,
 			*jobStopLabels,
 			*jobStopForce,
+			*jobStopLimit,
+			*jobStopMaxLimit,
 		)
 	case jobGet.FullCommand():
 		err = client.JobGetAction(*jobGetName)

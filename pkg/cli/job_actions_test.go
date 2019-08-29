@@ -43,6 +43,7 @@ import (
 const (
 	testJobConfig  = "../../example/testjob.yaml"
 	testJobID      = "481d565e-28da-457d-8434-f6bb7faa0e95"
+	testJobID2     = "bca875f5-322a-4439-b0c9-63e3cf9f982e"
 	testSecretPath = "/tmp/secret"
 	testSecretStr  = "my-test-secret"
 )
@@ -1094,7 +1095,7 @@ func (suite *jobActionsTestSuite) TestClientJobDeleteAction() {
 // TestClientJobStopAction tests stopping a job
 func (suite *jobActionsTestSuite) TestClientJobStopAction() {
 	// If neither jobId nor owner info is provided, no stop action is issued.
-	suite.Equal(suite.client.JobStopAction("", false, "", "", false), nil)
+	suite.Equal(suite.client.JobStopAction("", false, "", "", false, 100, 100), nil)
 
 	getResponse := &job.GetResponse{
 		JobInfo: &job.JobInfo{
@@ -1136,7 +1137,7 @@ func (suite *jobActionsTestSuite) TestClientJobStopAction() {
 		}).
 		Return(resp, nil)
 
-	suite.NoError(suite.client.JobStopAction(testJobID, false, "", "", false))
+	suite.NoError(suite.client.JobStopAction(testJobID, false, "", "", false, 100, 100))
 }
 
 // TestClientJobStopActionWithProgress tests stopping a job
@@ -1218,7 +1219,7 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionWithProgress() {
 		}).Return(getResponse2, nil),
 	)
 
-	suite.NoError(suite.client.JobStopAction(testJobID, true, "", "", false))
+	suite.NoError(suite.client.JobStopAction(testJobID, true, "", "", false, 100, 100))
 }
 
 // TestClientJobStopActionProgressTerminate tests stopping a job and
@@ -1277,7 +1278,7 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionProgressTerminate() {
 		},
 	}).Return(getResponse1, nil)
 
-	suite.NoError(suite.client.JobStopAction(testJobID, true, "", "", false))
+	suite.NoError(suite.client.JobStopAction(testJobID, true, "", "", false, 100, 100))
 }
 
 // TestClientJobStopActionProgressError tests stopping a job and getting
@@ -1319,7 +1320,7 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionProgressError() {
 		},
 	}).Return(nil, errors.New("unable to get job"))
 
-	suite.Error(suite.client.JobStopAction(testJobID, true, "", "", false))
+	suite.Error(suite.client.JobStopAction(testJobID, true, "", "", false, 100, 100))
 }
 
 // TestClientJobStopActionProgressIterError tests stopping a job and
@@ -1387,7 +1388,7 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionProgressIterError() {
 		}).Return(nil, errors.New("unable to get job")),
 	)
 
-	suite.Error(suite.client.JobStopAction(testJobID, true, "", "", false))
+	suite.Error(suite.client.JobStopAction(testJobID, true, "", "", false, 100, 100))
 }
 
 // TestClientJobStopActionGetError tests getting an error in
@@ -1399,7 +1400,86 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionGetError() {
 		},
 	}).Return(nil, errors.New("unable to get job"))
 
-	suite.Error(suite.client.JobStopAction(testJobID, false, "", "", false))
+	suite.Error(suite.client.JobStopAction(testJobID, false, "", "", false, 100, 100))
+}
+
+// TestClientJobStopConfigurableLimit tests stopping the job of desired amount.
+func (suite *jobActionsTestSuite) TestClientJobStopSetLimit() {
+	results := []*job.JobSummary{
+		{
+			Id: &peloton.JobID{
+				Value: testJobID,
+			},
+			Name:          "test",
+			OwningTeam:    "test",
+			InstanceCount: 10,
+			Runtime: &job.RuntimeInfo{
+				State:          job.JobState_RUNNING,
+				CreationTime:   time.Now().UTC().Format(time.RFC3339Nano),
+				CompletionTime: "",
+				TaskStats: map[string]uint32{
+					"RUNNING": 10,
+				},
+			},
+		},
+		{
+			Id: &peloton.JobID{
+				Value: testJobID2,
+			},
+			Name:          "test",
+			OwningTeam:    "test",
+			InstanceCount: 10,
+			Runtime: &job.RuntimeInfo{
+				State:          job.JobState_SUCCEEDED,
+				CreationTime:   time.Now().UTC().Format(time.RFC3339Nano),
+				CompletionTime: time.Now().UTC().Format(time.RFC3339Nano),
+				TaskStats: map[string]uint32{
+					"RUNNING": 10,
+				},
+			},
+		},
+	}
+
+	owner := "user1"
+	jobStates := []job.JobState{
+		job.JobState_INITIALIZED,
+		job.JobState_PENDING,
+		job.JobState_RUNNING,
+	}
+	spec := &job.QuerySpec{
+		JobStates: jobStates,
+		Owner:     owner,
+		Pagination: &query.PaginationSpec{
+			Limit:    2,
+			MaxLimit: 100,
+		},
+	}
+	request := &job.QueryRequest{
+		Spec:        spec,
+		SummaryOnly: true,
+	}
+	response := &job.QueryResponse{
+		Results: results,
+	}
+
+	suite.mockJob.EXPECT().Query(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, queryRequest *job.QueryRequest) {
+			suite.Equal(request.Spec.JobStates, queryRequest.Spec.JobStates)
+			suite.Equal(request.Spec.Owner, queryRequest.Spec.Owner)
+			suite.Equal(request.Spec.Pagination.Limit, queryRequest.Spec.Pagination.Limit)
+			suite.Equal(request.Spec.Pagination.MaxLimit, queryRequest.Spec.Pagination.MaxLimit)
+			suite.Equal(request.SummaryOnly, queryRequest.SummaryOnly)
+		}).Return(response, nil)
+	suite.mockTask.EXPECT().Stop(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, stopRequest *task.StopRequest) {
+			suite.Equal(results[0].GetId(), stopRequest.GetJobId())
+		}).Return(&task.StopResponse{}, nil)
+	suite.mockTask.EXPECT().Stop(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, stopRequest *task.StopRequest) {
+			suite.Equal(results[1].GetId(), stopRequest.GetJobId())
+		}).Return(&task.StopResponse{}, nil)
+
+	suite.NoError(suite.client.JobStopAction("", false, owner, "", true, 2, 100))
 }
 
 // TestClientJobStopActionTerminalJob tests stopping a terminated job
@@ -1421,7 +1501,7 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionTerminalJob() {
 		},
 	}).Return(getResponse, nil)
 
-	suite.NoError(suite.client.JobStopAction(testJobID, false, "", "", false))
+	suite.NoError(suite.client.JobStopAction(testJobID, false, "", "", false, 100, 100))
 }
 
 // TestClientJobStopActionStopError tests getting
@@ -1453,7 +1533,7 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionStopError() {
 		}).
 		Return(nil, errors.New("unable to stop job"))
 
-	suite.Error(suite.client.JobStopAction(testJobID, false, "", "", false))
+	suite.Error(suite.client.JobStopAction(testJobID, false, "", "", false, 100, 100))
 }
 
 // TestClientJobStopAction tests error during second stop
@@ -1501,7 +1581,7 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionIterError() {
 			Return(resp, errors.New("cannot stop job")),
 	)
 
-	suite.Error(suite.client.JobStopAction(testJobID, false, "", "", false))
+	suite.Error(suite.client.JobStopAction(testJobID, false, "", "", false, 100, 100))
 }
 
 // TestClientJobRestartActionSuccess tests restarting successfully
@@ -1836,7 +1916,7 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionOwner() {
 		Do(func(_ context.Context, stopRequest *task.StopRequest) {
 			suite.Equal(results[0].GetId(), stopRequest.GetJobId())
 		}).Return(&task.StopResponse{}, nil)
-	suite.NoError(suite.client.JobStopAction("", false, owner, "", true))
+	suite.NoError(suite.client.JobStopAction("", false, owner, "", true, 100, 100))
 }
 
 // TestClientJobStopActionJobIDAndOwner tests stopping jobs by jobID and owner
@@ -1863,7 +1943,7 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionJobIDAndOwner() {
 			Value: testJobID,
 		},
 	}).Return(getResponse, nil)
-	suite.NoError(suite.client.JobStopAction(testJobID, false, owner, "", true))
+	suite.NoError(suite.client.JobStopAction(testJobID, false, owner, "", true, 100, 100))
 }
 
 // TestClientJobStopActionOwnerErrors tests errors while stopping all running jobs of a owner
@@ -1907,7 +1987,7 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionOwnerErrors() {
 	suite.mockJob.EXPECT().
 		Query(gomock.Any(), gomock.Any()).
 		Return(nil, fmt.Errorf("fake Query error"))
-	suite.Error(suite.client.JobStopAction("", false, owner, "", true))
+	suite.Error(suite.client.JobStopAction("", false, owner, "", true, 100, 100))
 
 	//Test Job Stop error
 	suite.mockJob.EXPECT().Query(gomock.Any(), gomock.Any()).
@@ -1919,7 +1999,7 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionOwnerErrors() {
 	suite.mockTask.EXPECT().
 		Stop(gomock.Any(), gomock.Any()).
 		Return(nil, fmt.Errorf("fake Stop error"))
-	suite.Error(suite.client.JobStopAction("", false, owner, "", true))
+	suite.Error(suite.client.JobStopAction("", false, owner, "", true, 100, 100))
 }
 
 // TestClientJobStopActionLabels tests stopping jobs by labels
@@ -1983,7 +2063,7 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionLabels() {
 		Do(func(_ context.Context, stopRequest *task.StopRequest) {
 			suite.Equal(results[0].GetId(), stopRequest.GetJobId())
 		}).Return(&task.StopResponse{}, nil)
-	suite.NoError(suite.client.JobStopAction("", false, owner, "testkey1=testvalue1", true))
+	suite.NoError(suite.client.JobStopAction("", false, owner, "testkey1=testvalue1", true, 100, 100))
 
 	// Test empty job query result
 	response = &job.QueryResponse{
@@ -1994,12 +2074,12 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionLabels() {
 			suite.Equal(request.Spec.JobStates, queryRequest.Spec.JobStates)
 			suite.Equal(request.SummaryOnly, queryRequest.SummaryOnly)
 		}).Return(response, nil)
-	suite.NoError(suite.client.JobStopAction("", false, owner, "testkey1=testvalue1", true))
+	suite.NoError(suite.client.JobStopAction("", false, owner, "testkey1=testvalue1", true, 100, 100))
 }
 
 // TestClientJobStopActionLabelsErrors tests errors while stopping jobs by labels
 func (suite *jobActionsTestSuite) TestClientJobStopActionLabelsErrors() {
-	suite.Error(suite.client.JobStopAction(testJobID, false, "", "testkey1:testvalue1", true))
+	suite.Error(suite.client.JobStopAction(testJobID, false, "", "testkey1:testvalue1", true, 100, 100))
 }
 
 // TestClientJobStopActionJobIDAndLabels tests stopping jobs by jobID and labels
@@ -2037,7 +2117,7 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionJobIDAndLabels() {
 		Do(func(_ context.Context, stopRequest *task.StopRequest) {
 			suite.Equal(getResponse.GetJobInfo().GetId(), stopRequest.GetJobId())
 		}).Return(&task.StopResponse{}, nil)
-	suite.NoError(suite.client.JobStopAction(testJobID, false, "", "testkey1=testvalue1", true))
+	suite.NoError(suite.client.JobStopAction(testJobID, false, "", "testkey1=testvalue1", true, 100, 100))
 
 	// Test behavior when the job labels doesn't contain any of the
 	// labels specified in the labels field of the query
@@ -2046,5 +2126,5 @@ func (suite *jobActionsTestSuite) TestClientJobStopActionJobIDAndLabels() {
 			Value: testJobID,
 		},
 	}).Return(getResponse, nil)
-	suite.NoError(suite.client.JobStopAction(testJobID, false, "", "key=value", true))
+	suite.NoError(suite.client.JobStopAction(testJobID, false, "", "key=value", true, 100, 100))
 }
