@@ -110,6 +110,26 @@ func (suite *v1LifecycleTestSuite) TestKill() {
 	suite.Nil(err)
 }
 
+func (suite *v1LifecycleTestSuite) TestKillAndHold() {
+	hostToHold := "hostname"
+	suite.mockHostMgr.EXPECT().
+		KillAndHoldPods(gomock.Any(), &v1_hostsvc.KillAndHoldPodsRequest{
+			Entries: []*v1_hostsvc.KillAndHoldPodsRequest_Entry{
+				{
+					PodId:      &peloton.PodID{Value: suite.podID},
+					HostToHold: hostToHold,
+				},
+			},
+		})
+	err := suite.lm.Kill(
+		suite.ctx,
+		suite.podID,
+		hostToHold,
+		nil,
+	)
+	suite.Nil(err)
+}
+
 // TestKillLock tests Kill pods is blocked when kill is locked
 func (suite *v1LifecycleTestSuite) TestKillLock() {
 	suite.lm.LockKill()

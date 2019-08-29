@@ -110,6 +110,7 @@ func InitProcessor(
 		config:          config,
 		metrics:         NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
 		lifeCycle:       lifecycle.NewLifeCycle(),
+		hmVersion:       hmVersion,
 	}
 }
 

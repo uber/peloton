@@ -17,7 +17,7 @@ defaultSpec:
   containers:
   - resource:
       cpuLimit: 0.1
-      memLimitMb: 2.0
+      memLimitMb: 0.2
       diskLimitMb: 0.1
     container:
       type: 1

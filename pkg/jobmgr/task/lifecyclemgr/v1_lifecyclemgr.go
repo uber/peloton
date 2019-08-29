@@ -23,7 +23,6 @@ import (
 	v1_hostsvc "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc"
 
 	"github.com/uber/peloton/pkg/common"
-	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/common/util"
 
 	"github.com/pkg/errors"
@@ -100,9 +99,14 @@ func (l *v1LifecycleMgr) Launch(
 				pod.Runtime.GetMesosTaskId()),
 			Spec: pod.Spec,
 		}
-		launchablePod.Spec.Labels = append(
-			launchablePod.Spec.Labels,
-			api.ConvertLabels(pod.ConfigAddOn.GetSystemLabels())...)
+
+		// TODO: peloton system labels contain invalid characters for labels in
+		// k8s for example '/' in resource pool. We should:
+		// 1. validate spec when job is submitted.
+		// 2. look into supporting k8s annotations.
+		// launchablePod.Spec.Labels = append(
+		// 	launchablePod.Spec.Labels,
+		// 	api.ConvertLabels(pod.ConfigAddOn.GetSystemLabels())...)
 		launchablePods = append(launchablePods, &launchablePod)
 	}
 
@@ -136,38 +140,65 @@ func (l *v1LifecycleMgr) Launch(
 	return nil
 }
 
-// Kill tries to kill the pod using podID.
-// Functionality to reserve a host is not implemented in v1.
+// Kill tries to kill the pod using podID. If a host is provided, it holds
+// the host.
 func (l *v1LifecycleMgr) Kill(
 	ctx context.Context,
 	podID string,
-	hostToReserve string,
+	hostToHold string,
 	rateLimiter *rate.Limiter,
 ) error {
-	// check lock
+	// Check lock.
 	if l.lockState.hasKillLock() {
 		l.metrics.KillRateLimit.Inc(1)
 		return yarpcerrors.InternalErrorf("kill op is locked")
 	}
 
-	// enforce rate limit
+	// Enforce rate limit.
 	if rateLimiter != nil && !rateLimiter.Allow() {
 		l.metrics.KillFail.Inc(1)
 		return yarpcerrors.ResourceExhaustedErrorf(
 			"rate limit reached for kill")
 	}
 
-	_, err := l.hostManagerV1.KillPods(
-		ctx,
-		&v1_hostsvc.KillPodsRequest{
-			PodIds: []*peloton.PodID{{Value: podID}},
-		},
-	)
+	var err error
+	if len(hostToHold) != 0 {
+		err = l.killAndHold(ctx, podID, hostToHold)
+	} else {
+		err = l.kill(ctx, podID)
+	}
 	if err != nil {
 		l.metrics.KillFail.Inc(1)
 		return err
 	}
 	l.metrics.Kill.Inc(1)
+	return nil
+}
+
+func (l *v1LifecycleMgr) kill(ctx context.Context, podID string) error {
+	req := &v1_hostsvc.KillPodsRequest{
+		PodIds: []*peloton.PodID{{Value: podID}},
+	}
+	_, err := l.hostManagerV1.KillPods(ctx, req)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (l *v1LifecycleMgr) killAndHold(ctx context.Context, podID string, hostToHold string) error {
+	req := &v1_hostsvc.KillAndHoldPodsRequest{
+		Entries: []*v1_hostsvc.KillAndHoldPodsRequest_Entry{
+			{
+				PodId:      &peloton.PodID{Value: podID},
+				HostToHold: hostToHold,
+			},
+		},
+	}
+	_, err := l.hostManagerV1.KillAndHoldPods(ctx, req)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 

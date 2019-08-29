@@ -29,6 +29,7 @@ type Metrics struct {
 	// Metrics for number of hosts on each status.
 	ReadyHosts     tally.Gauge
 	PlacingHosts   tally.Gauge
+	HeldHosts      tally.Gauge
 	AvailableHosts tally.Gauge
 }
 
@@ -46,6 +47,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		Allocated:      scalar.NewGaugeMaps(resourceScope),
 		ReadyHosts:     hostsScope.Gauge("ready"),
 		PlacingHosts:   hostsScope.Gauge("placing"),
+		HeldHosts:      hostsScope.Gauge("held"),
 		AvailableHosts: hostsScope.Gauge("available"),
 	}
 }

@@ -234,17 +234,26 @@ func (suite *HostMgrHandlerTestSuite) TestLaunchPods() {
 			Hostname: tt.hostname,
 			Pods:     tt.launchablePods,
 		}
-		suite.hostCache.EXPECT().
-			CompleteLease(tt.hostname, tt.leaseID.GetValue(), gomock.Any()).
-			Return(nil)
-
 		var launchablePods []*models.LaunchablePod
+		var released []*peloton.PodID
 		for _, pod := range tt.launchablePods {
 			launchablePods = append(launchablePods, &models.LaunchablePod{
 				PodId: pod.GetPodId(),
 				Spec:  pod.GetSpec(),
 			})
+			released = append(released, pod.GetPodId())
+			suite.hostCache.EXPECT().
+				GetHostHeldForPod(pod.GetPodId()).
+				Return("different-host-name")
 		}
+
+		suite.hostCache.EXPECT().
+			ReleaseHoldForPods("different-host-name", released).
+			Return(nil)
+
+		suite.hostCache.EXPECT().
+			CompleteLease(tt.hostname, tt.leaseID.GetValue(), gomock.Any()).
+			Return(nil)
 
 		suite.plugin.
 			EXPECT().
@@ -274,6 +283,11 @@ func (suite *HostMgrHandlerTestSuite) TestLaunchPodsPluginFailure() {
 		Hostname: hostname,
 		Pods:     pods,
 	}
+
+	suite.hostCache.EXPECT().
+		GetHostHeldForPod(gomock.Any()).
+		Return(hostname).Times(len(pods))
+
 	suite.hostCache.EXPECT().
 		CompleteLease(hostname, leaseID.GetValue(), gomock.Any()).
 		Return(nil)
@@ -331,6 +345,75 @@ func (suite *HostMgrHandlerTestSuite) TestTerminateLease() {
 		suite.NoError(err, "test case %s", ttName)
 		suite.Equal(&svc.TerminateLeasesResponse{}, resp)
 	}
+}
+
+func (suite *HostMgrHandlerTestSuite) TestKillPods() {
+	defer suite.ctrl.Finish()
+
+	var pods []*peloton.PodID
+	for i := 0; i < 10; i++ {
+		pods = append(pods, &peloton.PodID{Value: uuid.New()})
+	}
+	req := &svc.KillPodsRequest{
+		PodIds: pods,
+	}
+
+	for _, pod := range pods {
+		suite.plugin.
+			EXPECT().
+			KillPod(gomock.Any(), pod.GetValue()).
+			Return(nil)
+	}
+	resp, err := suite.handler.KillPods(rootCtx, req)
+	suite.NoError(err)
+	suite.Equal(&svc.KillPodsResponse{}, resp)
+}
+
+func (suite *HostMgrHandlerTestSuite) TestKillAndHoldPods() {
+	defer suite.ctrl.Finish()
+
+	badHost := "badhost"
+	hosts := []string{"host1", badHost, "host3"}
+	var entries []*svc.KillAndHoldPodsRequest_Entry
+	podsMap := make(map[string][]*peloton.PodID)
+	for i := 0; i < 10; i++ {
+		pod := &peloton.PodID{Value: uuid.New()}
+		entries = append(entries,
+			&svc.KillAndHoldPodsRequest_Entry{
+				PodId:      pod,
+				HostToHold: hosts[i%len(hosts)],
+			})
+		podsMap[hosts[i%len(hosts)]] = append(podsMap[hosts[i%len(hosts)]], pod)
+	}
+	req := &svc.KillAndHoldPodsRequest{
+		Entries: entries,
+	}
+
+	for host, pods := range podsMap {
+		suite.hostCache.
+			EXPECT().
+			HoldForPods(host, pods).
+			Return(nil)
+	}
+	for host, pods := range podsMap {
+		var err error
+		if host == badHost {
+			err = fmt.Errorf("kill pod failure")
+		}
+		for _, pod := range pods {
+			suite.plugin.
+				EXPECT().
+				KillPod(gomock.Any(), pod.GetValue()).
+				Return(err)
+		}
+	}
+	suite.hostCache.
+		EXPECT().
+		ReleaseHoldForPods(badHost, podsMap[badHost]).
+		Return(nil)
+
+	_, err := suite.handler.KillAndHoldPods(rootCtx, req)
+	suite.Error(err)
 }
 
 // TestHostManagerTestSuite runs the HostMgrHandlerTestSuite

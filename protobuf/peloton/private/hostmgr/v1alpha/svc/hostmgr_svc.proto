@@ -10,7 +10,6 @@ import "peloton/private/hostmgr/v1alpha/hostmgr.proto";
 import "peloton/api/v1alpha/peloton.proto";
 import "peloton/private/eventstream/v1alpha/event/event.proto";
 
-
 // AcquireHostsRequest contains host filter used to acquire hosts for placement
 // based on filter constraints.
 message AcquireHostsRequest {
@@ -72,6 +71,19 @@ message KillPodsRequest {
 
 // KillPodsResponse is a placeholder response structure.
 message KillPodsResponse {}
+
+// KillAndHoldPodRequest contains a list of podIDs and hosts to hold for in
+// place upgrade.
+message KillAndHoldPodsRequest {
+  message Entry {
+    api.v1alpha.peloton.PodID pod_id = 1;
+    string hostToHold = 2;
+  }
+  repeated Entry entries = 1;
+}
+
+// KillAndHoldPodsResponse is a placeholder response structure.
+message KillAndHoldPodsResponse {}
 
 // ClusterCapacityRequest is a request for getting cluster capacity.
 message ClusterCapacityRequest {}
@@ -139,6 +151,10 @@ service HostManagerService
 
   // KillPods kills pods on the cluster.
   rpc KillPods(KillPodsRequest) returns (KillPodsResponse);
+
+  // KillAndHoldPods kills a list of pods on the cluster and hold previous 
+  // hosts for in place upgrade.
+  rpc KillAndHoldPods(KillAndHoldPodsRequest) returns (KillAndHoldPodsResponse);
 
   // ClusterCapacity fetches the actual capacity and allocated resources from
   // the framework.

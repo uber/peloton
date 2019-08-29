@@ -35,6 +35,8 @@ import (
 const (
 	_hostCacheMetricsRefresh       = "hostCacheMetricsRefresh"
 	_hostCacheMetricsRefreshPeriod = 10 * time.Second
+	_hostCachePruneHeldHosts       = "hostCachePruneHeldHosts"
+	_hostCachePruneHeldHostsPeriod = 180 * time.Second
 )
 
 // HostCache manages cluster resources, and provides necessary abstractions to
@@ -113,6 +115,7 @@ func New(
 ) HostCache {
 	return &hostCache{
 		hostIndex:     make(map[string]HostSummary),
+		podHeldIndex:  make(map[string]string),
 		hostEventCh:   hostEventCh,
 		lifecycle:     lifecycle.NewLifeCycle(),
 		metrics:       NewMetrics(parent),
@@ -261,18 +264,18 @@ func (c *hostCache) ResetExpiredHeldHostSummaries(deadline time.Time) []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	var ret []string
+	var pruned []string
 	for hostname, hs := range c.hostIndex {
 		isFreed, _, podIDExpired := hs.DeleteExpiredHolds(deadline)
 		if isFreed {
-			ret = append(ret, hostname)
-			// TODO: add metrics.
+			pruned = append(pruned, hostname)
 		}
 		for _, id := range podIDExpired {
 			c.removePodHold(id)
 		}
 	}
-	return ret
+	log.WithField("hosts", pruned).Debug("Hosts pruned")
+	return pruned
 }
 
 func (c *hostCache) GetHostHeldForPod(podID *peloton.PodID) string {
@@ -331,6 +334,7 @@ func (c *hostCache) RefreshMetrics() {
 	totalAllocated := hmscalar.Resources{}
 	readyHosts := float64(0)
 	placingHosts := float64(0)
+	heldHosts := float64(0)
 
 	hosts := c.GetSummaries()
 
@@ -346,12 +350,16 @@ func (c *hostCache) RefreshMetrics() {
 		case PlacingHost:
 			placingHosts++
 		}
+		if len(h.GetHeldPods()) > 0 {
+			heldHosts++
+		}
 	}
 
 	c.metrics.Available.Update(totalAvailable)
 	c.metrics.Allocated.Update(totalAllocated)
 	c.metrics.ReadyHosts.Update(readyHosts)
 	c.metrics.PlacingHosts.Update(placingHosts)
+	c.metrics.HeldHosts.Update(heldHosts)
 	c.metrics.AvailableHosts.Update(float64(len(hosts)))
 }
 
@@ -624,6 +632,16 @@ func (c *hostCache) Start() {
 				c.RefreshMetrics()
 			},
 			Period: _hostCacheMetricsRefreshPeriod,
+		},
+	)
+
+	c.backgroundMgr.RegisterWorks(
+		background.Work{
+			Name: _hostCachePruneHeldHosts,
+			Func: func(_ *uatomic.Bool) {
+				c.ResetExpiredHeldHostSummaries(time.Now())
+			},
+			Period: _hostCachePruneHeldHostsPeriod,
 		},
 	)
 

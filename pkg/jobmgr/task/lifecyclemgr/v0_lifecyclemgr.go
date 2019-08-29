@@ -301,9 +301,8 @@ func (l *v0LifecycleMgr) Kill(
 
 	if len(hostToReserve) != 0 {
 		return l.killAndReserve(newCtx, taskID, hostToReserve)
-	} else {
-		return l.kill(newCtx, taskID)
 	}
+	return l.kill(newCtx, taskID)
 }
 
 // ShutdownExecutor shutdown a executor given task ID and agent ID

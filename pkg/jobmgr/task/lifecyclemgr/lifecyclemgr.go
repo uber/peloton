@@ -101,7 +101,6 @@ func New(
 ) Manager {
 	if version.IsV1() {
 		return newV1LifecycleMgr(dispatcher, parent)
-	} else {
-		return newV0LifecycleMgr(dispatcher, parent)
 	}
+	return newV0LifecycleMgr(dispatcher, parent)
 }
