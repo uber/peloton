@@ -483,3 +483,8 @@ func (h *serviceHandler) getCachedJobWithUpdateID(
 
 	return h.jobFactory.AddJob(updateModel.GetJobID()), nil
 }
+
+// NewTestServiceHandler returns an empty new ServiceHandler ptr for testing.
+func NewTestServiceHandler() *serviceHandler {
+	return &serviceHandler{}
+}

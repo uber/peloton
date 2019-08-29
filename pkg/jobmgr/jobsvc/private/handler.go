@@ -443,3 +443,8 @@ func convertCacheJobConfigToJobSpec(config jobmgrcommon.JobConfig) *stateless.Jo
 
 	return result
 }
+
+// NewTestServiceHandler returns an empty new ServiceHandler ptr for testing.
+func NewTestServiceHandler() *serviceHandler {
+	return &serviceHandler{}
+}

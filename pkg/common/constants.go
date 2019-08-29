@@ -165,6 +165,37 @@ const (
 )
 
 const (
+	// RPCPelotonV0JobServiceName is the name of Peloton Job Service's RPC v0
+	RPCPelotonV0JobServiceName = "peloton.api.v0.job.svc.JobService"
+	// RPCPelotonV0JobManagerName is the name of Peloton Job Manager's RPC v0
+	RPCPelotonV0JobManagerName = "peloton.api.job.JobManager"
+	// RPCPelotonV1AlphaJobServiceName is the name of Peloton Job Service's
+	// RPC v1 Alpha
+	RPCPelotonV1AlphaJobServiceName = "peloton.api.v1alpha.job.stateless.svc.JobService"
+	// RPCPelotonPrivateJobManagerServiceName is the name of Peloton Job Manager
+	// Service's RPC private
+	RPCPelotonPrivateJobManagerServiceName = "peloton.private.jobmgr.JobManagerService"
+	// RPCPelotonV1AlphaPodServiceName is the name of Peloton Pod Service's
+	// RPC v1 Alpha
+	RPCPelotonV1AlphaPodServiceName = "peloton.api.v1alpha.pod.svc.PodService"
+	// RPCPelotonV0TaskManagerName is the name of Peloton Taks Manager Service's
+	// RPC v0
+	RPCPelotonV0TaskManagerName = "peloton.api.task.TaskManager"
+	// RPCPelotonV0UpdateServiceName is the name of Peloton Update Service's
+	// RPC v0
+	RPCPelotonV0UpdateServiceName = "peloton.api.v0.update.svc.UpdateService"
+	// RPCPelotonV0VolumeServiceName is the name of Peloton Volume Service's
+	// RPC v0
+	RPCPelotonV0VolumeServiceName = "peloton.api.v0.volume.svc.VolumeService"
+	// RPCPelotonV1VolumeServiceName is the name of Peloton Volume Service's
+	// RPC v1 Alpha
+	RPCPelotonV1AlphaVolumeServiceName = "peloton.api.v1alpha.volume.svc.VolumeService"
+	// RPCPelotonV1AdminServiceName is the name of Peloton Admin Service's
+	// RPC v1 Alpha
+	RPCPelotonV1AlphaAdminServiceName = "peloton.api.v1alpha.admin.svc.AdminService"
+	// RPCPelotonV1WatchServiceName is the name of Peloton Watch Service's
+	// RPC v1 Alpha
+	RPCPelotonV1AlphaWatchServiceName = "peloton.api.v1alpha.watch.svc.WatchService"
 	// RPCPelotonV0ResourceManagerName is the name of Peloton Resource Manager's
 	// RPC v0.
 	RPCPelotonV0ResourceManagerName = "peloton.api.respool.ResourceManager"

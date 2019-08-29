@@ -173,3 +173,8 @@ func createLockableComponents(goalStateDriver goalstate.Driver, apiLock inbound.
 
 	return result
 }
+
+// NewTestServiceHandler returns an empty new ServiceHandler ptr for testing.
+func NewTestServiceHandler() *serviceHandler {
+	return &serviceHandler{}
+}

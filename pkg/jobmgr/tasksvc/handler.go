@@ -1509,3 +1509,8 @@ func convertTaskMapToSlice(taskMaps map[uint32]*task.TaskInfo) []*task.TaskInfo 
 	}
 	return result
 }
+
+// NewTestServiceHandler returns an empty new ServiceHandler ptr for testing.
+func NewTestServiceHandler() *serviceHandler {
+	return &serviceHandler{}
+}

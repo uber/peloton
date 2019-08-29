@@ -62,3 +62,8 @@ func (h *serviceHandler) GetVolume(
 ) (*volume_svc.GetVolumeResponse, error) {
 	return nil, yarpcerrors.UnimplementedErrorf("Unimplemented")
 }
+
+// NewTestServiceHandler returns an empty new ServiceHandler ptr for testing.
+func NewTestServiceHandler() *serviceHandler {
+	return &serviceHandler{}
+}

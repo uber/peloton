@@ -196,3 +196,8 @@ func (h *ServiceHandler) Cancel(
 	}).Warn("invalid watch id")
 	return nil, err
 }
+
+// NewTestServiceHandler returns an empty new ServiceHandler ptr for testing.
+func NewTestServiceHandler() *ServiceHandler {
+	return &ServiceHandler{}
+}

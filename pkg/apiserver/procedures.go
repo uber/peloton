@@ -19,10 +19,19 @@ import (
 	"reflect"
 
 	pbv0hostsvc "github.com/uber/peloton/.gen/peloton/api/v0/host/svc"
+	pbv0jobmgr "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	pbv0resmgr "github.com/uber/peloton/.gen/peloton/api/v0/respool"
+	pbv0taskmgr "github.com/uber/peloton/.gen/peloton/api/v0/task"
+	pbv0updatesvc "github.com/uber/peloton/.gen/peloton/api/v0/update/svc"
+	pbv0volumesvc "github.com/uber/peloton/.gen/peloton/api/v0/volume/svc"
+	pbv1adminsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/admin/svc"
+	pbv1jobstatelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
+	pbv1podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
+	pbv1watchsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/watch/svc"
 	pbprivateeventstreamsvc "github.com/uber/peloton/.gen/peloton/private/eventstream/v1alpha/eventstreamsvc"
 	pbprivatehostsvc "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	pbprivatehostmgrsvc "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc"
+	pbprivatejobmgrsvc "github.com/uber/peloton/.gen/peloton/private/jobmgrsvc"
 	pbprivateresmgrsvc "github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
 	"github.com/uber/peloton/pkg/apiserver/forward"
@@ -42,6 +51,7 @@ var (
 	_encodingTypes []transport.Encoding
 )
 
+//rpcService to build service procedures
 type rpcService struct {
 	// RPC service name from pkg/common/constants.go
 	name string
@@ -56,6 +66,57 @@ func init() {
 		protobuf.Encoding,
 		protobuf.JSONEncoding,
 	}
+}
+
+// BuildJobManagerProcedures builds forwarding procedures for
+// services that rely on Job Manager.
+// TODO: refactor to use the BuildYARPCProcedures code machine-generated from
+// protobuf files.
+func BuildJobManagerProcedures(outbound transport.UnaryOutbound) []transport.Procedure {
+	rpcServices := []rpcService{
+		{
+			name:   common.RPCPelotonV0JobManagerName,
+			server: (*pbv0jobmgr.JobManagerYARPCServer)(nil),
+		},
+		//TODO: peloton.api.v0.job.svc.JobService methods not
+		// implemented in peloton
+		{
+			name:   common.RPCPelotonV1AlphaJobServiceName,
+			server: (*pbv1jobstatelesssvc.JobServiceYARPCServer)(nil),
+		},
+		{
+			name:   common.RPCPelotonPrivateJobManagerServiceName,
+			server: (*pbprivatejobmgrsvc.JobManagerServiceYARPCServer)(nil),
+		},
+		{
+			name:   common.RPCPelotonV1AlphaPodServiceName,
+			server: (*pbv1podsvc.PodServiceYARPCServer)(nil),
+		},
+		{
+			name:   common.RPCPelotonV0TaskManagerName,
+			server: (*pbv0taskmgr.TaskManagerYARPCServer)(nil),
+		},
+		//TODO: peloton.api.v0.task.svc.TaskService methods not
+		// implemented in peloton
+		{
+			name:   common.RPCPelotonV0UpdateServiceName,
+			server: (*pbv0updatesvc.UpdateServiceYARPCServer)(nil),
+		},
+		{
+			name:   common.RPCPelotonV0VolumeServiceName,
+			server: (*pbv0volumesvc.VolumeServiceYARPCServer)(nil),
+		},
+		{
+			name:   common.RPCPelotonV1AlphaAdminServiceName,
+			server: (*pbv1adminsvc.AdminServiceYARPCServer)(nil),
+		},
+		{
+			name:   common.RPCPelotonV1AlphaWatchServiceName,
+			server: (*pbv1watchsvc.WatchServiceYARPCServer)(nil),
+		},
+	}
+
+	return buildProcedures(rpcServices, common.PelotonJobManager, outbound)
 }
 
 // BuildHostManagerProcedures builds forwarding procedures for

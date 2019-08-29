@@ -200,6 +200,23 @@ func main() {
 	// Create hostmgr outbound.
 	hostmgrOutbound := t.NewOutbound(hostmgrPeerChooser)
 
+	// Setup jobmgr peer chooser.
+	jobmgrPeerChooser, err := peer.NewSmartChooser(
+		cfg.Election,
+		discoveryScope,
+		common.JobManagerRole,
+		t,
+	)
+	if err != nil {
+		log.WithError(err).
+			WithField("role:", common.JobManagerRole).
+			Fatal("Could not create smart peer chooser")
+	}
+	defer jobmgrPeerChooser.Stop()
+
+	// Create jobmgr outbound.
+	jobmgrOutbound := t.NewOutbound(jobmgrPeerChooser)
+
 	// Add all required outbounds.
 	outbounds := yarpc.Outbounds{
 		common.PelotonResourceManager: transport.Outbounds{
@@ -207,6 +224,9 @@ func main() {
 		},
 		common.PelotonHostManager: transport.Outbounds{
 			Unary: hostmgrOutbound,
+		},
+		common.PelotonJobManager: transport.Outbounds{
+			Unary: jobmgrOutbound,
 		},
 	}
 
@@ -257,10 +277,11 @@ func main() {
 		},
 	})
 
-	// Register procedures in dispatcher.
+	// Register service procedures in dispatcher.
 	var procedures []transport.Procedure
-	procedures = append(procedures, apiserver.BuildResourceManagerProcedures(resmgrOutbound)...)
 	procedures = append(procedures, apiserver.BuildHostManagerProcedures(hostmgrOutbound)...)
+	procedures = append(procedures, apiserver.BuildJobManagerProcedures(jobmgrOutbound)...)
+	procedures = append(procedures, apiserver.BuildResourceManagerProcedures(resmgrOutbound)...)
 	dispatcher.Register(procedures)
 
 	for _, p := range procedures {
