@@ -644,7 +644,7 @@ class Job(object):
 
 def query_jobs():
     """
-    Query all batch jobs`
+    Query all batch jobs
     """
     client = Client()
     request = job.QueryRequest(summaryOnly=True)

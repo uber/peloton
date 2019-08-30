@@ -103,3 +103,12 @@ class StatelessPlacementEngine(Component):
 
     def __init__(self):
         super(StatelessPlacementEngine, self).__init__("placement-stateless")
+
+
+class AuroraBridge(Component):
+    """
+    Aurorabridge component.
+    """
+
+    def __init__(self):
+        super(AuroraBridge, self).__init__("aurora-bridge")

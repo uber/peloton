@@ -48,7 +48,7 @@ class StatelessUpdate(object):
         self.config = config or IntegrationTestConfig(
             pool_file='test_stateless_respool.yaml')
         self.client = client or Client()
-        self.pool = pool or Pool(self.config)
+        self.pool = pool or Pool(self.config, self.client)
         if updated_job_spec is None:
             job_config_dump = load_test_config(updated_job_file)
             updated_job_spec = JobSpec()

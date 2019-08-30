@@ -34,6 +34,10 @@ Usage
      VCLUSTER_LABEL - default is ${USER}_failure_test
      VCLUSTER_AGENT_NUM - default is 3
 
+* Tips/Notes about writing failure tests:
+      1. Terminate all jobs and deallocate the resource pools at the end of any failure test besides aurorabridge failure test.
+      2. Delete all stateless jobs at the end of each aurorabridge failure test but deallocate resource pools only after all aurorabridge failure tests are completed.
+      3. The resource pool in aurorabrideg is cached in aurorabridge, deallocating the resource pools at the end of each aurorabridge failure test may cause reusing the cached resource pool while the resource pool is already deallocated.
 
 * Advanced usage
   1. To avoid cleaning up the Peloton cluster at the end of the run, provide

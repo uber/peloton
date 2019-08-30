@@ -777,13 +777,13 @@ class StatelessJob(object):
         return resp
 
 
-def query_jobs(respool_path=None):
+def query_jobs(respool_path=None, client=None):
     """
     Queries all the jobs for provided respool
 
     :param respool_path: path of the respool to query jobs for
     """
-    client = Client()
+    client = client or Client()
     request = stateless_svc.QueryJobsRequest(
         spec=stateless.QuerySpec(
             respool=respool.ResourcePoolPath(value=respool_path)
@@ -795,7 +795,7 @@ def query_jobs(respool_path=None):
 
     jobs = []
     for j in resp.records:
-        job = StatelessJob(job_id=j.job_id.value)
+        job = StatelessJob(client=client, job_id=j.job_id.value)
         jobs.append(job)
     return jobs
 

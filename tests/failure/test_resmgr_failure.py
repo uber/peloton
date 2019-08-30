@@ -13,7 +13,6 @@ class TestResMgrFailure(object):
         leader1 = failure_tester.fw.get_leader_info(failure_tester.resmgr)
         assert leader1
         assert 0 != failure_tester.fw.restart(failure_tester.resmgr, "leader")
-
         failure_tester.wait_for_leader_change(failure_tester.resmgr, leader1)
         failure_tester.reset_client()
 

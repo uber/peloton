@@ -2,6 +2,7 @@ import logging
 
 from tests.failure.framework import components, framework
 from tests.integration.common import wait_for_condition
+from tests.integration.aurorabridge_test.client import Client as aurorabridge_client
 from tests.integration import job as tjob
 from tests.integration import stateless_job as sjob
 from tests.integration import stateless_update
@@ -41,6 +42,7 @@ class FailureFixture(object):
         self.resmgr = components.ResMgr()
         self.batch_pe = components.BatchPlacementEngine()
         self.stateless_pe = components.StatelessPlacementEngine()
+        self.aurorabridge = components.AuroraBridge()
 
         self.integ_config = tjob.IntegrationTestConfig(
             max_retry_attempts=self.MAX_RETRY_ATTEMPTS
@@ -52,6 +54,7 @@ class FailureFixture(object):
         """
         self.fw.setup()
         self.client = self.fw.client
+        self.aurorabridge_client = aurorabridge_client()
 
     def teardown(self):
         """
@@ -81,18 +84,16 @@ class FailureFixture(object):
         Create the spec for a stateless job with some defaults.
         :param kwargs: Keyword arguments for stateless job spec
         """
-        kwargs.setdefault("config", self.integ_config)
         kwargs.setdefault("client", self.client)
         return sjob.StatelessJob(**kwargs)
 
-    def update(self, **kwargs):
+    def stateless_update(self, *args, **kwargs):
         """
         Create the spec for a stateless update with some defaults.
         :param kwargs: Keyword arguments for stateless update spec
         """
-        kwargs.setdefault("config", self.integ_config)
         kwargs.setdefault("client", self.client)
-        return stateless_update.StatelessUpdate(**kwargs)
+        return stateless_update.StatelessUpdate(*args, **kwargs)
 
     def wait_for_condition(self, condition):
         """

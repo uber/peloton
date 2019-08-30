@@ -76,6 +76,7 @@ class MiniClusterDriver(driver_base.ClusterDriverABC):
             components.ResMgr().name: "peloton-resmgr",
             components.BatchPlacementEngine().name: "peloton-placement",
             components.StatelessPlacementEngine().name: "peloton-placement",
+            components.AuroraBridge().name: "peloton-aurorabridge",
         }
 
     def setup(self, *args, **kwargs):

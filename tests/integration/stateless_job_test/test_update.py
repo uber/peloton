@@ -193,27 +193,6 @@ def test__create_update_update_and_add_instances_with_batch(stateless_job, in_pl
     assert_pod_spec_changed(old_instance_zero_spec, new_instance_zero_spec)
 
 
-def test__create_update_update_restart_jobmgr(stateless_job, jobmgr, in_place):
-    stateless_job.create()
-    stateless_job.wait_for_state(goal_state="RUNNING")
-    old_pod_infos = stateless_job.query_pods()
-    old_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
-    update = StatelessUpdate(
-        stateless_job,
-        updated_job_file=UPDATE_STATELESS_JOB_UPDATE_AND_ADD_INSTANCES_SPEC,
-        batch_size=1,
-    )
-    update.create(in_place=in_place)
-    jobmgr.restart()
-    update.wait_for_state(goal_state="SUCCEEDED")
-    new_pod_infos = stateless_job.query_pods()
-    new_instance_zero_spec = stateless_job.get_pod(0).get_pod_spec()
-    assert len(old_pod_infos) == 3
-    assert len(new_pod_infos) == 5
-    assert_pod_id_changed(old_pod_infos, new_pod_infos)
-    assert_pod_spec_changed(old_instance_zero_spec, new_instance_zero_spec)
-
-
 def test__create_update_bad_version(stateless_job, in_place):
     stateless_job.create()
     stateless_job.wait_for_state(goal_state="RUNNING")
@@ -1125,108 +1104,6 @@ def test__in_place_kill_job_release_host():
     # both updates should complete
     update1.wait_for_state(goal_state="SUCCEEDED")
     update2.wait_for_state(goal_state="SUCCEEDED")
-
-
-# test__in_place_update_multi_component_restart tests that in-place update
-# can finish after multiple components restart
-@pytest.mark.parametrize("batch_size", [0, 1])
-def test__in_place_update_multi_component_restart(jobmgr, resmgr, hostmgr, placement_engines, batch_size):
-    # need extra retry attempts, since in-place update would need more time
-    # to process given hostmgr would be restarted
-    job1 = StatelessJob(
-        job_file="test_stateless_job_spec.yaml",
-        config=IntegrationTestConfig(
-            max_retry_attempts=300,
-            pool_file='test_stateless_respool.yaml',
-        ),
-    )
-    job1.create()
-    job1.wait_for_all_pods_running()
-
-    job2 = StatelessJob(
-        job_file="test_stateless_job_spec.yaml",
-        config=IntegrationTestConfig(
-            max_retry_attempts=300,
-            pool_file='test_stateless_respool.yaml',
-        ),
-    )
-    job2.create()
-    job2.wait_for_all_pods_running()
-
-    update1 = StatelessUpdate(job1,
-                              updated_job_file=UPDATE_STATELESS_JOB_SPEC,
-                              batch_size=batch_size)
-    update1.create(in_place=True)
-
-    update2 = StatelessUpdate(job2,
-                              updated_job_file=UPDATE_STATELESS_JOB_SPEC,
-                              batch_size=batch_size)
-    update2.create()
-
-    jobmgr.restart()
-    time.sleep(random.randint(1, 10))
-    resmgr.restart()
-    time.sleep(random.randint(1, 10))
-    hostmgr.restart()
-    time.sleep(random.randint(1, 10))
-    placement_engines.restart()
-
-    update1.wait_for_state(goal_state="SUCCEEDED")
-    update2.wait_for_state(goal_state="SUCCEEDED")
-
-
-# test__in_place_update_success_rate_with_component_restart tests in-place
-# update can still successfully place task on desired host with components restart
-# (except hostmgr, of which restart would by design fail an in-place update).
-def test__in_place_update_success_rate_with_component_restart(stateless_job, jobmgr, resmgr, placement_engines):
-    stateless_job.job_spec.instance_count = 30
-    stateless_job.create()
-    stateless_job.wait_for_all_pods_running()
-    old_pod_infos = stateless_job.query_pods()
-
-    job_spec_dump = load_test_config(UPDATE_STATELESS_JOB_SPEC)
-    updated_job_spec = JobSpec()
-    json_format.ParseDict(job_spec_dump, updated_job_spec)
-
-    updated_job_spec.instance_count = 30
-    update = StatelessUpdate(stateless_job,
-                             updated_job_spec=updated_job_spec,
-                             batch_size=0)
-
-    update.create(in_place=True)
-
-    # restart all components except hostmgr
-    jobmgr.restart()
-    time.sleep(random.randint(1, 10))
-    resmgr.restart()
-    time.sleep(random.randint(1, 10))
-    placement_engines.restart()
-
-    update.wait_for_state(goal_state='SUCCEEDED')
-
-    new_pod_infos = stateless_job.query_pods()
-
-    old_pod_dict = {}
-    new_pod_dict = {}
-
-    for old_pod_info in old_pod_infos:
-        split_index = old_pod_info.status.pod_id.value.rfind('-')
-        pod_name = old_pod_info.status.pod_id.value[:split_index]
-        old_pod_dict[pod_name] = old_pod_info.status.host
-
-    for new_pod_info in new_pod_infos:
-        split_index = new_pod_info.status.pod_id.value.rfind('-')
-        pod_name = new_pod_info.status.pod_id.value[:split_index]
-        new_pod_dict[pod_name] = new_pod_info.status.host
-
-    count = 0
-    for pod_name, pod_id in old_pod_dict.items():
-        if new_pod_dict[pod_name] != old_pod_dict[pod_name]:
-            log.info("%s, prev:%s, cur:%s", pod_name,
-                     old_pod_dict[pod_name], new_pod_dict[pod_name])
-            count = count + 1
-    log.info("total mismatch: %d", count)
-    assert count == 0
 
 
 @pytest.mark.skip(reason="flaky test")

@@ -119,14 +119,33 @@ class Pool(object):
 
 
 def query_pools(client=None):
+    '''
+    Query all resource pools of the given client
+    '''
     c = client or Client()
-    req = respool.QueryRequest()
-    resp = c.respool_svc.Query(
-        req,
+    request = respool.QueryRequest()
+    response = c.respool_svc.Query(
+        request,
         metadata=c.resmgr_metadata,
-        timeout=60,
+        timeout=20,
     )
+    return response.resourcePools
 
-    assert resp
 
-    return resp.resourcePools
+def deallocate_pools(client):
+    '''
+    Deallocate all resource pools of the given client
+    '''
+    # query resource pool and delete all of them
+    for resource_pool in query_pools(client):
+        if resource_pool.id.value == "root":
+            continue
+
+        delete_request = respool.DeleteRequest(
+            path=respool.ResourcePoolPath(value=resource_pool.path.value)
+        )
+        resp = client.respool_svc.DeleteResourcePool(
+            delete_request,
+            metadata=client.resmgr_metadata,
+            timeout=10,
+        )

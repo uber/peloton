@@ -263,10 +263,10 @@ def test__override_rolling_forward_update_with_diff(client):
 
 def test__host_limit_1(client, hostmgr):
     """
-    - Create a job with host limit 1 constraint and validate each pod 
+    - Create a job with host limit 1 constraint and validate each pod
     is running on different host.
     - Update a job, wait for it to complete and verify host limit 1 constraint.
-    - Update a job, restart host manager, then wait for update to complete and 
+    - Update a job, restart host manager, then wait for update to complete and
     lastly verify host limit 1 constraint.
     """
     # Create job.

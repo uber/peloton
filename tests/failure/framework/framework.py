@@ -79,6 +79,7 @@ class FailureFramework(object):
         """
         Clear cached PelotonClient.
         """
+        self._client.discovery.stop()
         self._client = None
 
     def stop(self, component, selector=None):

@@ -47,7 +47,7 @@ class TestMesosAgentFailure(object):
         job.create()
         job.wait_for_all_pods_running()
 
-        update = failure_tester.update(
+        update = failure_tester.stateless_update(
             job=job,
             updated_job_file="test_update_stateless_job_spec.yaml",
         )
@@ -71,7 +71,7 @@ class TestMesosAgentFailure(object):
         job.create()
         job.wait_for_all_pods_running()
 
-        update = failure_tester.update(
+        update = failure_tester.stateless_update(
             job=job,
             updated_job_file="test_update_stateless_job_spec.yaml",
         )
@@ -83,4 +83,17 @@ class TestMesosAgentFailure(object):
 
         update.wait_for_state(goal_state="SUCCEEDED")
 
-        failure_tester.fw.start(failure_tester.mesos_agent)
+        assert 0 != failure_tester.fw.start(failure_tester.mesos_agent)
+
+    def test__kill_mesos_agent_makes_task_resume_stateless_job(self, failure_tester):
+        '''
+        Restart Mesos agents after creating a stateless job
+        and verify that the job is still running
+        '''
+        stateless_job = failure_tester.stateless_job()
+        stateless_job.create()
+        stateless_job.wait_for_state(goal_state="RUNNING")
+
+        assert 0 != failure_tester.fw.restart(failure_tester.mesos_agent)
+
+        stateless_job.wait_for_state(goal_state="RUNNING")

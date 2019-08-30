@@ -375,32 +375,6 @@ def test__start_killed_job(stateless_job):
     assert_pod_id_changed(old_pod_infos, new_pod_infos)
 
 
-# test start succeeds during jobmgr restart
-def test__start_restart_jobmgr(stateless_job, jobmgr):
-    stateless_job.create()
-    # TODO: remove this line after update and kill race
-    # condition is fixed
-    stateless_job.wait_for_all_pods_running()
-    stateless_job.stop()
-    stateless_job.wait_for_state(goal_state="KILLED")
-
-    stateless_job.start()
-    jobmgr.restart()
-
-    stateless_job.wait_for_all_pods_running()
-
-
-# test stopping a job during jobmgr restart
-def test__stop_restart_jobmgr(stateless_job, jobmgr):
-    stateless_job.create()
-    stateless_job.wait_for_state(goal_state="RUNNING")
-    stateless_job.stop()
-
-    jobmgr.restart()
-
-    stateless_job.wait_for_state(goal_state="KILLED")
-
-
 @pytest.mark.skip(reason="flaky test")
 # test restarting running job, with batch size,
 def test__restart_running_job_with_batch_size(stateless_job, in_place):
@@ -503,22 +477,6 @@ def test__restart_partial_job(stateless_job, in_place):
             assert old_pod_id == new_pod_id
 
 
-# test restarting job during jobmgr restart
-def test__restart_restart_jobmgr(stateless_job, jobmgr, in_place):
-    stateless_job.create()
-    stateless_job.wait_for_state(goal_state="RUNNING")
-    old_pod_infos = stateless_job.query_pods()
-    stateless_job.restart(in_place=in_place)
-
-    jobmgr.restart()
-    stateless_job.wait_for_workflow_state(goal_state="SUCCEEDED")
-
-    stateless_job.wait_for_all_pods_running()
-
-    new_pod_infos = stateless_job.query_pods()
-    assert_pod_id_changed(old_pod_infos, new_pod_infos)
-
-
 # test restarting a job with wrong entity version
 def test__restart_bad_version(stateless_job, in_place):
     stateless_job.create()
@@ -571,62 +529,6 @@ def test__stop_start_tasks_when_mesos_master_down_kills_tasks_when_started(
     stateless_job.stop()
     mesos_master.start()
     stateless_job.wait_for_terminated()
-
-
-def test__stop_start_tasks_when_mesos_master_down_and_jobmgr_restarts(
-        stateless_job, mesos_master, jobmgr
-):
-    """
-    1. Create stateless job.
-    2. Wait for job state RUNNING.
-    3. Stop a subset of job instances when mesos master is down.
-    4. Restart job manager.
-    5. Start mesos master and wait for the instances to be stopped.
-    6. Start the same subset of instances when mesos master is down.
-    7. Restart job manager.
-    8. Start mesos master and wait for the instances to transit to RUNNING.
-    9. Stop the job when mesos master is down.
-    10. Restart job manager.
-    11. Start mesos master and wait for the job to terminate
-    """
-    stateless_job.create()
-    stateless_job.wait_for_state(goal_state="RUNNING")
-
-    range = task_pb2.InstanceRange(to=1)
-    setattr(range, "from", 0)
-
-    def wait_for_instance_to_stop():
-        return stateless_job.get_task(0).state_str == "KILLED"
-
-    mesos_master.stop()
-    stateless_job.stop(ranges=[range])
-    jobmgr.restart()
-    mesos_master.start()
-    stateless_job.wait_for_condition(wait_for_instance_to_stop)
-
-    def wait_for_instance_to_run():
-        return stateless_job.get_task(0).state_str == "RUNNING"
-
-    mesos_master.stop()
-    stateless_job.start(ranges=[range])
-    jobmgr.restart()
-    mesos_master.start()
-    stateless_job.wait_for_condition(wait_for_instance_to_run)
-
-    mesos_master.stop()
-    stateless_job.stop()
-    jobmgr.restart()
-    mesos_master.start()
-    stateless_job.wait_for_terminated()
-
-
-def test__kill_mesos_agent_makes_task_resume(stateless_job, mesos_agent):
-    stateless_job.create()
-    stateless_job.wait_for_state(goal_state="RUNNING")
-
-    mesos_agent.restart()
-
-    stateless_job.wait_for_state(goal_state="RUNNING")
 
 
 def test__stop_start_partial_tests_with_single_range(stateless_job):
@@ -816,40 +718,6 @@ def test__delete_sla_violated_job():
         assert e.code() == grpc.StatusCode.NOT_FOUND
         return
     raise Exception("job not found error not received")
-
-
-# Test restart job manager when waiting for pod kill due to
-# host maintenance which can violate job SLA.
-def test__host_maintenance_violate_sla_restart_jobmgr(stateless_job, maintenance, jobmgr):
-    """
-    1. Create a stateless job(instance_count=4) with host-limit-1 constraint and
-       MaximumUnavailableInstances=1. Since there are only 3 UP hosts, one of
-       the instances will not get placed (hence unavailable).
-    2. Start host maintenance on one of the hosts (say A).
-    3. Restart job manager.
-    4. Since one instance is already unavailable, no more instances should be
-       killed due to host maintenance. Verify that host A does not transition to DOWN
-    """
-    job_spec_dump = load_test_config('test_stateless_job_spec_sla.yaml')
-    json_format.ParseDict(job_spec_dump, stateless_job.job_spec)
-    stateless_job.job_spec.instance_count = 4
-    stateless_job.create()
-    stateless_job.wait_for_all_pods_running(num_pods=3)
-
-    # Pick a host that is UP and start maintenance on it
-    test_host1 = get_host_in_state(host_pb2.HOST_STATE_UP)
-    resp = maintenance["start"]([test_host1])
-    assert resp
-
-    jobmgr.restart()
-
-    try:
-        wait_for_host_state(test_host1, host_pb2.HOST_STATE_DOWN)
-        assert False, 'Host should not transition to DOWN'
-    except:
-        assert is_host_in_state(test_host1, host_pb2.HOST_STATE_DRAINING)
-        assert len(stateless_job.query_pods(
-            states=[pod_pb2.POD_STATE_RUNNING])) == 3
 
 
 # Test pod stop/start for a job whose SLA is violated

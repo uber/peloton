@@ -362,13 +362,16 @@ def in_place(request):
 @pytest.fixture
 def maintenance(request):
     draining_hosts = []
+    client = [None]  # Use list to store a reference to the client object
+
+    def update_client(new_client):
+        client[0] = new_client
 
     def start(hosts):
         resp = start_maintenance(hosts)
         if not resp:
             log.error("Start maintenance failed:" + resp)
             return resp
-
         draining_hosts.extend(hosts)
         return resp
 
@@ -388,7 +391,7 @@ def maintenance(request):
     def clean_up():
         # kill stateless jobs. This is needed since host draining
         # is done in SLA aware manner for stateless jobs.
-        for j in stateless_query_jobs():
+        for j in stateless_query_jobs(client=client[0]):
             j.stop()
         if not draining_hosts:
             return
@@ -401,6 +404,7 @@ def maintenance(request):
     response = dict()
     response["start"] = start
     response["stop"] = stop
+    response["update_client"] = update_client
     return response
 
 
