@@ -44,6 +44,12 @@ type HostInfoObject struct {
 	GoalState string `column:"name=goal_state"`
 	// Labels of the host
 	Labels string `column:"name=labels"`
+	// Current host Pool for the host
+	// This will indicate which host pool this host belongs to
+	CurrentPool string `column:"name=current_pool"`
+	// Desired host pool for the host
+	// This will indicate which host pool this host should be.
+	DesiredPool string `column:"name=desired_pool"`
 	// Last update time of the host maintenance
 	UpdateTime time.Time `column:"name=update_time"`
 }
@@ -56,6 +62,8 @@ func (o *HostInfoObject) transform(row map[string]interface{}) {
 	o.State = row["state"].(string)
 	o.GoalState = row["goal_state"].(string)
 	o.Labels = row["labels"].(string)
+	o.CurrentPool = row["current_pool"].(string)
+	o.DesiredPool = row["desired_pool"].(string)
 	o.UpdateTime = row["update_time"].(time.Time)
 }
 
@@ -69,6 +77,8 @@ type HostInfoOps interface {
 		state hostpb.HostState,
 		goalState hostpb.HostState,
 		labels map[string]string,
+		currentPool string,
+		desiredPool string,
 	) error
 
 	// Get retrieves the row based on the primary key from the table.
@@ -87,6 +97,8 @@ type HostInfoOps interface {
 		state hostpb.HostState,
 		goalState hostpb.HostState,
 		labels map[string]string,
+		currentPool string,
+		desiredPool string,
 	) error
 
 	// Delete removes an object from the table based on primary key.
@@ -114,18 +126,22 @@ func (d *hostInfoOps) Create(
 	state hostpb.HostState,
 	goalState hostpb.HostState,
 	labels map[string]string,
+	currentPool string,
+	desiredPool string,
 ) error {
 	bytes, err := json.Marshal(&labels)
 	if err != nil {
 		return err
 	}
 	hostInfoObject := &HostInfoObject{
-		Hostname:   base.NewOptionalString(hostname),
-		IP:         ip,
-		State:      state.String(),
-		GoalState:  goalState.String(),
-		Labels:     string(bytes),
-		UpdateTime: time.Now(),
+		Hostname:    base.NewOptionalString(hostname),
+		IP:          ip,
+		State:       state.String(),
+		GoalState:   goalState.String(),
+		Labels:      string(bytes),
+		CurrentPool: currentPool,
+		DesiredPool: desiredPool,
+		UpdateTime:  time.Now(),
 	}
 	if err := d.store.oClient.Create(ctx, hostInfoObject); err != nil {
 		d.store.metrics.OrmHostInfoMetrics.HostInfoAddFail.Inc(1)
@@ -193,19 +209,24 @@ func (d *hostInfoOps) Update(
 	state hostpb.HostState,
 	goalState hostpb.HostState,
 	labels map[string]string,
+	currentPool string,
+	desiredPool string,
 ) error {
 	bytes, err := json.Marshal(&labels)
 	if err != nil {
 		return err
 	}
 	hostInfoObject := &HostInfoObject{
-		Hostname:   base.NewOptionalString(hostname),
-		State:      state.String(),
-		GoalState:  goalState.String(),
-		Labels:     string(bytes),
-		UpdateTime: time.Now(),
+		Hostname:    base.NewOptionalString(hostname),
+		State:       state.String(),
+		GoalState:   goalState.String(),
+		Labels:      string(bytes),
+		CurrentPool: currentPool,
+		DesiredPool: desiredPool,
+		UpdateTime:  time.Now(),
 	}
-	fieldsToUpdate := []string{"State", "GoalState", "Labels", "UpdateTime"}
+	fieldsToUpdate := []string{"State", "GoalState", "Labels", "CurrentPool",
+		"DesiredPool", "UpdateTime"}
 	if err := d.store.oClient.Update(
 		ctx,
 		hostInfoObject,
@@ -255,5 +276,8 @@ func newHostInfoFromHostInfoObject(
 			)
 		}
 	}
+	hostInfo.CurrentPool = hostInfoObject.CurrentPool
+	hostInfo.DesiredPool = hostInfoObject.DesiredPool
+
 	return hostInfo, nil
 }

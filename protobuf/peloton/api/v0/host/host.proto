@@ -43,6 +43,13 @@ message HostInfo {
 
     // Host labels.
     repeated peloton.Label labels = 5;
+
+   // Current host pool of the host
+   string current_pool = 6;
+
+   // Desired host pool of the host
+   string desired_pool = 7;
+
 }
 
 /**

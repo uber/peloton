@@ -45,10 +45,12 @@ func (s *HostInfoObjectTestSuite) TestHostInfo() {
 	db := NewHostInfoOps(testStore)
 
 	testHostInfo := &hostpb.HostInfo{
-		Hostname:  "hostname1",
-		Ip:        "1.2.3.4",
-		State:     hostpb.HostState_HOST_STATE_UP,
-		GoalState: hostpb.HostState_HOST_STATE_DRAINING,
+		Hostname:    "hostname1",
+		Ip:          "1.2.3.4",
+		State:       hostpb.HostState_HOST_STATE_UP,
+		GoalState:   hostpb.HostState_HOST_STATE_DRAINING,
+		CurrentPool: "pool1",
+		DesiredPool: "pool2",
 	}
 
 	labels := make(map[string]string)
@@ -63,7 +65,9 @@ func (s *HostInfoObjectTestSuite) TestHostInfo() {
 		testHostInfo.Ip,
 		testHostInfo.State,
 		testHostInfo.GoalState,
-		labels)
+		labels,
+		testHostInfo.CurrentPool,
+		testHostInfo.DesiredPool)
 	s.NoError(err)
 
 	// Test Get
@@ -73,10 +77,12 @@ func (s *HostInfoObjectTestSuite) TestHostInfo() {
 
 	// Test GetAll
 	testHostInfo2 := &hostpb.HostInfo{
-		Hostname:  "hostname2",
-		Ip:        "5.6.7.8",
-		State:     hostpb.HostState_HOST_STATE_UP,
-		GoalState: hostpb.HostState_HOST_STATE_DRAINING,
+		Hostname:    "hostname2",
+		Ip:          "5.6.7.8",
+		State:       hostpb.HostState_HOST_STATE_UP,
+		GoalState:   hostpb.HostState_HOST_STATE_DRAINING,
+		CurrentPool: "pool1",
+		DesiredPool: "pool2",
 	}
 	labels2 := make(map[string]string)
 	for _, label := range testHostInfo2.Labels {
@@ -88,7 +94,9 @@ func (s *HostInfoObjectTestSuite) TestHostInfo() {
 		testHostInfo2.Ip,
 		testHostInfo2.State,
 		testHostInfo2.GoalState,
-		labels2)
+		labels2,
+		testHostInfo2.CurrentPool,
+		testHostInfo2.DesiredPool)
 	s.NoError(err)
 	hostInfosAll, err := db.GetAll(context.Background())
 	s.NoError(err)
@@ -110,16 +118,20 @@ func (s *HostInfoObjectTestSuite) TestHostInfo() {
 	for _, label := range testHostInfo.Labels {
 		labels[label.Key] = label.Value
 	}
+	testHostInfo.DesiredPool = "pool1"
 	err = db.Update(
 		context.Background(),
 		testHostInfo.Hostname,
 		testHostInfo.State,
 		testHostInfo.GoalState,
-		labels)
+		labels,
+		testHostInfo.CurrentPool,
+		testHostInfo.DesiredPool)
 	s.NoError(err)
 	hostInfoGot, err := db.Get(context.Background(), testHostInfo.Hostname)
 	s.NoError(err)
 	s.Equal(testHostInfo, hostInfoGot)
+	s.EqualValues(testHostInfo.DesiredPool, hostInfoGot.DesiredPool)
 
 	// Test Delete
 	err = db.Delete(context.Background(), testHostInfo.Hostname)
@@ -153,10 +165,12 @@ func (s *HostInfoObjectTestSuite) TestCreateGetGetAllDeleteHostInfoFail() {
 	ctx := context.Background()
 
 	testHostInfo := &hostpb.HostInfo{
-		Hostname:  "hostname1",
-		Ip:        "1.2.3.4",
-		State:     hostpb.HostState_HOST_STATE_UP,
-		GoalState: hostpb.HostState_HOST_STATE_DRAINING,
+		Hostname:    "hostname1",
+		Ip:          "1.2.3.4",
+		State:       hostpb.HostState_HOST_STATE_UP,
+		GoalState:   hostpb.HostState_HOST_STATE_DRAINING,
+		CurrentPool: "pool1",
+		DesiredPool: "pool2",
 	}
 
 	labels := make(map[string]string)
@@ -170,7 +184,9 @@ func (s *HostInfoObjectTestSuite) TestCreateGetGetAllDeleteHostInfoFail() {
 		testHostInfo.Ip,
 		testHostInfo.State,
 		testHostInfo.GoalState,
-		labels)
+		labels,
+		testHostInfo.CurrentPool,
+		testHostInfo.DesiredPool)
 
 	s.Error(err)
 	s.Equal("Create failed", err.Error())
