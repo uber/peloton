@@ -25,6 +25,8 @@ import (
 
 func TestToK8SPodSpec(t *testing.T) {
 	require := require.New(t)
+	containerPath := "/container/path"
+	hostPath := "/host/path"
 
 	// Launch pod and verify.
 	testPodSpec := &pbpod.PodSpec{
@@ -42,6 +44,13 @@ func TestToK8SPodSpec(t *testing.T) {
 					},
 				},
 				Image: "",
+				VolumeMounts: []*pbpod.VolumeMount{
+					{
+						Name:      hostPath,
+						MountPath: containerPath,
+						ReadOnly:  true,
+					},
+				},
 			},
 		},
 	}
@@ -51,4 +60,12 @@ func TestToK8SPodSpec(t *testing.T) {
 	cname := uuid.Parse(returnedPod.Spec.Containers[0].Name)
 	require.NotNil(cname)
 	require.Equal(returnedPod.Spec.Containers[0].Image, _defaultImageName)
+	require.Equal(
+		returnedPod.Spec.Containers[0].VolumeMounts[0].MountPath,
+		testPodSpec.Containers[0].VolumeMounts[0].MountPath,
+	)
+	require.Equal(
+		returnedPod.Spec.Containers[0].VolumeMounts[0].Name,
+		testPodSpec.Containers[0].VolumeMounts[0].Name,
+	)
 }

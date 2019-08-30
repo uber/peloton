@@ -83,11 +83,21 @@ func toK8SContainerSpec(c *pbpod.ContainerSpec) corev1.Container {
 		memMb = _defaultMinMemMb
 	}
 
+	volumeMounts := []corev1.VolumeMount{}
+	for _, v := range c.GetVolumeMounts() {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      v.GetName(),
+			ReadOnly:  v.GetReadOnly(),
+			MountPath: v.GetMountPath(),
+		})
+	}
+
 	k8sSpec := corev1.Container{
-		Name:  cname,
-		Image: cimage,
-		Env:   kEnvs,
-		Ports: ports,
+		Name:         cname,
+		Image:        cimage,
+		Env:          kEnvs,
+		Ports:        ports,
+		VolumeMounts: volumeMounts,
 		Resources: corev1.ResourceRequirements{
 			Limits: corev1.ResourceList{
 				corev1.ResourceCPU: *resource.NewMilliQuantity(
