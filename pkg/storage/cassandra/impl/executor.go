@@ -64,11 +64,6 @@ func (b ExecutorBase) buildQuery(ctx context.Context, stmt api.Statement) (*gocq
 	}
 
 	s.convertUUID(args)
-	log.WithFields(log.Fields{
-		common.DBUqlLogField:  uql,
-		common.DBArgsLogField: args},
-	).Debug("cql and args")
-
 	qu := s.cSession.Query(uql, args...).WithContext(ctx)
 
 	if queryOverrides, ok := queryOverridesFromContext(ctx); ok {

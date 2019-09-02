@@ -2265,7 +2265,7 @@ func (s *Store) convertToWorkflowEvents(
 
 	var count int
 	var isLogged bool
-	prevWorkflowEvent := &stateless.WorkflowEvent{}
+	var prevWorkflowState stateless.WorkflowState
 
 	var workflowEvents []*stateless.WorkflowEvent
 	for _, value := range result {
@@ -2277,11 +2277,11 @@ func (s *Store) convertToWorkflowEvents(
 			Timestamp: value["create_time"].(qb.UUID).Time().Format(time.RFC3339),
 		}
 
-		if prevWorkflowEvent.GetState() != workflowEvent.GetState() {
+		if prevWorkflowState != workflowEvent.GetState() {
 			workflowEvents = append(workflowEvents, workflowEvent)
 			count = 0
 			isLogged = false
-			prevWorkflowEvent = workflowEvent
+			prevWorkflowState = workflowEvent.GetState()
 		} else {
 			count++
 			if count > _defaultWorkflowEventsDedupeWarnLimit && !isLogged {
