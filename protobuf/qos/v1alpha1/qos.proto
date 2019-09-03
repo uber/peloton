@@ -24,12 +24,14 @@ message GetServicesImpactedResponse {
   map<string, ServiceInstances> instances = 1;
 }
 
-// List of impacted service instances on a host
+// List of service instances on a host. Each service instance has an impact score.
+// The impact score ranges from 0 to 100 and is a measure of the extent to which a
+// service instance is unable to get the configured resources such as CPU and memory.
 message ServiceInstances {
   // List of service instances
   repeated ServiceInstance instances = 1;
   // Resources that need to be freed up on the host
-  ResourcesNeeded resources = 2;
+  Resources resources_needed = 2;
 }
 
 // Abstraction for representing service instances
@@ -41,13 +43,19 @@ message ServiceInstance {
   // Tags will contain information about some QoS specific metadata.
   // These are not the labels in the pod.
   map<string, string> tags = 3;
+  // Resources used by this service instance
+  Resources resource_usage = 4;
+  // Impact score ranges from 0 to 100 and is a measure of the extent to which a
+  // service instance is unable to get the configured resources such as CPU and memory.
+  // Higher values mean the service instance is impacted more and 0 means no impact.
+  sint32 impact_score = 5;
 }
 
-// Resources that need to be freed up on the host
-message ResourcesNeeded {
-  // Number of CPUs that need to be freed up on the host
-  uint64 cpu = 1;
-  // Amount of memory (bytes) that needs to be freed up on the host
+// Resources represents the set of relevant resources
+message Resources {
+  // Number of CPUs (can be fractional, e.g., 3.25 cores)
+  double cpu = 1;
+  // Amount of memory (bytes)
   uint64 memory = 2;
 }
 
@@ -61,8 +69,8 @@ message Metrics {
 service QoSAdvisorService {
   // Get the metrics of all hosts in the cluster
   rpc GetHostMetrics (GetHostMetricsRequest) returns (GetHostMetricsResponse);
-  // Get all impacted service instances in the cluster along with associated CPU and memory metrics.
-  // Impacted services are the ones that are either noisy neighbors themselves (strong eviction candidates)
-  // or victims of noisy neighbors. The tags will indicate which ones are which.
+  // Get all service instances in the cluster along with associated CPU and memory metrics. This API
+  // returns a map of host name to services. If a host has at least one impacted service, the API will
+  // return all sevices with their associated impact scores and actual resource usage.
   rpc GetServicesImpacted(GetServicesImpactedRequest) returns (GetServicesImpactedResponse);
 }
