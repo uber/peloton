@@ -27,6 +27,7 @@ import (
 	"github.com/uber/peloton/pkg/common/util"
 	hm "github.com/uber/peloton/pkg/hostmgr/host/mocks"
 	mock_mpb "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
+	"github.com/uber/peloton/pkg/hostmgr/scalar"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
@@ -149,6 +150,7 @@ func (suite *hostMapTestSuite) TestRefresh() {
 	numRegisteredAgents := numAgents - 1
 	m := GetAgentMap()
 	suite.Len(m.RegisteredAgents, numRegisteredAgents)
+	suite.Len(m.HostCapacities, numRegisteredAgents)
 
 	id1 := "id-1"
 	a1 := GetAgentInfo(id1)
@@ -157,6 +159,23 @@ func (suite *hostMapTestSuite) TestRefresh() {
 	a2 := GetAgentInfo(id2)
 	suite.Nil(a2)
 
+	// Check per host capacities.
+	resVal := float64(_defaultResourceValue)
+	expectedPhysical := scalar.Resources{
+		CPU:  resVal,
+		Mem:  resVal,
+		Disk: resVal,
+		GPU:  resVal,
+	}
+	expectedSlack := scalar.Resources{
+		CPU: resVal,
+	}
+	for hostname, capacity := range m.HostCapacities {
+		suite.Equal(expectedPhysical, capacity.Physical, hostname)
+		suite.Equal(expectedSlack, capacity.Slack, hostname)
+	}
+
+	// Check cluster capacity and metrics.
 	gauges := suite.testScope.Snapshot().Gauges()
 	suite.Contains(gauges, "registered_hosts+")
 	suite.Equal(float64(numRegisteredAgents), gauges["registered_hosts+"].Value())

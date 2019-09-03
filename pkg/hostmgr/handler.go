@@ -1583,6 +1583,28 @@ func (h *ServiceHandler) releaseHostsHeldForTasks(taskIDs []*peloton.TaskID) err
 	return multierr.Combine(errs...)
 }
 
+// GetHostPoolCapacity fetches the resources for all host-pools.
+func (h *ServiceHandler) GetHostPoolCapacity(
+	ctx context.Context,
+	body *hostsvc.GetHostPoolCapacityRequest,
+) (response *hostsvc.GetHostPoolCapacityResponse, err error) {
+	if h.hostPoolManager == nil {
+		err = yarpcerrors.UnimplementedErrorf("host pools not enabled")
+		return
+	}
+	response = &hostsvc.GetHostPoolCapacityResponse{}
+	for _, p := range h.hostPoolManager.Pools() {
+		cap := p.Capacity()
+		hpResource := &hostsvc.HostPoolResources{
+			PoolName:         p.ID(),
+			PhysicalCapacity: toHostSvcResources(&cap.Physical),
+			SlackCapacity:    toHostSvcResources(&cap.Slack),
+		}
+		response.Pools = append(response.Pools, hpResource)
+	}
+	return
+}
+
 // Helper function to convert scalar.Resource into hostsvc format.
 func toHostSvcResources(rs *scalar.Resources) []*hostsvc.Resource {
 	return []*hostsvc.Resource{

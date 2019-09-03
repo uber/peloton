@@ -453,6 +453,10 @@ service InternalHostService
   // Release the hosts which are held for the tasks provided
   rpc ReleaseHostsHeldForTasks(ReleaseHostsHeldForTasksRequest)
   returns (ReleaseHostsHeldForTasksResponse);
+
+  // GetHostPoolCapacity fetches the resources for each host-pool.
+  rpc GetHostPoolCapacity(GetHostPoolCapacityRequest)
+  returns (GetHostPoolCapacityResponse);
 }
 
 /**
@@ -1011,4 +1015,33 @@ message ReleaseHostsHeldForTasksResponse {
     }
 
     Error error = 1;
+}
+
+/**
+ * Resources of a host-pool.
+ */
+message HostPoolResources {
+  // Name of the pool.
+  string poolName = 1;
+
+  // Resources for physical capacity.
+  repeated Resource physicalCapacity = 2;
+
+  // Resources for slack capacity.
+  repeated Resource slackCapacity = 3;
+}
+
+/**
+ * The request for GetHostPoolCapacity.
+ */
+message GetHostPoolCapacityRequest {}
+
+/**
+ * The response for GetHostPoolCapacity.
+ * Errors:
+ *    NOT_IMPLEMENTED if host-pools are not enabled.
+ */
+message GetHostPoolCapacityResponse {
+  // Resources for each host-pool.
+  repeated HostPoolResources pools = 1;
 }

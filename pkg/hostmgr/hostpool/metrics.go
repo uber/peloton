@@ -15,15 +15,27 @@
 package hostpool
 
 import (
+	"github.com/uber/peloton/pkg/common/scalar"
+
 	"github.com/uber-go/tally"
 )
 
+// Metrics contains all per-pool metrics.
 type Metrics struct {
-	TotalHosts tally.Gauge
+	TotalHosts       tally.Gauge
+	PhysicalCapacity scalar.GaugeMaps
+	SlackCapacity    scalar.GaugeMaps
 }
 
+// NewMetrics creates Metrics for a given pool-ID.
 func NewMetrics(scope tally.Scope, poolID string) *Metrics {
 	hostPoolScope := scope.SubScope("host_pool").Tagged(map[string]string{"pool": poolID})
+	phyCapScope := hostPoolScope.SubScope("physical_capacity")
+	slackCapScope := hostPoolScope.SubScope("slack_capacity")
 
-	return &Metrics{TotalHosts: hostPoolScope.Gauge("total_hosts")}
+	return &Metrics{
+		TotalHosts:       hostPoolScope.Gauge("total_hosts"),
+		PhysicalCapacity: scalar.NewGaugeMaps(phyCapScope),
+		SlackCapacity:    scalar.NewGaugeMaps(slackCapScope),
+	}
 }

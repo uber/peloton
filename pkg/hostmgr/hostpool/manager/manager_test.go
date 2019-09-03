@@ -33,6 +33,7 @@ import (
 	hostmocks "github.com/uber/peloton/pkg/hostmgr/host/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/hostpool"
 	mpbmocks "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
+	"github.com/uber/peloton/pkg/hostmgr/scalar"
 	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -43,7 +44,7 @@ import (
 
 const (
 	_testPoolIDTemplate    = "pool%d"
-	_testReconcileInterval = time.Second
+	_testReconcileInterval = 50 * time.Millisecond
 )
 
 // HostPoolManagerTestSuite is test suite for host pool manager.
@@ -56,6 +57,7 @@ type HostPoolManagerTestSuite struct {
 	manager            HostPoolManager
 	eventStreamHandler *eventstream.Handler
 	hostInfoOps        *objectmocks.MockHostInfoOps
+	hostCapacity       *host.ResourceCapacity
 }
 
 // SetupTest is setup function for this suite.
@@ -75,6 +77,17 @@ func (suite *HostPoolManagerTestSuite) SetupSuite() {
 		Ip:       &drainingIP,
 	}
 	suite.drainingMachines = []*pbmesos.MachineID{drainingMachine}
+	suite.hostCapacity = &host.ResourceCapacity{
+		Physical: scalar.Resources{
+			CPU:  float64(2.0),
+			Mem:  float64(4.0),
+			Disk: float64(10.0),
+			GPU:  float64(1.0),
+		},
+		Slack: scalar.Resources{
+			CPU: float64(1.5),
+		},
+	}
 }
 
 // SetupTest is setup function for each test in this suite.
@@ -320,22 +333,15 @@ func (suite *HostPoolManagerTestSuite) TestGetHostPoolLabelValues() {
 
 // TestReconcile tests Start, Stop and reconcile host pool manager.
 func (suite *HostPoolManagerTestSuite) TestReconcile() {
-	mockMasterOperatorClient := mpbmocks.NewMockMasterOperatorClient(suite.ctrl)
-	mockMaintenanceMap := hostmocks.NewMockMaintenanceHostInfoMap(suite.ctrl)
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
 
-	response := suite.makeAgentsResponse()
-	mockMaintenanceMap.EXPECT().
-		GetDrainingHostInfos(gomock.Any()).
-		Return([]*pbhost.HostInfo{}).
-		Times(len(suite.upMachines) + len(suite.drainingMachines))
-	mockMasterOperatorClient.EXPECT().Agents().Return(response, nil)
-
-	loader := &host.Loader{
-		OperatorClient:         mockMasterOperatorClient,
-		Scope:                  tally.NewTestScope("", map[string]string{}),
-		MaintenanceHostInfoMap: mockMaintenanceMap,
-	}
+	loader := suite.setupAgentMapLoader(ctrl)
 	loader.Load(nil)
+	host.GetAgentMap().HostCapacities = map[string]*host.ResourceCapacity{
+		"host1": suite.hostCapacity,
+		"host2": suite.hostCapacity,
+	}
 
 	testCases := map[string]struct {
 		hostInfo       []*pbhost.HostInfo
@@ -469,6 +475,18 @@ func (suite *HostPoolManagerTestSuite) TestReconcile() {
 		},
 	}
 
+	expectedPoolCapacity := host.ResourceCapacity{
+		Physical: scalar.Resources{
+			CPU:  2.0 * float64(2.0),
+			Mem:  2.0 * float64(4.0),
+			Disk: 2.0 * float64(10.0),
+			GPU:  2.0 * float64(1.0),
+		},
+		Slack: scalar.Resources{
+			CPU: 2.0 * float64(1.5),
+		},
+	}
+
 	for tcName, tc := range testCases {
 		suite.hostInfoOps.EXPECT().GetAll(gomock.Any()).
 			Return(tc.hostInfo, tc.getHostInfoErr)
@@ -504,17 +522,83 @@ func (suite *HostPoolManagerTestSuite) TestReconcile() {
 					suite.Equal(poolID, p.ID(), "test case: %s", tcName)
 					cached[hostname] = poolID
 				}
+				if poolID == common.DefaultHostPoolID {
+					suite.Equal(
+						expectedPoolCapacity,
+						pool.Capacity(),
+						"test case: %s", tcName)
+				}
 			}
 			suite.EqualValues(
 				tc.expectedCache, cached, "test case: %s", tcName)
-
 			manager.Stop()
 		}
 	}
 }
 
+// TestRefreshPoolCapacity verifies that pool capacities are updated correctly.
+func (suite *HostPoolManagerTestSuite) TestRefreshPoolCapacity() {
+	poolIndex := map[string][]string{
+		"pool0": {"host1", "host4", "host5"},
+		"pool1": {"host2", "host3"},
+	}
+	hostToPoolMap := map[string]string{
+		"host1": "pool0",
+		"host2": "pool1",
+		"host3": "pool1",
+		"host4": "pool0",
+		"host5": "pool0",
+	}
+	manager := setupTestManager(
+		poolIndex,
+		hostToPoolMap,
+		suite.eventStreamHandler,
+		suite.hostInfoOps)
+	mgr := manager.(*hostPoolManager)
+
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	loader := suite.setupAgentMapLoader(ctrl)
+	loader.Load(nil)
+	host.GetAgentMap().HostCapacities = map[string]*host.ResourceCapacity{
+		"host1": suite.hostCapacity,
+		"host2": suite.hostCapacity,
+		"host3": suite.hostCapacity,
+		"host4": suite.hostCapacity,
+		"host5": suite.hostCapacity,
+	}
+
+	mgr.refreshPoolCapacity()
+	for _, p := range manager.Pools() {
+		numHosts := float64(len(p.Hosts()))
+		expectedPoolCapacity := host.ResourceCapacity{
+			Physical: scalar.Resources{
+				CPU:  numHosts * float64(2.0),
+				Mem:  numHosts * float64(4.0),
+				Disk: numHosts * float64(10.0),
+				GPU:  numHosts * float64(1.0),
+			},
+			Slack: scalar.Resources{
+				CPU: numHosts * float64(1.5),
+			},
+		}
+		suite.Equal(expectedPoolCapacity, p.Capacity(), "pool %s")
+	}
+}
+
 // TestChangeHostPool tests various cases of changing pool for a host.
 func (suite *HostPoolManagerTestSuite) TestChangeHostPool() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	loader := suite.setupAgentMapLoader(ctrl)
+	loader.Load(nil)
+
+	host.GetAgentMap().HostCapacities = map[string]*host.ResourceCapacity{
+		"host2": suite.hostCapacity,
+		"host3": suite.hostCapacity,
+	}
 
 	hostToPoolMap := map[string]string{
 		"host0": "pool0",
@@ -536,6 +620,7 @@ func (suite *HostPoolManagerTestSuite) TestChangeHostPool() {
 		srcPoolID, destPoolID, host string
 		updated, isErr              bool
 		updatedErr                  error
+		srcCapacity, dstCapacity    host.ResourceCapacity
 	}{
 		"success": {
 			pools:      poolIndex,
@@ -543,6 +628,17 @@ func (suite *HostPoolManagerTestSuite) TestChangeHostPool() {
 			destPoolID: "pool3",
 			host:       "host2",
 			updated:    true,
+			dstCapacity: host.ResourceCapacity{
+				Physical: scalar.Resources{
+					CPU:  2.0 * float64(2.0),
+					Mem:  2.0 * float64(4.0),
+					Disk: 2.0 * float64(10.0),
+					GPU:  2.0 * float64(1.0),
+				},
+				Slack: scalar.Resources{
+					CPU: 2.0 * float64(1.5),
+				},
+			},
 		},
 		"no-op": {
 			pools:      poolIndex,
@@ -623,6 +719,10 @@ func (suite *HostPoolManagerTestSuite) TestChangeHostPool() {
 				srcPool, err := suite.manager.GetPool(tc.srcPoolID)
 				suite.NoError(err, tcName)
 				suite.NotContains(srcPool.Hosts(), tc.host, tcName)
+
+				// check pool capacity change
+				suite.Equal(tc.srcCapacity, srcPool.Capacity(), tcName)
+				suite.Equal(tc.dstCapacity, destPool.Capacity(), tcName)
 
 				// check event
 				events, err := suite.eventStreamHandler.GetEvents()
@@ -802,4 +902,26 @@ func preRegisterTestPools(manager HostPoolManager, numPools int) {
 	for i := 0; i < numPools; i++ {
 		manager.RegisterPool(fmt.Sprintf(_testPoolIDTemplate, i))
 	}
+}
+
+// setupAgentMapLoader creates a host.Loader with the proper mocks.
+func (suite *HostPoolManagerTestSuite) setupAgentMapLoader(
+	ctrl *gomock.Controller,
+) *host.Loader {
+	mockMasterOperatorClient := mpbmocks.NewMockMasterOperatorClient(suite.ctrl)
+	mockMaintenanceMap := hostmocks.NewMockMaintenanceHostInfoMap(suite.ctrl)
+
+	response := suite.makeAgentsResponse()
+	mockMaintenanceMap.EXPECT().
+		GetDrainingHostInfos(gomock.Any()).
+		Return([]*pbhost.HostInfo{}).
+		Times(len(suite.upMachines) + len(suite.drainingMachines))
+	mockMasterOperatorClient.EXPECT().Agents().Return(response, nil)
+
+	loader := &host.Loader{
+		OperatorClient:         mockMasterOperatorClient,
+		Scope:                  tally.NewTestScope("", map[string]string{}),
+		MaintenanceHostInfoMap: mockMaintenanceMap,
+	}
+	return loader
 }

@@ -42,6 +42,7 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/config"
 	"github.com/uber/peloton/pkg/hostmgr/host"
 	hm "github.com/uber/peloton/pkg/hostmgr/host/mocks"
+	hp "github.com/uber/peloton/pkg/hostmgr/hostpool"
 	hostpool_manager_mocks "github.com/uber/peloton/pkg/hostmgr/hostpool/manager/mocks"
 	hostmgr_hostpool_mocks "github.com/uber/peloton/pkg/hostmgr/hostpool/mocks"
 	hostmgr_mesos_mocks "github.com/uber/peloton/pkg/hostmgr/mesos/mocks"
@@ -51,6 +52,7 @@ import (
 	qm "github.com/uber/peloton/pkg/hostmgr/queue/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/reserver"
 	reserver_mocks "github.com/uber/peloton/pkg/hostmgr/reserver/mocks"
+	"github.com/uber/peloton/pkg/hostmgr/scalar"
 	"github.com/uber/peloton/pkg/hostmgr/summary"
 	"github.com/uber/peloton/pkg/hostmgr/watchevent"
 	watchmocks "github.com/uber/peloton/pkg/hostmgr/watchevent/mocks"
@@ -2822,4 +2824,91 @@ func (suite *HostMgrHandlerTestSuite) TestCancel_NotFoundTask() {
 	suite.Nil(resp)
 	suite.Error(err)
 	suite.True(yarpcerrors.IsNotFound(err))
+}
+
+// TestGetHostPoolCapacity tests GetHostPoolCapacity API.
+func (suite *HostMgrHandlerTestSuite) TestGetHostPoolCapacity() {
+	phy := scalar.Resources{
+		CPU:  float64(2.0),
+		Mem:  float64(4.0),
+		Disk: float64(10.0),
+		GPU:  float64(1.0),
+	}
+	slack := scalar.Resources{
+		CPU: float64(1.5),
+	}
+	pools := map[string]host.ResourceCapacity{
+		"pool0": {
+			Physical: phy,
+			Slack:    slack,
+		},
+		"pool1": {
+			Physical: phy.Add(phy),
+			Slack:    slack.Add(slack),
+		},
+		"pool2": {
+			Physical: phy.Add(phy).Add(phy),
+			Slack:    slack.Add(slack).Add(slack),
+		},
+	}
+
+	mockPools := make(map[string]hp.HostPool, 0)
+	for name, capacity := range pools {
+		mpool := hostmgr_hostpool_mocks.NewMockHostPool(suite.ctrl)
+		mpool.EXPECT().ID().Return(name)
+		mpool.EXPECT().Capacity().Return(capacity)
+		mockPools[name] = mpool
+	}
+	suite.hostPoolManager.EXPECT().Pools().Return(mockPools)
+
+	resp, err := suite.handler.GetHostPoolCapacity(
+		suite.ctx,
+		&hostsvc.GetHostPoolCapacityRequest{})
+	suite.Nil(err)
+
+	suite.Equal(len(pools), len(resp.Pools))
+	for _, hpRes := range resp.Pools {
+		mult := 0.0
+		switch hpRes.PoolName {
+		case "pool0":
+			mult = 1.0
+		case "pool1":
+			mult = 2.0
+		case "pool2":
+			mult = 3.0
+		default:
+			suite.Fail("Unknown pool %s", hpRes.PoolName)
+			continue
+		}
+		name := hpRes.PoolName
+		for _, r := range hpRes.PhysicalCapacity {
+			switch r.Kind {
+			case "cpu":
+				suite.Equal(mult*phy.CPU, r.Capacity, "Pool %s cpu", name)
+			case "mem":
+				suite.Equal(mult*phy.Mem, r.Capacity, "Pool %s mem", name)
+			case "disk":
+				suite.Equal(mult*phy.Disk, r.Capacity, "Pool %s disk", name)
+			case "gpu":
+				suite.Equal(mult*phy.GPU, r.Capacity, "Pool %s gpu", name)
+			}
+		}
+		for _, r := range hpRes.SlackCapacity {
+			switch r.Kind {
+			case "cpu":
+				suite.Equal(mult*slack.CPU, r.Capacity, "Pool %s cpu", name)
+			}
+		}
+	}
+}
+
+// TestGetHostPoolCapacityHostPoolDisabled tests GetHostPoolCapacity API when
+// host-pools are disabled.
+func (suite *HostMgrHandlerTestSuite) TestGetHostPoolCapacityHostPoolDisabled() {
+	suite.handler.hostPoolManager = nil
+	resp, err := suite.handler.GetHostPoolCapacity(
+		suite.ctx,
+		&hostsvc.GetHostPoolCapacityRequest{})
+	suite.Error(err)
+	suite.Nil(resp)
 }

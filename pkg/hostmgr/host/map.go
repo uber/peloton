@@ -33,11 +33,22 @@ import (
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
+// ResourceCapacity contains total quantity of various kinds of host resources.
+type ResourceCapacity struct {
+	// Physical capacity.
+	Physical scalar.Resources
+	// Revocable capacity.
+	Slack scalar.Resources
+}
+
 // AgentMap is a placeholder from agent id to agent related information.
 // Note that AgentInfo is immutable as of Mesos 1.3.
 type AgentMap struct {
 	// Registered agent details by id.
 	RegisteredAgents map[string]*mesos_master.Response_GetAgents_Agent
+
+	// Resource capacity of all hosts.
+	HostCapacities map[string]*ResourceCapacity
 
 	Capacity      scalar.Resources
 	SlackCapacity scalar.Resources
@@ -100,30 +111,32 @@ func (loader *Loader) Load(_ *uatomic.Bool) {
 
 	m := &AgentMap{
 		RegisteredAgents: make(map[string]*mesos_master.Response_GetAgents_Agent),
+		HostCapacities:   make(map[string]*ResourceCapacity),
 		Capacity:         scalar.Resources{},
 		SlackCapacity:    scalar.Resources{},
 	}
 
-	outchan := make(chan func() (scalar.Resources, scalar.Resources))
-
-	count := 0
+	wg := &sync.WaitGroup{}
 	for _, agent := range agents.GetAgents() {
 		hostname := agent.GetAgentInfo().GetHostname()
 		if len(loader.MaintenanceHostInfoMap.GetDrainingHostInfos([]string{hostname})) != 0 {
 			continue
 		}
 		m.RegisteredAgents[hostname] = agent
-		count++
+		capacity := &ResourceCapacity{}
+		m.HostCapacities[hostname] = capacity
+		wg.Add(1)
 		go getResourcesByType(
 			agent.GetTotalResources(),
-			outchan,
-			loader.SlackResourceTypes)
+			loader.SlackResourceTypes,
+			capacity,
+			wg)
 	}
+	wg.Wait()
 
-	for i := 0; i < count; i++ {
-		revocable, nonRevocable := (<-outchan)()
-		m.SlackCapacity = m.SlackCapacity.Add(revocable)
-		m.Capacity = m.Capacity.Add(nonRevocable)
+	for _, c := range m.HostCapacities {
+		m.SlackCapacity = m.SlackCapacity.Add(c.Slack)
+		m.Capacity = m.Capacity.Add(c.Physical)
 	}
 
 	agentInfoMap.Store(m)
@@ -134,8 +147,9 @@ func (loader *Loader) Load(_ *uatomic.Bool) {
 // and non-revocable physical resources for an agent.
 func getResourcesByType(
 	agentResources []*mesos.Resource,
-	outchan chan func() (scalar.Resources, scalar.Resources),
-	slackResourceTypes []string) {
+	slackResourceTypes []string,
+	hostCapacity *ResourceCapacity,
+	wg *sync.WaitGroup) {
 	agentRes, _ := scalar.FilterMesosResources(
 		agentResources,
 		func(r *mesos.Resource) bool {
@@ -146,13 +160,9 @@ func getResourcesByType(
 		})
 
 	revRes, nonrevRes := scalar.FilterRevocableMesosResources(agentRes)
-	revocable := scalar.FromMesosResources(revRes)
-	nonRevocable := scalar.FromMesosResources(nonrevRes)
-	outchan <- (func() (
-		scalar.Resources,
-		scalar.Resources) {
-		return revocable, nonRevocable
-	})
+	hostCapacity.Slack = scalar.FromMesosResources(revRes)
+	hostCapacity.Physical = scalar.FromMesosResources(nonrevRes)
+	wg.Done()
 }
 
 // MaintenanceHostInfoMap defines an interface of a map of

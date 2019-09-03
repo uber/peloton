@@ -317,8 +317,15 @@ func (m *hostPoolManager) ChangeHostPool(
 	m.hostToPoolMap[hostname] = destPoolID
 	srcPool.Delete(hostname)
 	destPool.Add(hostname)
-	m.publishPoolEvent(hostname, destPoolID)
 
+	if agentMap := host.GetAgentMap(); agentMap == nil {
+		log.Warn("Failed to get agent-map in ChangeHostPool")
+	} else {
+		srcPool.RefreshCapacity(agentMap.HostCapacities)
+		destPool.RefreshCapacity(agentMap.HostCapacities)
+	}
+
+	m.publishPoolEvent(hostname, destPoolID)
 	return
 }
 
@@ -592,6 +599,7 @@ func (m *hostPoolManager) reconcile() error {
 
 	m.hostToPoolMap = newHostToPoolMap
 
+	m.refreshPoolCapacity()
 	m.refreshMetrics()
 
 	return nil
@@ -607,6 +615,19 @@ func (m *hostPoolManager) refreshMetrics() {
 	// Refresh host pool cache metrics.
 	m.metrics.TotalHosts.Update(float64(len(m.hostToPoolMap)))
 	m.metrics.TotalPools.Update(float64(len(m.poolIndex)))
+}
+
+// refreshPoolCapacity recalculates the capacity of each host-pool.
+func (m *hostPoolManager) refreshPoolCapacity() {
+	agentMap := host.GetAgentMap()
+	if agentMap == nil {
+		log.Warn("Failed to load agent-map in refreshPoolCapacity")
+		return
+	}
+	hostCapacities := agentMap.HostCapacities
+	for _, pool := range m.poolIndex {
+		pool.RefreshCapacity(hostCapacities)
+	}
 }
 
 // GetHostPoolLabelValues creates a LabelValues for host pool of a host.
