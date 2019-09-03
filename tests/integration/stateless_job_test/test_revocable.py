@@ -2,6 +2,8 @@ import pytest
 import time
 
 from tests.integration.stateless_job import StatelessJob
+from tests.integration.job import Job
+from tests.integration.common import IntegrationTestConfig
 from peloton_client.pbgen.peloton.api.v1alpha.pod import pod_pb2 as pod
 
 pytestmark = [
@@ -217,3 +219,39 @@ def test__revocable_tasks_move_to_revocable_queue():
     revocable_job1.wait_for_terminated()
     revocable_job2.wait_for_terminated()
     non_revocable_job.wait_for_terminated()
+
+
+# Launch Revocable batch & stateless job.
+# Launch Non-Revocable batch and stateless job.
+# Ensure batch jobs SUCCEED and stateless jobs RUNNING.
+def test__simple_revocable_batch_and_stateless_colocate():
+    revocable_stateless_job = StatelessJob(
+        job_file="test_stateless_job_revocable_spec.yaml"
+    )
+    revocable_stateless_job.create()
+    revocable_stateless_job.wait_for_state(goal_state="RUNNING")
+    revocable_stateless_job.wait_for_all_pods_running()
+
+    non_revocable_stateless_job = StatelessJob(
+        job_file="test_stateless_job_spec.yaml"
+    )
+    non_revocable_stateless_job.create()
+    non_revocable_stateless_job.wait_for_state(goal_state="RUNNING")
+    non_revocable_stateless_job.wait_for_all_pods_running()
+
+    revocable_batch_job = Job(
+        job_file="test_job_revocable.yaml",
+        config=IntegrationTestConfig(pool_file='test_stateless_respool.yaml'),
+    )
+    revocable_batch_job.create()
+    revocable_batch_job.wait_for_state(goal_state="RUNNING")
+
+    non_revocable_batch_job = Job(
+        job_file="test_job.yaml",
+        config=IntegrationTestConfig(pool_file='test_stateless_respool.yaml'),
+    )
+    non_revocable_batch_job.create()
+    non_revocable_batch_job.wait_for_state(goal_state="RUNNING")
+
+    revocable_batch_job.wait_for_state()
+    non_revocable_batch_job.wait_for_state()
