@@ -15,213 +15,177 @@
 package apiserver
 
 import (
-	"fmt"
-	"reflect"
-
 	pbv0hostsvc "github.com/uber/peloton/.gen/peloton/api/v0/host/svc"
 	pbv0jobmgr "github.com/uber/peloton/.gen/peloton/api/v0/job"
+	pbv0jobsvc "github.com/uber/peloton/.gen/peloton/api/v0/job/svc"
 	pbv0resmgr "github.com/uber/peloton/.gen/peloton/api/v0/respool"
+	pbv0respoolsvc "github.com/uber/peloton/.gen/peloton/api/v0/respool/svc"
 	pbv0taskmgr "github.com/uber/peloton/.gen/peloton/api/v0/task"
+	pbv0tasksvc "github.com/uber/peloton/.gen/peloton/api/v0/task/svc"
 	pbv0updatesvc "github.com/uber/peloton/.gen/peloton/api/v0/update/svc"
 	pbv0volumesvc "github.com/uber/peloton/.gen/peloton/api/v0/volume/svc"
-	pbv1adminsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/admin/svc"
-	pbv1jobstatelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
-	pbv1podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
-	pbv1watchsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/watch/svc"
+	pbv1alphaadminsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/admin/svc"
+	pbv1alphahostsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/host/svc"
+	pbv1alphajobstatelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
+	pbv1alphapodsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
+	pbv1alpharespoolsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/respool/svc"
+	pbv1alphawatchsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/watch/svc"
 	pbprivateeventstreamsvc "github.com/uber/peloton/.gen/peloton/private/eventstream/v1alpha/eventstreamsvc"
 	pbprivatehostsvc "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	pbprivatehostmgrsvc "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc"
 	pbprivatejobmgrsvc "github.com/uber/peloton/.gen/peloton/private/jobmgrsvc"
+	pbprivatetaskqueue "github.com/uber/peloton/.gen/peloton/private/resmgr/taskqueue"
 	pbprivateresmgrsvc "github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 
 	"github.com/uber/peloton/pkg/apiserver/forward"
 	"github.com/uber/peloton/pkg/common"
 
 	"go.uber.org/yarpc/api/transport"
-	"go.uber.org/yarpc/encoding/protobuf"
 )
 
-const (
-	_procedureNameTemplate = "%s::%s"
-)
+// BuildJobManagerProcedures builds forwarding procedures for services that rely
+// on Job Manager. The outbounds must connect to the Job Manager leader.
+func BuildJobManagerProcedures(
+	outbounds transport.Outbounds,
+) []transport.Procedure {
+	procedures :=
+		pbv0jobmgr.BuildJobManagerYARPCProcedures(nil)
+	procedures = append(
+		procedures,
+		pbv0jobsvc.BuildJobServiceYARPCProcedures(nil)...,
+	)
+	procedures = append(
+		procedures,
+		pbv1alphajobstatelesssvc.BuildJobServiceYARPCProcedures(nil)...,
+	)
+	procedures = append(
+		procedures,
+		pbprivatejobmgrsvc.BuildJobManagerServiceYARPCProcedures(nil)...,
+	)
+	procedures = append(
+		procedures,
+		pbv1alphapodsvc.BuildPodServiceYARPCProcedures(nil)...,
+	)
+	procedures = append(
+		procedures,
+		pbv0taskmgr.BuildTaskManagerYARPCProcedures(nil)...,
+	)
+	procedures = append(
+		procedures,
+		pbv0tasksvc.BuildTaskServiceYARPCProcedures(nil)...,
+	)
+	procedures = append(
+		procedures,
+		pbv0updatesvc.BuildUpdateServiceYARPCProcedures(nil)...,
+	)
+	procedures = append(
+		procedures,
+		pbv0volumesvc.BuildVolumeServiceYARPCProcedures(nil)...,
+	)
+	procedures = append(
+		procedures,
+		pbv1alphaadminsvc.BuildAdminServiceYARPCProcedures(nil)...,
+	)
+	procedures = append(
+		procedures,
+		pbv1alphawatchsvc.BuildWatchServiceYARPCProcedures(nil)...,
+	)
 
-var (
-	// _encodingTypes contains a list of encoding types to build procedures
-	// with.
-	_encodingTypes []transport.Encoding
-)
-
-//rpcService to build service procedures
-type rpcService struct {
-	// RPC service name from pkg/common/constants.go
-	name string
-	// Pointer to a (nil) instance of the server; used to fetch RPC API via
-	// reflection.
-	server interface{}
+	return convertProcedures(
+		procedures,
+		common.PelotonJobManager,
+		outbounds,
+	)
 }
 
-// init constructs required Peloton YARPC clients for the package.
-func init() {
-	_encodingTypes = []transport.Encoding{
-		protobuf.Encoding,
-		protobuf.JSONEncoding,
-	}
-}
-
-// BuildJobManagerProcedures builds forwarding procedures for
-// services that rely on Job Manager.
-// TODO: refactor to use the BuildYARPCProcedures code machine-generated from
-// protobuf files.
-func BuildJobManagerProcedures(outbound transport.UnaryOutbound) []transport.Procedure {
-	rpcServices := []rpcService{
-		{
-			name:   common.RPCPelotonV0JobManagerName,
-			server: (*pbv0jobmgr.JobManagerYARPCServer)(nil),
-		},
-		//TODO: peloton.api.v0.job.svc.JobService methods not
-		// implemented in peloton
-		{
-			name:   common.RPCPelotonV1AlphaJobServiceName,
-			server: (*pbv1jobstatelesssvc.JobServiceYARPCServer)(nil),
-		},
-		{
-			name:   common.RPCPelotonPrivateJobManagerServiceName,
-			server: (*pbprivatejobmgrsvc.JobManagerServiceYARPCServer)(nil),
-		},
-		{
-			name:   common.RPCPelotonV1AlphaPodServiceName,
-			server: (*pbv1podsvc.PodServiceYARPCServer)(nil),
-		},
-		{
-			name:   common.RPCPelotonV0TaskManagerName,
-			server: (*pbv0taskmgr.TaskManagerYARPCServer)(nil),
-		},
-		//TODO: peloton.api.v0.task.svc.TaskService methods not
-		// implemented in peloton
-		{
-			name:   common.RPCPelotonV0UpdateServiceName,
-			server: (*pbv0updatesvc.UpdateServiceYARPCServer)(nil),
-		},
-		{
-			name:   common.RPCPelotonV0VolumeServiceName,
-			server: (*pbv0volumesvc.VolumeServiceYARPCServer)(nil),
-		},
-		{
-			name:   common.RPCPelotonV1AlphaAdminServiceName,
-			server: (*pbv1adminsvc.AdminServiceYARPCServer)(nil),
-		},
-		{
-			name:   common.RPCPelotonV1AlphaWatchServiceName,
-			server: (*pbv1watchsvc.WatchServiceYARPCServer)(nil),
-		},
-	}
-
-	return buildProcedures(rpcServices, common.PelotonJobManager, outbound)
-}
-
-// BuildHostManagerProcedures builds forwarding procedures for
-// services handled by Host Manager. The outbound must connect to the
-// Host Manager leader.
-// TODO: refactor to use the BuildYARPCProcedures code machine-generated from
-// protobuf files.
+// BuildHostManagerProcedures builds forwarding procedures for services handled
+// by Host Manager. The outbounds must connect to the Host Manager leader.
 func BuildHostManagerProcedures(
-	outbound transport.UnaryOutbound,
+	outbounds transport.Outbounds,
 ) []transport.Procedure {
-	rpcServers := []rpcService{
-		{
-			name:   common.RPCPelotonV0HostServiceName,
-			server: (*pbv0hostsvc.HostServiceYARPCServer)(nil),
-		},
-		// TODO: HostService v1 (not implemented in Peloton)
-		// Private Event Stream Service doesn't actually accept calls from
-		// api server. It inspects RPC caller's service name and only accepts from
-		// peloton-jobmgr, peloton-resmgr. This is okay because we do not
-		// actually expected these daemons to contact each other through the
-		// api server.
-		{
-			name:   common.RPCPelotonPrivateEventStreamServiceName,
-			server: (*pbprivateeventstreamsvc.EventStreamServiceYARPCServer)(nil),
-		},
-		{
-			name:   common.RPCPelotonPrivateHostServiceName,
-			server: (*pbprivatehostsvc.InternalHostServiceYARPCServer)(nil),
-		},
-		{
-			name:   common.RPCPelotonPrivateV1AlphaHostManagerServiceName,
-			server: (*pbprivatehostmgrsvc.HostManagerServiceYARPCServer)(nil),
-		},
-	}
+	procedures :=
+		pbv0hostsvc.BuildHostServiceYARPCProcedures(nil)
+	procedures = append(
+		procedures,
+		pbv1alphahostsvc.BuildHostServiceYARPCProcedures(nil)...,
+	)
+	// Private Event Stream Service doesn't actually accept calls from api
+	// server. It inspects RPC caller's service name and only accepts from
+	// peloton-jobmgr, peloton-resmgr. This is okay because we do not actually
+	// expect these daemons to contact each other through the api server.
+	procedures = append(
+		procedures,
+		pbprivateeventstreamsvc.BuildEventStreamServiceYARPCProcedures(nil)...,
+	)
+	procedures = append(
+		procedures,
+		pbprivatehostsvc.BuildInternalHostServiceYARPCProcedures(nil)...,
+	)
+	procedures = append(
+		procedures,
+		pbprivatehostmgrsvc.BuildHostManagerServiceYARPCProcedures(nil)...,
+	)
 
-	return buildProcedures(rpcServers, common.PelotonHostManager, outbound)
+	return convertProcedures(
+		procedures,
+		common.PelotonHostManager,
+		outbounds,
+	)
 }
 
-// BuildResourceManagerProcedures builds forwarding procedures for
-// services handled by Resource Manager. The outbound must connect to the
-// Resource Manager leader.
-// TODO: refactor to use the BuildYARPCProcedures code machine-generated from
-// protobuf files.
+// BuildResourceManagerProcedures builds forwarding procedures for services
+// handled by Resource Manager. The outbounds must connect to the Resource
+// Manager leader.
 func BuildResourceManagerProcedures(
-	outbound transport.UnaryOutbound,
+	outbounds transport.Outbounds,
 ) []transport.Procedure {
-	rpcServers := []rpcService{
-		{
-			name:   common.RPCPelotonV0ResourceManagerName,
-			server: (*pbv0resmgr.ResourceManagerYARPCServer)(nil),
-		},
-		// TODO: ResourcePoolService v0 (not implemented in Peloton)
-		// TODO: ResourcePoolService v1 (not implemented in Peloton)
-		// TODO: TaskQueue Private (not implemented in Peloton)
-		{
-			name:   common.RPCPelotonPrivateResourceManagerServiceName,
-			server: (*pbprivateresmgrsvc.ResourceManagerServiceYARPCServer)(nil),
-		},
-	}
+	procedures :=
+		pbv0resmgr.BuildResourceManagerYARPCProcedures(nil)
+	procedures = append(
+		procedures,
+		pbprivateresmgrsvc.BuildResourceManagerServiceYARPCProcedures(nil)...,
+	)
+	procedures = append(
+		procedures,
+		pbv0respoolsvc.BuildResourcePoolServiceYARPCProcedures(nil)...,
+	)
+	procedures = append(
+		procedures,
+		pbv1alpharespoolsvc.BuildResourcePoolServiceYARPCProcedures(nil)...,
+	)
+	procedures = append(
+		procedures,
+		pbprivatetaskqueue.BuildTaskQueueYARPCProcedures(nil)...,
+	)
 
-	return buildProcedures(rpcServers, common.PelotonResourceManager, outbound)
+	return convertProcedures(
+		procedures,
+		common.PelotonResourceManager,
+		outbounds,
+	)
 }
 
-func buildProcedures(
-	rpcServices []rpcService,
+func convertProcedures(
+	procedures []transport.Procedure,
 	pelotonApplication string,
-	outbound transport.UnaryOutbound,
+	outbounds transport.Outbounds,
 ) []transport.Procedure {
-	var procedures []transport.Procedure
-
-	for _, service := range rpcServices {
-		ct := reflect.TypeOf(service.server).Elem()
-		for i := 0; i < ct.NumMethod(); i++ {
-			for _, encoding := range _encodingTypes {
-				name := createProcedureName(service.name, ct.Method(i).Name)
-				p := buildProcedure(
-					name,
-					pelotonApplication,
-					outbound,
-					encoding,
-				)
-				procedures = append(procedures, p)
-			}
+	convertedProcedures := make([]transport.Procedure, 0, len(procedures))
+	for _, p := range procedures {
+		handlerSpec := transport.NewUnaryHandlerSpec(
+			forward.NewUnaryForward(outbounds.Unary, pelotonApplication),
+		)
+		if p.HandlerSpec.Type() == transport.Streaming {
+			handlerSpec = transport.NewStreamHandlerSpec(
+				forward.NewStreamForward(outbounds.Stream, pelotonApplication),
+			)
 		}
+		cp := transport.Procedure{
+			Name:        p.Name,
+			HandlerSpec: handlerSpec,
+			Encoding:    p.Encoding,
+		}
+		convertedProcedures = append(convertedProcedures, cp)
 	}
-	return procedures
-}
-
-// buildProcedure builds procedure with given procedure name and outbound.
-func buildProcedure(
-	procedureName, overrideService string,
-	outbound transport.UnaryOutbound,
-	encoding transport.Encoding,
-) transport.Procedure {
-	return transport.Procedure{
-		Name: procedureName,
-		HandlerSpec: transport.NewUnaryHandlerSpec(
-			forward.NewUnaryForward(outbound, overrideService),
-		),
-		Encoding: encoding,
-	}
-}
-
-// createProcedureName creates a full procedure name with given service and
-// method.
-func createProcedureName(service, method string) string {
-	return fmt.Sprintf(_procedureNameTemplate, service, method)
+	return convertedProcedures
 }

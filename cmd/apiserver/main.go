@@ -220,13 +220,16 @@ func main() {
 	// Add all required outbounds.
 	outbounds := yarpc.Outbounds{
 		common.PelotonResourceManager: transport.Outbounds{
-			Unary: resmgrOutbound,
+			Unary:  resmgrOutbound,
+			Stream: resmgrOutbound,
 		},
 		common.PelotonHostManager: transport.Outbounds{
-			Unary: hostmgrOutbound,
+			Unary:  hostmgrOutbound,
+			Stream: hostmgrOutbound,
 		},
 		common.PelotonJobManager: transport.Outbounds{
-			Unary: jobmgrOutbound,
+			Unary:  jobmgrOutbound,
+			Stream: jobmgrOutbound,
 		},
 	}
 
@@ -279,9 +282,24 @@ func main() {
 
 	// Register service procedures in dispatcher.
 	var procedures []transport.Procedure
-	procedures = append(procedures, apiserver.BuildHostManagerProcedures(hostmgrOutbound)...)
-	procedures = append(procedures, apiserver.BuildJobManagerProcedures(jobmgrOutbound)...)
-	procedures = append(procedures, apiserver.BuildResourceManagerProcedures(resmgrOutbound)...)
+	procedures = append(
+		procedures,
+		apiserver.BuildHostManagerProcedures(
+			outbounds[common.PelotonHostManager],
+		)...,
+	)
+	procedures = append(
+		procedures,
+		apiserver.BuildJobManagerProcedures(
+			outbounds[common.PelotonJobManager],
+		)...,
+	)
+	procedures = append(
+		procedures,
+		apiserver.BuildResourceManagerProcedures(
+			outbounds[common.PelotonResourceManager],
+		)...,
+	)
 	dispatcher.Register(procedures)
 
 	for _, p := range procedures {

@@ -19,35 +19,25 @@ import (
 
 	pbv0hostsvc "github.com/uber/peloton/.gen/peloton/api/v0/host/svc"
 	pbv0jobmgr "github.com/uber/peloton/.gen/peloton/api/v0/job"
+	pbv0jobsvc "github.com/uber/peloton/.gen/peloton/api/v0/job/svc"
 	pbv0resmgr "github.com/uber/peloton/.gen/peloton/api/v0/respool"
+	pbv0respoolsvc "github.com/uber/peloton/.gen/peloton/api/v0/respool/svc"
 	pbv0taskmgr "github.com/uber/peloton/.gen/peloton/api/v0/task"
+	pbv0tasksvc "github.com/uber/peloton/.gen/peloton/api/v0/task/svc"
 	pbv0updatesvc "github.com/uber/peloton/.gen/peloton/api/v0/update/svc"
 	pbv0volumesvc "github.com/uber/peloton/.gen/peloton/api/v0/volume/svc"
-	pbv1adminsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/admin/svc"
-	pbv1jobstatelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
-	pbv1podsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
-	pbv1watchsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/watch/svc"
+	pbv1alphaadminsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/admin/svc"
+	pbv1alphahostsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/host/svc"
+	pbv1alphajobstatelesssvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless/svc"
+	pbv1alphapodsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod/svc"
+	pbv1alpharespoolsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/respool/svc"
+	pbv1alphawatchsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/watch/svc"
 	pbprivateeventstreamsvc "github.com/uber/peloton/.gen/peloton/private/eventstream/v1alpha/eventstreamsvc"
 	pbprivatehostsvc "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	pbprivatehostmgrsvc "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc"
 	pbprivatejobmgrsvc "github.com/uber/peloton/.gen/peloton/private/jobmgrsvc"
+	pbprivatetaskqueue "github.com/uber/peloton/.gen/peloton/private/resmgr/taskqueue"
 	pbprivateresmgrsvc "github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
-
-	"github.com/uber/peloton/pkg/common/v1alpha/eventstream"
-	"github.com/uber/peloton/pkg/hostmgr"
-	"github.com/uber/peloton/pkg/hostmgr/hostsvc"
-	"github.com/uber/peloton/pkg/hostmgr/p2k/hostmgrsvc"
-	"github.com/uber/peloton/pkg/jobmgr/adminsvc"
-	"github.com/uber/peloton/pkg/jobmgr/jobsvc"
-	"github.com/uber/peloton/pkg/jobmgr/jobsvc/private"
-	"github.com/uber/peloton/pkg/jobmgr/jobsvc/stateless"
-	"github.com/uber/peloton/pkg/jobmgr/podsvc"
-	"github.com/uber/peloton/pkg/jobmgr/tasksvc"
-	"github.com/uber/peloton/pkg/jobmgr/updatesvc"
-	"github.com/uber/peloton/pkg/jobmgr/volumesvc"
-	"github.com/uber/peloton/pkg/jobmgr/watchsvc"
-	"github.com/uber/peloton/pkg/resmgr"
-	"github.com/uber/peloton/pkg/resmgr/respool/respoolsvc"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
@@ -59,46 +49,16 @@ import (
 type ProceduresTestSuite struct {
 	suite.Suite
 
-	ctrl              *gomock.Controller
-	mockUnaryOutbound *transporttest.MockUnaryOutbound
-
-	adminSvcHandler         pbv1adminsvc.AdminServiceYARPCServer
-	jobmgrHandler           pbv0jobmgr.JobManagerYARPCServer
-	privatejobMgrSvcHandler pbprivatejobmgrsvc.JobManagerServiceYARPCServer
-	statelessSvcHandler     pbv1jobstatelesssvc.JobServiceYARPCServer
-	podSvcHandler           pbv1podsvc.PodServiceYARPCServer
-	taskmgrHandler          pbv0taskmgr.TaskManagerYARPCServer
-	updateSvcHandler        pbv0updatesvc.UpdateServiceYARPCServer
-	volumeSvcHandler        pbv0volumesvc.VolumeServiceYARPCServer
-	watchSvcHandler         pbv1watchsvc.WatchServiceYARPCServer
-	hostSvcV0Handler        pbv0hostsvc.HostServiceYARPCServer
-	eventstreamSvcHandler   pbprivateeventstreamsvc.EventStreamServiceYARPCServer
-	privateHostSvcHandler   pbprivatehostsvc.InternalHostServiceYARPCServer
-	hostMgrSvcHandler       pbprivatehostmgrsvc.HostManagerServiceYARPCServer
-
-	resmgrHandler    pbv0resmgr.ResourceManagerYARPCServer
-	resmgrSvcHandler pbprivateresmgrsvc.ResourceManagerServiceYARPCServer
+	ctrl               *gomock.Controller
+	mockUnaryOutbound  *transporttest.MockUnaryOutbound
+	mockStreamOutbound *transporttest.MockStreamOutbound
 }
 
 // SetupTest is setup function for each test in this suite.
 func (suite *ProceduresTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.mockUnaryOutbound = transporttest.NewMockUnaryOutbound(suite.ctrl)
-	suite.adminSvcHandler = adminsvc.NewTestServiceHandler()
-	suite.jobmgrHandler = jobsvc.NewTestServiceHandler()
-	suite.privatejobMgrSvcHandler = private.NewTestServiceHandler()
-	suite.statelessSvcHandler = stateless.NewTestServiceHandler()
-	suite.podSvcHandler = podsvc.NewTestServiceHandler()
-	suite.taskmgrHandler = tasksvc.NewTestServiceHandler()
-	suite.updateSvcHandler = updatesvc.NewTestServiceHandler()
-	suite.volumeSvcHandler = volumesvc.NewTestServiceHandler()
-	suite.watchSvcHandler = watchsvc.NewTestServiceHandler()
-	suite.hostSvcV0Handler = hostsvc.NewTestServiceHandler()
-	suite.eventstreamSvcHandler = eventstream.NewTestHandler()
-	suite.privateHostSvcHandler = hostmgr.NewTestServiceHandler()
-	suite.hostMgrSvcHandler = hostmgrsvc.NewTestServiceHandler()
-	suite.resmgrHandler = respoolsvc.NewTestServiceHandler()
-	suite.resmgrSvcHandler = resmgr.NewTestServiceHandler()
+	suite.mockStreamOutbound = transporttest.NewMockStreamOutbound(suite.ctrl)
 }
 
 // TearDownTest is teardown function for each test in this suite.
@@ -114,56 +74,52 @@ func TestProceduresTestSuite(t *testing.T) {
 // TestBuildJobManagerProcedures tests building Peloton Host Manager procedures.
 func (suite *ProceduresTestSuite) TestBuildJobManagerProcedures() {
 	expectedProcedures :=
-		pbv0jobmgr.BuildJobManagerYARPCProcedures(suite.jobmgrHandler)
-	expectedProcedures =
-		append(
-			expectedProcedures,
-			pbv0taskmgr.BuildTaskManagerYARPCProcedures(
-				suite.taskmgrHandler,
-			)...,
-		)
-	expectedProcedures =
-		append(expectedProcedures,
-			pbv0updatesvc.BuildUpdateServiceYARPCProcedures(
-				suite.updateSvcHandler,
-			)...,
-		)
-	expectedProcedures =
-		append(expectedProcedures,
-			pbv0volumesvc.BuildVolumeServiceYARPCProcedures(
-				suite.volumeSvcHandler)...,
-		)
-	expectedProcedures =
-		append(expectedProcedures,
-			pbv1adminsvc.BuildAdminServiceYARPCProcedures(
-				suite.adminSvcHandler,
-			)...,
-		)
-	expectedProcedures =
-		append(expectedProcedures,
-			pbv1jobstatelesssvc.BuildJobServiceYARPCProcedures(
-				suite.statelessSvcHandler,
-			)...,
-		)
-	expectedProcedures =
-		append(expectedProcedures,
-			pbv1podsvc.BuildPodServiceYARPCProcedures(
-				suite.podSvcHandler,
-			)...,
-		)
-	expectedProcedures =
-		append(expectedProcedures,
-			pbv1watchsvc.BuildWatchServiceYARPCProcedures(
-				suite.watchSvcHandler,
-			)...,
-		)
-	expectedProcedures = append(expectedProcedures,
-		pbprivatejobmgrsvc.BuildJobManagerServiceYARPCProcedures(
-			suite.privatejobMgrSvcHandler,
-		)...,
+		pbv0jobmgr.BuildJobManagerYARPCProcedures(nil)
+	expectedProcedures = append(
+		expectedProcedures,
+		pbv0jobsvc.BuildJobServiceYARPCProcedures(nil)...,
+	)
+	expectedProcedures = append(
+		expectedProcedures,
+		pbv0taskmgr.BuildTaskManagerYARPCProcedures(nil)...,
+	)
+	expectedProcedures = append(
+		expectedProcedures,
+		pbv0tasksvc.BuildTaskServiceYARPCProcedures(nil)...,
+	)
+	expectedProcedures = append(
+		expectedProcedures,
+		pbv0updatesvc.BuildUpdateServiceYARPCProcedures(nil)...,
+	)
+	expectedProcedures = append(
+		expectedProcedures,
+		pbv0volumesvc.BuildVolumeServiceYARPCProcedures(nil)...,
+	)
+	expectedProcedures = append(
+		expectedProcedures,
+		pbv1alphaadminsvc.BuildAdminServiceYARPCProcedures(nil)...,
+	)
+	expectedProcedures = append(
+		expectedProcedures,
+		pbv1alphajobstatelesssvc.BuildJobServiceYARPCProcedures(nil)...,
+	)
+	expectedProcedures = append(
+		expectedProcedures,
+		pbv1alphapodsvc.BuildPodServiceYARPCProcedures(nil)...,
+	)
+	expectedProcedures = append(
+		expectedProcedures,
+		pbv1alphawatchsvc.BuildWatchServiceYARPCProcedures(nil)...,
+	)
+	expectedProcedures = append(
+		expectedProcedures,
+		pbprivatejobmgrsvc.BuildJobManagerServiceYARPCProcedures(nil)...,
 	)
 
-	procedures := BuildJobManagerProcedures(suite.mockUnaryOutbound)
+	procedures := BuildJobManagerProcedures(transport.Outbounds{
+		Unary:  suite.mockUnaryOutbound,
+		Stream: suite.mockStreamOutbound,
+	})
 
 	suite.Equal(len(expectedProcedures), len(procedures))
 
@@ -194,30 +150,28 @@ func (suite *ProceduresTestSuite) TestBuildJobManagerProcedures() {
 // procedures.
 func (suite *ProceduresTestSuite) TestBuildHostManagerProcedures() {
 	expectedProcedures :=
-		pbv0hostsvc.BuildHostServiceYARPCProcedures(suite.hostSvcV0Handler)
-	expectedProcedures =
-		append(
-			expectedProcedures,
-			pbprivateeventstreamsvc.BuildEventStreamServiceYARPCProcedures(
-				suite.eventstreamSvcHandler,
-			)...,
-		)
-	expectedProcedures =
-		append(
-			expectedProcedures,
-			pbprivatehostsvc.BuildInternalHostServiceYARPCProcedures(
-				suite.privateHostSvcHandler,
-			)...,
-		)
-	expectedProcedures =
-		append(
-			expectedProcedures,
-			pbprivatehostmgrsvc.BuildHostManagerServiceYARPCProcedures(
-				suite.hostMgrSvcHandler,
-			)...,
-		)
+		pbv0hostsvc.BuildHostServiceYARPCProcedures(nil)
+	expectedProcedures = append(
+		expectedProcedures,
+		pbv1alphahostsvc.BuildHostServiceYARPCProcedures(nil)...,
+	)
+	expectedProcedures = append(
+		expectedProcedures,
+		pbprivateeventstreamsvc.BuildEventStreamServiceYARPCProcedures(nil)...,
+	)
+	expectedProcedures = append(
+		expectedProcedures,
+		pbprivatehostsvc.BuildInternalHostServiceYARPCProcedures(nil)...,
+	)
+	expectedProcedures = append(
+		expectedProcedures,
+		pbprivatehostmgrsvc.BuildHostManagerServiceYARPCProcedures(nil)...,
+	)
 
-	procedures := BuildHostManagerProcedures(suite.mockUnaryOutbound)
+	procedures := BuildHostManagerProcedures(transport.Outbounds{
+		Unary:  suite.mockUnaryOutbound,
+		Stream: suite.mockStreamOutbound,
+	})
 
 	suite.Equal(len(expectedProcedures), len(procedures))
 
@@ -248,16 +202,28 @@ func (suite *ProceduresTestSuite) TestBuildHostManagerProcedures() {
 // procedures.
 func (suite *ProceduresTestSuite) TestBuildResourceManagerProcedures() {
 	expectedProcedures :=
-		pbv0resmgr.BuildResourceManagerYARPCProcedures(suite.resmgrHandler)
-	expectedProcedures =
-		append(
-			expectedProcedures,
-			pbprivateresmgrsvc.BuildResourceManagerServiceYARPCProcedures(
-				suite.resmgrSvcHandler,
-			)...,
-		)
+		pbv0resmgr.BuildResourceManagerYARPCProcedures(nil)
+	expectedProcedures = append(
+		expectedProcedures,
+		pbprivateresmgrsvc.BuildResourceManagerServiceYARPCProcedures(nil)...,
+	)
+	expectedProcedures = append(
+		expectedProcedures,
+		pbv0respoolsvc.BuildResourcePoolServiceYARPCProcedures(nil)...,
+	)
+	expectedProcedures = append(
+		expectedProcedures,
+		pbv1alpharespoolsvc.BuildResourcePoolServiceYARPCProcedures(nil)...,
+	)
+	expectedProcedures = append(
+		expectedProcedures,
+		pbprivatetaskqueue.BuildTaskQueueYARPCProcedures(nil)...,
+	)
 
-	procedures := BuildResourceManagerProcedures(suite.mockUnaryOutbound)
+	procedures := BuildResourceManagerProcedures(transport.Outbounds{
+		Unary:  suite.mockUnaryOutbound,
+		Stream: suite.mockStreamOutbound,
+	})
 
 	suite.Equal(len(expectedProcedures), len(procedures))
 
