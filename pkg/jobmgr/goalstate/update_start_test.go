@@ -333,9 +333,10 @@ func (suite *UpdateStartTestSuite) TestUpdateStartWriteProgressFail() {
 			JobVersion: suite.jobConfig.ChangeLog.Version,
 		}).AnyTimes()
 
-	suite.cachedUpdate.EXPECT().
-		WriteProgress(
+	suite.cachedJob.EXPECT().
+		WriteWorkflowProgress(
 			gomock.Any(),
+			suite.updateID,
 			pbupdate.State_ROLLING_FORWARD,
 			[]uint32{},
 			[]uint32{},
@@ -430,9 +431,10 @@ func (suite *UpdateStartTestSuite) TestUpdateContainsUnchangedInstance() {
 			}
 		}).Return(nil, nil, nil)
 
-	suite.cachedUpdate.EXPECT().
-		WriteProgress(
+	suite.cachedJob.EXPECT().
+		WriteWorkflowProgress(
 			gomock.Any(),
+			suite.updateID,
 			pbupdate.State_ROLLING_FORWARD,
 			[]uint32{},
 			[]uint32{},
@@ -580,9 +582,10 @@ func (suite *UpdateStartTestSuite) TestUpdateStart_NoUnchangedInstance() {
 			JobVersion: suite.jobConfig.ChangeLog.Version,
 		}).AnyTimes()
 
-	suite.cachedUpdate.EXPECT().
-		WriteProgress(
+	suite.cachedJob.EXPECT().
+		WriteWorkflowProgress(
 			gomock.Any(),
+			suite.updateID,
 			pbupdate.State_ROLLING_FORWARD,
 			[]uint32{},
 			[]uint32{},
@@ -719,9 +722,10 @@ func (suite *UpdateStartTestSuite) TestUpdateWorkflowUpdate() {
 			JobVersion: suite.jobConfig.ChangeLog.Version,
 		}).AnyTimes()
 
-	suite.cachedUpdate.EXPECT().
-		WriteProgress(
+	suite.cachedJob.EXPECT().
+		WriteWorkflowProgress(
 			gomock.Any(),
+			suite.updateID,
 			pbupdate.State_ROLLING_FORWARD,
 			[]uint32{},
 			[]uint32{},

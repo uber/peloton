@@ -140,6 +140,7 @@ func UpdateRun(ctx context.Context, entity goalstate.Entity) error {
 
 	if err := writeUpdateProgress(
 		ctx,
+		cachedJob,
 		cachedWorkflow,
 		cachedWorkflow.GetState().State,
 		instancesDone,
@@ -204,8 +205,9 @@ func processFailedUpdate(
 		!isUpdateRollback(cachedUpdate) {
 		// write the progress first, because when rollback happens,
 		// workflow does not know the newly finished/failed instances.
-		cachedUpdate.WriteProgress(
+		cachedJob.WriteWorkflowProgress(
 			ctx,
+			cachedUpdate.ID(),
 			cachedUpdate.GetState().State,
 			instancesDone,
 			instancesFailed,
@@ -250,8 +252,9 @@ func processFailedUpdate(
 			"job_id":    cachedJob.ID().GetValue(),
 		}).Info("update rolling back")
 	} else {
-		if err := cachedUpdate.WriteProgress(
+		if err := cachedJob.WriteWorkflowProgress(
 			ctx,
+			cachedUpdate.ID(),
 			pbupdate.State_FAILED,
 			instancesDone,
 			instancesFailed,
@@ -348,6 +351,7 @@ func isTaskTerminated(runtime *pbtask.RuntimeInfo) bool {
 
 func writeUpdateProgress(
 	ctx context.Context,
+	cachedJob cached.Job,
 	cachedUpdate cached.Update,
 	updateState pbupdate.State,
 	instancesDone []uint32,
@@ -361,8 +365,9 @@ func writeUpdateProgress(
 	newInstancesCurrent = append(newInstancesCurrent, instancesUpdated...)
 	newInstancesCurrent = append(newInstancesCurrent, instancesRemoved...)
 	// update the state of the job update
-	return cachedUpdate.WriteProgress(
+	return cachedJob.WriteWorkflowProgress(
 		ctx,
+		cachedUpdate.ID(),
 		updateState,
 		instancesDone,
 		instancesFailed,

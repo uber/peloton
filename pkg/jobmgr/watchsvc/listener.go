@@ -20,6 +20,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	v1peloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+	"github.com/uber/peloton/.gen/peloton/private/models"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber/peloton/pkg/common/api"
@@ -46,12 +47,13 @@ func (l WatchListener) Name() string {
 	return _listenerName
 }
 
-// JobRuntimeChanged is invoked when the runtime for a job is updated
+// JobSummaryChanged is invoked when the runtime for a job is updated
 // in cache and persistent store.
-func (l WatchListener) JobRuntimeChanged(
+func (l WatchListener) JobSummaryChanged(
 	jobID *v0peloton.JobID,
 	jobType job.JobType,
-	runtime *job.RuntimeInfo,
+	jobSummary *job.JobSummary,
+	updateInfo *models.UpdateModel,
 ) {
 	// TODO(kevinxu): to be implemented
 }

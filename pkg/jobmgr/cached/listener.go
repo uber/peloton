@@ -18,6 +18,7 @@ import (
 	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/private/models"
 )
 
 // JobTaskListener defines an interface that must to be implemented by
@@ -39,12 +40,13 @@ type JobTaskListener interface {
 	// Name returns a user-friendly name for the listener
 	Name() string
 
-	// JobRuntimeChanged is invoked when the runtime for a job is updated
+	// JobSummaryChanged is invoked when the runtime for a job is updated
 	// in cache and persistent store.
-	JobRuntimeChanged(
+	JobSummaryChanged(
 		jobID *peloton.JobID,
 		jobType pbjob.JobType,
-		runtime *pbjob.RuntimeInfo,
+		jobSummary *pbjob.JobSummary,
+		updateInfo *models.UpdateModel,
 	)
 
 	// TaskRuntimeChanged is invoked when the runtime for a task is updated

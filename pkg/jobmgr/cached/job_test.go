@@ -229,9 +229,12 @@ func (suite *jobTestSuite) checkListeners() {
 	suite.NotZero(len(suite.listeners))
 	for i, l := range suite.listeners {
 		msg := fmt.Sprintf("Listener %d", i)
+		jobSummary, updateInfo := suite.job.generateJobSummaryFromCache(suite.job.runtime, suite.job.runtime.GetUpdateID())
+
 		suite.Equal(suite.jobID, l.jobID, msg)
 		suite.Equal(suite.job.GetJobType(), l.jobType, msg)
-		suite.Equal(suite.job.runtime, l.jobRuntime, msg)
+		suite.Equal(jobSummary, l.jobSummary, msg)
+		suite.Equal(updateInfo, l.updateInfo, msg)
 	}
 }
 
@@ -241,7 +244,8 @@ func (suite *jobTestSuite) checkListenersNotCalled() {
 	for i, l := range suite.listeners {
 		msg := fmt.Sprintf("Listener %d", i)
 		suite.Nil(l.jobID, msg)
-		suite.Nil(l.jobRuntime, msg)
+		suite.Nil(l.jobSummary, msg)
+		suite.Nil(l.updateInfo, msg)
 	}
 }
 

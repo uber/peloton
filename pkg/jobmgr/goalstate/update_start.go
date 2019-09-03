@@ -223,8 +223,9 @@ func UpdateStart(ctx context.Context, entity goalstate.Entity) error {
 	}
 
 	// update the state of the job update
-	if err = cachedWorkflow.WriteProgress(
+	if err = cachedJob.WriteWorkflowProgress(
 		ctx,
+		updateEnt.id,
 		update.State_ROLLING_FORWARD,
 		[]uint32{},
 		[]uint32{},

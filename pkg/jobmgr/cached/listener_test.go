@@ -18,25 +18,29 @@ import (
 	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/private/models"
 )
 
 type FakeJobListener struct {
 	jobID      *peloton.JobID
 	jobType    pbjob.JobType
-	jobRuntime *pbjob.RuntimeInfo
+	jobSummary *pbjob.JobSummary
+	updateInfo *models.UpdateModel
 }
 
 func (l *FakeJobListener) Name() string {
 	return "fake_job_listener"
 }
 
-func (l *FakeJobListener) JobRuntimeChanged(
+func (l *FakeJobListener) JobSummaryChanged(
 	jobID *peloton.JobID,
 	jobType pbjob.JobType,
-	runtime *pbjob.RuntimeInfo) {
+	jobSummary *pbjob.JobSummary,
+	updateInfo *models.UpdateModel) {
 	l.jobID = jobID
 	l.jobType = jobType
-	l.jobRuntime = runtime
+	l.jobSummary = jobSummary
+	l.updateInfo = updateInfo
 }
 
 func (l *FakeJobListener) TaskRuntimeChanged(
@@ -50,7 +54,8 @@ func (l *FakeJobListener) TaskRuntimeChanged(
 
 func (l *FakeJobListener) Reset() {
 	l.jobID = nil
-	l.jobRuntime = nil
+	l.jobSummary = nil
+	l.updateInfo = nil
 }
 
 type FakeTaskListener struct {
@@ -65,10 +70,11 @@ func (l *FakeTaskListener) Name() string {
 	return "fake_task_listener"
 }
 
-func (l *FakeTaskListener) JobRuntimeChanged(
+func (l *FakeTaskListener) JobSummaryChanged(
 	jobID *peloton.JobID,
 	jobType pbjob.JobType,
-	runtime *pbjob.RuntimeInfo) {
+	jobSummary *pbjob.JobSummary,
+	updateInfo *models.UpdateModel) {
 }
 
 func (l *FakeTaskListener) TaskRuntimeChanged(

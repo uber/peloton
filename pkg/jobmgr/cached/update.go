@@ -135,6 +135,12 @@ type Update interface {
 
 	GetWorkflowType() models.WorkflowType
 
+	// GetJobVersion returns job configuration version
+	GetJobVersion() uint64
+
+	// GetJobPrevVersion returns previous job configuration version
+	GetJobPrevVersion() uint64
+
 	// IsTaskInUpdateProgress returns true if a given task is
 	// in progress for the given update, else returns false
 	IsTaskInUpdateProgress(instanceID uint32) bool
@@ -850,6 +856,20 @@ func (u *update) GetWorkflowType() models.WorkflowType {
 	defer u.RUnlock()
 
 	return u.workflowType
+}
+
+func (u *update) GetJobVersion() uint64 {
+	u.RLock()
+	defer u.RUnlock()
+
+	return u.jobVersion
+}
+
+func (u *update) GetJobPrevVersion() uint64 {
+	u.RLock()
+	defer u.RUnlock()
+
+	return u.jobPrevVersion
 }
 
 // IsTaskInUpdateProgress returns true if a given task is

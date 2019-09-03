@@ -114,8 +114,9 @@ func UpdateComplete(ctx context.Context, entity goalstate.Entity) error {
 		completeState = pbupdate.State_ROLLED_BACK
 	}
 
-	if err := cachedWorkflow.WriteProgress(
+	if err := cachedJob.WriteWorkflowProgress(
 		ctx,
+		updateEnt.id,
 		completeState,
 		cachedWorkflow.GetInstancesDone(),
 		cachedWorkflow.GetInstancesFailed(),
@@ -231,8 +232,9 @@ func UpdateWriteProgress(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	err = cachedWorkflow.WriteProgress(
+	err = cachedJob.WriteWorkflowProgress(
 		ctx,
+		updateEnt.id,
 		cachedWorkflow.GetState().State,
 		append(cachedWorkflow.GetInstancesDone(), instancesDone...),
 		append(cachedWorkflow.GetInstancesFailed(), instancesFailed...),

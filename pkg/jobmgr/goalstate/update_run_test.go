@@ -201,6 +201,10 @@ func (suite *UpdateRunTestSuite) TestRunningUpdate() {
 		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
+
+	suite.cachedUpdate.EXPECT().
 		GetInstancesAdded().
 		Return(nil).
 		AnyTimes()
@@ -301,9 +305,10 @@ func (suite *UpdateRunTestSuite) TestRunningUpdate() {
 			State: pbupdate.State_ROLLING_FORWARD,
 		})
 
-	suite.cachedUpdate.EXPECT().
-		WriteProgress(
+	suite.cachedJob.EXPECT().
+		WriteWorkflowProgress(
 			gomock.Any(),
+			suite.updateID,
 			pbupdate.State_ROLLING_FORWARD,
 			[]uint32{3, 6},
 			[]uint32{},
@@ -517,9 +522,10 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateWithStartTasksOn() {
 			State: pbupdate.State_ROLLING_FORWARD,
 		})
 
-	suite.cachedUpdate.EXPECT().
-		WriteProgress(
+	suite.cachedJob.EXPECT().
+		WriteWorkflowProgress(
 			gomock.Any(),
+			suite.updateID,
 			pbupdate.State_ROLLING_FORWARD,
 			[]uint32{},
 			[]uint32{},
@@ -624,6 +630,10 @@ func (suite *UpdateRunTestSuite) TestRunningInPlaceUpdate() {
 			JobVersion: uint64(4),
 		}).
 		AnyTimes()
+
+	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
 
 	suite.cachedJob.EXPECT().
 		GetInstanceAvailabilityType(gomock.Any(), instancesTotal).
@@ -754,9 +764,10 @@ func (suite *UpdateRunTestSuite) TestRunningInPlaceUpdate() {
 			State: pbupdate.State_ROLLING_FORWARD,
 		})
 
-	suite.cachedUpdate.EXPECT().
-		WriteProgress(
+	suite.cachedJob.EXPECT().
+		WriteWorkflowProgress(
 			gomock.Any(),
+			suite.updateID,
 			pbupdate.State_ROLLING_FORWARD,
 			[]uint32{},
 			[]uint32{},
@@ -818,6 +829,10 @@ func (suite *UpdateRunTestSuite) TestCompletedUpdate() {
 		Return(&cached.UpdateStateVector{
 			State: pbupdate.State_ROLLING_FORWARD,
 		})
+
+	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesAdded().
@@ -895,9 +910,10 @@ func (suite *UpdateRunTestSuite) TestCompletedUpdate() {
 			State: pbupdate.State_ROLLING_FORWARD,
 		})
 
-	suite.cachedUpdate.EXPECT().
-		WriteProgress(
+	suite.cachedJob.EXPECT().
+		WriteWorkflowProgress(
 			gomock.Any(),
+			suite.updateID,
 			pbupdate.State_ROLLING_FORWARD,
 			[]uint32{2, 3, 4, 5},
 			instancesRemaining,
@@ -1047,6 +1063,10 @@ func (suite *UpdateRunTestSuite) TestUpdateProgressDBError() {
 		})
 
 	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
+
+	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().
 		Return(instancesTotal)
 
@@ -1094,9 +1114,10 @@ func (suite *UpdateRunTestSuite) TestUpdateProgressDBError() {
 			State: pbupdate.State_ROLLING_FORWARD,
 		})
 
-	suite.cachedUpdate.EXPECT().
-		WriteProgress(
+	suite.cachedJob.EXPECT().
+		WriteWorkflowProgress(
 			gomock.Any(),
+			suite.updateID,
 			pbupdate.State_ROLLING_FORWARD,
 			[]uint32{2, 3, 4, 5},
 			instancesRemaining,
@@ -1139,6 +1160,10 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningAddInstances() {
 		Return(&cached.UpdateStateVector{
 			State: pbupdate.State_ROLLING_FORWARD,
 		})
+
+	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
 
 	suite.cachedUpdate.EXPECT().
 		GetWorkflowType().
@@ -1244,14 +1269,15 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningAddInstances() {
 			State: pbupdate.State_ROLLING_FORWARD,
 		})
 
-	suite.cachedUpdate.EXPECT().
-		WriteProgress(
+	suite.cachedJob.EXPECT().
+		WriteWorkflowProgress(
 			gomock.Any(),
+			suite.updateID,
 			pbupdate.State_ROLLING_FORWARD,
 			gomock.Any(),
 			gomock.Any(),
 			gomock.Any()).
-		Do(func(_ context.Context, _ pbupdate.State,
+		Do(func(_ context.Context, _ *peloton.UpdateID, _ pbupdate.State,
 			instancesDone []uint32, instancesFailed []uint32, instancesCurrent []uint32) {
 			suite.EqualValues(instancesCurrent,
 				newSlice(oldInstanceNumber, oldInstanceNumber+batchSize))
@@ -1307,6 +1333,10 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningAddShrinkInstances() {
 		Return(&cached.UpdateStateVector{
 			State: pbupdate.State_ROLLING_FORWARD,
 		})
+
+	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
 
 	suite.cachedUpdate.EXPECT().
 		GetWorkflowType().
@@ -1425,14 +1455,15 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningAddShrinkInstances() {
 			State: pbupdate.State_ROLLING_FORWARD,
 		})
 
-	suite.cachedUpdate.EXPECT().
-		WriteProgress(
+	suite.cachedJob.EXPECT().
+		WriteWorkflowProgress(
 			gomock.Any(),
+			suite.updateID,
 			pbupdate.State_ROLLING_FORWARD,
 			gomock.Any(),
 			gomock.Any(),
 			gomock.Any()).
-		Do(func(_ context.Context, _ pbupdate.State,
+		Do(func(_ context.Context, _ *peloton.UpdateID, _ pbupdate.State,
 			instancesDone []uint32, instancesFailed []uint32, instancesCurrent []uint32) {
 			suite.EqualValues(instancesCurrent,
 				newSlice(oldInstanceNumber, oldInstanceNumber+batchSize))
@@ -1496,6 +1527,10 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningUpdateInstances() {
 		Return(&cached.UpdateStateVector{
 			State: pbupdate.State_ROLLING_FORWARD,
 		})
+
+	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
 
 	for _, instID := range newSlice(0, batchSize) {
 		suite.cachedJob.EXPECT().
@@ -1614,14 +1649,15 @@ func (suite *UpdateRunTestSuite) TestUpdateRunFullyRunningUpdateInstances() {
 			State: pbupdate.State_ROLLING_FORWARD,
 		})
 
-	suite.cachedUpdate.EXPECT().
-		WriteProgress(
+	suite.cachedJob.EXPECT().
+		WriteWorkflowProgress(
 			gomock.Any(),
+			suite.updateID,
 			pbupdate.State_ROLLING_FORWARD,
 			gomock.Any(),
 			gomock.Any(),
 			gomock.Any()).
-		Do(func(_ context.Context, _ pbupdate.State,
+		Do(func(_ context.Context, _ *peloton.UpdateID, _ pbupdate.State,
 			instancesDone []uint32, instancesFailed []uint32, instancesCurrent []uint32) {
 			suite.EqualValues(instancesCurrent,
 				newSlice(0, batchSize))
@@ -1677,6 +1713,10 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsKilledTaskUpdateInstances(
 		Return(&cached.UpdateStateVector{
 			State: pbupdate.State_ROLLING_FORWARD,
 		})
+
+	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
 
 	suite.cachedUpdate.EXPECT().
 		GetInstancesCurrent().
@@ -1770,14 +1810,15 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsKilledTaskUpdateInstances(
 			State: pbupdate.State_ROLLING_FORWARD,
 		})
 
-	suite.cachedUpdate.EXPECT().
-		WriteProgress(
+	suite.cachedJob.EXPECT().
+		WriteWorkflowProgress(
 			gomock.Any(),
+			suite.updateID,
 			pbupdate.State_ROLLING_FORWARD,
 			gomock.Any(),
 			gomock.Any(),
 			gomock.Any()).
-		Do(func(_ context.Context, _ pbupdate.State,
+		Do(func(_ context.Context, _ *peloton.UpdateID, _ pbupdate.State,
 			instancesDone []uint32, instancesFailed []uint32, instancesCurrent []uint32) {
 			suite.EqualValues(instancesCurrent,
 				newSlice(0, batchSize))
@@ -1849,6 +1890,10 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsTerminatedTaskInstances() 
 			State: pbupdate.State_ROLLING_FORWARD,
 		})
 
+	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
+
 	suite.cachedJob.EXPECT().
 		GetInstanceAvailabilityType(gomock.Any(), instancesUpdated).
 		Return(instanceAvailabilityMap)
@@ -1941,14 +1986,15 @@ func (suite *UpdateRunTestSuite) TestUpdateRunContainsTerminatedTaskInstances() 
 			State: pbupdate.State_ROLLING_FORWARD,
 		})
 
-	suite.cachedUpdate.EXPECT().
-		WriteProgress(
+	suite.cachedJob.EXPECT().
+		WriteWorkflowProgress(
 			gomock.Any(),
+			suite.updateID,
 			pbupdate.State_ROLLING_FORWARD,
 			gomock.Any(),
 			gomock.Any(),
 			gomock.Any()).
-		Do(func(_ context.Context, _ pbupdate.State,
+		Do(func(_ context.Context, _ *peloton.UpdateID, _ pbupdate.State,
 			instancesDone []uint32, instancesFailed []uint32, instancesCurrent []uint32) {
 			suite.EqualValues(instancesCurrent,
 				newSlice(0, batchSize))
@@ -2059,6 +2105,10 @@ func (suite *UpdateRunTestSuite) TestUpdateRunKilledJobAddInstances() {
 			BatchSize: batchSize,
 		}).AnyTimes()
 
+	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
+
 	suite.jobConfigOps.EXPECT().
 		Get(gomock.Any(), gomock.Any(), uint64(4)).
 		Return(
@@ -2119,14 +2169,15 @@ func (suite *UpdateRunTestSuite) TestUpdateRunKilledJobAddInstances() {
 			}, nil)
 	}
 
-	suite.cachedUpdate.EXPECT().
-		WriteProgress(
+	suite.cachedJob.EXPECT().
+		WriteWorkflowProgress(
 			gomock.Any(),
+			suite.updateID,
 			pbupdate.State_ROLLING_FORWARD,
 			gomock.Any(),
 			gomock.Any(),
 			gomock.Any()).
-		Do(func(_ context.Context, _ pbupdate.State,
+		Do(func(_ context.Context, _ *peloton.UpdateID, _ pbupdate.State,
 			instancesDone []uint32, instancesFailed []uint32, instancesCurrent []uint32) {
 			suite.EqualValues(instancesCurrent,
 				newSlice(oldInstanceNumber, oldInstanceNumber+batchSize))
@@ -2416,6 +2467,10 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRemoveInstances() {
 		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
+
+	suite.cachedUpdate.EXPECT().
 		GetInstancesAdded().
 		Return(nil).
 		AnyTimes()
@@ -2498,9 +2553,10 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRemoveInstances() {
 			State: pbupdate.State_ROLLING_FORWARD,
 		})
 
-	suite.cachedUpdate.EXPECT().
-		WriteProgress(
+	suite.cachedJob.EXPECT().
+		WriteWorkflowProgress(
 			gomock.Any(),
+			suite.updateID,
 			pbupdate.State_ROLLING_FORWARD,
 			gomock.Any(),
 			gomock.Any(),
@@ -2680,6 +2736,10 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateFailed() {
 		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
+
+	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
 		Return([]uint32{})
 
@@ -2725,9 +2785,10 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateFailed() {
 		GetInstancesRemoved().
 		Return([]uint32{})
 
-	suite.cachedUpdate.EXPECT().
-		WriteProgress(
+	suite.cachedJob.EXPECT().
+		WriteWorkflowProgress(
 			gomock.Any(),
+			suite.updateID,
 			pbupdate.State_FAILED,
 			newSlice(failedInstances, uint32(len(instancesTotal))),
 			newSlice(0, failedInstances),
@@ -2808,6 +2869,10 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRolledBack() {
 		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
+
+	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
 		Return([]uint32{})
 
@@ -2865,9 +2930,10 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRolledBack() {
 		}).
 		Times(2)
 
-	suite.cachedUpdate.EXPECT().
-		WriteProgress(
+	suite.cachedJob.EXPECT().
+		WriteWorkflowProgress(
 			gomock.Any(),
+			suite.updateID,
 			pbupdate.State_ROLLING_FORWARD,
 			gomock.Any(),
 			gomock.Any(),
@@ -2969,6 +3035,10 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRolledBackFail() {
 		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
+
+	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
 		Return([]uint32{})
 
@@ -3026,9 +3096,10 @@ func (suite *UpdateRunTestSuite) TestRunningUpdateRolledBackFail() {
 		}).
 		Times(2)
 
-	suite.cachedUpdate.EXPECT().
-		WriteProgress(
+	suite.cachedJob.EXPECT().
+		WriteWorkflowProgress(
 			gomock.Any(),
+			suite.updateID,
 			pbupdate.State_ROLLING_FORWARD,
 			gomock.Any(),
 			gomock.Any(),
@@ -3107,6 +3178,10 @@ func (suite *UpdateRunTestSuite) TestUpdateRollingBackFailed() {
 		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
+
+	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
 		Return([]uint32{})
 
@@ -3163,9 +3238,10 @@ func (suite *UpdateRunTestSuite) TestUpdateRollingBackFailed() {
 			State: pbupdate.State_ROLLING_BACKWARD,
 		})
 
-	suite.cachedUpdate.EXPECT().
-		WriteProgress(
+	suite.cachedJob.EXPECT().
+		WriteWorkflowProgress(
 			gomock.Any(),
+			suite.updateID,
 			pbupdate.State_FAILED,
 			newSlice(failedInstances, uint32(len(instancesTotal))),
 			newSlice(0, failedInstances),
@@ -3249,6 +3325,10 @@ func (suite *UpdateRunTestSuite) TestRunningUpdatePartialFailure() {
 		AnyTimes()
 
 	suite.cachedUpdate.EXPECT().
+		ID().
+		Return(suite.updateID)
+
+	suite.cachedUpdate.EXPECT().
 		GetInstancesFailed().
 		Return([]uint32{}).
 		AnyTimes()
@@ -3314,9 +3394,10 @@ func (suite *UpdateRunTestSuite) TestRunningUpdatePartialFailure() {
 			State: pbupdate.State_ROLLING_FORWARD,
 		})
 
-	suite.cachedUpdate.EXPECT().
-		WriteProgress(
+	suite.cachedJob.EXPECT().
+		WriteWorkflowProgress(
 			gomock.Any(),
+			suite.updateID,
 			pbupdate.State_ROLLING_FORWARD,
 			newSlice(failedInstances, uint32(len(instancesTotal))),
 			newSlice(0, failedInstances),

@@ -326,6 +326,17 @@ type WorkflowOps interface {
 
 	// GetAllWorkflows returns all workflows for the job
 	GetAllWorkflows() map[string]Update
+
+	// WriteWorkflowProgress updates the workflow status
+	// based on update id
+	WriteWorkflowProgress(
+		ctx context.Context,
+		updateID *peloton.UpdateID,
+		state pbupdate.State,
+		instancesDone []uint32,
+		instanceFailed []uint32,
+		instancesCurrent []uint32,
+	) error
 }
 
 // JobConfigCache is a union of JobConfig
@@ -367,6 +378,8 @@ type cachedConfig struct {
 	labels            []*peloton.Label        // Label of the job
 	name              string                  // Name of the job
 	placementStrategy pbjob.PlacementStrategy // Placement strategy
+	owner             string                  // Owner of the job in the job configuration
+	owningTeam        string                  // Owning team of the job in the job configuration
 }
 
 // job structure holds the information about a given active job
@@ -405,6 +418,11 @@ type job struct {
 
 	// instance availability information
 	instanceAvailabilityInfo *instanceAvailabilityInfo
+
+	// prevUpdateID and prevWorkflow keeps update cache from previous
+	// workflow in memory before clearing from workflows map.
+	prevUpdateID string
+	prevWorkflow *update
 }
 
 // instanceAvailabilityInfo holds the instance availability information of the job
@@ -673,13 +691,21 @@ func (j *job) Create(
 	configAddOn *models.ConfigAddOn,
 	spec *stateless.JobSpec,
 ) error {
-	var runtimeCopy *pbjob.RuntimeInfo
-	var jobType pbjob.JobType
+	var (
+		jobTypeCopy     pbjob.JobType
+		jobSummaryCopy  *pbjob.JobSummary
+		updateModelCopy *models.UpdateModel
+	)
 	// notify listeners after dropping the lock
 	defer func() {
-		j.jobFactory.notifyJobRuntimeChanged(j.ID(), jobType,
-			runtimeCopy)
+		j.jobFactory.notifyJobSummaryChanged(
+			j.ID(),
+			jobTypeCopy,
+			jobSummaryCopy,
+			updateModelCopy,
+		)
 	}()
+
 	j.Lock()
 	defer j.Unlock()
 
@@ -722,7 +748,7 @@ func (j *job) Create(
 		j.invalidateCache()
 		return err
 	}
-	jobType = j.jobType
+	jobTypeCopy = j.jobType
 
 	// both config and runtime are created, move the state to INITIALIZED
 	j.runtime.State = pbjob.JobState_INITIALIZED
@@ -744,7 +770,9 @@ func (j *job) Create(
 		return err
 	}
 
-	runtimeCopy = proto.Clone(j.runtime).(*pbjob.RuntimeInfo)
+	// create JobSummary and WorkflowStatus while we have the lock
+	jobSummaryCopy, updateModelCopy = j.generateJobSummaryFromCache(j.runtime, j.runtime.GetUpdateID())
+
 	return nil
 }
 
@@ -756,13 +784,19 @@ func (j *job) RollingCreate(
 	updateConfig *pbupdate.UpdateConfig,
 	opaqueData *peloton.OpaqueData,
 ) error {
-	var runtimeCopy *pbjob.RuntimeInfo
-	var jobType pbjob.JobType
-
+	var (
+		jobTypeCopy     pbjob.JobType
+		jobSummaryCopy  *pbjob.JobSummary
+		updateModelCopy *models.UpdateModel
+	)
 	// notify listeners after dropping the lock
 	defer func() {
-		j.jobFactory.notifyJobRuntimeChanged(j.ID(), jobType,
-			runtimeCopy)
+		j.jobFactory.notifyJobSummaryChanged(
+			j.ID(),
+			jobTypeCopy,
+			jobSummaryCopy,
+			updateModelCopy,
+		)
 	}()
 
 	j.Lock()
@@ -858,7 +892,7 @@ func (j *job) RollingCreate(
 		j.invalidateCache()
 		return err
 	}
-	jobType = j.jobType
+	jobTypeCopy = j.jobType
 
 	// both config and runtime are created, move the state to PENDING
 	j.runtime.State = pbjob.JobState_PENDING
@@ -882,7 +916,10 @@ func (j *job) RollingCreate(
 	}
 
 	j.workflows[updateID.GetValue()] = newWorkflow
-	runtimeCopy = proto.Clone(j.runtime).(*pbjob.RuntimeInfo)
+
+	// create JobSummary and WorkflowStatus while we have the lock
+	jobSummaryCopy, updateModelCopy = j.generateJobSummaryFromCache(j.runtime, updateID)
+
 	return nil
 }
 
@@ -891,13 +928,21 @@ func (j *job) CompareAndSetRuntime(ctx context.Context, jobRuntime *pbjob.Runtim
 		return nil, yarpcerrors.InvalidArgumentErrorf("unexpected nil jobRuntime")
 	}
 
-	var runtimeCopy *pbjob.RuntimeInfo
-	var jobType pbjob.JobType
+	var (
+		jobTypeCopy     pbjob.JobType
+		jobSummaryCopy  *pbjob.JobSummary
+		updateModelCopy *models.UpdateModel
+	)
 	// notify listeners after dropping the lock
 	defer func() {
-		j.jobFactory.notifyJobRuntimeChanged(j.ID(), jobType,
-			runtimeCopy)
+		j.jobFactory.notifyJobSummaryChanged(
+			j.ID(),
+			jobTypeCopy,
+			jobSummaryCopy,
+			updateModelCopy,
+		)
 	}()
+
 	j.Lock()
 	defer j.Unlock()
 
@@ -945,8 +990,10 @@ func (j *job) CompareAndSetRuntime(ctx context.Context, jobRuntime *pbjob.Runtim
 	}
 
 	j.runtime = &newRuntime
-	runtimeCopy = proto.Clone(j.runtime).(*pbjob.RuntimeInfo)
-	jobType = j.jobType
+	runtimeCopy := proto.Clone(j.runtime).(*pbjob.RuntimeInfo)
+	jobTypeCopy = j.jobType
+	jobSummaryCopy, updateModelCopy = j.generateJobSummaryFromCache(j.runtime, j.runtime.GetUpdateID())
+
 	return runtimeCopy, nil
 }
 
@@ -1054,13 +1101,21 @@ func (j *job) Update(
 	configAddOn *models.ConfigAddOn,
 	spec *stateless.JobSpec,
 	req UpdateRequest) error {
-	var runtimeCopy *pbjob.RuntimeInfo
-	var jobType pbjob.JobType
+	var (
+		jobTypeCopy     pbjob.JobType
+		jobSummaryCopy  *pbjob.JobSummary
+		updateModelCopy *models.UpdateModel
+	)
 	// notify listeners after dropping the lock
 	defer func() {
-		j.jobFactory.notifyJobRuntimeChanged(j.ID(), jobType,
-			runtimeCopy)
+		j.jobFactory.notifyJobSummaryChanged(
+			j.ID(),
+			jobTypeCopy,
+			jobSummaryCopy,
+			updateModelCopy,
+		)
 	}()
+
 	j.Lock()
 	defer j.Unlock()
 
@@ -1138,7 +1193,8 @@ func (j *job) Update(
 				j.invalidateCache()
 				return err
 			}
-			runtimeCopy = proto.Clone(j.runtime).(*pbjob.RuntimeInfo)
+
+			jobSummaryCopy, updateModelCopy = j.generateJobSummaryFromCache(j.runtime, j.runtime.GetUpdateID())
 		}
 
 		if updatedConfig != nil || updatedRuntime != nil {
@@ -1149,12 +1205,13 @@ func (j *job) Update(
 				updatedRuntime,
 			); err != nil {
 				j.invalidateCache()
-				runtimeCopy = nil
+				jobSummaryCopy = nil
+				updateModelCopy = nil
 				return err
 			}
 		}
 	}
-	jobType = j.jobType
+	jobTypeCopy = j.jobType
 	return nil
 }
 
@@ -1799,6 +1856,8 @@ func (j *job) populateJobConfigCache(config *pbjob.JobConfig) {
 	j.config.jobType = config.GetType()
 	j.jobType = j.config.jobType
 	j.config.placementStrategy = config.GetPlacementStrategy()
+	j.config.owner = config.GetOwner()
+	j.config.owningTeam = config.GetOwningTeam()
 }
 
 // getUpdatedJobRuntimeCache validates the runtime input and
@@ -2124,6 +2183,64 @@ func getInstanceAvailability(
 	return jobmgrcommon.InstanceAvailability_UNAVAILABLE
 }
 
+// generateJobSummaryFromCache returns:
+// - JobSummary by combining RuntimeInfo and fields from cached job config
+// - UpdateModel by converting update cache
+//
+// generateJobSummaryFromCache should only be called while holding the lock.
+func (j *job) generateJobSummaryFromCache(
+	runtime *pbjob.RuntimeInfo,
+	updateID *peloton.UpdateID,
+) (*pbjob.JobSummary, *models.UpdateModel) {
+	var s *pbjob.JobSummary
+	var um *models.UpdateModel
+
+	if runtime != nil && j.config != nil {
+		runtimeCopy := proto.Clone(runtime).(*pbjob.RuntimeInfo)
+
+		s = &pbjob.JobSummary{
+			Id:         j.ID(),
+			Runtime:    runtimeCopy,
+			Name:       j.config.GetName(),
+			Type:       j.config.jobType,
+			Owner:      j.config.GetOwner(),
+			OwningTeam: j.config.GetOwningTeam(),
+			// We are doing a swap of labels slice when populating
+			// from job config, simple get is sufficient.
+			Labels:        j.config.GetLabels(),
+			InstanceCount: j.config.GetInstanceCount(),
+			RespoolID:     j.config.GetRespoolID(),
+			SLA:           j.config.GetSLA(),
+		}
+	}
+
+	if updateID != nil {
+		var updateCache *update
+		if u, ok := j.workflows[updateID.GetValue()]; ok {
+			updateCache = u
+		} else if updateID.GetValue() == j.prevUpdateID {
+			updateCache = j.prevWorkflow
+		}
+
+		if updateCache != nil {
+			um = &models.UpdateModel{
+				Type:            updateCache.GetWorkflowType(),
+				State:           updateCache.GetState().State,
+				PrevState:       updateCache.GetPrevState(),
+				InstancesDone:   uint32(len(updateCache.GetInstancesDone())),
+				InstancesTotal:  uint32(len(updateCache.GetInstancesUpdated()) + len(updateCache.GetInstancesAdded()) + len(updateCache.GetInstancesRemoved())),
+				InstancesFailed: uint32(len(updateCache.GetInstancesFailed())),
+				// GetInstancesCurrent() returns a copy from update cache
+				InstancesCurrent:     updateCache.GetInstancesCurrent(),
+				JobConfigVersion:     updateCache.GetJobVersion(),
+				PrevJobConfigVersion: updateCache.GetJobPrevVersion(),
+			}
+		}
+	}
+
+	return s, um
+}
+
 // Option to create a workflow
 type Option interface {
 	apply(*workflowOpts)
@@ -2223,6 +2340,21 @@ func (j *job) CreateWorkflow(
 	entityVersion *v1alphapeloton.EntityVersion,
 	options ...Option,
 ) (*peloton.UpdateID, *v1alphapeloton.EntityVersion, error) {
+	var (
+		jobTypeCopy     pbjob.JobType
+		jobSummaryCopy  *pbjob.JobSummary
+		updateModelCopy *models.UpdateModel
+	)
+	// notify listeners after dropping the lock
+	defer func() {
+		j.jobFactory.notifyJobSummaryChanged(
+			j.ID(),
+			jobTypeCopy,
+			jobSummaryCopy,
+			updateModelCopy,
+		)
+	}()
+
 	j.Lock()
 	defer j.Unlock()
 
@@ -2345,6 +2477,9 @@ func (j *job) CreateWorkflow(
 	// is processed.
 	j.workflows[updateID.GetValue()] = newWorkflow
 
+	jobTypeCopy = j.jobType
+	jobSummaryCopy, updateModelCopy = j.generateJobSummaryFromCache(j.runtime, updateID)
+
 	// entity version is changed due to change in config version
 	newEntityVersion := versionutil.GetJobEntityVersion(
 		j.runtime.GetConfigurationVersion(),
@@ -2459,6 +2594,21 @@ func (j *job) PauseWorkflow(
 	entityVersion *v1alphapeloton.EntityVersion,
 	options ...Option,
 ) (*peloton.UpdateID, *v1alphapeloton.EntityVersion, error) {
+	var (
+		jobTypeCopy     pbjob.JobType
+		jobSummaryCopy  *pbjob.JobSummary
+		updateModelCopy *models.UpdateModel
+	)
+	// notify listeners after dropping the lock
+	defer func() {
+		j.jobFactory.notifyJobSummaryChanged(
+			j.ID(),
+			jobTypeCopy,
+			jobSummaryCopy,
+			updateModelCopy,
+		)
+	}()
+
 	j.Lock()
 	defer j.Unlock()
 
@@ -2488,6 +2638,10 @@ func (j *job) PauseWorkflow(
 		j.runtime.GetWorkflowVersion(),
 	)
 	err = currentWorkflow.Pause(ctx, opts.opaqueData)
+
+	jobTypeCopy = j.jobType
+	jobSummaryCopy, updateModelCopy = j.generateJobSummaryFromCache(j.runtime, currentWorkflow.ID())
+
 	return currentWorkflow.ID(), newEntityVersion, err
 }
 
@@ -2496,6 +2650,21 @@ func (j *job) ResumeWorkflow(
 	entityVersion *v1alphapeloton.EntityVersion,
 	options ...Option,
 ) (*peloton.UpdateID, *v1alphapeloton.EntityVersion, error) {
+	var (
+		jobTypeCopy     pbjob.JobType
+		jobSummaryCopy  *pbjob.JobSummary
+		updateModelCopy *models.UpdateModel
+	)
+	// notify listeners after dropping the lock
+	defer func() {
+		j.jobFactory.notifyJobSummaryChanged(
+			j.ID(),
+			jobTypeCopy,
+			jobSummaryCopy,
+			updateModelCopy,
+		)
+	}()
+
 	j.Lock()
 	defer j.Unlock()
 
@@ -2525,6 +2694,10 @@ func (j *job) ResumeWorkflow(
 		j.runtime.GetWorkflowVersion(),
 	)
 	err = currentWorkflow.Resume(ctx, opts.opaqueData)
+
+	jobTypeCopy = j.jobType
+	jobSummaryCopy, updateModelCopy = j.generateJobSummaryFromCache(j.runtime, currentWorkflow.ID())
+
 	return currentWorkflow.ID(), newEntityVersion, err
 }
 
@@ -2533,6 +2706,21 @@ func (j *job) AbortWorkflow(
 	entityVersion *v1alphapeloton.EntityVersion,
 	options ...Option,
 ) (*peloton.UpdateID, *v1alphapeloton.EntityVersion, error) {
+	var (
+		jobTypeCopy     pbjob.JobType
+		jobSummaryCopy  *pbjob.JobSummary
+		updateModelCopy *models.UpdateModel
+	)
+	// notify listeners after dropping the lock
+	defer func() {
+		j.jobFactory.notifyJobSummaryChanged(
+			j.ID(),
+			jobTypeCopy,
+			jobSummaryCopy,
+			updateModelCopy,
+		)
+	}()
+
 	j.Lock()
 	defer j.Unlock()
 
@@ -2562,10 +2750,29 @@ func (j *job) AbortWorkflow(
 		j.runtime.GetWorkflowVersion(),
 	)
 	err = currentWorkflow.Cancel(ctx, opts.opaqueData)
+
+	jobTypeCopy = j.jobType
+	jobSummaryCopy, updateModelCopy = j.generateJobSummaryFromCache(j.runtime, currentWorkflow.ID())
+
 	return currentWorkflow.ID(), newEntityVersion, err
 }
 
 func (j *job) RollbackWorkflow(ctx context.Context) error {
+	var (
+		jobTypeCopy     pbjob.JobType
+		jobSummaryCopy  *pbjob.JobSummary
+		updateModelCopy *models.UpdateModel
+	)
+	// notify listeners after dropping the lock
+	defer func() {
+		j.jobFactory.notifyJobSummaryChanged(
+			j.ID(),
+			jobTypeCopy,
+			jobSummaryCopy,
+			updateModelCopy,
+		)
+	}()
+
 	j.Lock()
 	defer j.Unlock()
 
@@ -2600,12 +2807,21 @@ func (j *job) RollbackWorkflow(ctx context.Context) error {
 		}
 
 		// just update job runtime config version
-		return j.updateJobRuntime(
+		err := j.updateJobRuntime(
 			ctx,
 			currentWorkflow.GetGoalState().JobVersion,
 			j.runtime.GetWorkflowVersion(),
 			currentWorkflow,
 		)
+
+		if err != nil {
+			return err
+		}
+
+		jobTypeCopy = j.jobType
+		jobSummaryCopy, updateModelCopy = j.generateJobSummaryFromCache(j.runtime, j.runtime.GetUpdateID())
+
+		return nil
 	}
 
 	// get the old job config before the workflow is run
@@ -2647,12 +2863,69 @@ func (j *job) RollbackWorkflow(ctx context.Context) error {
 		return err
 	}
 
-	return j.updateJobRuntime(
+	err = j.updateJobRuntime(
 		ctx,
 		configCopy.GetChangeLog().GetVersion(),
 		j.runtime.GetWorkflowVersion(),
 		currentWorkflow,
 	)
+
+	if err != nil {
+		return err
+	}
+
+	jobTypeCopy = j.jobType
+	jobSummaryCopy, updateModelCopy = j.generateJobSummaryFromCache(j.runtime, j.runtime.GetUpdateID())
+
+	return nil
+}
+
+func (j *job) WriteWorkflowProgress(
+	ctx context.Context,
+	updateID *peloton.UpdateID,
+	state pbupdate.State,
+	instancesDone []uint32,
+	instanceFailed []uint32,
+	instancesCurrent []uint32,
+) error {
+	var (
+		jobTypeCopy     pbjob.JobType
+		jobSummaryCopy  *pbjob.JobSummary
+		updateModelCopy *models.UpdateModel
+	)
+	// notify listeners after dropping the lock
+	defer func() {
+		j.jobFactory.notifyJobSummaryChanged(
+			j.ID(),
+			jobTypeCopy,
+			jobSummaryCopy,
+			updateModelCopy,
+		)
+	}()
+
+	j.RLock()
+	defer j.RUnlock()
+
+	workflow, ok := j.workflows[updateID.GetValue()]
+	if !ok {
+		return nil
+	}
+
+	err := workflow.WriteProgress(
+		ctx,
+		state,
+		instancesDone,
+		instanceFailed,
+		instancesCurrent,
+	)
+	if err != nil {
+		return err
+	}
+
+	jobTypeCopy = j.jobType
+	jobSummaryCopy, updateModelCopy = j.generateJobSummaryFromCache(j.runtime, j.runtime.GetUpdateID())
+
+	return nil
 }
 
 func (j *job) AddWorkflow(updateID *peloton.UpdateID) Update {
@@ -2684,6 +2957,9 @@ func (j *job) GetWorkflow(updateID *peloton.UpdateID) Update {
 func (j *job) ClearWorkflow(updateID *peloton.UpdateID) {
 	j.Lock()
 	defer j.Unlock()
+
+	j.prevUpdateID = updateID.GetValue()
+	j.prevWorkflow = j.workflows[updateID.GetValue()]
 
 	delete(j.workflows, updateID.GetValue())
 }
@@ -2935,6 +3211,14 @@ func (c *cachedConfig) GetPlacementStrategy() pbjob.PlacementStrategy {
 	return c.placementStrategy
 }
 
+func (c *cachedConfig) GetOwner() string {
+	return c.owner
+}
+
+func (c *cachedConfig) GetOwningTeam() string {
+	return c.owningTeam
+}
+
 // HasControllerTask returns if a job has controller task in it,
 // it can accept both cachedConfig and full JobConfig
 func HasControllerTask(config jobmgrcommon.JobConfig) bool {
@@ -3131,6 +3415,22 @@ func (j *job) Delete(ctx context.Context) error {
 	defer func() {
 		j.Lock()
 		defer j.Unlock()
+
+		jobTypeCopy := j.jobType
+		jobSummaryCopy, updateModelCopy := j.generateJobSummaryFromCache(j.runtime, j.runtime.GetUpdateID())
+
+		if jobSummaryCopy != nil && jobSummaryCopy.Runtime != nil {
+			jobSummaryCopy.Runtime.State = pbjob.JobState_DELETED
+		}
+
+		// Not doing nil check here since we are expecting the listener
+		// to filter out the nil objects.
+		j.jobFactory.notifyJobSummaryChanged(
+			j.ID(),
+			jobTypeCopy,
+			jobSummaryCopy,
+			updateModelCopy,
+		)
 
 		j.invalidateCache()
 	}()

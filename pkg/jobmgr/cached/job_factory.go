@@ -345,15 +345,15 @@ func (f *jobFactory) publishMetrics() map[pbtask.TaskState]map[pbtask.TaskState]
 	return tCount
 }
 
-func (f *jobFactory) notifyJobRuntimeChanged(
+func (f *jobFactory) notifyJobSummaryChanged(
 	jobID *peloton.JobID,
 	jobType pbjob.JobType,
-	runtime *pbjob.RuntimeInfo,
+	jobSummary *pbjob.JobSummary,
+	updateInfo *models.UpdateModel,
 ) {
-
-	if runtime != nil {
+	if jobSummary != nil {
 		for _, l := range f.listeners {
-			l.JobRuntimeChanged(jobID, jobType, runtime)
+			l.JobSummaryChanged(jobID, jobType, jobSummary, updateInfo)
 		}
 		// TODO add metric for listener execution latency
 	}
@@ -366,7 +366,6 @@ func (f *jobFactory) notifyTaskRuntimeChanged(
 	runtime *pbtask.RuntimeInfo,
 	labels []*peloton.Label,
 ) {
-
 	if runtime != nil {
 		for _, l := range f.listeners {
 			l.TaskRuntimeChanged(jobID, instanceID, jobType, runtime, labels)
