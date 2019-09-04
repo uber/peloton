@@ -21,7 +21,9 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
+	p2kscalar "github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 
 	"github.com/pborman/uuid"
@@ -80,6 +82,24 @@ func generatePodToResMap(
 	podMap := make(map[string]scalar.Resources)
 	for i := 0; i < numPods; i++ {
 		podMap[uuid.New()] = createResource(cpu, mem)
+	}
+	return podMap
+}
+
+func generatePodSpecWithRes(
+	numPods int,
+	cpu, mem float64,
+) map[string]*pbpod.PodSpec {
+	podMap := make(map[string]*pbpod.PodSpec)
+	for i := 0; i < numPods; i++ {
+		podMap[uuid.New()] = &pbpod.PodSpec{
+			Containers: []*pbpod.ContainerSpec{
+				{Resource: &pbpod.ResourceSpec{
+					CpuLimit:   cpu,
+					MemLimitMb: mem,
+				}},
+			},
+		}
 	}
 	return podMap
 }
@@ -309,7 +329,6 @@ func (suite *HostCacheTestSuite) TestHostSummaryCompleteLease() {
 		s := newTestBaseHostSummary(_hostname, _version, _capacity)
 		s.status = tt.beforeStatus
 		// initialize host cache with a podMap
-		//s.podToResMap = generatePodToResMap(1, 1.0, 10.0)
 		s.leaseID = tt.leaseID
 		s.capacity = _capacity
 
@@ -321,6 +340,63 @@ func (suite *HostCacheTestSuite) TestHostSummaryCompleteLease() {
 			suite.NoError(err, "test case: %s", ttName)
 		}
 		suite.Equal(tt.afterStatus, s.GetHostStatus(), "test case: %s", ttName)
+	}
+}
+
+// TestHostSummaryHandlePodEvent tests HandlePodEvent
+func (suite *HostCacheTestSuite) TestHostSummaryHandlePodEvent() {
+	testTable := map[string]struct {
+		eventType  p2kscalar.PodEventType
+		eventState string
+		podState   pbpod.PodState
+		deleted    bool
+	}{
+		"deleted-pod-event": {
+			eventType: p2kscalar.DeletePod,
+			deleted:   true,
+		},
+		"update-pod-non-terminal-event": {
+			eventType:  p2kscalar.UpdatePod,
+			eventState: pbpod.PodState_POD_STATE_RUNNING.String(),
+			podState:   pbpod.PodState_POD_STATE_RUNNING,
+		},
+		"add-pod-non-terminal-event": {
+			eventType:  p2kscalar.AddPod,
+			eventState: pbpod.PodState_POD_STATE_KILLING.String(),
+			podState:   pbpod.PodState_POD_STATE_KILLING,
+		},
+		"update-pod-terminal-event": {
+			eventType:  p2kscalar.UpdatePod,
+			eventState: pbpod.PodState_POD_STATE_KILLED.String(),
+			deleted:    true,
+		},
+		"add-pod-terminal-event": {
+			eventType:  p2kscalar.AddPod,
+			eventState: pbpod.PodState_POD_STATE_FAILED.String(),
+			deleted:    true,
+		},
+	}
+
+	for ttName, tt := range testTable {
+		podID := uuid.New()
+		s := newTestBaseHostSummary(_hostname, _version, _capacity)
+		s.pods = map[string]*podInfo{
+			podID: {state: pbpod.PodState_POD_STATE_LAUNCHED},
+		}
+
+		s.HandlePodEvent(&p2kscalar.PodEvent{
+			EventType: tt.eventType,
+			Event: &pbpod.PodEvent{
+				PodId:       &peloton.PodID{Value: podID},
+				ActualState: tt.eventState,
+			},
+		})
+
+		if tt.deleted {
+			suite.Nil(s.pods[podID], "test case: %s", ttName)
+		} else {
+			suite.Equal(s.pods[podID].state, tt.podState, "test case: %s", ttName)
+		}
 	}
 }
 

@@ -51,13 +51,6 @@ func (suite *HostCacheTestSuite) TestMesosHostSummarySetCapacity() {
 
 }
 
-// TestMesosHostSummaryHandlePodEvent tests that handle pod
-// event does nothing for mesos
-func (suite *HostCacheTestSuite) TestMesosHostSummaryHandlePodEvent() {
-	ms := newMesosHostSummary(_hostname, _version).(*mesosHostSummary)
-	ms.HandlePodEvent(nil)
-}
-
 // TestMesosHostSummarySetAvailable
 // test set available would update allocated resources
 func (suite *HostCacheTestSuite) TestMesosHostSummarySetAvailable() {

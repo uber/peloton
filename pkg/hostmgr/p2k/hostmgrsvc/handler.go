@@ -18,7 +18,8 @@ import (
 	"context"
 	"fmt"
 
-	peloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
 	v1alpha "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc"
@@ -151,20 +152,17 @@ func (h *ServiceHandler) LaunchPods(
 		}
 	}
 
-	// Convert LaunchablePods to a map of podID to scalar resources before
-	// completing the lease.
-	podToResMap := make(map[string]scalar.Resources)
+	podToSpecMap := make(map[string]*pbpod.PodSpec)
 	for _, pod := range req.GetPods() {
-		// TODO: Should we check for repeat podID here?
-		podToResMap[pod.GetPodId().GetValue()] = scalar.FromPodSpec(
-			pod.GetSpec(),
-		)
+		// podToSpecMap: Should we check for repeat podID here?
+		podToSpecMap[pod.GetPodId().GetValue()] =
+			pod.GetSpec()
 	}
 
 	if err = h.hostCache.CompleteLease(
 		req.GetHostname(),
 		req.GetLeaseId().GetValue(),
-		podToResMap,
+		podToSpecMap,
 	); err != nil {
 		return nil, err
 	}
@@ -172,7 +170,7 @@ func (h *ServiceHandler) LaunchPods(
 	log.WithFields(log.Fields{
 		"lease_id": req.GetLeaseId().GetValue(),
 		"hostname": req.GetHostname(),
-		"pods":     podToResMap,
+		"pods":     podToSpecMap,
 	}).Debug("LaunchPods success")
 
 	var launchablePods []*models.LaunchablePod

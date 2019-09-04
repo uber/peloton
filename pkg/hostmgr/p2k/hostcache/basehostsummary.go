@@ -19,12 +19,11 @@ import (
 	"sync"
 	"time"
 
-	"go.uber.org/yarpc/yarpcerrors"
-
 	pbhost "github.com/uber/peloton/.gen/peloton/api/v1alpha/host"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
+	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/common/v1alpha/constraints"
 	"github.com/uber/peloton/pkg/hostmgr/models"
 	p2kscalar "github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
@@ -32,6 +31,7 @@ import (
 
 	"github.com/pborman/uuid"
 	log "github.com/sirupsen/logrus"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 // makes sure baseHostSummary implements HostSummary
@@ -68,7 +68,7 @@ type HostSummary interface {
 	TryMatch(filter *hostmgr.HostFilter) Match
 
 	// CompleteLease verifies that the leaseID on this host is still valid.
-	CompleteLease(leaseID string, newPodToResMap map[string]scalar.Resources) error
+	CompleteLease(leaseID string, podToSpecMap map[string]*pbpod.PodSpec) error
 
 	// CasStatus sets the status to new value if current value is old, otherwise
 	// returns error.
@@ -138,7 +138,7 @@ type HostSummary interface {
 // methods in the interface assumes lock is taken
 type hostStrategy interface {
 	// postCompleteLease handles actions after lease is completed
-	postCompleteLease(newPodToResMap map[string]scalar.Resources) error
+	postCompleteLease(podToSpecMap map[string]*pbpod.PodSpec) error
 }
 
 // baseHostSummary is a data struct holding resources and metadata of a host.
@@ -179,12 +179,21 @@ type baseHostSummary struct {
 	// capacity of the host
 	capacity scalar.Resources
 
-	// resources allocated on the host. this should always be equal to the sum
-	// of resources in podToResMap
+	// Resources allocated on the host. This should always be equal to the sum
+	// of resources in pods.
 	allocated scalar.Resources
 
 	// available resources on the host
 	available scalar.Resources
+
+	// a map to present tasks assigned or running on this host
+	// key is the mesos tasks id and value is the current pod status
+	pods map[string]*podInfo
+}
+
+type podInfo struct {
+	state pbpod.PodState
+	spec  *pbpod.PodSpec
 }
 
 // newBaseHostSummary returns a zero initialized HostSummary object.
@@ -196,10 +205,11 @@ func newBaseHostSummary(
 		status:     ReadyHost,
 		hostname:   hostname,
 		heldPodIDs: make(map[string]time.Time),
+		version:    version,
+		strategy:   &noopHostStrategy{},
+		pods:       make(map[string]*podInfo),
 		// TODO: make the initial port range configs.
-		ports:    []*pbhost.PortRange{{Begin: 31000, End: 32000}},
-		version:  version,
-		strategy: &noopHostStrategy{},
+		ports: []*pbhost.PortRange{{Begin: 31000, End: 32000}},
 	}
 }
 
@@ -264,12 +274,12 @@ func (a *baseHostSummary) TryMatch(
 }
 
 // CompleteLease verifies that the leaseID on this host is still valid.
-// It checks that current baseHostSummary is in Placing status, updates podToResMap
+// It checks that current baseHostSummary is in Placing status, updates pods
 // to the host summary, recalculates allocated resources and set the host status
 // to Ready.
 func (a *baseHostSummary) CompleteLease(
 	leaseID string,
-	newPodToResMap map[string]scalar.Resources,
+	podToSpecMap map[string]*pbpod.PodSpec,
 ) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -286,16 +296,54 @@ func (a *baseHostSummary) CompleteLease(
 		return yarpcerrors.InvalidArgumentErrorf("failed to unlock host: %s", err)
 	}
 
-	if err := a.strategy.postCompleteLease(newPodToResMap); err != nil {
+	if err := a.validatePodsNotExist(podToSpecMap); err != nil {
+		return err
+	}
+
+	// add to pod map, so postCompleteLease can work on the up-to-date data.
+	// revert the change if postCompleteLease fails
+	a.addPodMap(podToSpecMap)
+	if err := a.strategy.postCompleteLease(podToSpecMap); err != nil {
+		a.removePodMap(podToSpecMap)
 		return err
 	}
 
 	log.WithFields(log.Fields{
 		"hostname": a.hostname,
-		"pods":     newPodToResMap,
+		"pods":     podToSpecMap,
 	}).Debug("pods added to the host for launch")
 
 	return nil
+}
+
+// validatePodsNotExist will return an error if
+// the pod already exists on the host map.
+func (a *baseHostSummary) validatePodsNotExist(
+	podToSpecMap map[string]*pbpod.PodSpec,
+) error {
+
+	for podID := range podToSpecMap {
+		if _, ok := a.pods[podID]; ok {
+			return yarpcerrors.InvalidArgumentErrorf("pod %v already exists on the host", podID)
+		}
+	}
+
+	return nil
+}
+
+func (a *baseHostSummary) addPodMap(podToSpecMap map[string]*pbpod.PodSpec) {
+	for id, spec := range podToSpecMap {
+		a.pods[id] = &podInfo{
+			spec:  spec,
+			state: pbpod.PodState_POD_STATE_LAUNCHED,
+		}
+	}
+}
+
+func (a *baseHostSummary) removePodMap(podToSpecMap map[string]*pbpod.PodSpec) {
+	for id := range podToSpecMap {
+		delete(a.pods, id)
+	}
 }
 
 // CasStatus sets the status to new value if current value is old, otherwise
@@ -498,9 +546,47 @@ func (a *baseHostSummary) GetAvailable() scalar.Resources {
 	return a.available
 }
 
-// HandlePodEvent is a noop for baseHostSummary, corresponding subclasses should
-// overwrite the method
+// HandlePodEvent update host to pod map in baseHostSummary,
+// corresponding subclasses could overwrite the method, but need to
+// call the superclass method manually
 func (a *baseHostSummary) HandlePodEvent(event *p2kscalar.PodEvent) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	a.handlePodEvent(event)
+}
+
+func (a *baseHostSummary) handlePodEvent(event *p2kscalar.PodEvent) {
+	podID := event.Event.GetPodId().GetValue()
+	switch event.EventType {
+	case p2kscalar.AddPod, p2kscalar.UpdatePod:
+		// We do not need to update a.pods.spec during an Add event, as it will
+		// always follow a Launch, which would populate the field.
+		// Update events only change the image of the pod, and as such the
+		// resource accounting doesn't change.
+		podState := pbpod.PodState(pbpod.PodState_value[event.Event.GetActualState()])
+		if util.IsPelotonPodStateTerminal(podState) {
+			delete(a.pods, podID)
+		} else {
+			podInfo, ok := a.pods[podID]
+			if !ok {
+				return
+			}
+
+			podInfo.state = podState
+		}
+		return
+	case p2kscalar.DeletePod:
+		// The release error scenario is handled inside release. If the pod
+		// was already deleted, ReleasePodResources no-ops, which is correct
+		// here.
+		delete(a.pods, podID)
+		return
+	default:
+		log.WithField("pod_event", event).
+			Error("unsupported pod event type")
+	}
+
 	return
 }
 
@@ -613,6 +699,6 @@ func (a *baseHostSummary) CompleteLaunchPod(pod *models.LaunchablePod) {
 
 type noopHostStrategy struct{}
 
-func (s *noopHostStrategy) postCompleteLease(newPodToResMap map[string]scalar.Resources) error {
+func (s *noopHostStrategy) postCompleteLease(podToSpecMap map[string]*pbpod.PodSpec) error {
 	return nil
 }

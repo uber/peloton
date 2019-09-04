@@ -24,6 +24,7 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 
@@ -185,7 +186,7 @@ func (suite *HostCacheTestSuite) TestGetSummaries() {
 // TestTerminateLease tests hostcache TerminateLease API
 func (suite *HostCacheTestSuite) TestTerminateLease() {
 	testTable := map[string]struct {
-		podToResMap  map[string]scalar.Resources
+		podToSpecMap map[string]*pbpod.PodSpec
 		filter       *hostmgr.HostFilter
 		matched      int
 		filterCounts map[string]uint32
@@ -197,7 +198,7 @@ func (suite *HostCacheTestSuite) TestTerminateLease() {
 			errExpected: false,
 			// launch 5 pods each with 1 Cpu and 10 Mem
 			// So total requirement is 5 CPU and 50Mem
-			podToResMap: generatePodToResMap(10, 1.0, 10.0),
+			podToSpecMap: generatePodSpecWithRes(10, 1.0, 10.0),
 			// filter to match hosts that have 5 CPU and 50Mem
 			filter: &hostmgr.HostFilter{
 				ResourceConstraint: &hostmgr.ResourceConstraint{
@@ -245,7 +246,7 @@ func (suite *HostCacheTestSuite) TestTerminateLease() {
 			err = hc.CompleteLease(
 				lease.GetHostSummary().GetHostname(),
 				lease.GetLeaseId().GetValue(),
-				tt.podToResMap,
+				tt.podToSpecMap,
 			)
 			suite.Error(err, "test case %s", ttName)
 		}
@@ -257,7 +258,7 @@ func (suite *HostCacheTestSuite) TestCompleteLease() {
 	testTable := map[string]struct {
 		errExpected  bool
 		errMsg       string
-		podToResMap  map[string]scalar.Resources
+		podToSpecMap map[string]*pbpod.PodSpec
 		filter       *hostmgr.HostFilter
 		matched      int
 		invalidLease bool
@@ -267,7 +268,7 @@ func (suite *HostCacheTestSuite) TestCompleteLease() {
 			errExpected: false,
 			// launch 5 pods each with 1 Cpu and 10 Mem
 			// So total requirement is 5 CPU and 50Mem
-			podToResMap: generatePodToResMap(10, 1.0, 10.0),
+			podToSpecMap: generatePodSpecWithRes(10, 1.0, 10.0),
 			// filter to match hosts that have 5 CPU and 50Mem
 			filter: &hostmgr.HostFilter{
 				ResourceConstraint: &hostmgr.ResourceConstraint{
@@ -304,7 +305,7 @@ func (suite *HostCacheTestSuite) TestCompleteLease() {
 			err := hc.CompleteLease(
 				lease.GetHostSummary().GetHostname(),
 				lease.GetLeaseId().GetValue(),
-				tt.podToResMap,
+				tt.podToSpecMap,
 			)
 			suite.NoError(err, "test case %s", ttName)
 		}
@@ -323,7 +324,7 @@ func (suite *HostCacheTestSuite) TestCompleteLeaseErrors() {
 		hc.hostIndex[s.GetHostname()] = s
 	}
 
-	podToResMap := generatePodToResMap(5, 1.0, 10.0)
+	podToSpecMap := generatePodSpecWithRes(5, 1.0, 10.0)
 	// filter to match hosts that have 5 CPU and 50Mem
 	filter := &hostmgr.HostFilter{
 		ResourceConstraint: &hostmgr.ResourceConstraint{
@@ -368,7 +369,7 @@ func (suite *HostCacheTestSuite) TestCompleteLeaseErrors() {
 		err := hc.CompleteLease(
 			tt.hostname,
 			tt.leaseID,
-			podToResMap,
+			podToSpecMap,
 		)
 
 		suite.Error(err, "test case %s", ttName)

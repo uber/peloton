@@ -24,6 +24,7 @@ import (
 	pbhost "github.com/uber/peloton/.gen/peloton/api/v1alpha/host"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
 	"github.com/uber/peloton/pkg/hostmgr/models"
 	p2kscalar "github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
@@ -161,8 +162,15 @@ func (suite *HostCacheTestSuite) TestKubeletHostSummaryHandlePodEvent() {
 		},
 	}
 
-	resMap := map[string]scalar.Resources{
-		"podid1": createResource(9, 90),
+	specMap := map[string]*pbpod.PodSpec{
+		"podid1": {
+			Containers: []*pbpod.ContainerSpec{
+				{Resource: &pbpod.ResourceSpec{
+					CpuLimit:   9.0,
+					MemLimitMb: 90.0,
+				}},
+			},
+		},
 	}
 
 	matches, failures := atomic.NewInt32(0), atomic.NewInt32(0)
@@ -181,7 +189,7 @@ func (suite *HostCacheTestSuite) TestKubeletHostSummaryHandlePodEvent() {
 					continue
 				}
 				matches.Inc()
-				err := s.CompleteLease(s.leaseID, resMap)
+				err := s.CompleteLease(s.leaseID, specMap)
 				suite.NoError(err)
 
 				if old := eventHandled.Swap(true); old {
@@ -241,10 +249,10 @@ func (suite *HostCacheTestSuite) TestCompleteLaunchPod() {
 // TestKubeletHostSummaryCompleteLease tests CompleteLease function of host summary
 func (suite *HostCacheTestSuite) TestKubeletHostSummaryCompleteLease() {
 	testTable := map[string]struct {
-		errExpected      bool
-		errMsg           string
-		podToResMap      map[string]scalar.Resources
-		preExistingPodID string
+		errExpected     bool
+		errMsg          string
+		podToSpecMap    map[string]*pbpod.PodSpec
+		podIDPreExisted bool
 		// allocation before the test
 		beforeAllocated scalar.Resources
 		// Expected allocation after this test
@@ -258,7 +266,7 @@ func (suite *HostCacheTestSuite) TestKubeletHostSummaryCompleteLease() {
 		"complete-lease-placing-host": {
 			errExpected: false,
 			// 5 pods each with 1 Cpu and 10 Mem
-			podToResMap:     generatePodToResMap(5, 1.0, 10.0),
+			podToSpecMap:    generatePodSpecWithRes(5, 1.0, 10.0),
 			beforeAllocated: createResource(1.0, 10.0),
 			afterAllocated:  createResource(6.0, 60.0),
 			leaseID:         _leaseID,
@@ -271,7 +279,7 @@ func (suite *HostCacheTestSuite) TestKubeletHostSummaryCompleteLease() {
 			errMsg: fmt.Sprintf(
 				"code:invalid-argument message:pod validation failed: host has insufficient resources"),
 			// 10 pods each with 1 Cpu and 10 Mem
-			podToResMap:     generatePodToResMap(10, 1.0, 10.0),
+			podToSpecMap:    generatePodSpecWithRes(10, 1.0, 10.0),
 			beforeAllocated: createResource(1.0, 10.0),
 			afterAllocated:  createResource(1.0, 10.0),
 			leaseID:         _leaseID,
@@ -287,16 +295,16 @@ func (suite *HostCacheTestSuite) TestKubeletHostSummaryCompleteLease() {
 		"complete-lease-but-pod-already-exists": {
 			errExpected: true,
 			errMsg: fmt.Sprintf(
-				"code:invalid-argument message:pod validation failed: pod %v already exists on the host",
+				"code:invalid-argument message:pod %v already exists on the host",
 				_podID),
 			// 10 pods each with 1 Cpu and 10 Mem
-			podToResMap:      generatePodToResMap(10, 1.0, 10.0),
-			beforeAllocated:  createResource(1.0, 10.0),
-			afterAllocated:   createResource(1.0, 10.0),
-			leaseID:          _leaseID,
-			preExistingPodID: _podID,
-			inputLeaseID:     _leaseID,
-			beforeStatus:     PlacingHost,
+			podToSpecMap:    generatePodSpecWithRes(10, 1.0, 10.0),
+			beforeAllocated: createResource(1.0, 10.0),
+			afterAllocated:  createResource(1.0, 10.0),
+			leaseID:         _leaseID,
+			podIDPreExisted: true,
+			inputLeaseID:    _leaseID,
+			beforeStatus:    PlacingHost,
 			// even if it has insufficient resources, it will still unlock the
 			// host status and make it Ready because the previous lease is
 			// meanlingless at this point.
@@ -305,7 +313,7 @@ func (suite *HostCacheTestSuite) TestKubeletHostSummaryCompleteLease() {
 		"complete-lease-ready-host": {
 			errExpected:     true,
 			errMsg:          fmt.Sprintf("code:invalid-argument message:host status is not Placing"),
-			podToResMap:     generatePodToResMap(10, 1.0, 10.0),
+			podToSpecMap:    generatePodSpecWithRes(10, 1.0, 10.0),
 			beforeAllocated: createResource(1.0, 10.0),
 			afterAllocated:  createResource(1.0, 10.0),
 			leaseID:         _leaseID,
@@ -316,7 +324,7 @@ func (suite *HostCacheTestSuite) TestKubeletHostSummaryCompleteLease() {
 		"complete-lease-id-mismatch": {
 			errExpected:     true,
 			errMsg:          fmt.Sprintf("code:invalid-argument message:host leaseID does not match"),
-			podToResMap:     generatePodToResMap(10, 1.0, 10.0),
+			podToSpecMap:    generatePodSpecWithRes(10, 1.0, 10.0),
 			beforeAllocated: createResource(1.0, 10.0),
 			afterAllocated:  createResource(1.0, 10.0),
 			leaseID:         _leaseID,
@@ -331,21 +339,44 @@ func (suite *HostCacheTestSuite) TestKubeletHostSummaryCompleteLease() {
 		s := newKubeletHostSummary(_hostname, nil, _version).(*kubeletHostSummary)
 		s.status = tt.beforeStatus
 		// initialize host cache with a podMap
-		s.podToResMap = generatePodToResMap(1, 1.0, 10.0)
+		s.pods = map[string]*podInfo{
+			_podID: {
+				state: pbpod.PodState_POD_STATE_LAUNCHED,
+				spec: &pbpod.PodSpec{
+					Containers: []*pbpod.ContainerSpec{
+						{Resource: &pbpod.ResourceSpec{
+							CpuLimit:   1.0,
+							MemLimitMb: 10.0,
+						}},
+					},
+				},
+			},
+		}
 		s.allocated = tt.beforeAllocated
 		s.leaseID = tt.leaseID
 		s.SetCapacity(_capacity)
 
-		if tt.preExistingPodID != "" {
-			s.podToResMap[tt.preExistingPodID] = scalar.Resources{}
-			tt.podToResMap[tt.preExistingPodID] = scalar.Resources{}
+		if tt.podIDPreExisted {
+			tt.podToSpecMap[_podID] = nil
 		}
 
-		err := s.CompleteLease(tt.inputLeaseID, tt.podToResMap)
+		err := s.CompleteLease(tt.inputLeaseID, tt.podToSpecMap)
 		if tt.errExpected {
+			// complete with error, only the previous pods should exist in host summary
+			suite.Len(s.pods, 1, "test case: %s", ttName)
 			suite.Error(err, "test case: %s", ttName)
 			suite.Equal(tt.errMsg, err.Error(), "test case: %s", ttName)
 		} else {
+			// complete without error, all pods in podToSpecMap should be added
+			suite.Len(s.pods, len(tt.podToSpecMap)+1, "test case: %s", ttName)
+			for id, spec := range tt.podToSpecMap {
+				suite.Equal(s.pods[id].spec, spec, "test case: %s", ttName)
+				suite.Equal(
+					s.pods[id].state,
+					pbpod.PodState_POD_STATE_LAUNCHED,
+					"test case: %s", ttName,
+				)
+			}
 			suite.NoError(err, "test case: %s", ttName)
 		}
 		suite.Equal(tt.afterAllocated, s.allocated, "test case: %s", ttName)

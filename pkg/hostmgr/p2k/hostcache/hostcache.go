@@ -18,8 +18,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pkg/errors"
-	peloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
 	"github.com/uber/peloton/pkg/common/background"
 	"github.com/uber/peloton/pkg/common/lifecycle"
@@ -27,6 +27,7 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 	hmscalar "github.com/uber/peloton/pkg/hostmgr/scalar"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	uatomic "github.com/uber-go/atomic"
 	"github.com/uber-go/tally"
@@ -53,7 +54,7 @@ type HostCache interface {
 
 	// CompleteLease is called when launching pods on a host that has been
 	// previously leased to the Placement engine.
-	CompleteLease(hostname string, leaseID string, podToResMap map[string]hmscalar.Resources) error
+	CompleteLease(hostname string, leaseID string, podToSpecMap map[string]*pbpod.PodSpec) error
 
 	// GetClusterCapacity gets the total capacity and allocation of the cluster.
 	GetClusterCapacity() (capacity, allocation hmscalar.Resources)
@@ -224,7 +225,7 @@ func (c *hostCache) TerminateLease(
 // previously leased to the Placement engine. The leaseID of the acquired host
 // should be supplied in this call so that the hostcache can match the leaseID,
 // verify that sufficient resources are present on the host to launch all the
-// pods in podToResMap, and then allow the pods to be launched on this host.
+// pods in podToSpecMap, and then allow the pods to be launched on this host.
 // At this point, the existing lease is Completed and the host can be used for
 // further placement.
 // Error cases:
@@ -234,7 +235,7 @@ func (c *hostCache) TerminateLease(
 func (c *hostCache) CompleteLease(
 	hostname string,
 	leaseID string,
-	podToResMap map[string]hmscalar.Resources,
+	podToSpecMap map[string]*pbpod.PodSpec,
 ) error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -243,7 +244,7 @@ func (c *hostCache) CompleteLease(
 	if err != nil {
 		return err
 	}
-	if err := hs.CompleteLease(leaseID, podToResMap); err != nil {
+	if err := hs.CompleteLease(leaseID, podToSpecMap); err != nil {
 		// TODO: metrics
 		return err
 	}

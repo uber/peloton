@@ -15,9 +15,7 @@
 package hostcache
 
 import (
-	"context"
 	"errors"
-	"fmt"
 	"sort"
 
 	pbhost "github.com/uber/peloton/.gen/peloton/api/v1alpha/host"
@@ -39,9 +37,6 @@ var _ hostStrategy = &kubeletHostSummary{}
 
 type kubeletHostSummary struct {
 	*baseHostSummary
-
-	// pod map of PodID to resources for pods that run on this host
-	podToResMap map[string]scalar.Resources
 }
 
 // newKubeletHostSummary returns a zero initialized HostSummary object.
@@ -52,7 +47,6 @@ func newKubeletHostSummary(
 ) HostSummary {
 	rs := scalar.FromPelotonResources(r)
 	ks := &kubeletHostSummary{
-		podToResMap:     make(map[string]scalar.Resources),
 		baseHostSummary: newBaseHostSummary(hostname, version),
 	}
 	ks.baseHostSummary.capacity = rs
@@ -60,15 +54,15 @@ func newKubeletHostSummary(
 	return ks
 }
 
-// HandlePodEvent makes sure that we update the host summary according to the
-// pod events that occur in the cluster.
-// Add events should no-op because we already allocated the resources while
-// completing the lease and launching the pods.
-// Update events are not handled at the moment, but theoretically should only
-// noop because a pod update can only change the image of the pod, not the
-// resource profile.
-// Delete events should release the resources of the pod that was deleted.
+// HandlePodEvent updates pod resources and states by calling parent class,
+// and recalculate available resources upon the change
 func (a *kubeletHostSummary) HandlePodEvent(event *p2kscalar.PodEvent) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	a.baseHostSummary.handlePodEvent(event)
+	a.calculateAllocated()
+
 	switch event.EventType {
 	case p2kscalar.AddPod:
 		// We recover allocated ports from AddPod events.
@@ -87,7 +81,6 @@ func (a *kubeletHostSummary) HandlePodEvent(event *p2kscalar.PodEvent) {
 		// The release error scenario is handled inside release. If the pod
 		// was already deleted, ReleasePodResources no-ops, which is correct
 		// here.
-		a.releasePodResources(context.Background(), event.Event.PodId.Value)
 		a.releasePorts(event.Event)
 		return
 	default:
@@ -119,26 +112,6 @@ func (a *kubeletHostSummary) SetAvailable(r scalar.Resources) {
 	return
 }
 
-// releasePodResources adds back resources to the current kubeletHostSummary.
-// When a pod is terminal, it will be deleted and this function will be called
-// to remove that pod from the host summary and free up the resources allocated
-// to that pod.
-func (a *kubeletHostSummary) releasePodResources(
-	ctx context.Context,
-	podID string,
-) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	if _, ok := a.podToResMap[podID]; !ok {
-		// TODO: add failure metric
-		log.WithField("podID", podID).Error("pod not found in host summary")
-		return
-	}
-	delete(a.podToResMap, podID)
-	a.calculateAllocated()
-}
-
 func (a *kubeletHostSummary) calculateAvailable() scalar.Resources {
 	available, ok := a.capacity.TrySubtract(a.allocated)
 	if !ok {
@@ -146,9 +119,9 @@ func (a *kubeletHostSummary) calculateAvailable() scalar.Resources {
 		// organically fail in the following steps.
 		log.WithFields(
 			log.Fields{
-				"allocated":   a.allocated,
-				"podToResMap": a.podToResMap,
-				"capacity":    a.capacity,
+				"allocated":    a.allocated,
+				"podToSpecMap": a.getPodToResMap(),
+				"capacity":     a.capacity,
 			},
 		).Error("kubeletHostSummary: Allocated more resources than capacity")
 		return scalar.Resources{}
@@ -156,35 +129,33 @@ func (a *kubeletHostSummary) calculateAvailable() scalar.Resources {
 	return available
 }
 
-func (a *kubeletHostSummary) postCompleteLease(newPodToResMap map[string]scalar.Resources) error {
+func (a *kubeletHostSummary) postCompleteLease(podToSpecMap map[string]*pbpod.PodSpec) error {
 	// At this point the lease is terminated, the host is back in ready/held
 	// status but we need to validate if the new pods can be successfully
 	// launched on this host. Note that the lease has to be terminated before
 	// this step irrespective of the outcome
-	if err := a.validateNewPods(newPodToResMap); err != nil {
+	if err := a.validateEnoughResToLaunch(podToSpecMap); err != nil {
 		return yarpcerrors.InvalidArgumentErrorf("pod validation failed: %s", err)
 	}
 
-	// Update podToResMap with newPodToResMap for the new pods to be launched
-	// Reduce available resources by the resources required by the new pods
-	a.updatePodToResMap(newPodToResMap)
-
+	a.calculateAllocated()
 	return nil
 }
 
-// validateNewPods will return an error if:
-// 1. The pod already exists on the host map.
-// 2. The host has insufficient resources to place new pods.
+// validateEnoughResToLaunch will return an error if:
+// a. The host has insufficient resources to place new pods.
 // This function assumes baseHostSummary lock is held before calling.
-func (a *kubeletHostSummary) validateNewPods(
-	newPodToResMap map[string]scalar.Resources,
+func (a *kubeletHostSummary) validateEnoughResToLaunch(
+	podToSpecMap map[string]*pbpod.PodSpec,
 ) error {
 	var needed scalar.Resources
 
-	for podID, res := range newPodToResMap {
-		if _, ok := a.podToResMap[podID]; ok {
-			return fmt.Errorf("pod %v already exists on the host", podID)
-		}
+	podToResMap := make(map[string]scalar.Resources)
+	for id, spec := range podToSpecMap {
+		podToResMap[id] = scalar.FromPodSpec(spec)
+	}
+
+	for _, res := range podToResMap {
 		needed = needed.Add(res)
 	}
 	if !a.available.Contains(needed) {
@@ -201,7 +172,7 @@ func (a *kubeletHostSummary) calculateAllocated() {
 	var ok bool
 
 	// calculate current allocation based on the new pods map
-	for _, r := range a.podToResMap {
+	for _, r := range a.getPodToResMap() {
 		allocated = allocated.Add(r)
 	}
 	a.allocated = allocated
@@ -211,9 +182,9 @@ func (a *kubeletHostSummary) calculateAllocated() {
 		// organically fail in the following steps.
 		log.WithFields(
 			log.Fields{
-				"allocated":   a.allocated,
-				"podToResMap": a.podToResMap,
-				"capacity":    a.capacity,
+				"allocated":    a.allocated,
+				"podToSpecMap": a.getPodToResMap(),
+				"capacity":     a.capacity,
 			},
 		).Error("kubeletHostSummary: No enough available resources")
 		// no pod can be launched onto the host due to unexpected shortage
@@ -223,18 +194,15 @@ func (a *kubeletHostSummary) calculateAllocated() {
 	}
 }
 
-// updatepodToResMap updates the current podToResMap with the new podToResMap
-// and also recalculate available resources based on the new podToResMap.
-// This function assumes baseHostSummary lock is held before calling.
-func (a *kubeletHostSummary) updatePodToResMap(
-	newPodToResMap map[string]scalar.Resources,
-) {
-	// Add new pods to the pods map.
-	for podID, res := range newPodToResMap {
-		a.podToResMap[podID] = res
+func (a *kubeletHostSummary) getPodToResMap() map[string]scalar.Resources {
+	result := make(map[string]scalar.Resources)
+	for id, pod := range a.pods {
+		result[id] = scalar.FromPodSpec(
+			pod.spec,
+		)
 	}
-	a.calculateAllocated()
 
+	return result
 }
 
 func (a *kubeletHostSummary) CompleteLaunchPod(pod *models.LaunchablePod) {
@@ -325,9 +293,7 @@ func (a *kubeletHostSummary) allocatePorts(event *pbpod.PodEvent) {
 		return
 	}
 
-	a.mu.Lock()
 	a.ports = subtractPortRanges(a.ports, usedRanges)
-	a.mu.Unlock()
 }
 
 func getPortRangesFromEvent(event *pbpod.PodEvent) []*pbhost.PortRange {
@@ -349,9 +315,7 @@ func (a *kubeletHostSummary) releasePorts(event *pbpod.PodEvent) {
 		return
 	}
 
-	a.mu.Lock()
 	a.ports = mergePortRanges(a.ports, unusedRanges)
-	a.mu.Unlock()
 }
 
 func mergePortRanges(allAvail, allUnused []*pbhost.PortRange) (merged []*pbhost.PortRange) {

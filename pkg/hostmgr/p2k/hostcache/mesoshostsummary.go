@@ -15,7 +15,7 @@
 package hostcache
 
 import (
-	p2kscalar "github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
+	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 
 	log "github.com/sirupsen/logrus"
@@ -39,12 +39,6 @@ func newMesosHostSummary(hostname string, version string) HostSummary {
 	ms.baseHostSummary.strategy = ms
 
 	return ms
-}
-
-// HandlePodEvent is noop for mesos, because mesos host does not rely
-// on pod status to calculate resources available/allocated.
-func (a *mesosHostSummary) HandlePodEvent(event *p2kscalar.PodEvent) {
-	return
 }
 
 // SetCapacity sets the capacity of the host.
@@ -78,7 +72,7 @@ func (a *mesosHostSummary) SetAvailable(r scalar.Resources) {
 }
 
 // postCompleteLease handles actions after lease is completed
-func (a *mesosHostSummary) postCompleteLease(newPodToResMap map[string]scalar.Resources) error {
+func (a *mesosHostSummary) postCompleteLease(podToSpecMap map[string]*pbpod.PodSpec) error {
 	// noop for mesos
 	return nil
 }
