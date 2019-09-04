@@ -123,7 +123,7 @@ func (m *MesosManager) LaunchPods(
 	ctx context.Context,
 	pods []*models.LaunchablePod,
 	hostname string,
-) error {
+) ([]*models.LaunchablePod, error) {
 	var offerIds []*mesos.OfferID
 	var mesosResources []*mesos.Resource
 	var mesosTasks []*mesos.TaskInfo
@@ -137,7 +137,7 @@ func (m *MesosManager) LaunchPods(
 	}
 
 	if len(offerIds) == 0 {
-		return yarpcerrors.InternalErrorf("no offer found to launch pods on %s", hostname)
+		return nil, yarpcerrors.InternalErrorf("no offer found to launch pods on %s", hostname)
 	}
 
 	builder := task.NewBuilder(mesosResources)
@@ -148,12 +148,12 @@ func (m *MesosManager) LaunchPods(
 	for _, pod := range pods {
 		launchableTask, err := convertPodSpecToLaunchableTask(pod.PodId, pod.Spec)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		mesosTask, err := builder.Build(launchableTask)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		mesosTask.AgentId = agentID
 		mesosTasks = append(mesosTasks, mesosTask)
@@ -183,14 +183,13 @@ func (m *MesosManager) LaunchPods(
 
 	if err != nil {
 		m.metrics.LaunchPodFail.Inc(1)
-	} else {
-		// call to mesos is successful,
-		// remove the offers so no new task would be placed
-		m.offerManager.RemoveOfferForHost(hostname)
-		m.metrics.LaunchPod.Inc(1)
+		return nil, err
 	}
-
-	return err
+	// call to mesos is successful,
+	// remove the offers so no new task would be placed
+	m.offerManager.RemoveOfferForHost(hostname)
+	m.metrics.LaunchPod.Inc(1)
+	return pods, nil
 }
 
 // KillPod kills a pod on a host.

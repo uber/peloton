@@ -26,6 +26,7 @@ import (
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
 	"github.com/uber/peloton/pkg/common/v1alpha/constraints"
+	"github.com/uber/peloton/pkg/hostmgr/models"
 	p2kscalar "github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 
@@ -126,6 +127,10 @@ type HostSummary interface {
 	// available resource,
 	// and the pods held expired.
 	DeleteExpiredHolds(now time.Time) (bool, scalar.Resources, []*peloton.PodID)
+
+	// CompleteLaunchPod is called when a pod is successfully launched,
+	// for example to remove the ports from the available port ranges.
+	CompleteLaunchPod(pod *models.LaunchablePod)
 }
 
 // hostStrategy defines methods that shared by mesos/k8s hosts, but have different
@@ -149,6 +154,9 @@ type baseHostSummary struct {
 	// a map of podIDs for which the host is held
 	// key is the podID, value is the expiration time of the hold
 	heldPodIDs map[string]time.Time
+
+	// list of port ranges available for allocation.
+	ports []*pbhost.PortRange
 
 	// locking status of this host
 	status HostStatus
@@ -188,8 +196,10 @@ func newBaseHostSummary(
 		status:     ReadyHost,
 		hostname:   hostname,
 		heldPodIDs: make(map[string]time.Time),
-		version:    version,
-		strategy:   &noopHostStrategy{},
+		// TODO: make the initial port range configs.
+		ports:    []*pbhost.PortRange{{Begin: 31000, End: 32000}},
+		version:  version,
+		strategy: &noopHostStrategy{},
 	}
 }
 
@@ -343,9 +353,10 @@ func (a *baseHostSummary) GetHostLease() *hostmgr.HostLease {
 			Value: a.leaseID,
 		},
 		HostSummary: &pbhost.HostSummary{
-			Hostname:  a.hostname,
-			Resources: scalar.ToPelotonResources(a.available),
-			Labels:    a.labels,
+			Hostname:       a.hostname,
+			Resources:      scalar.ToPelotonResources(a.available),
+			Labels:         a.labels,
+			AvailablePorts: a.ports,
 		},
 	}
 }
@@ -595,6 +606,9 @@ func (a *baseHostSummary) matchHostFilter(
 	}
 
 	return hostmgr.HostFilterResult_HOST_FILTER_MATCH
+}
+
+func (a *baseHostSummary) CompleteLaunchPod(pod *models.LaunchablePod) {
 }
 
 type noopHostStrategy struct{}

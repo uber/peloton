@@ -312,7 +312,7 @@ func (k *K8SManager) LaunchPods(
 	ctx context.Context,
 	pods []*models.LaunchablePod,
 	hostname string,
-) error {
+) (launched []*models.LaunchablePod, err error) {
 	for _, lp := range pods {
 		// Convert v1alpha podSpec to k8s podSpec.
 		pod := toK8SPodSpec(lp.Spec)
@@ -331,7 +331,7 @@ func (k *K8SManager) LaunchPods(
 		pod.Name = lp.PodId.GetValue()
 
 		// Create the pod
-		_, err := k.kubeClient.CoreV1().Pods("default").Create(pod)
+		_, err = k.kubeClient.CoreV1().Pods("default").Create(pod)
 		if err != nil {
 			// For now can we just fail this call and keep the earlier pods
 			// launched. They will generate events which will go to JM, JM can
@@ -341,11 +341,11 @@ func (k *K8SManager) LaunchPods(
 			// pods "at least" and not "exactly" once
 			// TODO: see if you can delete the pods actively here and get their
 			// allocation reduced on hosts upfront
-			return err
+			return launched, err
 		}
+		launched = append(launched, lp)
 	}
-
-	return nil
+	return launched, nil
 }
 
 // KillPod stops and deletes the given pod

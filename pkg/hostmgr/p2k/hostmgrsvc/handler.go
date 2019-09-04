@@ -185,11 +185,15 @@ func (h *ServiceHandler) LaunchPods(
 	}
 
 	// Should we check for repeat podID here?
-	if err := h.plugin.LaunchPods(
+	launched, err := h.plugin.LaunchPods(
 		ctx,
 		launchablePods,
 		req.GetHostname(),
-	); err != nil {
+	)
+	for _, pod := range launched {
+		h.hostCache.CompleteLaunchPod(req.GetHostname(), pod)
+	}
+	if err != nil {
 		return nil, err
 	}
 

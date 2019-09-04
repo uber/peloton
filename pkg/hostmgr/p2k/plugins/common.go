@@ -50,8 +50,8 @@ func (p *NoopPlugin) LaunchPods(
 	ctx context.Context,
 	pods []*models.LaunchablePod,
 	hostname string,
-) error {
-	return nil
+) ([]*models.LaunchablePod, error) {
+	return nil, nil
 }
 
 // KillPod kills a pod on a host.

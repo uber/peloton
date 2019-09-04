@@ -14,7 +14,9 @@
 
 package hostcache
 
-import "github.com/uber/peloton/pkg/hostmgr/scalar"
+import (
+	"github.com/uber/peloton/pkg/hostmgr/scalar"
+)
 
 // TestMesosHostSummarySetCapacity tests for mesos change capacity
 // only affects capacity

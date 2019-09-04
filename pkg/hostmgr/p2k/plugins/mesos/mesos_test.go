@@ -98,7 +98,7 @@ func (suite *MesosManagerTestSuite) TestMesosManagerLaunchPodNoOffer() {
 	testHostName := "test_host"
 
 	testPodSpec := newTestPelotonPodSpec(testPodName)
-	err := suite.mesosManager.LaunchPods(
+	_, err := suite.mesosManager.LaunchPods(
 		context.Background(),
 		[]*models.LaunchablePod{
 			{PodId: &peloton.PodID{Value: testPodName}, Spec: testPodSpec},
@@ -155,7 +155,7 @@ func (suite *MesosManagerTestSuite) TestMesosManagerLaunchPodSuccess() {
 		}).
 		Return(nil)
 
-	err := suite.mesosManager.LaunchPods(
+	launched, err := suite.mesosManager.LaunchPods(
 		context.Background(),
 		[]*models.LaunchablePod{
 			{PodId: &peloton.PodID{Value: testPodName}, Spec: testPodSpec},
@@ -163,6 +163,7 @@ func (suite *MesosManagerTestSuite) TestMesosManagerLaunchPodSuccess() {
 		testHostName,
 	)
 	suite.NoError(err)
+	suite.Equal(1, len(launched))
 }
 
 func (suite *MesosManagerTestSuite) TestMesosManagerKillPodSuccess() {

@@ -18,10 +18,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pkg/errors"
 	peloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
 	"github.com/uber/peloton/pkg/common/background"
 	"github.com/uber/peloton/pkg/common/lifecycle"
+	"github.com/uber/peloton/pkg/hostmgr/models"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 	hmscalar "github.com/uber/peloton/pkg/hostmgr/scalar"
 
@@ -81,6 +83,14 @@ type HostCache interface {
 
 	// ReleaseHoldForPods release the hold of host for the pods specified.
 	ReleaseHoldForPods(hostname string, podIDs []*peloton.PodID) error
+
+	// CompleteLaunchPod is called when a pod is successfully launched.
+	// This is for things like removing pods allocated to the pod
+	// from available ports. This is called after successful launch
+	// of individual pod. We cannot do this in CompleteLease.
+	// For example, ports should not be removed after a failed launch,
+	// otherwise the ports are leaked.
+	CompleteLaunchPod(hostname string, pod *models.LaunchablePod) error
 }
 
 // hostCache is an implementation of HostCache interface.
@@ -379,6 +389,18 @@ func (c *hostCache) addPodHold(hostname string, id *peloton.PodID) {
 // removePodHold deletes id from podHeldIndex regardless of hostname.
 func (c *hostCache) removePodHold(id *peloton.PodID) {
 	delete(c.podHeldIndex, id.GetValue())
+}
+
+func (c *hostCache) CompleteLaunchPod(hostname string, pod *models.LaunchablePod) error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	hs, err := c.getSummary(hostname)
+	if err != nil {
+		return errors.Wrapf(err, "cannot find host %q", hostname)
+	}
+	hs.CompleteLaunchPod(pod)
+	return nil
 }
 
 // getSummary returns host summary given name. If the host does not exist,

@@ -62,7 +62,7 @@ func (suite *K8SManagerTestSuite) TestLaunchAndKillPod() {
 
 	// Launch pod and verify.
 	testPodSpec := newTestPelotonPodSpec(testPodName)
-	err := suite.testManager.LaunchPods(
+	launched, err := suite.testManager.LaunchPods(
 		context.Background(),
 		[]*models.LaunchablePod{
 			{PodId: &peloton.PodID{Value: testPodName}, Spec: testPodSpec},
@@ -70,6 +70,7 @@ func (suite *K8SManagerTestSuite) TestLaunchAndKillPod() {
 		testHostName,
 	)
 	suite.NoError(err)
+	suite.Equal(1, len(launched))
 
 	returnedPod, err := suite.
 		testKubeClient.
@@ -103,7 +104,7 @@ func (suite *K8SManagerTestSuite) TestPodEventHandlers() {
 
 	// Add pod via LaunchPods().
 	testPodSpec := newTestPelotonPodSpec(testPodName)
-	err := suite.testManager.LaunchPods(
+	launched, err := suite.testManager.LaunchPods(
 		context.Background(),
 		[]*models.LaunchablePod{
 			{PodId: &peloton.PodID{Value: testPodName}, Spec: testPodSpec},
@@ -111,6 +112,7 @@ func (suite *K8SManagerTestSuite) TestPodEventHandlers() {
 		testHostName,
 	)
 	suite.NoError(err)
+	suite.Equal(1, len(launched))
 
 	evt := <-suite.podEventCh
 	suite.Equal(scalar.AddPod, evt.EventType)

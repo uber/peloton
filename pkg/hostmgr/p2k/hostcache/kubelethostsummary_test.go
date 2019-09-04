@@ -18,10 +18,14 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"testing"
 
+	"github.com/stretchr/testify/require"
+	pbhost "github.com/uber/peloton/.gen/peloton/api/v1alpha/host"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
+	"github.com/uber/peloton/pkg/hostmgr/models"
 	p2kscalar "github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 
@@ -202,6 +206,38 @@ func (suite *HostCacheTestSuite) TestKubeletHostSummaryHandlePodEvent() {
 	suite.Equal(int32(998), failures.Load())
 }
 
+func (suite *HostCacheTestSuite) TestCompleteLaunchPod() {
+	s := newKubeletHostSummary(_hostname, nil, _version)
+	s.CompleteLaunchPod(&models.LaunchablePod{
+		PodId: &peloton.PodID{Value: "podid1"},
+		Spec: &pod.PodSpec{
+			Containers: []*pod.ContainerSpec{
+				{
+					Ports: []*pod.PortSpec{
+						{Value: 31001},
+						{Value: 31010},
+					},
+				},
+			},
+		},
+	})
+	hl := s.GetHostLease()
+	equalPortRanges(suite.T(), hl.HostSummary.AvailablePorts, 31000, 31000, 31002, 31009, 31011, 32000)
+
+	evt := &p2kscalar.PodEvent{
+		EventType: p2kscalar.DeletePod,
+		Event: &pod.PodEvent{
+			PodId: &peloton.PodID{Value: "podid1"},
+			ContainerStatus: []*pod.ContainerStatus{
+				{Ports: map[string]uint32{"p0": 31010}},
+			},
+		},
+	}
+	s.HandlePodEvent(evt)
+	hl = s.GetHostLease()
+	equalPortRanges(suite.T(), hl.HostSummary.AvailablePorts, 31000, 31000, 31002, 32000)
+}
+
 // TestKubeletHostSummaryCompleteLease tests CompleteLease function of host summary
 func (suite *HostCacheTestSuite) TestKubeletHostSummaryCompleteLease() {
 	testTable := map[string]struct {
@@ -315,4 +351,139 @@ func (suite *HostCacheTestSuite) TestKubeletHostSummaryCompleteLease() {
 		suite.Equal(tt.afterAllocated, s.allocated, "test case: %s", ttName)
 		suite.Equal(tt.afterStatus, s.GetHostStatus(), "test case: %s", ttName)
 	}
+}
+
+func equalPortRanges(t *testing.T, prs []*pbhost.PortRange, ports ...int) {
+	require.Equal(t, len(ports)/2, len(prs), ports)
+	for i, n := 0, len(ports); i < n; i += 2 {
+		pr := prs[i/2]
+		require.True(t, int(pr.Begin) == ports[i] && int(pr.End) == ports[i+1], pr)
+	}
+}
+
+func TestPortAllocation(t *testing.T) {
+	// list of begin, end pairs
+	buildPortRanges := func(ports ...int) (all []*pbhost.PortRange) {
+		for i, n := 0, len(ports); i < n; i += 2 {
+			all = append(all, &pbhost.PortRange{Begin: uint64(ports[i]), End: uint64(ports[i+1])})
+		}
+		return all
+	}
+
+	t.Run("toPortRanges", func(t *testing.T) {
+		all := toPortRanges([]int{10005, 10000, 10003, 10001, 10007, 10006})
+		equalPortRanges(t, all, 10000, 10001, 10003, 10003, 10005, 10007)
+	})
+
+	t.Run("subtractPortRanges single range", func(t *testing.T) {
+		avail := buildPortRanges(10010, 10020)
+
+		for _, tc := range []struct {
+			used []int
+			left []int
+		}{
+			{[]int{10000, 10009}, []int{10010, 10020}},
+			{[]int{10000, 10010}, []int{10011, 10020}},
+			{[]int{10000, 10020}, []int{}},
+			{[]int{10011, 10015}, []int{10010, 10010, 10016, 10020}},
+			{[]int{10015, 10020}, []int{10010, 10014}},
+			{[]int{10021, 10029}, []int{10010, 10020}},
+		} {
+			t.Logf("tc=%v", tc)
+			used := buildPortRanges(tc.used...)
+			equalPortRanges(t, subtractPortRanges(avail, used), tc.left...)
+		}
+	})
+
+	t.Run("subtractPortRanges multiple ranges", func(t *testing.T) {
+		for _, tc := range []struct {
+			avail []int
+			used  []int
+			left  []int
+		}{
+			{
+				[]int{10010, 10020, 10030, 10040},
+				[]int{10010, 10015, 10016, 10035, 10036, 10040},
+				[]int{},
+			},
+			{
+				[]int{10010, 10020, 10030, 10040},
+				[]int{10009, 10011, 10013, 10015, 10020, 10035},
+				[]int{10012, 10012, 10016, 10019, 10036, 10040},
+			},
+		} {
+			t.Logf("tc=%v", tc)
+			avail := buildPortRanges(tc.avail...)
+			used := buildPortRanges(tc.used...)
+			equalPortRanges(t, subtractPortRanges(avail, used), tc.left...)
+		}
+	})
+
+	t.Run("appendMerged", func(t *testing.T) {
+		for _, tc := range []struct {
+			merged []int
+			pr     []int
+			got    []int
+		}{
+			{
+				[]int{},
+				[]int{10015, 10020},
+				[]int{10015, 10020},
+			},
+			{
+				[]int{10010, 10020},
+				[]int{10015, 10020},
+				[]int{10010, 10020},
+			},
+			{
+				[]int{10010, 10020},
+				[]int{10021, 10030},
+				[]int{10010, 10030},
+			},
+			{
+				[]int{10010, 10020},
+				[]int{10022, 10030},
+				[]int{10010, 10020, 10022, 10030},
+			},
+		} {
+			t.Logf("tc=%v", tc)
+			merged := buildPortRanges(tc.merged...)
+			pr := buildPortRanges(tc.pr...)[0]
+			equalPortRanges(t, appendMerged(merged, pr), tc.got...)
+		}
+	})
+
+	t.Run("mergePortRanges", func(t *testing.T) {
+		for _, tc := range []struct {
+			avail  []int
+			unused []int
+			merged []int
+		}{
+			{
+				[]int{},
+				[]int{10010, 10020, 10030, 10040},
+				[]int{10010, 10020, 10030, 10040},
+			},
+			{
+				[]int{10000, 10009, 10021, 10029},
+				[]int{10010, 10020, 10030, 10040},
+				[]int{10000, 10040},
+			},
+			{
+				[]int{10000, 10010, 10040, 10050},
+				[]int{10020, 10030},
+				[]int{10000, 10010, 10020, 10030, 10040, 10050},
+			},
+			{
+				[]int{10000, 10010, 10040, 10050},
+				[]int{10001, 10015, 10045, 10060},
+				[]int{10000, 10015, 10040, 10060},
+			},
+		} {
+			t.Logf("tc=%v", tc)
+			avail := buildPortRanges(tc.avail...)
+			unused := buildPortRanges(tc.unused...)
+			equalPortRanges(t, mergePortRanges(avail, unused), tc.merged...)
+		}
+	})
 }

@@ -31,7 +31,7 @@ type Plugin interface {
 	Stop()
 
 	// LaunchPods launch a list of pods on a host.
-	LaunchPods(ctx context.Context, pods []*models.LaunchablePod, hostname string) error
+	LaunchPods(ctx context.Context, pods []*models.LaunchablePod, hostname string) (launched []*models.LaunchablePod, _ error)
 
 	// KillPod kills a pod on a host.
 	KillPod(ctx context.Context, podID string) error

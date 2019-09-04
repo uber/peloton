@@ -258,7 +258,7 @@ func (suite *HostMgrHandlerTestSuite) TestLaunchPods() {
 		suite.plugin.
 			EXPECT().
 			LaunchPods(gomock.Any(), launchablePods, tt.hostname).
-			Return(nil)
+			Return(nil, nil)
 
 		resp, err := suite.handler.LaunchPods(rootCtx, req)
 		if tt.errMsg != "" {
@@ -303,7 +303,7 @@ func (suite *HostMgrHandlerTestSuite) TestLaunchPodsPluginFailure() {
 	suite.plugin.
 		EXPECT().
 		LaunchPods(gomock.Any(), launchablePods, hostname).
-		Return(errors.New("test error"))
+		Return(nil, errors.New("test error"))
 
 	resp, err := suite.handler.LaunchPods(rootCtx, req)
 	suite.Error(err)

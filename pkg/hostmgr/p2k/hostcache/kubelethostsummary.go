@@ -18,8 +18,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 
+	pbhost "github.com/uber/peloton/.gen/peloton/api/v1alpha/host"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+	"github.com/uber/peloton/pkg/hostmgr/models"
 	p2kscalar "github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 
@@ -66,9 +70,16 @@ func newKubeletHostSummary(
 // Delete events should release the resources of the pod that was deleted.
 func (a *kubeletHostSummary) HandlePodEvent(event *p2kscalar.PodEvent) {
 	switch event.EventType {
-	case p2kscalar.AddPod, p2kscalar.UpdatePod:
-		// We do not need to do anything during an Add event, as it will
-		// always follow a Launch, which already populated this host summary.
+	case p2kscalar.AddPod:
+		// We recover allocated ports from AddPod events.
+		// This is necessary for the initial sync or periodical resync.
+		// Between syncs, we don't need to do anything for an Add event,
+		// as it will always follow a Launch, which already populated this host summary.
+		//
+		// TODO: how can we differentiate sync with incremental changes?
+		a.allocatePorts(event.Event)
+		return
+	case p2kscalar.UpdatePod:
 		// Update events only change the image of the pod, and as such the
 		// resource accounting doesn't change.
 		return
@@ -77,6 +88,7 @@ func (a *kubeletHostSummary) HandlePodEvent(event *p2kscalar.PodEvent) {
 		// was already deleted, ReleasePodResources no-ops, which is correct
 		// here.
 		a.releasePodResources(context.Background(), event.Event.PodId.Value)
+		a.releasePorts(event.Event)
 		return
 	default:
 		log.WithField("pod_event", event).
@@ -223,4 +235,160 @@ func (a *kubeletHostSummary) updatePodToResMap(
 	}
 	a.calculateAllocated()
 
+}
+
+func (a *kubeletHostSummary) CompleteLaunchPod(pod *models.LaunchablePod) {
+	// update available ports
+	var ports []int
+	for _, cs := range pod.Spec.GetContainers() {
+		for _, ps := range cs.GetPorts() {
+			ports = append(ports, int(ps.GetValue()))
+		}
+	}
+	if len(ports) == 0 {
+		return
+	}
+	usedRanges := toPortRanges(ports)
+
+	a.mu.Lock()
+	a.ports = subtractPortRanges(a.ports, usedRanges)
+	a.mu.Unlock()
+}
+
+// toPortRanges sorts and arranges ports to a list of PortRange, in order.
+func toPortRanges(ports []int) (all []*pbhost.PortRange) {
+	sort.Ints(ports)
+	ps := &pbhost.PortRange{Begin: uint64(ports[0]), End: uint64(ports[0])}
+	for _, x := range ports {
+		p := uint64(x)
+		switch {
+		case p <= ps.End:
+		case p == ps.End+1:
+			ps.End++
+		default:
+			all = append(all, ps)
+			ps = &pbhost.PortRange{Begin: p, End: p}
+		}
+	}
+	return append(all, ps)
+}
+
+// subtractPortRanges removes used PortRanges from avail PortRanges.
+func subtractPortRanges(allAvail, allUsed []*pbhost.PortRange) (left []*pbhost.PortRange) {
+	if len(allAvail) == 0 {
+		return nil
+	}
+
+	var avail *pbhost.PortRange
+	for (len(allAvail) > 0 || avail != nil) && len(allUsed) > 0 {
+		if avail == nil {
+			avail = allAvail[0]
+			allAvail = allAvail[1:]
+		}
+		used := allUsed[0]
+		if used.End < avail.Begin {
+			// used to the left of avail
+			allUsed = allUsed[1:]
+		} else if used.End < avail.End {
+			if used.Begin <= avail.Begin {
+				// used overlaps the left of avail
+			} else {
+				// used in the middle of avail
+				left = append(left, &pbhost.PortRange{Begin: avail.Begin, End: used.Begin - 1})
+			}
+			avail = &pbhost.PortRange{Begin: used.End + 1, End: avail.End}
+			allUsed = allUsed[1:]
+		} else {
+			// used.End >= avail.End
+			if used.Begin <= avail.Begin {
+				// used covers avail
+			} else if used.Begin > avail.End {
+				// used to the right of avail
+				left = append(left, avail)
+			} else {
+				// avail.Begin < used.Begin <= avail.End
+				// used covers the right of avail
+				left = append(left, &pbhost.PortRange{Begin: avail.Begin, End: used.Begin - 1})
+			}
+			avail = nil
+		}
+	}
+	if avail != nil {
+		left = append(left, avail)
+	}
+	return append(left, allAvail...)
+}
+
+func (a *kubeletHostSummary) allocatePorts(event *pbpod.PodEvent) {
+	usedRanges := getPortRangesFromEvent(event)
+	if len(usedRanges) == 0 {
+		return
+	}
+
+	a.mu.Lock()
+	a.ports = subtractPortRanges(a.ports, usedRanges)
+	a.mu.Unlock()
+}
+
+func getPortRangesFromEvent(event *pbpod.PodEvent) []*pbhost.PortRange {
+	var ports []int
+	for _, cs := range event.ContainerStatus {
+		for _, v := range cs.Ports {
+			ports = append(ports, int(v))
+		}
+	}
+	if len(ports) == 0 {
+		return nil
+	}
+	return toPortRanges(ports)
+}
+
+func (a *kubeletHostSummary) releasePorts(event *pbpod.PodEvent) {
+	unusedRanges := getPortRangesFromEvent(event)
+	if len(unusedRanges) == 0 {
+		return
+	}
+
+	a.mu.Lock()
+	a.ports = mergePortRanges(a.ports, unusedRanges)
+	a.mu.Unlock()
+}
+
+func mergePortRanges(allAvail, allUnused []*pbhost.PortRange) (merged []*pbhost.PortRange) {
+	if len(allAvail) == 0 {
+		return allUnused
+	}
+
+	for len(allAvail) > 0 && len(allUnused) > 0 {
+		if allAvail[0].Begin < allUnused[0].Begin {
+			merged = appendMerged(merged, allAvail[0])
+			allAvail = allAvail[1:]
+		} else {
+			merged = appendMerged(merged, allUnused[0])
+			allUnused = allUnused[1:]
+		}
+	}
+	for _, x := range allAvail {
+		merged = appendMerged(merged, x)
+	}
+	for _, x := range allUnused {
+		merged = appendMerged(merged, x)
+	}
+	return merged
+}
+
+func appendMerged(merged []*pbhost.PortRange, r *pbhost.PortRange) []*pbhost.PortRange {
+	if len(merged) == 0 {
+		return []*pbhost.PortRange{r}
+	}
+	a := merged[len(merged)-1]
+	// a.Begin <= r.Begin
+	switch {
+	case a.End+1 < r.Begin:
+		// no overlapping
+		return append(merged, r)
+	case a.End < r.End:
+		a.End = r.End
+	}
+	return merged
 }
