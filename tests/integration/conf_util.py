@@ -1,5 +1,6 @@
 from collections import defaultdict
 import logging
+import os
 import string
 import random
 
@@ -210,3 +211,9 @@ def _create_sla_cfg(curr, tasks_count=DEFAUILT_TASKS_COUNT):
         maximumRunningInstances=tasks_count,
     )
     return updated_sla
+
+
+# Returns the type of the minicluster. This will either be "k8s",
+# "mesos" or "".
+def minicluster_type():
+    return os.getenv("MINICLUSTER_TYPE")

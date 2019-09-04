@@ -328,6 +328,8 @@ def long_running_job(request):
 @pytest.fixture
 def stateless_job(request):
     job = StatelessJob()
+    if util.minicluster_type() == "k8s":
+        job = StatelessJob(job_file="test_stateless_job_spec_k8s.yaml")
 
     # teardown
     def kill_stateless_job():

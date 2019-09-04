@@ -428,6 +428,7 @@ def test__restart_running_job(stateless_job, in_place):
 
 
 # test restarting killed job without batch size,
+@pytest.mark.k8s
 def test__restart_killed_job(stateless_job, in_place):
     stateless_job.create()
     stateless_job.wait_for_state(goal_state="RUNNING")

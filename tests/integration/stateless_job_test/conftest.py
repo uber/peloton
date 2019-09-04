@@ -5,12 +5,13 @@ from tests.integration.conftest import (
     cleanup_stateless_jobs,
     wait_for_all_agents_to_register,
 )
+import tests.integration.conf_util as util
 
 
 @pytest.fixture(scope="module", autouse=True)
 def bootstrap_cluster(request):
     tests_failed_before_module = request.session.testsfailed
-    enable_k8s = request.node.get_marker('k8s') is not None
+    enable_k8s = util.minicluster_type()
     setup_minicluster(enable_k8s=enable_k8s)
 
     yield
