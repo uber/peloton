@@ -124,6 +124,7 @@ class App(object):
         self.enable_sla_tracking = False
         self.enable_preemption = False
         self.respool_path = None
+        self.gpu_respool_path = None
         self.auth_type = "NOOP"
         self.auth_config_file = ""
         self.enable_inplace_update = False
@@ -319,6 +320,8 @@ class App(object):
         if self.name == "aurorabridge":
             if self.respool_path:
                 env_vars["RESPOOL_PATH"] = self.respool_path
+            if self.gpu_respool_path:
+                env_vars["GPU_RESPOOL_PATH"] = self.gpu_respool_path
             if self.enable_inplace_update:
                 env_vars["ENABLE_INPLACE_UPDATE"] = "true"
 

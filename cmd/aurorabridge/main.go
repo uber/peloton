@@ -99,6 +99,11 @@ var (
 		Envar("RESPOOL_PATH").
 		String()
 
+	gpuRespoolPath = app.Flag(
+		"gpu-respool-path", "Aurora Bridge GPU Resource Pool path").
+		Envar("GPU_RESPOOL_PATH").
+		String()
+
 	authType = app.Flag(
 		"auth-type",
 		"Define the auth type used, default to NOOP").
@@ -157,6 +162,10 @@ func main() {
 
 	if len(*respoolPath) > 0 {
 		cfg.RespoolLoader.RespoolPath = *respoolPath
+	}
+
+	if len(*gpuRespoolPath) > 0 {
+		cfg.RespoolLoader.GPURespoolPath = *gpuRespoolPath
 	}
 
 	// Parse and setup peloton auth

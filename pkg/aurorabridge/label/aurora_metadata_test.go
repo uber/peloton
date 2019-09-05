@@ -20,6 +20,8 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
 
+	"github.com/uber/peloton/pkg/aurorabridge/common"
+
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/thriftrw/ptr"
 )
@@ -66,7 +68,7 @@ func TestGetUdeployGpuLimit(t *testing.T) {
 	// Expect success
 	m1 := []*api.Metadata{
 		{
-			Key:   ptr.String(_auroraGpuResourceKey),
+			Key:   ptr.String(common.AuroraGpuResourceKey),
 			Value: ptr.String("2"),
 		},
 	}
@@ -74,17 +76,26 @@ func TestGetUdeployGpuLimit(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, g)
 	assert.Equal(t, float64(2), *g)
+	assert.True(t, IsGpuConfig(m1, nil))
 
 	// Expect empty label to return nil
 	m2 := []*api.Metadata{}
 	g, err = GetUdeployGpuLimit(m2)
 	assert.NoError(t, err)
 	assert.Nil(t, g)
+	assert.False(t, IsGpuConfig(m2, nil))
+
+	rs := []*api.Resource{
+		{
+			NumGpus: ptr.Int64(int64(2)),
+		},
+	}
+	assert.True(t, IsGpuConfig(m2, rs))
 
 	// Expect invalid value to fail
 	m3 := []*api.Metadata{
 		{
-			Key:   ptr.String(_auroraGpuResourceKey),
+			Key:   ptr.String(common.AuroraGpuResourceKey),
 			Value: ptr.String("blah"),
 		},
 	}

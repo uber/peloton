@@ -45,3 +45,7 @@ var BridgePodLabel = &peloton.Label{
 // BridgeUpdateLabelKey is the Peloton pod level label key for triggering
 // a forced PodSpec change.
 const BridgeUpdateLabelKey = "aurora_bridge_update"
+
+// AuroraGpuResourceKey is the label set to indicate the number
+// of GPUs to be allocated to the task.
+const AuroraGpuResourceKey = "udeploy_num_gpus"

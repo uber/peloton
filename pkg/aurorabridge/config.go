@@ -109,6 +109,7 @@ func (c *ServiceHandlerConfig) validate() error {
 type RespoolLoaderConfig struct {
 	RetryInterval      time.Duration      `yaml:"retry_interval"`
 	RespoolPath        string             `yaml:"respool_path"`
+	GPURespoolPath     string             `yaml:"gpu_respool_path"`
 	DefaultRespoolSpec DefaultRespoolSpec `yaml:"default_respool_spec"`
 }
 

@@ -977,7 +977,13 @@ func (h *ServiceHandler) getJobUpdateDiff(
 	request *api.JobUpdateRequest,
 ) (*api.Result, *auroraError) {
 
-	respoolID, err := h.respoolLoader.Load(ctx)
+	respoolID, err := h.respoolLoader.Load(
+		ctx,
+		label.IsGpuConfig(
+			request.GetTaskConfig().GetMetadata(),
+			request.GetTaskConfig().GetResources(),
+		),
+	)
 	if err != nil {
 		return nil, auroraErrorf("load respool: %s", err)
 	}

@@ -21,15 +21,14 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
 
+	"github.com/uber/peloton/pkg/aurorabridge/common"
+
 	"go.uber.org/thriftrw/ptr"
 )
 
 const (
 	// Used for simulating the Aurora's behavior when creating labels in Mesos
 	_auroraLabelPrefix = "org.apache.aurora.metadata."
-
-	// Used by uDeploy to specify gpu resources requested by the service
-	_auroraGpuResourceKey = "udeploy_num_gpus"
 )
 
 // NewAuroraMetadataLabels generates a list of labels using Aurora's
@@ -45,12 +44,29 @@ func NewAuroraMetadataLabels(md []*api.Metadata) []*peloton.Label {
 	return l
 }
 
+// IsGpuConfig returns true if the uDeploy specific label used to
+// request GPU resources is present in the metadata
+func IsGpuConfig(md []*api.Metadata, rs []*api.Resource) bool {
+	for _, m := range md {
+		if m.GetKey() == common.AuroraGpuResourceKey {
+			return true
+		}
+	}
+
+	for _, r := range rs {
+		if r.IsSetNumGpus() {
+			return true
+		}
+	}
+	return false
+}
+
 // GetUdeployGpuLimit extracts uDeploy specific label used for requesting GPU
 // resources, and returns it as float pointer. Nil pointer is returned if the
 // label does not exist.
 func GetUdeployGpuLimit(md []*api.Metadata) (*float64, error) {
 	for _, m := range md {
-		if m.GetKey() == _auroraGpuResourceKey {
+		if m.GetKey() == common.AuroraGpuResourceKey {
 			numGpus, err := strconv.ParseFloat(m.GetValue(), 64)
 			if err != nil {
 				return nil, err

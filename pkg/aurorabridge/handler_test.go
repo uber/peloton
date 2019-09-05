@@ -621,7 +621,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiff() {
 		},
 	}
 
-	suite.respoolLoader.EXPECT().Load(gomock.Any()).Return(respoolID, nil)
+	suite.respoolLoader.EXPECT().Load(gomock.Any(), false).Return(respoolID, nil)
 
 	suite.expectGetJobIDFromJobName(jobKey, jobID)
 	suite.expectGetJobVersion(jobID, entityVersion)
@@ -657,13 +657,22 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiffFailure() {
 	jobID := fixture.PelotonJobID()
 	jobKey := jobUpdateRequest.GetTaskConfig().GetJob()
 	entityVersion := fixture.PelotonEntityVersion()
+
+	labels := []*api.Metadata{
+		{
+			Key:   ptr.String(common.AuroraGpuResourceKey),
+			Value: ptr.String("2"),
+		},
+	}
+	jobUpdateRequest.TaskConfig.Metadata = labels
+
 	jobSpec, _ := atop.NewJobSpecFromJobUpdateRequest(
 		jobUpdateRequest,
 		respoolID,
 		suite.config.ThermosExecutor,
 	)
 
-	suite.respoolLoader.EXPECT().Load(gomock.Any()).Return(respoolID, nil)
+	suite.respoolLoader.EXPECT().Load(gomock.Any(), true).Return(respoolID, nil)
 
 	suite.expectGetJobIDFromJobName(jobKey, jobID)
 	suite.expectGetJobVersion(jobID, entityVersion)
@@ -691,7 +700,7 @@ func (suite *ServiceHandlerTestSuite) TestGetJobUpdateDiff_JobNotFound() {
 	respoolID := fixture.PelotonResourcePoolID()
 	k := fixture.AuroraJobKey()
 
-	suite.respoolLoader.EXPECT().Load(gomock.Any()).Return(respoolID, nil)
+	suite.respoolLoader.EXPECT().Load(gomock.Any(), false).Return(respoolID, nil)
 
 	suite.jobClient.EXPECT().
 		GetJobIDFromJobName(gomock.Any(), &statelesssvc.GetJobIDFromJobNameRequest{
@@ -733,7 +742,7 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_NewJobSuccess() {
 	k := req.GetTaskConfig().GetJob()
 	name := atop.NewJobName(k)
 
-	suite.respoolLoader.EXPECT().Load(gomock.Any()).Return(respoolID, nil)
+	suite.respoolLoader.EXPECT().Load(gomock.Any(), false).Return(respoolID, nil)
 
 	suite.jobClient.EXPECT().
 		GetJobIDFromJobName(gomock.Any(), &statelesssvc.GetJobIDFromJobNameRequest{
@@ -762,9 +771,16 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_NewJobConflict() {
 
 	respoolID := fixture.PelotonResourcePoolID()
 	req := fixture.AuroraJobUpdateRequest()
+	labels := []*api.Metadata{
+		{
+			Key:   ptr.String(common.AuroraGpuResourceKey),
+			Value: ptr.String("2"),
+		},
+	}
+	req.TaskConfig.Metadata = labels
 	name := atop.NewJobName(req.GetTaskConfig().GetJob())
 
-	suite.respoolLoader.EXPECT().Load(gomock.Any()).Return(respoolID, nil)
+	suite.respoolLoader.EXPECT().Load(gomock.Any(), true).Return(respoolID, nil)
 
 	suite.jobClient.EXPECT().
 		GetJobIDFromJobName(gomock.Any(), &statelesssvc.GetJobIDFromJobNameRequest{
@@ -793,7 +809,7 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobNoPulseSucces
 	curv := fixture.PelotonEntityVersion()
 	id := fixture.PelotonJobID()
 
-	suite.respoolLoader.EXPECT().Load(gomock.Any()).Return(respoolID, nil)
+	suite.respoolLoader.EXPECT().Load(gomock.Any(), false).Return(respoolID, nil)
 
 	suite.expectGetJobIDFromJobName(k, id)
 
@@ -830,7 +846,7 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobWithPulseSucc
 	curv := fixture.PelotonEntityVersion()
 	id := fixture.PelotonJobID()
 
-	suite.respoolLoader.EXPECT().Load(gomock.Any()).Return(respoolID, nil)
+	suite.respoolLoader.EXPECT().Load(gomock.Any(), false).Return(respoolID, nil)
 
 	suite.expectGetJobIDFromJobName(k, id)
 
@@ -865,7 +881,7 @@ func (suite *ServiceHandlerTestSuite) TestStartJobUpdate_ReplaceJobConflict() {
 	curv := fixture.PelotonEntityVersion()
 	id := fixture.PelotonJobID()
 
-	suite.respoolLoader.EXPECT().Load(gomock.Any()).Return(respoolID, nil)
+	suite.respoolLoader.EXPECT().Load(gomock.Any(), false).Return(respoolID, nil)
 
 	suite.expectGetJobIDFromJobName(k, id)
 

@@ -32,7 +32,7 @@ import (
 // RespoolLoader lazily loads a resource pool. If the resource pool does not
 // exist, it boostraps one with provided defaults.
 type RespoolLoader interface {
-	Load(context.Context) (*v1peloton.ResourcePoolID, error)
+	Load(context.Context, bool) (*v1peloton.ResourcePoolID, error)
 }
 
 type respoolLoader struct {
@@ -40,8 +40,9 @@ type respoolLoader struct {
 	client respool.ResourceManagerYARPCClient
 
 	// Cached respoolID for lazy lookup.
-	mu        sync.Mutex
-	respoolID *v1peloton.ResourcePoolID
+	mu           sync.Mutex
+	respoolID    *v1peloton.ResourcePoolID
+	gpuRespoolID *v1peloton.ResourcePoolID
 }
 
 // NewRespoolLoader creates a new RespoolLoader.
@@ -58,17 +59,27 @@ func NewRespoolLoader(
 
 // Load lazily loads a respool using the configured configured path if it exists,
 // else it creates a new respool using the configured spec.
-func (l *respoolLoader) Load(ctx context.Context) (*v1peloton.ResourcePoolID, error) {
+func (l *respoolLoader) Load(ctx context.Context, isGpu bool) (*v1peloton.ResourcePoolID, error) {
+	if isGpu {
+		return l.load(ctx, l.gpuRespoolID, l.config.GPURespoolPath)
+	}
+	return l.load(ctx, l.respoolID, l.config.RespoolPath)
+}
+
+func (l *respoolLoader) load(
+	ctx context.Context,
+	respoolID *v1peloton.ResourcePoolID,
+	respoolPath string) (*v1peloton.ResourcePoolID, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	if l.respoolID == nil {
+	if respoolID == nil {
 		// respoolID has not been initialized yet, attempt to bootstrap.
-		if l.config.RespoolPath == "" {
+		if respoolPath == "" {
 			return nil, errors.New("no path configured")
 		}
 		for {
-			id, err := l.bootstrapRespool(ctx)
+			id, err := l.bootstrapRespool(ctx, respoolPath)
 			if err != nil {
 				select {
 				case <-time.After(l.config.RetryInterval):
@@ -79,33 +90,36 @@ func (l *respoolLoader) Load(ctx context.Context) (*v1peloton.ResourcePoolID, er
 					return nil, err
 				}
 			}
-			l.respoolID = id
+			respoolID = id
 			break
 		}
 	}
-	return &v1peloton.ResourcePoolID{Value: l.respoolID.GetValue()}, nil
+	return &v1peloton.ResourcePoolID{Value: respoolID.GetValue()}, nil
 }
 
 func (l *respoolLoader) bootstrapRespool(
 	ctx context.Context,
+	respoolPath string,
 ) (*v1peloton.ResourcePoolID, error) {
 
-	id, err := l.lookupRespoolID(ctx, l.config.RespoolPath)
+	id, err := l.lookupRespoolID(ctx, respoolPath)
 	if err != nil {
 		if yarpcerrors.IsNotFound(err) {
-			id, err = l.createDefaultRespool(ctx)
+			id, err = l.createDefaultRespool(ctx, respoolPath)
 			if err != nil {
-				return nil, fmt.Errorf("create default: %s", err)
+				return nil, fmt.Errorf("create respool %s: %s", respoolPath, err)
 			}
 			log.WithFields(log.Fields{
-				"id": id.GetValue(),
-			}).Info("Created default respool")
+				"id":      id.GetValue(),
+				"respool": respoolPath,
+			}).Info("Created respool")
 		} else {
-			return nil, fmt.Errorf("lookup %s id: %s", l.config.RespoolPath, err)
+			return nil, fmt.Errorf("lookup %s id: %s", respoolPath, err)
 		}
 	} else {
 		log.WithFields(log.Fields{
-			"id": id.GetValue(),
+			"id":      id.GetValue(),
+			"respool": respoolPath,
 		}).Info("Reusing pre-existing respool")
 	}
 	return &v1peloton.ResourcePoolID{
@@ -137,8 +151,11 @@ func (l *respoolLoader) lookupRespoolID(
 	return resp.GetId(), nil
 }
 
+// This should be called for only one resource pool.
+// Cannot have both default and GPU resource pools auto-created.
 func (l *respoolLoader) createDefaultRespool(
 	ctx context.Context,
+	respoolPath string,
 ) (*v0peloton.ResourcePoolID, error) {
 
 	root, err := l.lookupRespoolID(ctx, "/")
@@ -147,7 +164,7 @@ func (l *respoolLoader) createDefaultRespool(
 	}
 	req := &respool.CreateRequest{
 		Config: &respool.ResourcePoolConfig{
-			Name:            strings.TrimPrefix(l.config.RespoolPath, "/"),
+			Name:            strings.TrimPrefix(respoolPath, "/"),
 			OwningTeam:      l.config.DefaultRespoolSpec.OwningTeam,
 			LdapGroups:      l.config.DefaultRespoolSpec.LDAPGroups,
 			Description:     l.config.DefaultRespoolSpec.Description,
@@ -160,7 +177,7 @@ func (l *respoolLoader) createDefaultRespool(
 	}
 	resp, err := l.client.CreateResourcePool(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("create resource pool: %s", err)
+		return nil, fmt.Errorf("create resource pool %s: %s", respoolPath, err)
 	}
 	rerr := resp.GetError()
 	if rerr != nil {

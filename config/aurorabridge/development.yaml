@@ -11,6 +11,7 @@ election:
 
 respool_loader:
   respool_path: /AuroraBridge
+  gpu_respool_path: /GPUAuroraBridge
 
   # Mostly copied from default_respool.yaml
   default_respool_spec:

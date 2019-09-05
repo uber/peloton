@@ -29,6 +29,7 @@ import (
 
 	"github.com/uber/peloton/pkg/aurorabridge/atop"
 	"github.com/uber/peloton/pkg/aurorabridge/common"
+	"github.com/uber/peloton/pkg/aurorabridge/label"
 	"github.com/uber/peloton/pkg/aurorabridge/opaquedata"
 	"github.com/uber/peloton/pkg/common/concurrency"
 	"github.com/uber/peloton/pkg/common/taskconfig"
@@ -47,7 +48,13 @@ func (h *ServiceHandler) startJobUpdate(
 	message *string,
 ) (*api.Result, *auroraError) {
 
-	respoolID, err := h.respoolLoader.Load(ctx)
+	respoolID, err := h.respoolLoader.Load(
+		ctx,
+		label.IsGpuConfig(
+			request.GetTaskConfig().GetMetadata(),
+			request.GetTaskConfig().GetResources(),
+		),
+	)
 	if err != nil {
 		return nil, auroraErrorf("load respool: %s", err)
 	}
