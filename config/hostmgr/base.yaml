@@ -20,7 +20,7 @@ storage:
 host_manager:
   http_port: 5291
   grpc_port: 5391
-  offer_hold_time_sec: 1800
+  offer_hold_time_sec: 864000
   offer_pruning_period_sec: 3600
   taskupdate_ack_concurrency: 10
   taskupdate_buffer_size: 100000
