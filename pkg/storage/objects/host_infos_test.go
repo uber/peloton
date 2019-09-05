@@ -20,12 +20,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/suite"
 	hostpb "github.com/uber/peloton/.gen/peloton/api/v0/host"
 	pelotonpb "github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+
 	"github.com/uber/peloton/pkg/storage/objects/base"
 	ormmocks "github.com/uber/peloton/pkg/storage/orm/mocks"
+
+	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/suite"
 )
 
 type HostInfoObjectTestSuite struct {
@@ -202,6 +204,51 @@ func (s *HostInfoObjectTestSuite) TestCreateGetGetAllDeleteHostInfoFail() {
 	err = db.Delete(ctx, testHostInfo.Hostname)
 	s.Error(err)
 	s.Equal("Delete failed", err.Error())
+}
+
+// TestUpdatePools tests update current and desired pool on a host.
+func (s *HostInfoObjectTestSuite) TestUpdatePools() {
+	db := NewHostInfoOps(testStore)
+
+	ctx := context.Background()
+
+	testHostInfo := &hostpb.HostInfo{
+		Hostname:    "hostname1",
+		Ip:          "1.2.3.4",
+		State:       hostpb.HostState_HOST_STATE_UP,
+		GoalState:   hostpb.HostState_HOST_STATE_DRAINING,
+		CurrentPool: "pool1",
+		DesiredPool: "pool1",
+	}
+
+	labels := make(map[string]string)
+	for _, label := range testHostInfo.Labels {
+		labels[label.Key] = label.Value
+	}
+
+	err := db.Create(
+		ctx,
+		testHostInfo.Hostname,
+		testHostInfo.Ip,
+		testHostInfo.State,
+		testHostInfo.GoalState,
+		labels,
+		testHostInfo.CurrentPool,
+		testHostInfo.DesiredPool,
+	)
+	s.NoError(err)
+
+	err = db.UpdateCurrentPool(ctx, testHostInfo.Hostname, "pool2")
+	s.NoError(err)
+	hostInfo, err := db.Get(ctx, testHostInfo.Hostname)
+	s.NoError(err)
+	s.EqualValues("pool2", hostInfo.CurrentPool)
+
+	err = db.UpdateDesiredPool(ctx, testHostInfo.Hostname, "pool2")
+	s.NoError(err)
+	hostInfo, err = db.Get(ctx, testHostInfo.Hostname)
+	s.NoError(err)
+	s.EqualValues("pool2", hostInfo.DesiredPool)
 }
 
 func (s *HostInfoObjectTestSuite) TestNewHostInfoFromHostInfoObject() {

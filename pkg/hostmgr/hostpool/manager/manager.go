@@ -15,6 +15,7 @@
 package manager
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -26,6 +27,7 @@ import (
 	"github.com/uber/peloton/pkg/common/lifecycle"
 	"github.com/uber/peloton/pkg/hostmgr/host"
 	"github.com/uber/peloton/pkg/hostmgr/hostpool"
+	"github.com/uber/peloton/pkg/storage/objects"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -35,6 +37,8 @@ import (
 
 const (
 	_defaultReconcileInterval = 10 * time.Second
+
+	_updateHostPoolErrMsg = "failed to update host pool in host_infos table"
 )
 
 // HostPoolManager provides abstraction to manage host pools of a cluster.
@@ -56,10 +60,17 @@ type HostPoolManager interface {
 
 	// ChangeHostPool changes host pool of given host from source pool to
 	// destination pool.
-	ChangeHostPool(host, srcPool, destPool string) error
+	ChangeHostPool(hostname, srcPool, destPool string) error
+
+	// GetDesiredPool gets desired pool of given host in db.
+	GetDesiredPool(hostname string) (string, error)
+
+	// UpdateDesiredPool updates desired pool of given host in db.
+	UpdateDesiredPool(hostname, poolID string) error
 
 	// Start starts the host pool cache go routine that reconciles host pools.
-	Start()
+	// It returns error if failed to recover host pool data from db.
+	Start() error
 
 	// Stop stops the host pool cache go routine that reconciles host pools.
 	Stop()
@@ -72,7 +83,6 @@ type HostPoolManager interface {
 //   for recovery from restart etc.
 // - every host in the cluster belongs to, and only belongs to ONE host pool.
 // TODO: Use new host cache once it merges with agent map.
-// TODO: Add storage client.
 type hostPoolManager struct {
 	mu sync.RWMutex
 
@@ -82,6 +92,9 @@ type hostPoolManager struct {
 
 	// event stream handler
 	eventStreamHandler *eventstream.Handler
+
+	// hostInfoOps is the interface to update host_infos table.
+	hostInfoOps objects.HostInfoOps
 
 	// poolIndex is map from host pool id to host pool.
 	poolIndex map[string]hostpool.HostPool
@@ -103,6 +116,7 @@ type hostPoolManager struct {
 func New(
 	reconcileInternal time.Duration,
 	eventStreamHandler *eventstream.Handler,
+	hostInfoOps objects.HostInfoOps,
 	parentScope tally.Scope,
 ) HostPoolManager {
 	// If provided reconcile interval is less or equal to zero,
@@ -113,6 +127,7 @@ func New(
 	manager := &hostPoolManager{
 		reconcileInternal:  reconcileInternal,
 		eventStreamHandler: eventStreamHandler,
+		hostInfoOps:        hostInfoOps,
 		poolIndex:          make(map[string]hostpool.HostPool),
 		hostToPoolMap:      make(map[string]string),
 		lifecycle:          lifecycle.NewLifeCycle(),
@@ -193,6 +208,21 @@ func (m *hostPoolManager) RegisterPool(poolID string) {
 	}
 }
 
+// updateCurrentPoolInHostInfo updates current pool on given host in host_infos table.
+func (m *hostPoolManager) updateCurrentPoolInHostInfo(hostname, poolID string) error {
+	if len(hostname) == 0 {
+		m.metrics.UpdateCurrentPoolErr.Inc(1)
+		return errors.New("hostname is empty")
+	}
+
+	err := m.hostInfoOps.UpdateCurrentPool(context.Background(), hostname, poolID)
+	if err != nil {
+		m.metrics.UpdateCurrentPoolErr.Inc(1)
+		return err
+	}
+	return nil
+}
+
 // DeregisterPool deletes existing host pool with given ID.
 // It returns error if callers tries to delete default host pool.
 // It returns error if default host pool doesn't exist.
@@ -221,6 +251,14 @@ func (m *hostPoolManager) DeregisterPool(poolID string) error {
 				"%s host pool not found", common.DefaultHostPoolID)
 		}
 		for h := range pool.Hosts() {
+			err := m.updateCurrentPoolInHostInfo(h, common.DefaultHostPoolID)
+			if err != nil {
+				return yarpcerrors.InternalErrorf(
+					"failed to update host info of %s in db: %v",
+					h,
+					err,
+				)
+			}
 			m.hostToPoolMap[h] = common.DefaultHostPoolID
 			pool.Delete(h)
 			defaultPool.Add(h)
@@ -240,7 +278,7 @@ func (m *hostPoolManager) DeregisterPool(poolID string) error {
 // If host is not in source pool, fails the move attempt for that host.
 // TODO: Add more implementation after required hostInfo store change is done.
 func (m *hostPoolManager) ChangeHostPool(
-	host, srcPoolID, destPoolID string,
+	hostname, srcPoolID, destPoolID string,
 ) (err error) {
 	m.mu.Lock()
 	defer func() {
@@ -250,7 +288,7 @@ func (m *hostPoolManager) ChangeHostPool(
 		m.mu.Unlock()
 	}()
 
-	poolID, ok := m.hostToPoolMap[host]
+	poolID, ok := m.hostToPoolMap[hostname]
 	if !ok {
 		err = yarpcerrors.NotFoundErrorf("host not found")
 		return
@@ -273,12 +311,52 @@ func (m *hostPoolManager) ChangeHostPool(
 		return
 	}
 
-	srcPool.Delete(host)
-	destPool.Add(host)
-	m.hostToPoolMap[host] = destPoolID
+	if err = m.updateCurrentPoolInHostInfo(hostname, destPoolID); err != nil {
+		return
+	}
+	m.hostToPoolMap[hostname] = destPoolID
+	srcPool.Delete(hostname)
+	destPool.Add(hostname)
+	m.publishPoolEvent(hostname, destPoolID)
 
-	m.publishPoolEvent(host, destPoolID)
 	return
+}
+
+// GetDesiredPool gets desired pool of given host in db.
+func (m *hostPoolManager) GetDesiredPool(hostname string) (string, error) {
+	if len(hostname) == 0 {
+		m.metrics.GetDesirePoolErr.Inc(1)
+		return "", errors.New("hostname is empty")
+	}
+
+	hostInfo, err := m.hostInfoOps.Get(context.Background(), hostname)
+	if err != nil {
+		m.metrics.GetDesirePoolErr.Inc(1)
+		return "", err
+	}
+
+	return hostInfo.DesiredPool, nil
+}
+
+// UpdateDesiredPool updates desired pool of given host in db.
+// It returns error if either hostname or poolID is empty.
+func (m *hostPoolManager) UpdateDesiredPool(hostname, poolID string) error {
+	if len(hostname) == 0 {
+		m.metrics.UpdateDesiredPoolErr.Inc(1)
+		return errors.New("hostname is empty")
+	}
+
+	if len(poolID) == 0 {
+		m.metrics.UpdateDesiredPoolErr.Inc(1)
+		return errors.New("poolID is empty")
+	}
+
+	err := m.hostInfoOps.UpdateDesiredPool(context.Background(), hostname, poolID)
+	if err != nil {
+		m.metrics.UpdateDesiredPoolErr.Inc(1)
+		return err
+	}
+	return nil
 }
 
 func (m *hostPoolManager) publishPoolEvent(hostname, poolID string) {
@@ -295,17 +373,51 @@ func (m *hostPoolManager) publishPoolEvent(hostname, poolID string) {
 	m.eventStreamHandler.AddEvent(poolEvent)
 }
 
+// recover recovers host pool data from db.
+// It returns error if failed to read host pool data from db.
+// It skips host with no current pool, since it indicates host is not registered
+// in cluster anymore.
+func (m *hostPoolManager) recover() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	hostInfo, err := m.hostInfoOps.GetAll(context.Background())
+	if err != nil {
+		return err
+	}
+	for _, h := range hostInfo {
+		if h.CurrentPool == "" {
+			continue
+		}
+		m.hostToPoolMap[h.Hostname] = h.CurrentPool
+		if pool, ok := m.poolIndex[h.CurrentPool]; !ok {
+			newPool := hostpool.New(h.CurrentPool, m.parentScope)
+			newPool.Add(h.Hostname)
+			m.poolIndex[h.CurrentPool] = newPool
+		} else {
+			pool.Add(h.Hostname)
+		}
+	}
+	return nil
+}
+
 // Start starts the host pool cache go routine that reconciles host pools.
 // It runs periodical reconciliation.
-// TODO: Add more implementation after required hostInfo store change is done.
-func (m *hostPoolManager) Start() {
+// It returns error if failed to recover host pool data from db.
+func (m *hostPoolManager) Start() error {
 	if !m.lifecycle.Start() {
 		log.Warn("Host pool manager is already started")
-		return
+		return nil
 	}
 
 	log.Info("Starting host pool manager")
 
+	// Recover host pool data from db.
+	if err := m.recover(); err != nil {
+		return err
+	}
+
+	// Start goroutine to periodically reconcile host pool cache.
 	go func() {
 		defer m.lifecycle.StopComplete()
 
@@ -324,11 +436,11 @@ func (m *hostPoolManager) Start() {
 		}
 	}()
 
+	return nil
 }
 
 // Stop stops the host pool cache go routine that reconciles host pools.
 // It stops periodical reconciliation.
-// TODO: Add more implementation after required hostInfo store change is done.
 func (m *hostPoolManager) Stop() {
 	if !m.lifecycle.Stop() {
 		log.Warn("Host pool manager is already stopped")
@@ -352,7 +464,6 @@ func (m *hostPoolManager) Stop() {
 // It reconciles host pool cache with host index in AgentMap cache.
 // It reconciles host pool cache with host pool data in database.
 // It makes sure every host belongs to, and only belongs to ONE host pool.
-// TODO: Add more implementation after required hostInfo store change is done.
 func (m *hostPoolManager) reconcile() error {
 	sw := m.metrics.ReconcileTime.Start()
 	m.mu.Lock()
@@ -390,6 +501,12 @@ func (m *hostPoolManager) reconcile() error {
 	for poolID, pool := range m.poolIndex {
 		for hostname := range pool.Hosts() {
 			if _, ok := registeredAgents[hostname]; !ok {
+				err := m.updateCurrentPoolInHostInfo(hostname, "")
+				if err != nil {
+					log.WithError(err).WithField("hostname", hostname).
+						Error(_updateHostPoolErrMsg)
+					continue
+				}
 				delete(m.hostToPoolMap, hostname)
 				pool.Delete(hostname)
 				m.publishPoolEvent(hostname, "")
@@ -398,6 +515,12 @@ func (m *hostPoolManager) reconcile() error {
 
 			prevPoolID, ok := m.hostToPoolMap[hostname]
 			if !ok {
+				err := m.updateCurrentPoolInHostInfo(hostname, "")
+				if err != nil {
+					log.WithError(err).WithField("hostname", hostname).
+						Error(_updateHostPoolErrMsg)
+					continue
+				}
 				pool.Delete(hostname)
 				m.publishPoolEvent(hostname, "")
 				continue
@@ -408,6 +531,12 @@ func (m *hostPoolManager) reconcile() error {
 				continue
 			}
 
+			err := m.updateCurrentPoolInHostInfo(hostname, prevPoolID)
+			if err != nil {
+				log.WithError(err).WithField("hostname", hostname).
+					Error(_updateHostPoolErrMsg)
+				continue
+			}
 			newHostToPoolMap[hostname] = prevPoolID
 			pool.Delete(hostname)
 			if _, ok = m.poolIndex[prevPoolID]; !ok {
@@ -418,7 +547,6 @@ func (m *hostPoolManager) reconcile() error {
 						"during reconciliation")
 			}
 			m.poolIndex[prevPoolID].Add(hostname)
-			m.publishPoolEvent(hostname, prevPoolID)
 		}
 	}
 
@@ -426,6 +554,12 @@ func (m *hostPoolManager) reconcile() error {
 	// If a host is not in rebuild hostToPoolMap, add it to host cache.
 	for hostname, poolID := range m.hostToPoolMap {
 		if _, ok := newHostToPoolMap[hostname]; !ok {
+			err := m.updateCurrentPoolInHostInfo(hostname, poolID)
+			if err != nil {
+				log.WithError(err).WithField("hostname", hostname).
+					Error(_updateHostPoolErrMsg)
+				continue
+			}
 			newHostToPoolMap[hostname] = poolID
 			if _, ok = m.poolIndex[poolID]; !ok {
 				m.poolIndex[poolID] = hostpool.New(poolID, m.parentScope)
@@ -442,6 +576,12 @@ func (m *hostPoolManager) reconcile() error {
 	// add it to default host pool.
 	for hostname := range registeredAgents {
 		if _, ok := newHostToPoolMap[hostname]; !ok {
+			err := m.updateCurrentPoolInHostInfo(hostname, common.DefaultHostPoolID)
+			if err != nil {
+				log.WithError(err).WithField("hostname", hostname).
+					Error(_updateHostPoolErrMsg)
+				continue
+			}
 			newHostToPoolMap[hostname] = common.DefaultHostPoolID
 			// No need to check existence since reconciliation ensures
 			// default host pool always exists at the beginning of each loop.

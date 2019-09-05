@@ -75,6 +75,7 @@ type RecoveryTestSuite struct {
 	activeJobsOps            *objectmocks.MockActiveJobsOps
 	jobConfigOps             *objectmocks.MockJobConfigOps
 	jobRuntimeOps            *objectmocks.MockJobRuntimeOps
+	hostInfoOps              *objectmocks.MockHostInfoOps
 	mockMaintenanceQueue     *qm.MockMaintenanceQueue
 	mockMasterOperatorClient *mpb_mocks.MockMasterOperatorClient
 	drainingMachines         []*mesos.MachineID
@@ -124,6 +125,7 @@ func (suite *RecoveryTestSuite) SetupTest() {
 	suite.activeJobsOps = objectmocks.NewMockActiveJobsOps(suite.mockCtrl)
 	suite.jobConfigOps = objectmocks.NewMockJobConfigOps(suite.mockCtrl)
 	suite.jobRuntimeOps = objectmocks.NewMockJobRuntimeOps(suite.mockCtrl)
+	suite.hostInfoOps = objectmocks.NewMockHostInfoOps(suite.mockCtrl)
 
 	suite.mockMaintenanceQueue = qm.NewMockMaintenanceQueue(suite.mockCtrl)
 	suite.mockMasterOperatorClient = mpb_mocks.NewMockMasterOperatorClient(suite.mockCtrl)
@@ -164,7 +166,7 @@ func (suite *RecoveryTestSuite) SetupTest() {
 		nil,
 		suite.testScope)
 	suite.manager = manager.New(
-		0, suite.eventStreamHandler, tally.NoopScope)
+		0, suite.eventStreamHandler, suite.hostInfoOps, tally.NoopScope)
 	suite.driver = hostmgr_mesos.InitSchedulerDriver(
 		&hostmgr_mesos.Config{
 			Framework: &hostmgr_mesos.FrameworkConfig{

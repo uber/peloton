@@ -645,15 +645,20 @@ func main() {
 		nil,
 	)
 
+	hostInfoOps := ormobjects.NewHostInfoOps(ormStore)
+
 	// Construct host pool manager if it is enabled.
 	var hostPoolManager manager.HostPoolManager
 	if cfg.HostManager.EnableHostPool {
 		hostPoolManager = manager.New(
 			cfg.HostManager.HostPoolReconcileInterval,
 			offer.GetEventHandler().GetEventStreamHandler(),
+			hostInfoOps,
 			rootScope,
 		)
-		hostPoolManager.Start()
+		if err := hostPoolManager.Start(); err != nil {
+			log.WithError(err).Fatal("Failed to start host pool manager.")
+		}
 		defer hostPoolManager.Stop()
 
 		// Set host pool manager in offer pool event handler.

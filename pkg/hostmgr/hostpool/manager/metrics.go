@@ -29,6 +29,9 @@ type Metrics struct {
 	DeregisterPoolErr    tally.Counter
 	ChangeHostPoolErr    tally.Counter
 	ReconcileErr         tally.Counter
+	UpdateCurrentPoolErr tally.Counter
+	GetDesirePoolErr     tally.Counter
+	UpdateDesiredPoolErr tally.Counter
 
 	// Host pool manager performance metrics
 	ReconcileTime tally.Timer
@@ -36,6 +39,7 @@ type Metrics struct {
 
 func NewMetrics(scope tally.Scope) *Metrics {
 	hostPoolManagerScope := scope.SubScope("host_pool_manager")
+	hostInfoScope := hostPoolManagerScope.SubScope("host_info")
 
 	return &Metrics{
 		TotalHosts:           hostPoolManagerScope.Gauge("total_hosts"),
@@ -45,6 +49,9 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		DeregisterPoolErr:    hostPoolManagerScope.Counter("deregister_pool_error"),
 		ChangeHostPoolErr:    hostPoolManagerScope.Counter("change_host_pool_error"),
 		ReconcileErr:         hostPoolManagerScope.Counter("reconcile_err"),
+		UpdateCurrentPoolErr: hostInfoScope.Counter("update_current_pool_err"),
+		GetDesirePoolErr:     hostInfoScope.Counter("get_desired_pool_err"),
+		UpdateDesiredPoolErr: hostInfoScope.Counter("update_desired_pool_err"),
 		ReconcileTime:        hostPoolManagerScope.Timer("reconcile_time"),
 	}
 }

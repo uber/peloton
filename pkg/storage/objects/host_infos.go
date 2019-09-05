@@ -17,45 +17,46 @@ package objects
 import (
 	"context"
 	"encoding/json"
-	"go.uber.org/yarpc/yarpcerrors"
 	"time"
 
 	hostpb "github.com/uber/peloton/.gen/peloton/api/v0/host"
 	pelotonpb "github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/pkg/storage/objects/base"
+
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
-// it adds a HostInfoObject instance to the global list of storage objects
+// it adds a HostInfoObject instance to the global list of storage objects.
 func init() {
 	Objs = append(Objs, &HostInfoObject{})
 }
 
 // HostInfoObject corresponds to a row in host_info table.
 type HostInfoObject struct {
-	// DB specific annotations
+	// DB specific annotations.
 	base.Object `cassandra:"name=host_info, primaryKey=((hostname))"`
-	// Hostname of the host
+	// Hostname of the host.
 	Hostname *base.OptionalString `column:"name=hostname"`
-	// IP address of the host
+	// IP address of the host.
 	IP string `column:"name=ip"`
-	// HostState of the host
+	// HostState of the host.
 	State string `column:"name=state"`
-	// GoalState of the host
+	// GoalState of the host.
 	GoalState string `column:"name=goal_state"`
-	// Labels of the host
+	// Labels of the host.
 	Labels string `column:"name=labels"`
-	// Current host Pool for the host
-	// This will indicate which host pool this host belongs to
+	// Current host Pool for the host.
+	// This will indicate which host pool this host belongs to.
 	CurrentPool string `column:"name=current_pool"`
 	// Desired host pool for the host
 	// This will indicate which host pool this host should be.
 	DesiredPool string `column:"name=desired_pool"`
-	// Last update time of the host maintenance
+	// Last update time of the host maintenance.
 	UpdateTime time.Time `column:"name=update_time"`
 }
 
 // transform will convert all the value from DB into the corresponding type
-// in ORM object to be interpreted by base store client
+// in ORM object to be interpreted by base store client.
 func (o *HostInfoObject) transform(row map[string]interface{}) {
 	o.Hostname = base.NewOptionalString(row["hostname"])
 	o.IP = row["ip"].(string)
@@ -103,14 +104,22 @@ type HostInfoOps interface {
 
 	// Delete removes an object from the table based on primary key.
 	Delete(ctx context.Context, hostname string) error
+
+	// UpdateCurrentPool updates current pool on a host.
+	UpdateCurrentPool(ctx context.Context, hostname string, pool string) error
+
+	// UpdateDesiredPool updates desired pool on a host.
+	UpdateDesiredPool(ctx context.Context, hostname string, pool string) error
 }
 
-// hostInfoOps implements HostInfoOps using a particular Store
+// hostInfoOps implements HostInfoOps using a particular Store.
+// TODO: Concurrent control on hostInfoOps should be done by callers, after merging
+//  with host cache, concurrent control should be achieved through locking in host cache.
 type hostInfoOps struct {
 	store *Store
 }
 
-// Ensure that default implementation hostInfoOps satisfies the interface
+// Ensure that default implementation hostInfoOps satisfies the interface.
 var _ HostInfoOps = (*hostInfoOps)(nil)
 
 // NewHostInfoOps constructs a HostInfoOps object for a provided Store.
@@ -118,7 +127,7 @@ func NewHostInfoOps(s *Store) HostInfoOps {
 	return &hostInfoOps{store: s}
 }
 
-// Create creates a host info in db
+// Create creates a host info in db.
 func (d *hostInfoOps) Create(
 	ctx context.Context,
 	hostname string,
@@ -151,7 +160,7 @@ func (d *hostInfoOps) Create(
 	return nil
 }
 
-// Get gets a host info from db by its hostname pk
+// Get gets a host info from db by its hostname pk.
 func (d *hostInfoOps) Get(
 	ctx context.Context,
 	hostname string,
@@ -179,7 +188,7 @@ func (d *hostInfoOps) Get(
 	return info, nil
 }
 
-// GetAll gets all host infos from db without any pk specified
+// GetAll gets all host infos from db without any pk specified.
 func (d *hostInfoOps) GetAll(ctx context.Context) ([]*hostpb.HostInfo, error) {
 	rows, err := d.store.oClient.GetAll(ctx, &HostInfoObject{})
 	if err != nil {
@@ -202,7 +211,7 @@ func (d *hostInfoOps) GetAll(ctx context.Context) ([]*hostpb.HostInfo, error) {
 	return hostInfos, nil
 }
 
-// Update the host state and goal state of a host info by its hostname pk
+// Update the host state and goal state of a host info by its hostname pk.
 func (d *hostInfoOps) Update(
 	ctx context.Context,
 	hostname string,
@@ -238,7 +247,7 @@ func (d *hostInfoOps) Update(
 	return nil
 }
 
-// Delete deletes a host info from db by its hostname pk
+// Delete deletes a host info from db by its hostname pk.
 func (d *hostInfoOps) Delete(ctx context.Context, hostname string) error {
 	hostInfoObject := &HostInfoObject{
 		Hostname: base.NewOptionalString(hostname),
@@ -251,8 +260,51 @@ func (d *hostInfoOps) Delete(ctx context.Context, hostname string) error {
 	return nil
 }
 
+// UpdateCurrentPool updates current pool on a host.
+func (d *hostInfoOps) UpdateCurrentPool(
+	ctx context.Context,
+	hostname string,
+	pool string,
+) error {
+	hostInfoObject := &HostInfoObject{
+		Hostname:    base.NewOptionalString(hostname),
+		CurrentPool: pool,
+		UpdateTime:  time.Now(),
+	}
+	fieldsToUpdate := []string{"CurrentPool", "UpdateTime"}
+
+	err := d.store.oClient.Update(ctx, hostInfoObject, fieldsToUpdate...)
+	if err != nil {
+		d.store.metrics.OrmHostInfoMetrics.HostInfoCurrentPoolUpdateFail.Inc(1)
+		return err
+	}
+	d.store.metrics.OrmHostInfoMetrics.HostInfoCurrentPoolUpdate.Inc(1)
+	return nil
+}
+
+// UpdateDesiredPool updates desired pool on a host.
+func (d *hostInfoOps) UpdateDesiredPool(
+	ctx context.Context,
+	hostname string,
+	pool string,
+) error {
+	hostInfoObject := &HostInfoObject{
+		Hostname:    base.NewOptionalString(hostname),
+		DesiredPool: pool,
+		UpdateTime:  time.Now(),
+	}
+	fieldsToUpdate := []string{"DesiredPool", "UpdateTime"}
+	err := d.store.oClient.Update(ctx, hostInfoObject, fieldsToUpdate...)
+	if err != nil {
+		d.store.metrics.OrmHostInfoMetrics.HostInfoDesiredPoolUpdateFail.Inc(1)
+		return err
+	}
+	d.store.metrics.OrmHostInfoMetrics.HostInfoDesiredPoolUpdate.Inc(1)
+	return nil
+}
+
 // newHostInfoFromHostInfoObject creates a new *hostpb.HostInfo
-// and sets each field from a HostInfoObject object
+// and sets each field from a HostInfoObject object.
 func newHostInfoFromHostInfoObject(
 	hostInfoObject *HostInfoObject) (*hostpb.HostInfo, error) {
 	hostInfo := &hostpb.HostInfo{}

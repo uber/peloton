@@ -331,6 +331,12 @@ type OrmHostInfoMetrics struct {
 	HostInfoUpdate     tally.Counter
 	HostInfoUpdateFail tally.Counter
 
+	HostInfoCurrentPoolUpdate     tally.Counter
+	HostInfoCurrentPoolUpdateFail tally.Counter
+
+	HostInfoDesiredPoolUpdate     tally.Counter
+	HostInfoDesiredPoolUpdateFail tally.Counter
+
 	HostInfoDelete     tally.Counter
 	HostInfoDeleteFail tally.Counter
 }
@@ -725,16 +731,20 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	}
 
 	ormHostInfoMetrics := &OrmHostInfoMetrics{
-		HostInfoAdd:        hostInfoSuccessScope.Counter("add"),
-		HostInfoAddFail:    hostInfoFailScope.Counter("add"),
-		HostInfoGet:        hostInfoSuccessScope.Counter("get"),
-		HostInfoGetFail:    hostInfoFailScope.Counter("get"),
-		HostInfoGetAll:     hostInfoSuccessScope.Counter("get_all"),
-		HostInfoGetAllFail: hostInfoFailScope.Counter("get_all"),
-		HostInfoUpdate:     hostInfoSuccessScope.Counter("update"),
-		HostInfoUpdateFail: hostInfoFailScope.Counter("update"),
-		HostInfoDelete:     hostInfoSuccessScope.Counter("delete"),
-		HostInfoDeleteFail: hostInfoFailScope.Counter("delete"),
+		HostInfoAdd:                   hostInfoSuccessScope.Counter("add"),
+		HostInfoAddFail:               hostInfoFailScope.Counter("add"),
+		HostInfoGet:                   hostInfoSuccessScope.Counter("get"),
+		HostInfoGetFail:               hostInfoFailScope.Counter("get"),
+		HostInfoGetAll:                hostInfoSuccessScope.Counter("get_all"),
+		HostInfoGetAllFail:            hostInfoFailScope.Counter("get_all"),
+		HostInfoUpdate:                hostInfoSuccessScope.Counter("update"),
+		HostInfoUpdateFail:            hostInfoFailScope.Counter("update"),
+		HostInfoCurrentPoolUpdate:     hostInfoSuccessScope.Counter("current_pool_update"),
+		HostInfoCurrentPoolUpdateFail: hostInfoFailScope.Counter("current_pool_update"),
+		HostInfoDesiredPoolUpdate:     hostInfoSuccessScope.Counter("desired_pool_update"),
+		HostInfoDesiredPoolUpdateFail: hostInfoFailScope.Counter("desired_pool_update"),
+		HostInfoDelete:                hostInfoSuccessScope.Counter("delete"),
+		HostInfoDeleteFail:            hostInfoFailScope.Counter("delete"),
 	}
 
 	ormJobUpdateEventsMetrics := &OrmJobUpdateEventsMetrics{
