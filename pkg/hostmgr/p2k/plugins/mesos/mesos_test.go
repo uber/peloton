@@ -20,6 +20,7 @@ import (
 	"time"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	mesosmaster "github.com/uber/peloton/.gen/mesos/v1/master"
 	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
@@ -522,21 +523,25 @@ func (suite *MesosManagerTestSuite) TestNewMesosManagerRescindNonexistentOffer()
 
 // TestNewMesosManagerStatusUpdates tests receiving task status update events.
 func (suite *MesosManagerTestSuite) TestNewMesosManagerStatusUpdates() {
-	host1 := "hostname1"
-	uuid1 := uuid.New()
+	hostname1 := "hostname1"
+	agentID1 := uuid.New()
+	taskID1 := uuid.New()
 	state := mesos.TaskState_TASK_STARTING
 	eventID := []byte{201, 117, 104, 168, 54, 76, 69, 143, 185, 116, 159, 95, 198, 94, 162, 38}
 
 	status := &mesos.TaskStatus{
 		TaskId: &mesos.TaskID{
-			Value: &uuid1,
+			Value: &taskID1,
 		},
 		State: &state,
 		AgentId: &mesos.AgentID{
-			Value: &host1,
+			Value: &agentID1,
 		},
 		Uuid: eventID,
 	}
+
+	// store the map of agentID -> hostname, either wise event would be discarded
+	suite.mesosManager.agentIDToHostname.Store(agentID1, hostname1)
 
 	suite.mesosManager.Update(context.Background(), &sched.Event{
 		Update: &sched.Event_Update{
@@ -548,13 +553,74 @@ func (suite *MesosManagerTestSuite) TestNewMesosManagerStatusUpdates() {
 
 	suite.Equal(pe.EventType, scalar.UpdatePod)
 	suite.Equal(pe.EventID, string(eventID))
-	suite.Equal(pe.Event.GetHostname(), host1)
-	suite.Equal(pe.Event.GetAgentId(), host1)
-	suite.Equal(pe.Event.GetPodId().GetValue(), uuid1)
+	suite.Equal(pe.Event.GetHostname(), hostname1)
+	suite.Equal(pe.Event.GetAgentId(), agentID1)
+	suite.Equal(pe.Event.GetPodId().GetValue(), taskID1)
 	suite.Equal(
 		pe.Event.GetActualState(),
 		pbpod.PodState_POD_STATE_STARTING.String(),
 	)
+}
+
+// TestMesosManagerStatusUpdatesWithoutAgentIDMap tests receiving task status update events,
+// but cannot find corresponding hostname with the agent ID. No event would be sent in this case.
+func (suite *MesosManagerTestSuite) TestMesosManagerStatusUpdatesWithoutAgentIDMap() {
+	agentID1 := uuid.New()
+	taskID1 := uuid.New()
+	state := mesos.TaskState_TASK_STARTING
+	eventID := []byte{201, 117, 104, 168, 54, 76, 69, 143, 185, 116, 159, 95, 198, 94, 162, 38}
+
+	status := &mesos.TaskStatus{
+		TaskId: &mesos.TaskID{
+			Value: &taskID1,
+		},
+		State: &state,
+		AgentId: &mesos.AgentID{
+			Value: &agentID1,
+		},
+		Uuid: eventID,
+	}
+
+	suite.mesosManager.Update(context.Background(), &sched.Event{
+		Update: &sched.Event_Update{
+			Status: status,
+		},
+	})
+
+	select {
+	case <-suite.podEventCh:
+		suite.Fail("no event should be received")
+	default:
+		break
+	}
+}
+
+// TestNewMesosManagerStartProcessingAgentInfo tests that startProcessAgentInfo can
+// process agent info sent via agentCh correctly
+func (suite *MesosManagerTestSuite) TestNewMesosManagerStartProcessingAgentInfo() {
+	hostname1 := "hostname1"
+	agentID1 := uuid.New()
+	hostname2 := "hostname2"
+	agentID2 := uuid.New()
+
+	suite.mesosManager.lf.Start()
+
+	agentCh := make(chan []*mesosmaster.Response_GetAgents_Agent, 2)
+	agentCh <- []*mesosmaster.Response_GetAgents_Agent{
+		{AgentInfo: &mesos.AgentInfo{Hostname: &hostname1, Id: &mesos.AgentID{Value: &agentID1}}},
+		{AgentInfo: &mesos.AgentInfo{Hostname: &hostname2, Id: &mesos.AgentID{Value: &agentID2}}},
+	}
+	suite.mesosManager.startProcessAgentInfo(agentCh)
+
+	suite.mesosManager.lf.Stop()
+
+	hs1, ok := suite.mesosManager.agentIDToHostname.Load(agentID1)
+	suite.True(ok)
+	suite.Equal(hostname1, hs1)
+
+	hs2, ok := suite.mesosManager.agentIDToHostname.Load(agentID2)
+	suite.True(ok)
+	suite.Equal(hostname2, hs2)
 }
 
 func newTestPelotonPodSpec(podName string) *pbpod.PodSpec {

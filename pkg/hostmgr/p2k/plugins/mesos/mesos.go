@@ -20,6 +20,7 @@ import (
 	"time"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	mesosmaster "github.com/uber/peloton/.gen/mesos/v1/master"
 	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
 	v0peloton "github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
@@ -29,6 +30,7 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/factory/task"
 	hostmgrmesos "github.com/uber/peloton/pkg/hostmgr/mesos"
 
+	"github.com/uber/peloton/pkg/common/lifecycle"
 	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
 	"github.com/uber/peloton/pkg/hostmgr/models"
@@ -46,6 +48,8 @@ const mesosTaskUpdateAckChanSize = 1000
 type MesosManager struct {
 	// dispatcher for yarpc
 	d *yarpc.Dispatcher
+
+	lf lifecycle.LifeCycle
 
 	// Pod events channel. This channel is used to send pod events up stream to the event stream.
 	podEventCh chan<- *scalar.PodEvent
@@ -74,6 +78,14 @@ type MesosManager struct {
 	once sync.Once
 
 	agentSyncer *agentSyncer
+
+	// Map to store agentID to hostname.
+	// When a task update mesos event comes, it only as agent ID with it.
+	// However, peloton requires hostname to decide which populate hostsummary
+	// and other cache. As a result, mesos plugin needs to maintain this map
+	// by digesting host agent info, and looks up corresponding hostname with
+	// the agentID when an event comes in.
+	agentIDToHostname sync.Map
 }
 
 func NewMesosManager(
@@ -89,6 +101,7 @@ func NewMesosManager(
 ) *MesosManager {
 	return &MesosManager{
 		d:                     d,
+		lf:                    lifecycle.NewLifeCycle(),
 		metrics:               newMetrics(scope.SubScope("mesos_manager")),
 		frameworkInfoProvider: frameworkInfoProvider,
 		schedulerClient:       schedulerClient,
@@ -99,7 +112,6 @@ func NewMesosManager(
 		once:                  sync.Once{},
 		agentSyncer: newAgentSyncer(
 			operatorClient,
-			hostEventCh,
 			agentInfoRefreshInterval,
 		),
 	}
@@ -107,6 +119,12 @@ func NewMesosManager(
 
 // Start the plugin.
 func (m *MesosManager) Start() error {
+	if !m.lf.Start() {
+		// already started,
+		// skip the action
+		return nil
+	}
+
 	m.once.Do(func() {
 		procedures := map[sched.Event_Type]interface{}{
 			sched.Event_OFFERS:  m.Offers,
@@ -121,12 +139,19 @@ func (m *MesosManager) Start() error {
 	})
 
 	m.agentSyncer.Start()
+	m.startProcessAgentInfo(m.agentSyncer.AgentCh())
 	m.startAsyncProcessTaskUpdates()
 	return nil
 }
 
 // Stop the plugin.
 func (m *MesosManager) Stop() {
+	if !m.lf.Stop() {
+		// already stopped,
+		// skip the action
+		return
+	}
+
 	m.agentSyncer.Stop()
 	m.offerManager.Clear()
 }
@@ -305,6 +330,40 @@ func (m *MesosManager) acknowledgeTaskUpdate(
 	return nil
 }
 
+func (m *MesosManager) startProcessAgentInfo(
+	agentCh <-chan []*mesosmaster.Response_GetAgents_Agent,
+) {
+	// The first batch needs to be populated in sync,
+	// so after MesosManager starts and begins to receive mesos events,
+	// MesosManager would have the agentIDToHostname ready
+	m.processAgentHostMap(<-agentCh)
+
+	go func() {
+		for {
+			select {
+			case agents := <-agentCh:
+				m.processAgentHostMap(agents)
+			case <-m.lf.StopCh():
+				return
+			}
+		}
+	}()
+}
+
+func (m *MesosManager) processAgentHostMap(
+	agents []*mesosmaster.Response_GetAgents_Agent,
+) {
+	for _, agent := range agents {
+		agentID := agent.GetAgentInfo().GetId().GetValue()
+		hostname := agent.GetAgentInfo().GetHostname()
+		m.agentIDToHostname.Store(agentID, hostname)
+		for _, agent := range agents {
+			m.hostEventCh <- scalar.
+				BuildHostEventFromAgent(agent, scalar.UpdateAgent)
+		}
+	}
+}
+
 // ReconcileHosts will return the current state of hosts in the cluster.
 func (m *MesosManager) ReconcileHosts() ([]*scalar.HostInfo, error) {
 	// TODO: fill in implementation
@@ -344,13 +403,25 @@ func (m *MesosManager) Rescind(ctx context.Context, body *sched.Event) error {
 
 // Update is the Mesos callback on mesos task status updates
 func (m *MesosManager) Update(ctx context.Context, body *sched.Event) error {
-	//var err error
 	taskUpdate := body.GetUpdate()
 
 	// Todo implement watch processor notifications.
 
+	hostname, ok := m.agentIDToHostname.Load(
+		taskUpdate.GetStatus().GetAgentId().GetValue())
+	if !ok {
+		// Hostname is not found, maybe the agent info is not
+		// populated yet. Return directly and wait for mesos
+		// to resend the event.
+		m.metrics.AgentIDToHostnameMissing.Inc(1)
+		log.WithField("agent_id",
+			taskUpdate.GetStatus().GetAgentId().GetValue(),
+		).Warn("cannot find hostname for agent_id")
+		return nil
+	}
+
 	// Update the metrics in go routine to unblock API callback
-	m.podEventCh <- buildPodEventFromMesosTaskStatus(taskUpdate)
+	m.podEventCh <- buildPodEventFromMesosTaskStatus(taskUpdate, hostname.(string))
 	m.metrics.TaskUpdateCounter.Inc(1)
 	taskStateCounter := m.metrics.scope.Counter(
 		"task_state_" + taskUpdate.GetStatus().GetState().String())
@@ -375,6 +446,7 @@ func convertPodSpecToLaunchableTask(id *peloton.PodID, spec *pbpod.PodSpec) (*ho
 
 func buildPodEventFromMesosTaskStatus(
 	evt *sched.Event_Update,
+	hostname string,
 ) *scalar.PodEvent {
 	healthy := pbpod.HealthState_HEALTH_STATE_UNHEALTHY.String()
 	if evt.GetStatus().GetHealthy() {
@@ -390,7 +462,7 @@ func buildPodEventFromMesosTaskStatus(
 				time.RFC3339Nano,
 			),
 			AgentId:  evt.GetStatus().GetAgentId().GetValue(),
-			Hostname: evt.GetStatus().GetAgentId().GetValue(),
+			Hostname: hostname,
 			Message:  evt.GetStatus().GetMessage(),
 			Reason:   evt.GetStatus().GetReason().String(),
 			Healthy:  healthy,

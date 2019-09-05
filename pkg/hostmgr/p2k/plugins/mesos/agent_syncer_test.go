@@ -20,9 +20,7 @@ import (
 
 	mesosv1 "github.com/uber/peloton/.gen/mesos/v1"
 	mesosmaster "github.com/uber/peloton/.gen/mesos/v1/master"
-	"github.com/uber/peloton/pkg/common/util"
 	mpbmocks "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
-	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
@@ -32,19 +30,16 @@ type AgentSyncerTestSuite struct {
 	suite.Suite
 
 	ctrl           *gomock.Controller
-	hostEventCh    chan *scalar.HostEvent
 	operatorClient *mpbmocks.MockMasterOperatorClient
 	agentSyncer    *agentSyncer
 }
 
 func (suite *AgentSyncerTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
-	suite.hostEventCh = make(chan *scalar.HostEvent, 1000)
 	suite.operatorClient = mpbmocks.NewMockMasterOperatorClient(suite.ctrl)
 
 	suite.agentSyncer = newAgentSyncer(
 		suite.operatorClient,
-		suite.hostEventCh,
 		10*time.Second,
 	)
 }
@@ -106,10 +101,6 @@ func (suite *AgentSyncerTestSuite) TestStartForExtendedPeriodOfTime() {
 
 // TestRunOnce tests agent info is sent to channel
 func (suite *AgentSyncerTestSuite) TestRunOnce() {
-	cpu := 4.0
-	mem := 1024.0
-	disk := 2048.0
-	gpu := 1.0
 	hostname := "hostname1"
 
 	agent := &mesosmaster.Response_GetAgents{
@@ -117,24 +108,6 @@ func (suite *AgentSyncerTestSuite) TestRunOnce() {
 			{
 				AgentInfo: &mesosv1.AgentInfo{
 					Hostname: &hostname,
-				},
-				TotalResources: []*mesosv1.Resource{
-					util.NewMesosResourceBuilder().
-						WithName("cpus").
-						WithValue(cpu).
-						Build(),
-					util.NewMesosResourceBuilder().
-						WithName("mem").
-						WithValue(mem).
-						Build(),
-					util.NewMesosResourceBuilder().
-						WithName("disk").
-						WithValue(disk).
-						Build(),
-					util.NewMesosResourceBuilder().
-						WithName("gpus").
-						WithValue(gpu).
-						Build(),
 				},
 			},
 		},
@@ -144,15 +117,15 @@ func (suite *AgentSyncerTestSuite) TestRunOnce() {
 		Agents().
 		Return(agent, nil)
 
+	// start lifecycle because runOnce uses
+	// lf.StopCh(), which is initialized when Start()
+	// is called
+	suite.agentSyncer.lf.Start()
 	suite.agentSyncer.runOnce()
 
-	hostEvent := <-suite.hostEventCh
+	agents := <-suite.agentSyncer.AgentCh()
 
-	suite.Equal(hostEvent.GetEventType(), scalar.UpdateAgent)
-	suite.Equal(hostEvent.GetHostInfo().GetCapacity().GetCpu(), cpu)
-	suite.Equal(hostEvent.GetHostInfo().GetCapacity().GetMemMb(), mem)
-	suite.Equal(hostEvent.GetHostInfo().GetCapacity().GetDiskMb(), disk)
-	suite.Equal(hostEvent.GetHostInfo().GetCapacity().GetGpu(), gpu)
+	suite.Len(agents, 1)
 }
 
 func TestAgentSyncerTestSuite(t *testing.T) {

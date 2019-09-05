@@ -17,33 +17,35 @@ package mesos
 import (
 	"time"
 
+	mesosmaster "github.com/uber/peloton/.gen/mesos/v1/master"
 	"github.com/uber/peloton/pkg/common/lifecycle"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
-	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 
 	log "github.com/sirupsen/logrus"
 )
+
+const agentChanSize = 10
 
 // agentSyncer syncs agent info from mesos periodically
 // and send the info via HostEvent through hostEventCh.
 type agentSyncer struct {
 	lf lifecycle.LifeCycle
 
+	agentCh chan []*mesosmaster.Response_GetAgents_Agent
+
 	operatorClient  mpb.MasterOperatorClient
-	hostEventCh     chan<- *scalar.HostEvent
 	refreshInterval time.Duration
 }
 
 func newAgentSyncer(
 	operatorClient mpb.MasterOperatorClient,
-	hostEventCh chan<- *scalar.HostEvent,
 	refreshInterval time.Duration,
 ) *agentSyncer {
 	return &agentSyncer{
 		lf:              lifecycle.NewLifeCycle(),
 		operatorClient:  operatorClient,
-		hostEventCh:     hostEventCh,
 		refreshInterval: refreshInterval,
+		agentCh:         make(chan []*mesosmaster.Response_GetAgents_Agent, agentChanSize),
 	}
 }
 
@@ -61,6 +63,10 @@ func (a *agentSyncer) Start() {
 
 func (a *agentSyncer) Stop() {
 	a.lf.Stop()
+}
+
+func (a *agentSyncer) AgentCh() <-chan []*mesosmaster.Response_GetAgents_Agent {
+	return a.agentCh
 }
 
 func (a *agentSyncer) run() {
@@ -85,7 +91,11 @@ func (a *agentSyncer) runOnce() {
 		return
 	}
 
-	for _, agent := range agents.GetAgents() {
-		a.hostEventCh <- scalar.BuildHostEventFromAgent(agent, scalar.UpdateAgent)
+	select {
+	case a.agentCh <- agents.GetAgents():
+		return
+	default:
+		return
 	}
+
 }
