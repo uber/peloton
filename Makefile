@@ -346,6 +346,7 @@ ifndef IMAGE
 else
 	@./tools/packaging/build-docker.sh $(IMAGE)
 endif
+	@./tools/packaging/build-mesos-agent-docker.sh
 
 # override the image to push with IMAGE=
 docker-push:
