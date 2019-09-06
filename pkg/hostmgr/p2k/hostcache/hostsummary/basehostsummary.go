@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package hostcache
+package hostsummary
 
 import (
 	"fmt"
@@ -62,103 +62,20 @@ const (
 	emptyLeaseID = ""
 )
 
-type HostSummary interface {
-	// TryMatch atomically tries to match the current host with given
-	// HostFilter, and lock the host if it does.
-	TryMatch(filter *hostmgr.HostFilter) Match
-
-	// CompleteLease verifies that the leaseID on this host is still valid.
-	CompleteLease(leaseID string, podToSpecMap map[string]*pbpod.PodSpec) error
-
-	// CasStatus sets the status to new value if current value is old, otherwise
-	// returns error.
-	CasStatus(old, new HostStatus) error
-
-	// GetCapacity returns the capacity of the host.
-	GetCapacity() scalar.Resources
-
-	// GetAllocated returns the allocation of the host.
-	GetAllocated() scalar.Resources
-
-	// GetAvailable returns the available resources of the host.
-	GetAvailable() scalar.Resources
-
-	// SetCapacity sets the capacity of the host.
-	SetCapacity(r scalar.Resources)
-
-	// SetAvailable sets the available resource of the host.
-	SetAvailable(r scalar.Resources)
-
-	// GetVersion returns the version of the host.
-	GetVersion() string
-
-	// SetVersion sets the version of the host.
-	SetVersion(v string)
-
-	// GetHostname returns the hostname of the host.
-	GetHostname() string
-
-	// GetHostStatus returns the HostStatus of the host.
-	GetHostStatus() HostStatus
-
-	// GetHostLease creates and returns a host lease.
-	GetHostLease() *hostmgr.HostLease
-
-	// TerminateLease is called when terminating the lease on a host.
-	TerminateLease(leaseID string) error
-
-	// HandlePodEvent is called when a pod event occurs for a pod
-	// that affects this host.
-	HandlePodEvent(event *p2kscalar.PodEvent)
-
-	// HoldForPod holds the host for the pod specified.
-	// If an error is returned, hostsummary would guarantee that
-	// the host is not held for the task.
-	HoldForPod(id *peloton.PodID) error
-
-	// ReleaseHoldForPod release the hold of host for the pod specified.
-	ReleaseHoldForPod(id *peloton.PodID)
-
-	// GetHeldPods returns a slice of pods that puts the host in held.
-	GetHeldPods() []*peloton.PodID
-
-	// DeleteExpiredHolds deletes expired held pods in a hostSummary, returns
-	// whether the hostSummary is free of helds,
-	// available resource,
-	// and the pods held expired.
-	DeleteExpiredHolds(now time.Time) (bool, scalar.Resources, []*peloton.PodID)
-
-	// CompleteLaunchPod is called when a pod is successfully launched,
-	// for example to remove the ports from the available port ranges.
-	CompleteLaunchPod(pod *models.LaunchablePod)
-}
-
-// hostStrategy defines methods that shared by mesos/k8s hosts, but have different
-// implementation.
-// methods in the interface assumes lock is taken
-type hostStrategy interface {
-	// postCompleteLease handles actions after lease is completed
-	postCompleteLease(podToSpecMap map[string]*pbpod.PodSpec) error
-}
-
 // baseHostSummary is a data struct holding resources and metadata of a host.
 type baseHostSummary struct {
 	mu sync.RWMutex
 
-	// hostname of the host
+	// Hostname of the host.
 	hostname string
 
-	// labels on this host
+	// Labels on this host.
 	labels []*peloton.Label
 
-	// a map of podIDs for which the host is held
-	// key is the podID, value is the expiration time of the hold
-	heldPodIDs map[string]time.Time
-
-	// list of port ranges available for allocation.
+	// List of port ranges available for allocation.
 	ports []*pbhost.PortRange
 
-	// locking status of this host
+	// locking status of this host.
 	status HostStatus
 
 	// LeaseID is a valid UUID when the host is locked for placement and will
@@ -173,27 +90,26 @@ type baseHostSummary struct {
 	// Resource version of this host.
 	version string
 
-	// strategy pattern adopted by the particular host
+	// Strategy pattern adopted by the particular host.
 	strategy hostStrategy
 
-	// capacity of the host
+	// Capacity of the host.
 	capacity scalar.Resources
 
 	// Resources allocated on the host. This should always be equal to the sum
 	// of resources in pods.
 	allocated scalar.Resources
 
-	// available resources on the host
+	// Available resources on the host.
 	available scalar.Resources
 
-	// a map to present tasks assigned or running on this host
-	// key is the mesos tasks id and value is the current pod status
-	pods map[string]*podInfo
-}
+	// A map to present tasks assigned or running on this host.
+	// Key is the tasks id, value is the pod spec and current status.
+	pods *podInfoMap
 
-type podInfo struct {
-	state pbpod.PodState
-	spec  *pbpod.PodSpec
+	// A map of podIDs for which the host is held.
+	// Key is the podID, value is the expiration time of the hold.
+	heldPodIDs map[string]time.Time
 }
 
 // newBaseHostSummary returns a zero initialized HostSummary object.
@@ -207,7 +123,7 @@ func newBaseHostSummary(
 		heldPodIDs: make(map[string]time.Time),
 		version:    version,
 		strategy:   &noopHostStrategy{},
-		pods:       make(map[string]*podInfo),
+		pods:       newPodInfoMap(),
 		// TODO: make the initial port range configs.
 		ports: []*pbhost.PortRange{{Begin: 31000, End: 32000}},
 	}
@@ -300,11 +216,13 @@ func (a *baseHostSummary) CompleteLease(
 		return err
 	}
 
-	// add to pod map, so postCompleteLease can work on the up-to-date data.
-	// revert the change if postCompleteLease fails
-	a.addPodMap(podToSpecMap)
+	// Add to pod map, so postCompleteLease can work on the up-to-date data.
+	// revert the change if postCompleteLease fails.
+	a.pods.AddPodSpecs(podToSpecMap)
 	if err := a.strategy.postCompleteLease(podToSpecMap); err != nil {
-		a.removePodMap(podToSpecMap)
+		for id := range podToSpecMap {
+			a.pods.RemovePod(id)
+		}
 		return err
 	}
 
@@ -321,29 +239,11 @@ func (a *baseHostSummary) CompleteLease(
 func (a *baseHostSummary) validatePodsNotExist(
 	podToSpecMap map[string]*pbpod.PodSpec,
 ) error {
-
-	for podID := range podToSpecMap {
-		if _, ok := a.pods[podID]; ok {
-			return yarpcerrors.InvalidArgumentErrorf("pod %v already exists on the host", podID)
-		}
+	if podID := a.pods.AnyPodExist(podToSpecMap); podID != "" {
+		return yarpcerrors.InvalidArgumentErrorf("pod %v already exists on the host", podID)
 	}
 
 	return nil
-}
-
-func (a *baseHostSummary) addPodMap(podToSpecMap map[string]*pbpod.PodSpec) {
-	for id, spec := range podToSpecMap {
-		a.pods[id] = &podInfo{
-			spec:  spec,
-			state: pbpod.PodState_POD_STATE_LAUNCHED,
-		}
-	}
-}
-
-func (a *baseHostSummary) removePodMap(podToSpecMap map[string]*pbpod.PodSpec) {
-	for id := range podToSpecMap {
-		delete(a.pods, id)
-	}
 }
 
 // CasStatus sets the status to new value if current value is old, otherwise
@@ -411,7 +311,7 @@ func (a *baseHostSummary) GetHostLease() *hostmgr.HostLease {
 
 // TerminateLease is called when terminating the lease on a host.
 // This will be called when host in PLACING state is not used, and placement
-// engine decides to terminate its lease and set the host back to Ready
+// engine decides to terminate its lease and set the host back to Ready.
 func (a *baseHostSummary) TerminateLease(leaseID string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -449,7 +349,7 @@ func (a *baseHostSummary) GetAllocated() scalar.Resources {
 }
 
 // HoldForPod adds pod to heldPodIDs map when host is not reserved. It is noop
-// if pod ready exists in the map.
+// if pod already exists in the map.
 func (a *baseHostSummary) HoldForPod(id *peloton.PodID) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -566,9 +466,9 @@ func (a *baseHostSummary) handlePodEvent(event *p2kscalar.PodEvent) {
 		// resource accounting doesn't change.
 		podState := pbpod.PodState(pbpod.PodState_value[event.Event.GetActualState()])
 		if util.IsPelotonPodStateTerminal(podState) {
-			delete(a.pods, podID)
+			a.pods.RemovePod(podID)
 		} else {
-			podInfo, ok := a.pods[podID]
+			podInfo, ok := a.pods.GetPodInfo(podID)
 			if !ok {
 				return
 			}
@@ -580,7 +480,7 @@ func (a *baseHostSummary) handlePodEvent(event *p2kscalar.PodEvent) {
 		// The release error scenario is handled inside release. If the pod
 		// was already deleted, ReleasePodResources no-ops, which is correct
 		// here.
-		delete(a.pods, podID)
+		a.pods.RemovePod(podID)
 		return
 	default:
 		log.WithField("pod_event", event).
@@ -598,7 +498,7 @@ func (a *baseHostSummary) SetCapacity(r scalar.Resources) {
 	a.capacity = r
 }
 
-// SetAvailable sets the available resources of the host
+// SetAvailable sets the available resources of the host.
 func (a *baseHostSummary) SetAvailable(r scalar.Resources) {
 	a.mu.Lock()
 	defer a.mu.Unlock()

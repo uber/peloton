@@ -25,7 +25,8 @@ import (
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha/svc"
 	"github.com/uber/peloton/pkg/hostmgr/models"
-	"github.com/uber/peloton/pkg/hostmgr/p2k/hostcache"
+	"github.com/uber/peloton/pkg/hostmgr/p2k/hostcache/hostsummary"
+	hostsummary_mocks "github.com/uber/peloton/pkg/hostmgr/p2k/hostcache/hostsummary/mocks"
 	hostcache_mocks "github.com/uber/peloton/pkg/hostmgr/p2k/hostcache/mocks"
 	plugins_mocks "github.com/uber/peloton/pkg/hostmgr/p2k/plugins/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
@@ -127,15 +128,15 @@ func (suite *HostMgrHandlerTestSuite) TestGetHostCache() {
 		GPU:  3,
 	}
 
-	summary := hostcache_mocks.NewMockHostSummary(suite.ctrl)
+	summary := hostsummary_mocks.NewMockHostSummary(suite.ctrl)
 	summary.EXPECT().GetHostname().Return("h1")
-	summary.EXPECT().GetHostStatus().Return(hostcache.ReadyHost)
+	summary.EXPECT().GetHostStatus().Return(hostsummary.ReadyHost)
 	summary.EXPECT().GetAllocated().Return(allocated)
 	summary.EXPECT().GetCapacity().Return(capacity)
 
 	suite.hostCache.EXPECT().
 		GetSummaries().
-		Return([]hostcache.HostSummary{summary})
+		Return([]hostsummary.HostSummary{summary})
 
 	resp, err := suite.handler.GetHostCache(rootCtx, nil)
 	suite.NoError(err)

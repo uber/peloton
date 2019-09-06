@@ -12,10 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package hostcache
+package hostsummary
 
 import (
-	"fmt"
 	"math"
 	"strings"
 
@@ -26,7 +25,7 @@ import (
 )
 
 // TestEffectiveHostLimit tests calculating the max hosts limit
-func (suite *HostCacheTestSuite) TestEffectiveHostLimit() {
+func (suite *HostSummaryTestSuite) TestEffectiveHostLimit() {
 	// this deprecated semantic is equivalent to a single constraints
 	// with same limit.
 	c := &hostmgr.HostFilter{}
@@ -36,23 +35,9 @@ func (suite *HostCacheTestSuite) TestEffectiveHostLimit() {
 	suite.Equal(uint32(10), effectiveHostLimit(c))
 }
 
-func generateHostSummaries(numHosts int) []HostSummary {
-	var hosts []HostSummary
-	for i := 0; i < numHosts; i++ {
-		hosts = append(
-			hosts,
-			newTestBaseHostSummary(
-				fmt.Sprintf("%v%v", _hostname, i),
-				_version,
-				_capacity),
-		)
-	}
-	return hosts
-}
-
 // TestTryMatch tests matchers TryMatch functionality where it tries to match
 // existing hosts in host cache with the given filter constraints
-func (suite *HostCacheTestSuite) TestTryMatch() {
+func (suite *HostSummaryTestSuite) TestTryMatch() {
 	testTable := map[string]struct {
 		filter           *hostmgr.HostFilter
 		allocatedPerHost scalar.Resources
@@ -125,7 +110,7 @@ func (suite *HostCacheTestSuite) TestTryMatch() {
 			// Each host is allocated 9 CPU and 90Mem
 			// only available resource is 1 CPU and 10Mem per host
 			// demand is 2 CPU and 20Mem resulting in no match
-			allocatedPerHost: createResource(9.0, 90.0),
+			allocatedPerHost: CreateResource(9.0, 90.0),
 			matched:          0,
 			filterCounts: map[string]uint32{
 				strings.ToLower("HOST_FILTER_INSUFFICIENT_RESOURCES"): 10,
@@ -135,18 +120,16 @@ func (suite *HostCacheTestSuite) TestTryMatch() {
 	for ttName, tt := range testTable {
 		// Generate 10 host summary with 10 CPU and 100 Mem per host which
 		// are in ReadyHost state
-		hosts := generateHostSummaries(10)
+		hosts := GenerateFakeHostSummaries(10)
 
 		matcher := NewMatcher(tt.filter)
 
 		// Run matcher on all hosts
 		for _, hs := range hosts {
-			hs.(*baseHostSummary).allocated = tt.allocatedPerHost
-			hs.(*baseHostSummary).available = hs.(*baseHostSummary).
-				capacity.
-				Subtract(tt.allocatedPerHost)
+			hs.SetAllocated(tt.allocatedPerHost)
+			hs.SetAvailable(hs.GetCapacity().Subtract(tt.allocatedPerHost))
 
-			matcher.tryMatch(hs.GetHostname(), hs)
+			matcher.TryMatch(hs.GetHostname(), hs)
 		}
 		suite.Equal(tt.matched, len(matcher.hostNames), "test case %s", ttName)
 		suite.Equal(

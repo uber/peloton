@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package hostcache
+package hostsummary
 
 import (
 	"math"
@@ -56,9 +56,17 @@ type Matcher struct {
 	filterCounts map[string]uint32
 }
 
-// tryMatch tries to match ready host with particular constraint.
+// NewMatcher returns a new instance of Matcher.
+func NewMatcher(hostFilter *hostmgr.HostFilter) *Matcher {
+	return &Matcher{
+		hostFilter:   hostFilter,
+		filterCounts: make(map[string]uint32),
+	}
+}
+
+// TryMatch tries to match ready host with particular constraint.
 // If properly matched, the host name will be kept in Matcher.
-func (m *Matcher) tryMatch(
+func (m *Matcher) TryMatch(
 	hostname string,
 	s HostSummary) {
 	result := m.tryMatchImpl(hostname, s)
@@ -71,7 +79,7 @@ func (m *Matcher) tryMatchImpl(
 	hostname string,
 	s HostSummary,
 ) hostmgr.HostFilterResult {
-	if m.hostLimitReached() {
+	if m.HostLimitReached() {
 		return hostmgr.HostFilterResult_HOST_FILTER_MISMATCH_MAX_HOST_LIMIT
 	}
 
@@ -90,16 +98,17 @@ func (m *Matcher) tryMatchImpl(
 	return match.Result
 }
 
-// hostLimitReached returns true when the matcher has matched hosts equal to
-// the max hosts specified in the filter
-func (m *Matcher) hostLimitReached() bool {
-	return uint32(len(m.hostNames)) >= effectiveHostLimit(m.hostFilter)
+// GetHostNames returns list of host names that match the filter.
+func (m *Matcher) GetHostNames() []string {
+	return m.hostNames
 }
 
-// NewMatcher returns a new instance of Matcher.
-func NewMatcher(hostFilter *hostmgr.HostFilter) *Matcher {
-	return &Matcher{
-		hostFilter:   hostFilter,
-		filterCounts: make(map[string]uint32),
-	}
+func (m *Matcher) GetFilterCounts() map[string]uint32 {
+	return m.filterCounts
+}
+
+// HostLimitReached returns true when the matcher has matched hosts equal to
+// the max hosts specified in the filter
+func (m *Matcher) HostLimitReached() bool {
+	return uint32(len(m.hostNames)) >= effectiveHostLimit(m.hostFilter)
 }

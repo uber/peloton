@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package hostcache
+package hostsummary
 
 import (
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
@@ -31,7 +31,7 @@ type mesosHostSummary struct {
 	*baseHostSummary
 }
 
-func newMesosHostSummary(hostname string, version string) HostSummary {
+func NewMesosHostSummary(hostname string, version string) HostSummary {
 	ms := &mesosHostSummary{
 		baseHostSummary: newBaseHostSummary(hostname, version),
 	}

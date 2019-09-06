@@ -24,6 +24,7 @@ import (
 	"github.com/uber/peloton/pkg/common/background"
 	"github.com/uber/peloton/pkg/common/lifecycle"
 	"github.com/uber/peloton/pkg/hostmgr/models"
+	"github.com/uber/peloton/pkg/hostmgr/p2k/hostcache/hostsummary"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 	hmscalar "github.com/uber/peloton/pkg/hostmgr/scalar"
 
@@ -67,7 +68,7 @@ type HostCache interface {
 
 	// GetSummaries returns a list of host summaries that the host cache is
 	// managing.
-	GetSummaries() (summaries []HostSummary)
+	GetSummaries() (summaries []hostsummary.HostSummary)
 
 	// HandlePodEvent is called by pod events manager on receiving a pod event.
 	HandlePodEvent(event *scalar.PodEvent)
@@ -99,7 +100,7 @@ type hostCache struct {
 	mu sync.RWMutex
 
 	// Map of hostname to HostSummary.
-	hostIndex map[string]HostSummary
+	hostIndex map[string]hostsummary.HostSummary
 
 	// Map of podID to host held.
 	podHeldIndex map[string]string
@@ -125,7 +126,7 @@ func New(
 	parent tally.Scope,
 ) HostCache {
 	return &hostCache{
-		hostIndex:     make(map[string]HostSummary),
+		hostIndex:     make(map[string]hostsummary.HostSummary),
 		podHeldIndex:  make(map[string]string),
 		hostEventCh:   hostEventCh,
 		lifecycle:     lifecycle.NewLifeCycle(),
@@ -134,11 +135,11 @@ func New(
 	}
 }
 
-func (c *hostCache) GetSummaries() []HostSummary {
+func (c *hostCache) GetSummaries() []hostsummary.HostSummary {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	summaries := make([]HostSummary, 0, len(c.hostIndex))
+	summaries := make([]hostsummary.HostSummary, 0, len(c.hostIndex))
 	for _, summary := range c.hostIndex {
 		summaries = append(summaries, summary)
 	}
@@ -157,13 +158,13 @@ func (c *hostCache) AcquireLeases(
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	matcher := NewMatcher(hostFilter)
+	matcher := hostsummary.NewMatcher(hostFilter)
 
 	// If host hint is provided, try to return the hosts in hints first.
 	for _, filterHints := range hostFilter.GetHint().GetHostHint() {
 		if hs, ok := c.hostIndex[filterHints.GetHostname()]; ok {
-			matcher.tryMatch(hs.GetHostname(), hs)
-			if matcher.hostLimitReached() {
+			matcher.TryMatch(hs.GetHostname(), hs)
+			if matcher.HostLimitReached() {
 				break
 			}
 		}
@@ -171,15 +172,15 @@ func (c *hostCache) AcquireLeases(
 
 	// TODO: implement defrag/firstfit ranker, for now default to first fit
 	for hostname, hs := range c.hostIndex {
-		matcher.tryMatch(hostname, hs)
-		if matcher.hostLimitReached() {
+		matcher.TryMatch(hostname, hs)
+		if matcher.HostLimitReached() {
 			break
 		}
 	}
 
 	var hostLeases []*hostmgr.HostLease
-	hostLimitReached := matcher.hostLimitReached()
-	for _, hostname := range matcher.hostNames {
+	hostLimitReached := matcher.HostLimitReached()
+	for _, hostname := range matcher.GetHostNames() {
 		hs := c.hostIndex[hostname]
 		hostLeases = append(hostLeases, hs.GetHostLease())
 	}
@@ -189,10 +190,10 @@ func (c *hostCache) AcquireLeases(
 		log.WithFields(log.Fields{
 			"host_filter":         hostFilter,
 			"matched_host_leases": hostLeases,
-			"match_result_counts": matcher.filterCounts,
+			"match_result_counts": matcher.GetFilterCounts(),
 		}).Debug("Number of hosts matched is fewer than max hosts")
 	}
-	return hostLeases, matcher.filterCounts
+	return hostLeases, matcher.GetFilterCounts()
 }
 
 // TerminateLease is called when a lease that was previously acquired, and a
@@ -356,9 +357,9 @@ func (c *hostCache) RefreshMetrics() {
 		totalAvailable = totalAvailable.Add(available)
 
 		switch h.GetHostStatus() {
-		case ReadyHost:
+		case hostsummary.ReadyHost:
 			readyHosts++
-		case PlacingHost:
+		case hostsummary.PlacingHost:
 			placingHosts++
 		}
 		if len(h.GetHeldPods()) > 0 {
@@ -406,7 +407,7 @@ func (c *hostCache) CompleteLaunchPod(hostname string, pod *models.LaunchablePod
 
 // getSummary returns host summary given name. If the host does not exist,
 // return error not found.
-func (c *hostCache) getSummary(hostname string) (HostSummary, error) {
+func (c *hostCache) getSummary(hostname string) (hostsummary.HostSummary, error) {
 	hs, ok := c.hostIndex[hostname]
 	if !ok {
 		// TODO: metrics
@@ -495,7 +496,7 @@ func (c *hostCache) addHost(event *scalar.HostEvent) {
 
 	// TODO: figure out how to differemtiate mesos/k8s hosts,
 	// now addHost is only used by k8s hosts
-	c.hostIndex[hostInfo.GetHostName()] = newKubeletHostSummary(
+	c.hostIndex[hostInfo.GetHostName()] = hostsummary.NewKubeletHostSummary(
 		hostInfo.GetHostName(),
 		capacity,
 		version,
@@ -511,7 +512,7 @@ func (c *hostCache) updateHostSpec(event *scalar.HostEvent) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	var hs HostSummary
+	var hs hostsummary.HostSummary
 	var ok bool
 
 	hostInfo := event.GetHostInfo()
@@ -591,7 +592,7 @@ func (c *hostCache) updateAgent(event *scalar.HostEvent) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	var hs HostSummary
+	var hs hostsummary.HostSummary
 	var ok bool
 
 	hostInfo := event.GetHostInfo()
@@ -600,7 +601,7 @@ func (c *hostCache) updateAgent(event *scalar.HostEvent) {
 	hs, ok = c.hostIndex[hostInfo.GetHostName()]
 
 	if !ok {
-		hs = newMesosHostSummary(hostInfo.GetHostName(), evtVersion)
+		hs = hostsummary.NewMesosHostSummary(hostInfo.GetHostName(), evtVersion)
 		c.hostIndex[hostInfo.GetHostName()] = hs
 	}
 
@@ -619,7 +620,7 @@ func (c *hostCache) updateHostAvailable(event *scalar.HostEvent) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	var hs HostSummary
+	var hs hostsummary.HostSummary
 	var ok bool
 
 	hostInfo := event.GetHostInfo()
@@ -628,7 +629,7 @@ func (c *hostCache) updateHostAvailable(event *scalar.HostEvent) {
 	hs, ok = c.hostIndex[hostInfo.GetHostName()]
 
 	if !ok {
-		hs = newMesosHostSummary(hostInfo.GetHostName(), evtVersion)
+		hs = hostsummary.NewMesosHostSummary(hostInfo.GetHostName(), evtVersion)
 		c.hostIndex[hostInfo.GetHostName()] = hs
 	}
 

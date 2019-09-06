@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package hostcache
+package hostsummary
 
 import (
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
@@ -20,8 +20,8 @@ import (
 
 // TestMesosHostSummarySetCapacity tests for mesos change capacity
 // only affects capacity
-func (suite *HostCacheTestSuite) TestMesosHostSummarySetCapacity() {
-	ms := newMesosHostSummary(_hostname, _version).(*mesosHostSummary)
+func (suite *HostSummaryTestSuite) TestMesosHostSummarySetCapacity() {
+	ms := NewMesosHostSummary(_hostname, _version).(*mesosHostSummary)
 	available := scalar.Resources{
 		CPU: 1.0,
 		Mem: 100.0,
@@ -48,12 +48,11 @@ func (suite *HostCacheTestSuite) TestMesosHostSummarySetCapacity() {
 	suite.Equal(ms.GetAvailable(), available)
 	suite.Equal(ms.GetAllocated(), allocated)
 	suite.Equal(ms.GetCapacity(), newCapacity)
-
 }
 
 // TestMesosHostSummarySetAvailable
 // test set available would update allocated resources
-func (suite *HostCacheTestSuite) TestMesosHostSummarySetAvailable() {
+func (suite *HostSummaryTestSuite) TestMesosHostSummarySetAvailable() {
 	testTable := map[string]struct {
 		capacity          scalar.Resources
 		available         scalar.Resources
@@ -118,7 +117,7 @@ func (suite *HostCacheTestSuite) TestMesosHostSummarySetAvailable() {
 	}
 
 	for msg, test := range testTable {
-		ms := newMesosHostSummary(_hostname, _version).(*mesosHostSummary)
+		ms := NewMesosHostSummary(_hostname, _version).(*mesosHostSummary)
 		ms.capacity = test.capacity
 		ms.SetAvailable(test.available)
 		suite.Equal(ms.GetCapacity(), test.capacity, msg)

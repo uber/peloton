@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package hostcache
+package hostsummary
 
 import (
 	"errors"
@@ -39,8 +39,8 @@ type kubeletHostSummary struct {
 	*baseHostSummary
 }
 
-// newKubeletHostSummary returns a zero initialized HostSummary object.
-func newKubeletHostSummary(
+// NewKubeletHostSummary returns a zero initialized HostSummary object.
+func NewKubeletHostSummary(
 	hostname string,
 	r *peloton.Resources,
 	version string,
@@ -102,7 +102,7 @@ func (a *kubeletHostSummary) SetCapacity(r scalar.Resources) {
 	a.available = a.calculateAvailable()
 }
 
-// SetAvailable is noop for k8s agent, since it is calculated on-flight
+// SetAvailable is noop for k8s agent, since it is calculated on-flight.
 func (a *kubeletHostSummary) SetAvailable(r scalar.Resources) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -115,7 +115,7 @@ func (a *kubeletHostSummary) SetAvailable(r scalar.Resources) {
 func (a *kubeletHostSummary) calculateAvailable() scalar.Resources {
 	available, ok := a.capacity.TrySubtract(a.allocated)
 	if !ok {
-		// continue with available set to scalar.Resources{}. This would
+		// Continue with available set to scalar.Resources{}. This would
 		// organically fail in the following steps.
 		log.WithFields(
 			log.Fields{
@@ -133,7 +133,7 @@ func (a *kubeletHostSummary) postCompleteLease(podToSpecMap map[string]*pbpod.Po
 	// At this point the lease is terminated, the host is back in ready/held
 	// status but we need to validate if the new pods can be successfully
 	// launched on this host. Note that the lease has to be terminated before
-	// this step irrespective of the outcome
+	// this step irrespective of the outcome.
 	if err := a.validateEnoughResToLaunch(podToSpecMap); err != nil {
 		return yarpcerrors.InvalidArgumentErrorf("pod validation failed: %s", err)
 	}
@@ -196,11 +196,13 @@ func (a *kubeletHostSummary) calculateAllocated() {
 
 func (a *kubeletHostSummary) getPodToResMap() map[string]scalar.Resources {
 	result := make(map[string]scalar.Resources)
-	for id, pod := range a.pods {
+
+	a.pods.RangePods(func(id string, p *podInfo) error {
 		result[id] = scalar.FromPodSpec(
-			pod.spec,
+			p.spec,
 		)
-	}
+		return nil
+	})
 
 	return result
 }
