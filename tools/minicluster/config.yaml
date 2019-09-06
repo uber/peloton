@@ -10,7 +10,7 @@ zk_container: peloton-zk
 
 # Mesos configs
 mesos_master_image: mesosphere/mesos-master:1.7.1
-mesos_slave_image: peloton-mesos-agent
+mesos_slave_image: varun4792/varung-peloton:peloton-mesos-agent
 mesos_master_container: peloton-mesos-master
 mesos_agent_container: peloton-mesos-agent
 num_agents: 3
@@ -26,6 +26,7 @@ registry: replicated_log
 # Mesos slave configs
 # Values for oversubscription are recommend at below documentation.
 # https://github.com/apache/mesos/blob/004fb5fa27c2992b11a2fa51a8ec5a3f3de404db/docs/oversubscription.md
+default_agent_port: 5051
 local_agent_port: 5051
 switch_user: 0
 containers: docker,mesos

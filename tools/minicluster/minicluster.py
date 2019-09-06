@@ -127,6 +127,7 @@ def run_mesos(config):
     print_utils.okgreen("started container %s" % master_container)
 
     # Run mesos slaves
+    cli.pull(config['mesos_slave_image'])
     for i in range(0, config['num_agents']):
         run_mesos_agent(config, i, i)
     for i in range(0, config.get('num_exclusive_agents', 0)):
@@ -153,9 +154,9 @@ def run_mesos_agent(config, agent_index, port_offset, is_exclusive=False,
         name=agent,
         hostname=agent,
         volumes=["/files", "/var/run/docker.sock"],
-        ports=[repr(port)],
+        ports=[repr(config["default_agent_port"])],
         host_config=cli.create_host_config(
-            port_bindings={port: port},
+            port_bindings={config["default_agent_port"]: port},
             binds=[
                 work_dir + "/files:/files",
                 work_dir
@@ -196,7 +197,7 @@ def run_mesos_agent(config, agent_index, port_offset, is_exclusive=False,
         detach=True,
     )
     cli.start(container=container.get("Id"))
-    utils.wait_for_up(agent, port, "state.json")
+    print_utils.okgreen("started container %s" % agent)
 
 
 #
