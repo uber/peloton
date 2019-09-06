@@ -115,27 +115,33 @@ func (suite *HostSummaryTestSuite) TestKubeletHostSummarySetCapacity() {
 	}
 
 	for _, test := range testTable {
-		ks := NewKubeletHostSummary(_hostname, nil, _version)
-		ks.(*kubeletHostSummary).allocated = test.allocated
-		ks.SetCapacity(test.capacity)
-		suite.Equal(ks.GetCapacity(), test.capacity)
-		suite.Equal(ks.GetAllocated(), test.allocated)
-		suite.Equal(ks.GetAvailable(), test.expectedAvailable)
+		ks := NewKubeletHostSummary(_hostname, models.HostResources{}, _version)
+		ks.(*kubeletHostSummary).allocated.NonSlack = test.allocated
+		ks.SetCapacity(models.HostResources{
+			Slack:    scalar.Resources{},
+			NonSlack: test.capacity,
+		})
+		suite.Equal(ks.GetCapacity().NonSlack, test.capacity)
+		suite.Equal(ks.GetAllocated().NonSlack, test.allocated)
+		suite.Equal(ks.GetAvailable().NonSlack, test.expectedAvailable)
 	}
 }
 
 // TestKubeletHostSummarySetAvailable tests set
 // available is noop for k8s host
 func (suite *HostSummaryTestSuite) TestKubeletHostSummarySetAvailable() {
-	ks := NewKubeletHostSummary(_hostname, nil, _version)
+	ks := NewKubeletHostSummary(_hostname, models.HostResources{}, _version)
 
 	oldAvailable := scalar.Resources{CPU: 2.0}
 	newAvailable := scalar.Resources{CPU: 4.0}
 
-	ks.(*kubeletHostSummary).available = oldAvailable
-	ks.SetAvailable(newAvailable)
+	ks.(*kubeletHostSummary).available.NonSlack = oldAvailable
+	ks.SetAvailable(models.HostResources{
+		Slack:    scalar.Resources{},
+		NonSlack: newAvailable,
+	})
 
-	suite.Equal(ks.GetAvailable(), oldAvailable)
+	suite.Equal(ks.GetAvailable().NonSlack, oldAvailable)
 }
 
 // TestKubeletHostSummaryHandlePodEvent makes sure that we release the pod resources when we
@@ -148,10 +154,12 @@ func (suite *HostSummaryTestSuite) TestKubeletHostSummarySetAvailable() {
 // Then we expect another thread to acquire that host successfully.
 // We should count 2 total successful matches.
 func (suite *HostSummaryTestSuite) TestKubeletHostSummaryHandlePodEvent() {
-	s := NewKubeletHostSummary(_hostname, nil, _version).(*kubeletHostSummary)
+	s := NewKubeletHostSummary(_hostname, models.HostResources{}, _version).(*kubeletHostSummary)
 	s.status = ReadyHost
-	s.allocated = CreateResource(0, 0)
-	s.SetCapacity(_capacity)
+	s.allocated.NonSlack = CreateResource(0, 0)
+	s.SetCapacity(models.HostResources{
+		NonSlack: _capacity,
+	})
 
 	filter := &hostmgr.HostFilter{
 		ResourceConstraint: &hostmgr.ResourceConstraint{
@@ -215,7 +223,7 @@ func (suite *HostSummaryTestSuite) TestKubeletHostSummaryHandlePodEvent() {
 }
 
 func (suite *HostSummaryTestSuite) TestCompleteLaunchPod() {
-	s := NewKubeletHostSummary(_hostname, nil, _version)
+	s := NewKubeletHostSummary(_hostname, models.HostResources{}, _version)
 	s.CompleteLaunchPod(&models.LaunchablePod{
 		PodId: &peloton.PodID{Value: "podid1"},
 		Spec:  &pod.PodSpec{},
@@ -328,7 +336,7 @@ func (suite *HostSummaryTestSuite) TestKubeletHostSummaryCompleteLease() {
 
 	for ttName, tt := range testTable {
 		// create a host with 10 CPU and 100Mem
-		s := NewKubeletHostSummary(_hostname, nil, _version).(*kubeletHostSummary)
+		s := NewKubeletHostSummary(_hostname, models.HostResources{}, _version).(*kubeletHostSummary)
 		s.status = tt.beforeStatus
 		// initialize host cache with a podMap
 		s.pods = newPodInfoMap()
@@ -345,9 +353,11 @@ func (suite *HostSummaryTestSuite) TestKubeletHostSummaryCompleteLease() {
 		}
 
 		s.pods.AddPodInfo(_podID, podInfo)
-		s.allocated = tt.beforeAllocated
+		s.allocated.NonSlack = tt.beforeAllocated
 		s.leaseID = tt.leaseID
-		s.SetCapacity(_capacity)
+		s.SetCapacity(models.HostResources{
+			NonSlack: _capacity,
+		})
 
 		if tt.podIDPreExisted {
 			tt.podToSpecMap[_podID] = nil
@@ -374,7 +384,7 @@ func (suite *HostSummaryTestSuite) TestKubeletHostSummaryCompleteLease() {
 			}
 			suite.NoError(err, "test case: %s", ttName)
 		}
-		suite.Equal(tt.afterAllocated, s.allocated, "test case: %s", ttName)
+		suite.Equal(tt.afterAllocated, s.allocated.NonSlack, "test case: %s", ttName)
 		suite.Equal(tt.afterStatus, s.GetHostStatus(), "test case: %s", ttName)
 	}
 }

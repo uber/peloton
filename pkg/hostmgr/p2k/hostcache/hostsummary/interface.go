@@ -22,7 +22,6 @@ import (
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
 	"github.com/uber/peloton/pkg/hostmgr/models"
 	p2kscalar "github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
-	"github.com/uber/peloton/pkg/hostmgr/scalar"
 )
 
 type HostSummary interface {
@@ -38,19 +37,19 @@ type HostSummary interface {
 	CasStatus(old, new HostStatus) error
 
 	// GetCapacity returns the capacity of the host.
-	GetCapacity() scalar.Resources
+	GetCapacity() models.HostResources
 
 	// GetAllocated returns the allocation of the host.
-	GetAllocated() scalar.Resources
+	GetAllocated() models.HostResources
 
 	// GetAvailable returns the available resources of the host.
-	GetAvailable() scalar.Resources
+	GetAvailable() models.HostResources
 
 	// SetCapacity sets the capacity of the host.
-	SetCapacity(r scalar.Resources)
+	SetCapacity(r models.HostResources)
 
 	// SetAvailable sets the available resource of the host.
-	SetAvailable(r scalar.Resources)
+	SetAvailable(r models.HostResources)
 
 	// GetVersion returns the version of the host.
 	GetVersion() string
@@ -89,7 +88,7 @@ type HostSummary interface {
 	// whether the hostSummary is free of helds,
 	// available resource,
 	// and the pods held expired.
-	DeleteExpiredHolds(now time.Time) (bool, scalar.Resources, []*peloton.PodID)
+	DeleteExpiredHolds(now time.Time) (bool, models.HostResources, []*peloton.PodID)
 
 	// CompleteLaunchPod is called when a pod is successfully launched,
 	// for example to remove the ports from the available port ranges.

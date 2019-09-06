@@ -15,6 +15,7 @@
 package hostsummary
 
 import (
+	"github.com/uber/peloton/pkg/hostmgr/models"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 )
 
@@ -35,19 +36,21 @@ func (suite *HostSummaryTestSuite) TestMesosHostSummarySetCapacity() {
 		Mem: 300.0,
 	}
 
-	ms.available = available
-	ms.allocated = allocated
-	ms.capacity = capacity
+	ms.available.NonSlack = available
+	ms.allocated.NonSlack = allocated
+	ms.capacity.NonSlack = capacity
 
 	newCapacity := scalar.Resources{
 		CPU: 4.0,
 		Mem: 400.0,
 	}
-	ms.SetCapacity(newCapacity)
+	ms.SetCapacity(models.HostResources{
+		NonSlack: newCapacity,
+	})
 
-	suite.Equal(ms.GetAvailable(), available)
-	suite.Equal(ms.GetAllocated(), allocated)
-	suite.Equal(ms.GetCapacity(), newCapacity)
+	suite.Equal(ms.GetAvailable().NonSlack, available)
+	suite.Equal(ms.GetAllocated().NonSlack, allocated)
+	suite.Equal(ms.GetCapacity().NonSlack, newCapacity)
 }
 
 // TestMesosHostSummarySetAvailable
@@ -118,10 +121,12 @@ func (suite *HostSummaryTestSuite) TestMesosHostSummarySetAvailable() {
 
 	for msg, test := range testTable {
 		ms := NewMesosHostSummary(_hostname, _version).(*mesosHostSummary)
-		ms.capacity = test.capacity
-		ms.SetAvailable(test.available)
-		suite.Equal(ms.GetCapacity(), test.capacity, msg)
-		suite.Equal(ms.GetAvailable(), test.available, msg)
-		suite.Equal(ms.GetAllocated(), test.expectedAllocated, msg)
+		ms.capacity.NonSlack = test.capacity
+		ms.SetAvailable(models.HostResources{
+			NonSlack: test.available,
+		})
+		suite.Equal(ms.GetCapacity().NonSlack, test.capacity, msg)
+		suite.Equal(ms.GetAvailable().NonSlack, test.available, msg)
+		suite.Equal(ms.GetAllocated().NonSlack, test.expectedAllocated, msg)
 	}
 }

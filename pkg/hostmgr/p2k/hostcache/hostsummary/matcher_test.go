@@ -21,6 +21,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
 
+	"github.com/uber/peloton/pkg/hostmgr/models"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 )
 
@@ -127,7 +128,9 @@ func (suite *HostSummaryTestSuite) TestTryMatch() {
 		// Run matcher on all hosts
 		for _, hs := range hosts {
 			hs.SetAllocated(tt.allocatedPerHost)
-			hs.SetAvailable(hs.GetCapacity().Subtract(tt.allocatedPerHost))
+			hs.SetAvailable(models.HostResources{
+				NonSlack: hs.GetCapacity().NonSlack.Subtract(tt.allocatedPerHost),
+			})
 
 			matcher.TryMatch(hs.GetHostname(), hs)
 		}

@@ -26,6 +26,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
+	"github.com/uber/peloton/pkg/hostmgr/models"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/hostcache/hostsummary"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 
@@ -156,8 +157,9 @@ func (suite *HostCacheTestSuite) TestAcquireLeases() {
 		// initialize host cache with these 10 hosts
 		for _, s := range hosts {
 			s.SetAllocated(tt.allocatedPerHost)
-			s.SetAvailable(
-				s.GetCapacity().Subtract(tt.allocatedPerHost))
+			s.SetAvailable(models.HostResources{
+				NonSlack: s.GetCapacity().NonSlack.Subtract(tt.allocatedPerHost),
+			})
 			hc.hostIndex[s.GetHostname()] = s
 		}
 

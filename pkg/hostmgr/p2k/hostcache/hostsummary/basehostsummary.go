@@ -93,15 +93,15 @@ type baseHostSummary struct {
 	// Strategy pattern adopted by the particular host.
 	strategy hostStrategy
 
-	// Capacity of the host.
-	capacity scalar.Resources
+	// capacity of the host
+	capacity models.HostResources
 
 	// Resources allocated on the host. This should always be equal to the sum
 	// of resources in pods.
-	allocated scalar.Resources
+	allocated models.HostResources
 
-	// Available resources on the host.
-	available scalar.Resources
+	// available resources on the host
+	available models.HostResources
 
 	// A map to present tasks assigned or running on this host.
 	// Key is the tasks id, value is the pod spec and current status.
@@ -301,8 +301,9 @@ func (a *baseHostSummary) GetHostLease() *hostmgr.HostLease {
 			Value: a.leaseID,
 		},
 		HostSummary: &pbhost.HostSummary{
-			Hostname:       a.hostname,
-			Resources:      scalar.ToPelotonResources(a.available),
+			Hostname: a.hostname,
+			// TODO: replace this with models.HostResources.
+			Resources:      scalar.ToPelotonResources(a.GetAvailable().NonSlack),
 			Labels:         a.labels,
 			AvailablePorts: a.ports,
 		},
@@ -333,7 +334,7 @@ func (a *baseHostSummary) TerminateLease(leaseID string) error {
 }
 
 // GetCapacity returns the capacity of the host.
-func (a *baseHostSummary) GetCapacity() scalar.Resources {
+func (a *baseHostSummary) GetCapacity() models.HostResources {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -341,7 +342,7 @@ func (a *baseHostSummary) GetCapacity() scalar.Resources {
 }
 
 // GetAllocated returns the allocation of the host.
-func (a *baseHostSummary) GetAllocated() scalar.Resources {
+func (a *baseHostSummary) GetAllocated() models.HostResources {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -399,7 +400,7 @@ func (a *baseHostSummary) GetHeldPods() []*peloton.PodID {
 // available resource,
 // and the pods held expired.
 func (a *baseHostSummary) DeleteExpiredHolds(
-	deadline time.Time) (bool, scalar.Resources, []*peloton.PodID) {
+	deadline time.Time) (bool, models.HostResources, []*peloton.PodID) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -439,7 +440,7 @@ func (a *baseHostSummary) isHeld() bool {
 }
 
 // GetAvailable returns the available resources of the host.
-func (a *baseHostSummary) GetAvailable() scalar.Resources {
+func (a *baseHostSummary) GetAvailable() models.HostResources {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -491,7 +492,7 @@ func (a *baseHostSummary) handlePodEvent(event *p2kscalar.PodEvent) {
 }
 
 // SetCapacity sets the capacity of the host.
-func (a *baseHostSummary) SetCapacity(r scalar.Resources) {
+func (a *baseHostSummary) SetCapacity(r models.HostResources) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -499,7 +500,7 @@ func (a *baseHostSummary) SetCapacity(r scalar.Resources) {
 }
 
 // SetAvailable sets the available resources of the host.
-func (a *baseHostSummary) SetAvailable(r scalar.Resources) {
+func (a *baseHostSummary) SetAvailable(r models.HostResources) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -539,7 +540,7 @@ func (a *baseHostSummary) matchHostFilter(
 	if min != nil {
 		// Get min required resources.
 		minRes := scalar.FromResourceSpec(min)
-		if !a.available.Contains(minRes) {
+		if !a.available.NonSlack.Contains(minRes) {
 			return hostmgr.HostFilterResult_HOST_FILTER_INSUFFICIENT_RESOURCES
 		}
 	}

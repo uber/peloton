@@ -5,8 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/uber/peloton/pkg/hostmgr/models"
+	hmscalar "github.com/uber/peloton/pkg/hostmgr/scalar"
+
 	"github.com/stretchr/testify/require"
-	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -40,13 +42,15 @@ func TestBuildHostEventFromNode(t *testing.T) {
 	expectedHostEvent := &HostEvent{
 		hostInfo: &HostInfo{
 			hostname: "test-node",
-			podMap:   map[string]*peloton.Resources{},
-			capacity: &peloton.Resources{
-				Cpu: float64(32),
-				MemMb: float64(
-					node.Status.Capacity.Memory().MilliValue()) / 1000000000,
-				DiskMb: getDefaultDiskMbPerHost(),
-				Gpu:    0,
+			podMap:   map[string]models.HostResources{},
+			capacity: models.HostResources{
+				NonSlack: hmscalar.Resources{
+					CPU: float64(32),
+					Mem: float64(
+						node.Status.Capacity.Memory().MilliValue()) / 1000000000,
+					Disk: getDefaultDiskMbPerHost(),
+					GPU:  0,
+				},
 			},
 		},
 		eventType: AddHost,

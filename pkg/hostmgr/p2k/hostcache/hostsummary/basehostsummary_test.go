@@ -145,9 +145,9 @@ func (suite *HostSummaryTestSuite) TestTryMatchReadyHost() {
 	for ttName, tt := range testTable {
 		s := NewFakeHostSummary(_hostname, _version, _capacity)
 		s.status = tt.beforeStatus
-		s.allocated = tt.allocated
-		s.capacity = _capacity
-		s.available = _capacity.Subtract(tt.allocated)
+		s.allocated.NonSlack = tt.allocated
+		s.capacity.NonSlack = _capacity
+		s.available.NonSlack = _capacity.Subtract(tt.allocated)
 		s.heldPodIDs = tt.heldPodIDs
 
 		match := s.TryMatch(tt.filter)
@@ -217,8 +217,8 @@ func (suite *HostSummaryTestSuite) TestHostSummaryTerminateLease() {
 		s := NewFakeHostSummary(_hostname, _version, _capacity)
 		s.status = tt.beforeStatus
 		// initialize host cache with a podMap
-		s.allocated = tt.beforeAllocated
-		s.available = s.capacity.Subtract(s.allocated)
+		s.allocated.NonSlack = tt.beforeAllocated
+		s.available.NonSlack = s.capacity.NonSlack.Subtract(s.allocated.NonSlack)
 		s.leaseID = tt.leaseID
 
 		if tt.preExistingPodID != "" {
@@ -277,7 +277,7 @@ func (suite *HostSummaryTestSuite) TestHostSummaryCompleteLease() {
 		s.status = tt.beforeStatus
 		// initialize host cache with a podMap
 		s.leaseID = tt.leaseID
-		s.capacity = _capacity
+		s.capacity.NonSlack = _capacity
 
 		err := s.CompleteLease(tt.inputLeaseID, nil)
 		if tt.errExpected {

@@ -263,9 +263,10 @@ func (c *hostCache) GetClusterCapacity() (
 
 	// Go through the hostIndex and calculate capacity and allocation
 	// and sum it up to get these at a cluster level
+	// TODO: do this for slack resources too.
 	for _, hs := range c.hostIndex {
-		capacity = capacity.Add(hs.GetCapacity())
-		allocation = allocation.Add(hs.GetAllocated())
+		capacity = capacity.Add(hs.GetCapacity().NonSlack)
+		allocation = allocation.Add(hs.GetAllocated().NonSlack)
 	}
 	return
 }
@@ -352,8 +353,8 @@ func (c *hostCache) RefreshMetrics() {
 
 	for _, h := range hosts {
 		allocated, capacity := h.GetAllocated(), h.GetCapacity()
-		available, _ := capacity.TrySubtract(allocated)
-		totalAllocated = totalAllocated.Add(allocated)
+		available, _ := capacity.NonSlack.TrySubtract(allocated.NonSlack)
+		totalAllocated = totalAllocated.Add(allocated.NonSlack)
 		totalAvailable = totalAvailable.Add(available)
 
 		switch h.GetHostStatus() {
@@ -545,8 +546,7 @@ func (c *hostCache) updateHostSpec(event *scalar.HostEvent) {
 		return
 	}
 
-	r := hmscalar.FromPelotonResources(capacity)
-	hs.SetCapacity(r)
+	hs.SetCapacity(capacity)
 	hs.SetVersion(evtVersion)
 	log.WithFields(log.Fields{
 		"hostname": hostInfo.GetHostName(),
@@ -605,8 +605,7 @@ func (c *hostCache) updateAgent(event *scalar.HostEvent) {
 		c.hostIndex[hostInfo.GetHostName()] = hs
 	}
 
-	r := hmscalar.FromPelotonResources(hostInfo.GetCapacity())
-	hs.SetCapacity(r)
+	hs.SetCapacity(hostInfo.GetCapacity())
 	hs.SetVersion(evtVersion)
 	log.WithFields(log.Fields{
 		"hostname":  hostInfo.GetHostName(),
@@ -633,8 +632,7 @@ func (c *hostCache) updateHostAvailable(event *scalar.HostEvent) {
 		c.hostIndex[hostInfo.GetHostName()] = hs
 	}
 
-	r := hmscalar.FromPelotonResources(hostInfo.GetAvailable())
-	hs.SetAvailable(r)
+	hs.SetAvailable(hostInfo.GetAvailable())
 	hs.SetVersion(evtVersion)
 	log.WithFields(log.Fields{
 		"hostname":  hostInfo.GetHostName(),

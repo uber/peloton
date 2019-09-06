@@ -16,7 +16,7 @@ package hostsummary
 
 import (
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
-	"github.com/uber/peloton/pkg/hostmgr/scalar"
+	"github.com/uber/peloton/pkg/hostmgr/models"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -42,7 +42,7 @@ func NewMesosHostSummary(hostname string, version string) HostSummary {
 }
 
 // SetCapacity sets the capacity of the host.
-func (a *mesosHostSummary) SetCapacity(r scalar.Resources) {
+func (a *mesosHostSummary) SetCapacity(r models.HostResources) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -51,14 +51,14 @@ func (a *mesosHostSummary) SetCapacity(r scalar.Resources) {
 }
 
 // SetAvailable sets available resources on a host
-func (a *mesosHostSummary) SetAvailable(r scalar.Resources) {
+func (a *mesosHostSummary) SetAvailable(r models.HostResources) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	var ok bool
 
 	a.available = r
-	a.allocated, ok = a.capacity.TrySubtract(r)
+	a.allocated.NonSlack, ok = a.capacity.NonSlack.TrySubtract(r.NonSlack)
 	if !ok {
 		// continue with available set to scalar.Resources{}. This would
 		// organically fail in the following steps.

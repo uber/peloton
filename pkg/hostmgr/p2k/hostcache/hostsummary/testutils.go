@@ -16,6 +16,7 @@ package hostsummary
 
 import (
 	"fmt"
+	"github.com/uber/peloton/pkg/hostmgr/models"
 
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
@@ -44,7 +45,9 @@ type FakeHostSummary struct {
 }
 
 func (f *FakeHostSummary) SetAllocated(allocated scalar.Resources) {
-	f.allocated = allocated
+	f.allocated = models.HostResources{
+		NonSlack: allocated,
+	}
 }
 
 // NewFakeHostSummary is used for testing. It offers methods for easier
@@ -55,8 +58,10 @@ func NewFakeHostSummary(
 	f := &FakeHostSummary{
 		baseHostSummary: newBaseHostSummary(hostname, version),
 	}
-	f.capacity = capacity
-	f.available = capacity
+	f.capacity = models.HostResources{
+		NonSlack: capacity,
+	}
+	f.available = f.capacity
 
 	return f
 }

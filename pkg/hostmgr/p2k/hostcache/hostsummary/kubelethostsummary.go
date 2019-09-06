@@ -19,7 +19,6 @@ import (
 	"sort"
 
 	pbhost "github.com/uber/peloton/.gen/peloton/api/v1alpha/host"
-	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/pkg/hostmgr/models"
 	p2kscalar "github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
@@ -42,14 +41,13 @@ type kubeletHostSummary struct {
 // NewKubeletHostSummary returns a zero initialized HostSummary object.
 func NewKubeletHostSummary(
 	hostname string,
-	r *peloton.Resources,
+	capacity models.HostResources,
 	version string,
 ) HostSummary {
-	rs := scalar.FromPelotonResources(r)
 	ks := &kubeletHostSummary{
 		baseHostSummary: newBaseHostSummary(hostname, version),
 	}
-	ks.baseHostSummary.capacity = rs
+	ks.baseHostSummary.capacity = capacity
 	ks.baseHostSummary.strategy = ks
 	return ks
 }
@@ -93,7 +91,7 @@ func (a *kubeletHostSummary) HandlePodEvent(event *p2kscalar.PodEvent) {
 // For k8s, capacity is updated by host event, and allocation is
 // calculated when pod is launched/killed. Therefore, whenever capacity
 // changes, available resources also changes.
-func (a *kubeletHostSummary) SetCapacity(r scalar.Resources) {
+func (a *kubeletHostSummary) SetCapacity(r models.HostResources) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -102,8 +100,8 @@ func (a *kubeletHostSummary) SetCapacity(r scalar.Resources) {
 	a.available = a.calculateAvailable()
 }
 
-// SetAvailable is noop for k8s agent, since it is calculated on-flight.
-func (a *kubeletHostSummary) SetAvailable(r scalar.Resources) {
+// SetAvailable is noop for k8s agent, since it is calculated on-flight
+func (a *kubeletHostSummary) SetAvailable(r models.HostResources) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -112,8 +110,8 @@ func (a *kubeletHostSummary) SetAvailable(r scalar.Resources) {
 	return
 }
 
-func (a *kubeletHostSummary) calculateAvailable() scalar.Resources {
-	available, ok := a.capacity.TrySubtract(a.allocated)
+func (a *kubeletHostSummary) calculateAvailable() models.HostResources {
+	available, ok := a.capacity.NonSlack.TrySubtract(a.allocated.NonSlack)
 	if !ok {
 		// Continue with available set to scalar.Resources{}. This would
 		// organically fail in the following steps.
@@ -124,9 +122,14 @@ func (a *kubeletHostSummary) calculateAvailable() scalar.Resources {
 				"capacity":     a.capacity,
 			},
 		).Error("kubeletHostSummary: Allocated more resources than capacity")
-		return scalar.Resources{}
+		return models.HostResources{
+			Slack:    scalar.Resources{},
+			NonSlack: scalar.Resources{},
+		}
 	}
-	return available
+	return models.HostResources{
+		NonSlack: available,
+	}
 }
 
 func (a *kubeletHostSummary) postCompleteLease(podToSpecMap map[string]*pbpod.PodSpec) error {
@@ -148,7 +151,8 @@ func (a *kubeletHostSummary) postCompleteLease(podToSpecMap map[string]*pbpod.Po
 func (a *kubeletHostSummary) validateEnoughResToLaunch(
 	podToSpecMap map[string]*pbpod.PodSpec,
 ) error {
-	var needed scalar.Resources
+	// TODO validate slack too.
+	var nonSlackNeeded scalar.Resources
 
 	podToResMap := make(map[string]scalar.Resources)
 	for id, spec := range podToSpecMap {
@@ -156,9 +160,9 @@ func (a *kubeletHostSummary) validateEnoughResToLaunch(
 	}
 
 	for _, res := range podToResMap {
-		needed = needed.Add(res)
+		nonSlackNeeded = nonSlackNeeded.Add(res)
 	}
-	if !a.available.Contains(needed) {
+	if !a.available.NonSlack.Contains(nonSlackNeeded) {
 		return errors.New("host has insufficient resources")
 	}
 	return nil
@@ -168,15 +172,15 @@ func (a *kubeletHostSummary) validateEnoughResToLaunch(
 // calculates total allocated resources.
 // This function assumes baseHostSummary lock is held before calling.
 func (a *kubeletHostSummary) calculateAllocated() {
-	var allocated scalar.Resources
+	var nonSlackallocated scalar.Resources
 	var ok bool
 
 	// calculate current allocation based on the new pods map
 	for _, r := range a.getPodToResMap() {
-		allocated = allocated.Add(r)
+		nonSlackallocated = nonSlackallocated.Add(r)
 	}
-	a.allocated = allocated
-	a.available, ok = a.capacity.TrySubtract(allocated)
+	a.allocated.NonSlack = nonSlackallocated
+	a.available.NonSlack, ok = a.capacity.NonSlack.TrySubtract(nonSlackallocated)
 	if !ok {
 		// continue with available set to scalar.Resources{}. This would
 		// organically fail in the following steps.
@@ -190,10 +194,14 @@ func (a *kubeletHostSummary) calculateAllocated() {
 		// no pod can be launched onto the host due to unexpected shortage
 		// of resources. Set available to be 0, wait it to be updated when
 		// more pod/capacity events come.
-		a.available = scalar.Resources{}
+		a.available = models.HostResources{
+			Slack:    scalar.Resources{},
+			NonSlack: scalar.Resources{},
+		}
 	}
 }
 
+// TODO: do this for both slack and non-slack.
 func (a *kubeletHostSummary) getPodToResMap() map[string]scalar.Resources {
 	result := make(map[string]scalar.Resources)
 

@@ -17,6 +17,8 @@ package models
 import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+
+	"github.com/uber/peloton/pkg/hostmgr/scalar"
 )
 
 // LaunchablePod is a struct contains info to launch a pod
@@ -24,4 +26,10 @@ type LaunchablePod struct {
 	PodId *peloton.PodID
 	Spec  *pbpod.PodSpec
 	Ports map[string]uint32
+}
+
+// HostResources is a non-thread safe helper struct holding the Slack and NonSlack resources for a host.
+type HostResources struct {
+	Slack    scalar.Resources
+	NonSlack scalar.Resources
 }

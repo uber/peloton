@@ -3,9 +3,8 @@ package scalar
 import (
 	"strconv"
 
-	mesosmaster "github.com/uber/peloton/.gen/mesos/v1/master"
-	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
-	"github.com/uber/peloton/pkg/hostmgr/scalar"
+	"github.com/uber/peloton/pkg/hostmgr/models"
+	hmscalar "github.com/uber/peloton/pkg/hostmgr/scalar"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -53,13 +52,13 @@ type HostInfo struct {
 	// Host name for this host.
 	hostname string
 	// Map of podID to allocated resources for pods running on this host.
-	podMap map[string]*peloton.Resources
+	podMap map[string]models.HostResources
 	// Actual capacity of this host.
-	capacity *peloton.Resources
+	capacity models.HostResources
+	// Available resources on the host.
+	available models.HostResources
 	// Resource version for this host. This is k8s specific.
 	resourceVersion string
-	// capacity available on the host
-	available *peloton.Resources
 }
 
 // GetHostName is helper function to get name of the host.
@@ -68,23 +67,23 @@ func (h *HostInfo) GetHostName() string {
 }
 
 // GetCapacity is helper function to get capacity for the host.
-func (h *HostInfo) GetCapacity() *peloton.Resources {
+func (h *HostInfo) GetCapacity() models.HostResources {
 	return h.capacity
 }
 
+// GetAvailable is helper function to get available resources for the host.
+func (h *HostInfo) GetAvailable() models.HostResources {
+	return h.available
+}
+
 // GetPodMap is helper function to get pod map for the host.
-func (h *HostInfo) GetPodMap() map[string]*peloton.Resources {
+func (h *HostInfo) GetPodMap() map[string]models.HostResources {
 	return h.podMap
 }
 
 // GetResourceVersion is helper function to get resource version.
 func (h *HostInfo) GetResourceVersion() string {
 	return h.resourceVersion
-}
-
-// GetAvailable is helper function to get available resources for the host.
-func (h *HostInfo) GetAvailable() *peloton.Resources {
-	return h.available
 }
 
 // Initialize each host disk capacity to 1T by default for k8s.
@@ -100,23 +99,28 @@ func BuildHostEventFromNode(
 	e HostEventType,
 ) (*HostEvent, error) {
 	// TODO: create podMap (map of podID to resource).
-	podMap := make(map[string]*peloton.Resources)
+	podMap := make(map[string]models.HostResources)
 	rv, err := meta.NewAccessor().ResourceVersion(node)
 	if err != nil {
 		return nil, err
+	}
+
+	nonSlackCap := hmscalar.Resources{
+		CPU: float64(
+			node.Status.Capacity.Cpu().MilliValue()) / 1000,
+		Mem: float64(
+			node.Status.Capacity.Memory().MilliValue()) / 1000000000,
+		Disk: getDefaultDiskMbPerHost(),
+		GPU:  0,
 	}
 
 	return &HostEvent{
 		hostInfo: &HostInfo{
 			hostname: node.Name,
 			podMap:   podMap,
-			capacity: &peloton.Resources{
-				Cpu: float64(
-					node.Status.Capacity.Cpu().MilliValue()) / 1000,
-				MemMb: float64(
-					node.Status.Capacity.Memory().MilliValue()) / 1000000000,
-				DiskMb: getDefaultDiskMbPerHost(),
-				Gpu:    0,
+			capacity: models.HostResources{
+				Slack:    hmscalar.Resources{},
+				NonSlack: nonSlackCap,
 			},
 			resourceVersion: rv,
 		},
@@ -127,40 +131,17 @@ func BuildHostEventFromNode(
 // BuildHostEventFromResource builds a host event from underlying resource
 func BuildHostEventFromResource(
 	hostname string,
-	resources *peloton.Resources,
+	available models.HostResources,
+	capacity models.HostResources,
 	e HostEventType,
 ) *HostEvent {
-	podMap := make(map[string]*peloton.Resources)
-
-	if resources == nil {
-		resources = &peloton.Resources{}
-	}
-
+	podMap := make(map[string]models.HostResources)
 	return &HostEvent{
 		hostInfo: &HostInfo{
 			hostname:  hostname,
 			podMap:    podMap,
-			available: resources,
-		},
-		eventType: e,
-	}
-}
-
-// BuildHostEventFromAgent builds host event from agent info
-func BuildHostEventFromAgent(
-	agent *mesosmaster.Response_GetAgents_Agent,
-	e HostEventType,
-) *HostEvent {
-	resource := scalar.FromMesosResources(agent.GetTotalResources())
-	return &HostEvent{
-		hostInfo: &HostInfo{
-			hostname: agent.GetAgentInfo().GetHostname(),
-			capacity: &peloton.Resources{
-				Cpu:    resource.GetCPU(),
-				MemMb:  resource.GetMem(),
-				DiskMb: resource.GetDisk(),
-				Gpu:    resource.GetGPU(),
-			},
+			available: available,
+			capacity:  capacity,
 		},
 		eventType: e,
 	}

@@ -30,6 +30,7 @@ import (
 	mpbmocks "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/models"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
+	hmscalar "github.com/uber/peloton/pkg/hostmgr/scalar"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -279,9 +280,9 @@ func (suite *MesosManagerTestSuite) TestNewMesosManagerOffersSameHost() {
 
 	he := <-suite.hostEventCh
 	suite.Equal(he.GetEventType(), scalar.UpdateHostAvailableRes)
-	suite.Equal(he.GetHostInfo().GetAvailable(), &peloton.Resources{
-		Cpu:   3.0,
-		MemMb: 400.0,
+	suite.Equal(he.GetHostInfo().GetAvailable().NonSlack, hmscalar.Resources{
+		CPU: 3.0,
+		Mem: 400.0,
 	})
 	suite.Equal(he.GetHostInfo().GetHostName(), host)
 }
@@ -351,16 +352,16 @@ func (suite *MesosManagerTestSuite) TestNewMesosManagerOffersMultipleHost() {
 	}
 
 	suite.Equal(host1Event.GetEventType(), scalar.UpdateHostAvailableRes)
-	suite.Equal(host1Event.GetHostInfo().GetAvailable(), &peloton.Resources{
-		Cpu:   1.0,
-		MemMb: 100.0,
+	suite.Equal(host1Event.GetHostInfo().GetAvailable().NonSlack, hmscalar.Resources{
+		CPU: 1.0,
+		Mem: 100.0,
 	})
 	suite.Equal(host1Event.GetHostInfo().GetHostName(), host1)
 
 	suite.Equal(host2Event.GetEventType(), scalar.UpdateHostAvailableRes)
-	suite.Equal(host2Event.GetHostInfo().GetAvailable(), &peloton.Resources{
-		Cpu:   2.0,
-		MemMb: 300.0,
+	suite.Equal(host2Event.GetHostInfo().GetAvailable().NonSlack, hmscalar.Resources{
+		CPU: 2.0,
+		Mem: 300.0,
 	})
 	suite.Equal(host2Event.GetHostInfo().GetHostName(), host2)
 }
@@ -408,9 +409,9 @@ func (suite *MesosManagerTestSuite) TestNewMesosManagerRescindOffer() {
 
 	he := <-suite.hostEventCh
 	suite.Equal(he.GetEventType(), scalar.UpdateHostAvailableRes)
-	suite.Equal(he.GetHostInfo().GetAvailable(), &peloton.Resources{
-		Cpu:   3.0,
-		MemMb: 400.0,
+	suite.Equal(he.GetHostInfo().GetAvailable().NonSlack, hmscalar.Resources{
+		CPU: 3.0,
+		Mem: 400.0,
 	})
 	suite.Equal(he.GetHostInfo().GetHostName(), host)
 
@@ -422,9 +423,9 @@ func (suite *MesosManagerTestSuite) TestNewMesosManagerRescindOffer() {
 	})
 	he = <-suite.hostEventCh
 	suite.Equal(he.GetEventType(), scalar.UpdateHostAvailableRes)
-	suite.Equal(he.GetHostInfo().GetAvailable(), &peloton.Resources{
-		Cpu:   2.0,
-		MemMb: 300.0,
+	suite.Equal(he.GetHostInfo().GetAvailable().NonSlack, hmscalar.Resources{
+		CPU: 2.0,
+		Mem: 300.0,
 	})
 	suite.Equal(he.GetHostInfo().GetHostName(), host)
 
@@ -436,9 +437,9 @@ func (suite *MesosManagerTestSuite) TestNewMesosManagerRescindOffer() {
 	})
 	he = <-suite.hostEventCh
 	suite.Equal(he.GetEventType(), scalar.UpdateHostAvailableRes)
-	suite.Equal(he.GetHostInfo().GetAvailable(), &peloton.Resources{
-		Cpu:   0.0,
-		MemMb: 0.0,
+	suite.Equal(he.GetHostInfo().GetAvailable().NonSlack, hmscalar.Resources{
+		CPU: 0.0,
+		Mem: 0.0,
 	})
 	suite.Equal(he.GetHostInfo().GetHostName(), host)
 }
@@ -472,9 +473,9 @@ func (suite *MesosManagerTestSuite) TestNewMesosManagerRescindNonexistentOffer()
 
 	he := <-suite.hostEventCh
 	suite.Equal(he.GetEventType(), scalar.UpdateHostAvailableRes)
-	suite.Equal(he.GetHostInfo().GetAvailable(), &peloton.Resources{
-		Cpu:   1.0,
-		MemMb: 100.0,
+	suite.Equal(he.GetHostInfo().GetAvailable().NonSlack, hmscalar.Resources{
+		CPU: 1.0,
+		Mem: 100.0,
 	})
 	suite.Equal(he.GetHostInfo().GetHostName(), host)
 
@@ -486,9 +487,9 @@ func (suite *MesosManagerTestSuite) TestNewMesosManagerRescindNonexistentOffer()
 	})
 	he = <-suite.hostEventCh
 	suite.Equal(he.GetEventType(), scalar.UpdateHostAvailableRes)
-	suite.Equal(he.GetHostInfo().GetAvailable(), &peloton.Resources{
-		Cpu:   0.0,
-		MemMb: 0.0,
+	suite.Equal(he.GetHostInfo().GetAvailable().NonSlack, hmscalar.Resources{
+		CPU: 0.0,
+		Mem: 0.0,
 	})
 	suite.Equal(he.GetHostInfo().GetHostName(), host)
 

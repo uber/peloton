@@ -26,15 +26,16 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	"github.com/uber/peloton/pkg/common/api"
-	"github.com/uber/peloton/pkg/hostmgr/factory/task"
-	hostmgrmesos "github.com/uber/peloton/pkg/hostmgr/mesos"
 
+	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/common/lifecycle"
 	"github.com/uber/peloton/pkg/common/util"
+	"github.com/uber/peloton/pkg/hostmgr/factory/task"
+	hostmgrmesos "github.com/uber/peloton/pkg/hostmgr/mesos"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
 	"github.com/uber/peloton/pkg/hostmgr/models"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
+	hmscalar "github.com/uber/peloton/pkg/hostmgr/scalar"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
@@ -358,8 +359,15 @@ func (m *MesosManager) processAgentHostMap(
 		hostname := agent.GetAgentInfo().GetHostname()
 		m.agentIDToHostname.Store(agentID, hostname)
 		for _, agent := range agents {
-			m.hostEventCh <- scalar.
-				BuildHostEventFromAgent(agent, scalar.UpdateAgent)
+			capacity := models.HostResources{
+				NonSlack: hmscalar.FromMesosResources(agent.GetTotalResources()),
+			}
+			m.hostEventCh <- scalar.BuildHostEventFromResource(
+				hostname,
+				capacity,
+				models.HostResources{},
+				scalar.UpdateAgent,
+			)
 		}
 	}
 }
@@ -378,8 +386,16 @@ func (m *MesosManager) Offers(ctx context.Context, body *sched.Event) error {
 
 	hosts := m.offerManager.AddOffers(event.Offers)
 	for host := range hosts {
-		resources := m.offerManager.GetResources(host)
-		evt := scalar.BuildHostEventFromResource(host, resources, scalar.UpdateHostAvailableRes)
+		// TODO: extract slack and non slack resources from offer manager.
+		availableResources := models.HostResources{
+			NonSlack: m.offerManager.GetResources(host),
+		}
+		evt := scalar.BuildHostEventFromResource(
+			host,
+			availableResources,
+			models.HostResources{},
+			scalar.UpdateHostAvailableRes,
+		)
 		m.hostEventCh <- evt
 	}
 
@@ -393,8 +409,15 @@ func (m *MesosManager) Rescind(ctx context.Context, body *sched.Event) error {
 	host := m.offerManager.RemoveOffer(event.GetOfferId().GetValue())
 
 	if len(host) != 0 {
-		resources := m.offerManager.GetResources(host)
-		evt := scalar.BuildHostEventFromResource(host, resources, scalar.UpdateHostAvailableRes)
+		availableResources := models.HostResources{
+			NonSlack: m.offerManager.GetResources(host),
+		}
+		evt := scalar.BuildHostEventFromResource(
+			host,
+			availableResources,
+			models.HostResources{},
+			scalar.UpdateHostAvailableRes,
+		)
 		m.hostEventCh <- evt
 	}
 

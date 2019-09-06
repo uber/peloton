@@ -131,8 +131,12 @@ func (suite *HostMgrHandlerTestSuite) TestGetHostCache() {
 	summary := hostsummary_mocks.NewMockHostSummary(suite.ctrl)
 	summary.EXPECT().GetHostname().Return("h1")
 	summary.EXPECT().GetHostStatus().Return(hostsummary.ReadyHost)
-	summary.EXPECT().GetAllocated().Return(allocated)
-	summary.EXPECT().GetCapacity().Return(capacity)
+	summary.EXPECT().GetAllocated().Return(models.HostResources{
+		NonSlack: allocated,
+	})
+	summary.EXPECT().GetCapacity().Return(models.HostResources{
+		NonSlack: capacity,
+	})
 
 	suite.hostCache.EXPECT().
 		GetSummaries().

@@ -360,16 +360,16 @@ func (h *ServiceHandler) GetHostCache(
 			Hostname: summary.GetHostname(),
 			Status:   fmt.Sprintf("%v", summary.GetHostStatus()),
 			Allocation: []*v1alpha.Resource{
-				{Kind: "cpu", Capacity: allocation.CPU},
-				{Kind: "mem", Capacity: allocation.Mem},
-				{Kind: "disk", Capacity: allocation.Disk},
-				{Kind: "gpu", Capacity: allocation.GPU},
+				{Kind: "cpu", Capacity: allocation.NonSlack.CPU},
+				{Kind: "mem", Capacity: allocation.NonSlack.Mem},
+				{Kind: "disk", Capacity: allocation.NonSlack.Disk},
+				{Kind: "gpu", Capacity: allocation.NonSlack.GPU},
 			},
 			Capacity: []*v1alpha.Resource{
-				{Kind: "cpu", Capacity: capacity.CPU},
-				{Kind: "mem", Capacity: capacity.Mem},
-				{Kind: "disk", Capacity: capacity.Disk},
-				{Kind: "gpu", Capacity: capacity.GPU},
+				{Kind: "cpu", Capacity: capacity.NonSlack.CPU},
+				{Kind: "mem", Capacity: capacity.NonSlack.Mem},
+				{Kind: "disk", Capacity: capacity.NonSlack.Disk},
+				{Kind: "gpu", Capacity: capacity.NonSlack.GPU},
 			},
 		})
 	}
