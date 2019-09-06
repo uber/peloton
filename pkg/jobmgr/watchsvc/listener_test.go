@@ -20,6 +20,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	v0peloton "github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/private/models"
 
 	watchmocks "github.com/uber/peloton/pkg/jobmgr/watchsvc/mocks"
 
@@ -97,6 +98,55 @@ func (suite *WatchListenerTestSuite) TestTaskRuntimeChanged_NilFields() {
 	suite.listener.TaskRuntimeChanged(
 		&v0peloton.JobID{Value: "test-job-1"},
 		0,
+		job.JobType_SERVICE,
+		nil,
+		nil,
+	)
+}
+
+// TestJobListenerName checks WatchProcessor.NotifyJobChange() is called
+// when JobSummaryChanged is called on listener
+func (suite *WatchListenerTestSuite) TestJobSummaryChanged() {
+	suite.processor.EXPECT().
+		NotifyJobChange(gomock.Any()).
+		Times(1)
+
+	suite.listener.JobSummaryChanged(
+		&v0peloton.JobID{Value: "test-job-1"},
+		job.JobType_SERVICE,
+		&job.JobSummary{Runtime: &job.RuntimeInfo{}},
+		&models.UpdateModel{},
+	)
+}
+
+// TestJobSummaryChanged_NonServiceType checks
+// WatchProcessor.NotifyJobChange() is not called when not service type
+// event is passed in.
+func (suite *WatchListenerTestSuite) TestJobSummaryChanged_NonServiceType() {
+	// do not expect call to processor.NotifyTaskChange
+
+	suite.listener.JobSummaryChanged(
+		&v0peloton.JobID{Value: "test-job-1"},
+		job.JobType_BATCH,
+		&job.JobSummary{Runtime: &job.RuntimeInfo{}},
+		&models.UpdateModel{},
+	)
+}
+
+// TestJobSummaryChanged_NilFields checks WatchProcessor.NotifyJobChange()
+// is not called when not some of the fields are passed in as nil.
+func (suite *WatchListenerTestSuite) TestJobSummaryChanged_NilFields() {
+	// do not expect calls to processor.NotifyTaskChange
+
+	suite.listener.JobSummaryChanged(
+		nil,
+		job.JobType_SERVICE,
+		&job.JobSummary{Runtime: &job.RuntimeInfo{}},
+		&models.UpdateModel{},
+	)
+
+	suite.listener.JobSummaryChanged(
+		&v0peloton.JobID{Value: "test-job-1"},
 		job.JobType_SERVICE,
 		nil,
 		nil,

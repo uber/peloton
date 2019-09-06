@@ -20,6 +20,7 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
+	v1peloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/watch"
 
@@ -79,16 +80,31 @@ type WatchProcessor interface {
 	// Returns the watch id and a new instance of TaskClient.
 	NewTaskClient(filter *watch.PodFilter) (string, *TaskClient, error)
 
-	// StopTaskClients stops all the task clients on leadership change.
-	StopTaskClients()
-
 	// StopTaskClient stops a task watch client. Returns "not-found" error
 	// if the corresponding watch client is not found.
 	StopTaskClient(watchID string) error
 
+	// StopTaskClients stops all the task clients on leadership change.
+	StopTaskClients()
+
 	// NotifyTaskChange receives pod event, and notifies all the clients
 	// which are interested in the pod.
 	NotifyTaskChange(pod *pod.PodSummary, podLabels []*peloton.Label)
+
+	// NewJobClient creates a new watch client for job event changes.
+	// Returns the watch id and an new instance of JobClient.
+	NewJobClient(filter *watch.StatelessJobFilter) (string, *JobClient, error)
+
+	// StopJobClient stops a job watch client. Returns "not-found" error
+	// if the corresponding watch client is not found.
+	StopJobClient(watchID string) error
+
+	// StopJobClients stops all the job clients on leadership change.
+	StopJobClients()
+
+	// NotifyJobChange receives job event, and notifies all the clients
+	// which are interested in the job.
+	NotifyJobChange(job *stateless.JobSummary)
 }
 
 // watchProcessor is an implementation of WatchProcessor interface.
@@ -104,18 +120,31 @@ type watchProcessor struct {
 var processor *watchProcessor
 var onceInitWatchProcessor sync.Once
 
+type podFilter struct {
+	jobID    string
+	podNames map[string]struct{}
+	labels   []*v1peloton.Label
+}
+
 // TaskClient represents a client which interested in task event changes.
 type TaskClient struct {
-	Filter *watch.PodFilter
 	Input  chan *pod.PodSummary
 	Signal chan StopSignal
+
+	filter *podFilter
+}
+
+type jobFilter struct {
+	jobIDs map[string]struct{}
+	labels []*v1peloton.Label
 }
 
 // JobClient represents a client which interested in job event changes.
 type JobClient struct {
-	Filter *watch.StatelessJobFilter
 	Input  chan *stateless.JobSummary
 	Signal chan StopSignal
+
+	filter *jobFilter
 }
 
 // newWatchProcessor should only be used in unit tests.
@@ -167,27 +196,37 @@ func (p *watchProcessor) NewTaskClient(filter *watch.PodFilter) (string, *TaskCl
 		return "", nil, yarpcerrors.ResourceExhaustedErrorf("max client reached")
 	}
 
+	podFilter := &podFilter{}
+	if filter != nil {
+		if filter.GetJobId() != nil {
+			podFilter.jobID = filter.GetJobId().GetValue()
+		}
+
+		if len(filter.GetPodNames()) > 0 {
+			podFilter.podNames = map[string]struct{}{}
+			for _, podName := range filter.GetPodNames() {
+				podFilter.podNames[podName.GetValue()] = struct{}{}
+			}
+		}
+
+		if len(filter.GetLabels()) > 0 {
+			podFilter.labels = filter.GetLabels()
+		}
+	}
+
 	watchID := NewWatchID(ClientTypeTask)
 	p.taskClients[watchID] = &TaskClient{
 		Input: make(chan *pod.PodSummary, p.bufferSize),
 		// Make buffer size 1 so that sender is not blocked when sending
 		// the Signal
 		Signal: make(chan StopSignal, 1),
-		Filter: filter,
+		filter: podFilter,
 	}
 
-	log.WithField("watch_id", watchID).Info("task watch client created")
+	log.WithField("watch_id", watchID).
+		WithField("filter", filter).
+		Info("task watch client created")
 	return watchID, p.taskClients[watchID], nil
-}
-
-// StopTaskClients stops all the task clients on job manager leader change
-func (p *watchProcessor) StopTaskClients() {
-	p.Lock()
-	defer p.Unlock()
-
-	for watchID := range p.taskClients {
-		p.stopTaskClient(watchID, StopSignalCancel)
-	}
 }
 
 // StopTaskClient stops a task watch client. Returns "not-found" error
@@ -201,9 +240,21 @@ func (p *watchProcessor) StopTaskClient(watchID string) error {
 	return p.stopTaskClient(watchID, StopSignalCancel)
 }
 
+// StopTaskClients stops all the task clients on job manager leader change
+func (p *watchProcessor) StopTaskClients() {
+	sw := p.metrics.ProcessorLockDuration.Start()
+	p.Lock()
+	defer p.Unlock()
+	sw.Stop()
+
+	for watchID := range p.taskClients {
+		p.stopTaskClient(watchID, StopSignalCancel)
+	}
+}
+
 func (p *watchProcessor) stopTaskClient(
 	watchID string,
-	Signal StopSignal,
+	signal StopSignal,
 ) error {
 	c, ok := p.taskClients[watchID]
 	if !ok {
@@ -213,10 +264,10 @@ func (p *watchProcessor) stopTaskClient(
 
 	log.WithFields(log.Fields{
 		"watch_id": watchID,
-		"signal":   Signal,
+		"signal":   signal,
 	}).Info("stopping task watch client")
 
-	c.Signal <- Signal
+	c.Signal <- signal
 	delete(p.taskClients, watchID)
 
 	return nil
@@ -233,64 +284,52 @@ func (p *watchProcessor) NotifyTaskChange(
 	sw.Stop()
 
 	for watchID, c := range p.taskClients {
-		filterCheckPass := true
+		filterCheckPass := func() bool {
+			if c.filter != nil {
+				// Check job ID filter
+				if len(c.filter.jobID) > 0 {
+					jobID, _, err := util.ParseTaskID(pod.GetPodName().GetValue())
+					if err != nil {
+						// Cannot parse podName to match the jobID, assume that
+						// filter does not match.
+						return false
+					}
 
-		if c.Filter != nil {
-
-			// Check the job ID filter
-			if c.Filter.GetJobId() != nil {
-				jobID, _, err := util.ParseTaskID(pod.GetPodName().GetValue())
-				if err != nil {
-					// Cannot parse podName to match the jobID, assume that
-					// filter does not match.
-					filterCheckPass = false
+					if jobID != c.filter.jobID {
+						// job id filter did not match
+						return false
+					}
 				}
 
-				if jobID != c.Filter.GetJobId().GetValue() {
-					// job id filter did not match
-					filterCheckPass = false
+				// Check pod name filter
+				if len(c.filter.podNames) > 0 {
+					if _, ok := c.filter.podNames[pod.GetPodName().GetValue()]; !ok {
+						return false
+					}
 				}
 
-				// check the podname filter next
-				if filterCheckPass == true && len(c.Filter.GetPodNames()) > 0 {
+				// Check pod label filter
+				for _, labelFilter := range c.filter.labels {
 					found := false
-					for _, podName := range c.Filter.GetPodNames() {
-						if podName.GetValue() == pod.GetPodName().GetValue() {
+					for _, labelPod := range podLabels {
+						if labelFilter.GetKey() == labelPod.GetKey() &&
+							labelFilter.GetValue() == labelPod.GetValue() {
 							found = true
 							break
 						}
 					}
-					if found == false {
-						// pod name filter did not match
-						filterCheckPass = false
+
+					if !found {
+						// label filter did not match
+						return false
 					}
 				}
 			}
 
-			if filterCheckPass == false {
-				continue
-			}
+			return true
+		}()
 
-			// Check the pod label filter next
-			for _, labelFilter := range c.Filter.GetLabels() {
-				found := false
-				for _, labelPod := range podLabels {
-					if labelFilter.GetKey() == labelPod.GetKey() &&
-						labelFilter.GetValue() == labelPod.GetValue() {
-						found = true
-						break
-					}
-				}
-
-				if found == false {
-					// label filter did not match
-					filterCheckPass = false
-					break
-				}
-			}
-		}
-
-		if filterCheckPass == false {
+		if !filterCheckPass {
 			continue
 		}
 
@@ -300,6 +339,144 @@ func (p *watchProcessor) NotifyTaskChange(
 			log.WithField("watch_id", watchID).
 				Warn("event overflow for task watch client")
 			p.stopTaskClient(watchID, StopSignalOverflow)
+		}
+	}
+}
+
+// NewJobClient creates a new watch client for job event changes.
+// Returns the watch id and an new instance of JobClient.
+func (p *watchProcessor) NewJobClient(filter *watch.StatelessJobFilter) (string, *JobClient, error) {
+	sw := p.metrics.ProcessorLockDuration.Start()
+	p.Lock()
+	defer p.Unlock()
+	sw.Stop()
+
+	if len(p.jobClients) >= p.maxClient {
+		return "", nil, yarpcerrors.ResourceExhaustedErrorf("max client reached")
+	}
+
+	jobFilter := &jobFilter{}
+	if filter != nil {
+		if len(filter.GetJobIds()) > 0 {
+			jobFilter.jobIDs = map[string]struct{}{}
+			for _, jobID := range filter.GetJobIds() {
+				jobFilter.jobIDs[jobID.GetValue()] = struct{}{}
+			}
+		}
+
+		if len(filter.GetLabels()) > 0 {
+			jobFilter.labels = filter.GetLabels()
+		}
+	}
+
+	watchID := NewWatchID(ClientTypeJob)
+	p.jobClients[watchID] = &JobClient{
+		Input: make(chan *stateless.JobSummary, p.bufferSize),
+		// Make buffer size 1 so that sender is not blocked when sending
+		// the Signal
+		Signal: make(chan StopSignal, 1),
+		filter: jobFilter,
+	}
+
+	log.WithField("watch_id", watchID).
+		WithField("filter", filter).
+		Info("job watch client created")
+	return watchID, p.jobClients[watchID], nil
+}
+
+// StopJobClient stops a job watch client. Returns "not-found" error
+// if the corresponding watch client is not found.
+func (p *watchProcessor) StopJobClient(watchID string) error {
+	sw := p.metrics.ProcessorLockDuration.Start()
+	p.Lock()
+	defer p.Unlock()
+	sw.Stop()
+
+	return p.stopJobClient(watchID, StopSignalCancel)
+}
+
+// StopTaskClients stops all the task clients on job manager leader change
+func (p *watchProcessor) StopJobClients() {
+	sw := p.metrics.ProcessorLockDuration.Start()
+	p.Lock()
+	defer p.Unlock()
+	sw.Stop()
+
+	for watchID := range p.jobClients {
+		p.stopJobClient(watchID, StopSignalCancel)
+	}
+}
+
+func (p *watchProcessor) stopJobClient(
+	watchID string,
+	signal StopSignal,
+) error {
+	c, ok := p.jobClients[watchID]
+	if !ok {
+		return yarpcerrors.NotFoundErrorf(
+			"watch_id %s not exist for job watch client", watchID)
+	}
+
+	log.WithFields(log.Fields{
+		"watch_id": watchID,
+		"Signal":   signal,
+	}).Info("stopping job watch client")
+
+	c.Signal <- signal
+	delete(p.jobClients, watchID)
+
+	return nil
+}
+
+// NotifyJobChange receives job event, and notifies all the clients
+// which are interested in the job.
+func (p *watchProcessor) NotifyJobChange(job *stateless.JobSummary) {
+	sw := p.metrics.ProcessorLockDuration.Start()
+	p.Lock()
+	defer p.Unlock()
+	sw.Stop()
+
+	for watchID, c := range p.jobClients {
+		filterCheckPass := func() bool {
+			if c.filter != nil {
+				// Check job IDs filter
+				if len(c.filter.jobIDs) > 0 {
+					jobID := job.GetJobId().GetValue()
+					if _, ok := c.filter.jobIDs[jobID]; !ok {
+						return false
+					}
+				}
+
+				// Check job label filter
+				for _, labelFilter := range c.filter.labels {
+					found := false
+					for _, labelJob := range job.GetLabels() {
+						if labelFilter.GetKey() == labelJob.GetKey() &&
+							labelFilter.GetValue() == labelJob.GetValue() {
+							found = true
+							break
+						}
+					}
+
+					if !found {
+						return false
+					}
+				}
+			}
+
+			return true
+		}()
+
+		if !filterCheckPass {
+			continue
+		}
+
+		select {
+		case c.Input <- job:
+		default:
+			log.WithField("watch_id", watchID).
+				Warn("event overflow for job watch client")
+			p.stopJobClient(watchID, StopSignalOverflow)
 		}
 	}
 }

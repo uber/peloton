@@ -88,28 +88,13 @@ func (c *Client) WatchHostSummaryEvent(topicToWatch string) error {
 	}
 }
 
-// WatchPod is the action for starting a watch stream for pod, specified
-// by job id and pod names.
-func (c *Client) WatchPod(jobID string, podNames []string, labels []string) error {
-	var j *peloton.JobID
-	if jobID != "" {
-		j = &peloton.JobID{
-			Value: jobID,
-		}
-	}
-
-	var ps []*peloton.PodName
-	for _, p := range podNames {
-		ps = append(ps, &peloton.PodName{
-			Value: p,
-		})
-	}
-
+func (c *Client) createLabelFilter(labels []string) ([]*peloton.Label, error) {
 	var labelFilter []*peloton.Label
+
 	for _, label := range labels {
 		keyValue := strings.Split(label, ":")
 		if len(keyValue) != 2 {
-			return yarpcerrors.InvalidArgumentErrorf("unable to parse label %v", label)
+			return nil, yarpcerrors.InvalidArgumentErrorf("unable to parse label %v", label)
 		}
 		labelFilter = append(labelFilter, &peloton.Label{
 			Key:   keyValue[0],
@@ -117,20 +102,10 @@ func (c *Client) WatchPod(jobID string, podNames []string, labels []string) erro
 		})
 	}
 
-	stream, err := c.watchClient.Watch(
-		c.ctx,
-		&watchsvc.WatchRequest{
-			PodFilter: &watch.PodFilter{
-				JobId:    j,
-				PodNames: ps,
-				Labels:   labelFilter,
-			},
-		},
-	)
-	if err != nil {
-		return nil
-	}
+	return labelFilter, nil
+}
 
+func (c *Client) watchStream(stream watchsvc.WatchServiceServiceWatchYARPCClient) error {
 	for {
 		resp, err := stream.Recv()
 		if err == io.EOF {
@@ -150,6 +125,77 @@ func (c *Client) WatchPod(jobID string, podNames []string, labels []string) erro
 		fmt.Printf("%v\n", string(out))
 		tabWriter.Flush()
 	}
+}
+
+// WatchJob is the action for starting a watch stream for job, specified
+// by job ids.
+func (c *Client) WatchJob(jobIDs []string, labels []string) error {
+	var js []*peloton.JobID
+
+	for _, j := range jobIDs {
+		js = append(js, &peloton.JobID{
+			Value: j,
+		})
+	}
+
+	labelFilter, err := c.createLabelFilter(labels)
+	if err != nil {
+		return err
+	}
+
+	stream, err := c.watchClient.Watch(
+		c.ctx,
+		&watchsvc.WatchRequest{
+			StatelessJobFilter: &watch.StatelessJobFilter{
+				JobIds: js,
+				Labels: labelFilter,
+			},
+		},
+	)
+	if err != nil {
+		return nil
+	}
+
+	return c.watchStream(stream)
+}
+
+// WatchPod is the action for starting a watch stream for pod, specified
+// by job id and pod names.
+func (c *Client) WatchPod(jobID string, podNames []string, labels []string) error {
+	var j *peloton.JobID
+	if jobID != "" {
+		j = &peloton.JobID{
+			Value: jobID,
+		}
+	}
+
+	var ps []*peloton.PodName
+	for _, p := range podNames {
+		ps = append(ps, &peloton.PodName{
+			Value: p,
+		})
+	}
+
+	labelFilter, err := c.createLabelFilter(labels)
+	if err != nil {
+		return err
+	}
+
+	stream, err := c.watchClient.Watch(
+		c.ctx,
+		&watchsvc.WatchRequest{
+			PodFilter: &watch.PodFilter{
+				JobId:    j,
+				PodNames: ps,
+				Labels:   labelFilter,
+			},
+		},
+	)
+	if err != nil {
+		return nil
+	}
+
+	return c.watchStream(stream)
 }
 
 // CancelWatch is the action for cancelling an existing watch stream.

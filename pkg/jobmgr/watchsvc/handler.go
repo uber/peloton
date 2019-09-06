@@ -18,6 +18,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/watch/svc"
 
@@ -60,6 +61,142 @@ func InitV1AlphaWatchServiceHandler(
 	return processor
 }
 
+// watchPod implements the watch handler for pod events.
+func (h *ServiceHandler) watchPod(
+	req *svc.WatchRequest,
+	stream svc.WatchServiceServiceWatchYARPCServer,
+) error {
+	log.WithField("request", req).
+		Debug("starting new pod watch")
+
+	watchID, watchClient, err := h.processor.NewTaskClient(req.GetPodFilter())
+	if err != nil {
+		log.WithError(err).
+			Warn("failed to create pod watch client")
+		return err
+	}
+
+	defer func() {
+		h.processor.StopTaskClient(watchID)
+	}()
+
+	initResp := &svc.WatchResponse{
+		WatchId: watchID,
+	}
+	if err := stream.Send(initResp); err != nil {
+		log.WithField("watch_id", watchID).
+			WithError(err).
+			Warn("failed to send initial response for pod watch")
+		return err
+	}
+
+	for {
+		select {
+		case p := <-watchClient.Input:
+			resp := &svc.WatchResponse{
+				WatchId: watchID,
+				Pods:    []*pod.PodSummary{p},
+			}
+			if err := stream.Send(resp); err != nil {
+				log.WithField("watch_id", watchID).
+					WithError(err).
+					Warn("failed to send response for pod watch")
+				return err
+			}
+		case s := <-watchClient.Signal:
+			log.WithFields(log.Fields{
+				"watch_id": watchID,
+				"signal":   s,
+			}).Debug("received signal")
+
+			err := handleSignal(
+				watchID,
+				s,
+				map[StopSignal]tally.Counter{
+					StopSignalCancel:   h.metrics.WatchPodCancel,
+					StopSignalOverflow: h.metrics.WatchPodOverflow,
+				},
+			)
+
+			if !yarpcerrors.IsCancelled(err) {
+				log.WithField("watch_id", watchID).
+					WithError(err).
+					Warn("watch stopped due to signal")
+			}
+
+			return err
+		}
+	}
+}
+
+// watchJob implements the watch handler for job events.
+func (h *ServiceHandler) watchJob(
+	req *svc.WatchRequest,
+	stream svc.WatchServiceServiceWatchYARPCServer,
+) error {
+	log.WithField("request", req).
+		Debug("starting new job watch")
+
+	watchID, watchClient, err := h.processor.NewJobClient(req.GetStatelessJobFilter())
+	if err != nil {
+		log.WithError(err).
+			Warn("failed to create job watch client")
+		return err
+	}
+
+	defer func() {
+		h.processor.StopJobClient(watchID)
+	}()
+
+	initResp := &svc.WatchResponse{
+		WatchId: watchID,
+	}
+	if err := stream.Send(initResp); err != nil {
+		log.WithField("watch_id", watchID).
+			WithError(err).
+			Warn("failed to send initial response for job watch")
+		return err
+	}
+
+	for {
+		select {
+		case j := <-watchClient.Input:
+			resp := &svc.WatchResponse{
+				WatchId:       watchID,
+				StatelessJobs: []*stateless.JobSummary{j},
+			}
+			if err := stream.Send(resp); err != nil {
+				log.WithField("watch_id", watchID).
+					WithError(err).
+					Warn("failed to send response for job watch")
+				return err
+			}
+		case s := <-watchClient.Signal:
+			log.WithFields(log.Fields{
+				"watch_id": watchID,
+				"signal":   s,
+			}).Debug("received signal")
+
+			err := handleSignal(
+				watchID,
+				s,
+				map[StopSignal]tally.Counter{
+					StopSignalCancel:   h.metrics.WatchJobCancel,
+					StopSignalOverflow: h.metrics.WatchJobOverflow,
+				},
+			)
+
+			if !yarpcerrors.IsCancelled(err) {
+				log.WithField("watch_id", watchID).
+					WithError(err).
+					Warn("watch stopped due to signal")
+			}
+
+			return err
+		}
+	}
+}
+
 // Watch creates a watch to get notified about changes to Peloton objects.
 // Changed objects are streamed back to the caller till the watch is
 // cancelled.
@@ -69,74 +206,12 @@ func (h *ServiceHandler) Watch(
 ) error {
 	// Create watch for pod
 	if req.GetPodFilter() != nil {
-		log.WithField("request", req).
-			Debug("starting new pod watch")
-
-		watchID, watchClient, err := h.processor.NewTaskClient(req.GetPodFilter())
-		if err != nil {
-			log.WithError(err).
-				Warn("failed to create pod watch client")
-			return err
-		}
-
-		defer func() {
-			h.processor.StopTaskClient(watchID)
-		}()
-
-		initResp := &svc.WatchResponse{
-			WatchId: watchID,
-		}
-		if err := stream.Send(initResp); err != nil {
-			log.WithField("watch_id", watchID).
-				WithError(err).
-				Warn("failed to send initial response for pod watch")
-			return err
-		}
-
-		for {
-			select {
-			case p := <-watchClient.Input:
-				resp := &svc.WatchResponse{
-					WatchId: watchID,
-					Pods:    []*pod.PodSummary{p},
-				}
-				if err := stream.Send(resp); err != nil {
-					log.WithField("watch_id", watchID).
-						WithError(err).
-						Warn("failed to send response for pod watch")
-					return err
-				}
-			case s := <-watchClient.Signal:
-				log.WithFields(log.Fields{
-					"watch_id": watchID,
-					"signal":   s,
-				}).Debug("received signal")
-
-				err := handleSignal(
-					watchID,
-					s,
-					map[StopSignal]tally.Counter{
-						StopSignalCancel:   h.metrics.WatchPodCancel,
-						StopSignalOverflow: h.metrics.WatchPodOverflow,
-					},
-				)
-
-				if !yarpcerrors.IsCancelled(err) {
-					log.WithField("watch_id", watchID).
-						WithError(err).
-						Warn("watch stopped due to signal")
-				}
-
-				return err
-			}
-		}
+		return h.watchPod(req, stream)
 	}
 
 	// Create watch for job
 	if req.GetStatelessJobFilter() != nil {
-		err := yarpcerrors.UnimplementedErrorf("job watch is not implemented")
-		log.Warn("job watch is not implemented")
-		return err
+		return h.watchJob(req, stream)
 	}
 
 	err := yarpcerrors.InvalidArgumentErrorf("not supported watch type")

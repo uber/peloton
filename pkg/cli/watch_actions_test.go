@@ -19,6 +19,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	watchsvc "github.com/uber/peloton/.gen/peloton/api/v1alpha/watch/svc"
@@ -103,6 +104,55 @@ func (suite *watchActionsTestSuite) TestWatchPodLabelError() {
 	labels = append(labels, label1)
 
 	suite.Error(suite.client.WatchPod(jobID, podNames, labels))
+}
+
+func (suite *watchActionsTestSuite) TestWatchJob() {
+	var labels []string
+
+	jobIDs := []string{"job-id-0", "job-id-1"}
+	watchID := uuid.New()
+	label1 := "key1:value1"
+	labels = append(labels, label1)
+
+	stream := mocks.NewMockWatchServiceServiceWatchYARPCClient(suite.ctrl)
+	resps := []*watchsvc.WatchResponse{
+		{WatchId: watchID},
+	}
+
+	for _, jobID := range jobIDs {
+		resps = append(resps, &watchsvc.WatchResponse{
+			WatchId: watchID,
+			StatelessJobs: []*stateless.JobSummary{
+				{
+					JobId: &peloton.JobID{Value: jobID},
+				},
+			},
+		})
+	}
+
+	suite.watchClient.EXPECT().
+		Watch(gomock.Any(), gomock.Any()).
+		Return(stream, nil)
+
+	var calls []*gomock.Call
+	for _, resp := range resps {
+		calls = append(calls, stream.EXPECT().Recv().Return(resp, nil))
+	}
+	calls = append(calls, stream.EXPECT().Recv().Return(nil, io.EOF))
+
+	gomock.InOrder(calls...)
+
+	suite.NoError(suite.client.WatchJob(jobIDs, labels))
+}
+
+func (suite *watchActionsTestSuite) TestWatchJobLabelError() {
+	var labels []string
+
+	jobIDs := []string{"job-id-0", "job-id-1"}
+	label1 := "key1:value1:value2"
+	labels = append(labels, label1)
+
+	suite.Error(suite.client.WatchJob(jobIDs, labels))
 }
 
 func (suite *watchActionsTestSuite) TestCancelWatch() {

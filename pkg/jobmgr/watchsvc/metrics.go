@@ -23,6 +23,9 @@ type Metrics struct {
 	WatchPodCancel   tally.Counter
 	WatchPodOverflow tally.Counter
 
+	WatchJobCancel   tally.Counter
+	WatchJobOverflow tally.Counter
+
 	CancelNotFound tally.Counter
 
 	// Time takes to acquire lock in watch processor
@@ -35,6 +38,9 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	return &Metrics{
 		WatchPodCancel:   subScope.Counter("watch_pod_cancel"),
 		WatchPodOverflow: subScope.Counter("watch_pod_overflow"),
+
+		WatchJobCancel:   subScope.Counter("watch_job_cancel"),
+		WatchJobOverflow: subScope.Counter("watch_job_overflow"),
 
 		CancelNotFound: subScope.Counter("cancel_not_found"),
 

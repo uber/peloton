@@ -14,6 +14,10 @@ message StatelessJobFilter
 {
   // The IDs of the jobs to watch. If unset, all jobs will be monitored.
   repeated peloton.JobID job_ids = 1;
+
+  // Filter based on labels in the job specification. Only jobs which
+  // have all the labels provided in the filter will be watched.
+  repeated peloton.Label labels = 2;
 }
 
 // PodFilter specifies a filter for the pod(s) to be watched.

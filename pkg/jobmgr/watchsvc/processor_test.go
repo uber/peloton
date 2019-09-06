@@ -17,6 +17,7 @@ package watchsvc
 import (
 	"context"
 	"fmt"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"sync"
 	"testing"
 	"time"
@@ -114,7 +115,7 @@ func (suite *WatchProcessorTestSuite) TestTaskClient_StopNonexistentClient() {
 	suite.True(yarpcerrors.IsNotFound(err))
 }
 
-// Test stop all clients on losing leadership
+// TestTaskClient_StopAllClients tests stop all clients on losing leadership
 func (suite *WatchProcessorTestSuite) TestTaskClient_StopAllClients() {
 	watchID1, c, err := suite.processor.NewTaskClient(nil)
 	suite.NoError(err)
@@ -229,6 +230,7 @@ func (suite *WatchProcessorTestSuite) TestTaskClientPodFilter() {
 
 	time.Sleep(1 * time.Second)
 	err = suite.processor.StopTaskClient(watchID)
+	suite.NoError(err)
 	wg.Wait()
 
 	mutex.Lock()
@@ -291,6 +293,235 @@ func (suite *WatchProcessorTestSuite) TestTaskClientPodLabelFilter() {
 
 	time.Sleep(1 * time.Second)
 	err = suite.processor.StopTaskClient(watchID)
+	suite.NoError(err)
+	wg.Wait()
+
+	mutex.Lock()
+	suite.Equal(2, received)
+	mutex.Unlock()
+}
+
+// TestJobClient tests basic setup and teardown of job watch client
+func (suite *WatchProcessorTestSuite) TestJobClient() {
+	watchID, c, err := suite.processor.NewJobClient(nil)
+	suite.NoError(err)
+	suite.NotEmpty(watchID)
+	suite.NotNil(c)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	var stopSignal StopSignal
+
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-c.Input:
+			case stopSignal = <-c.Signal:
+				return
+			}
+		}
+	}()
+
+	err = suite.processor.StopJobClient(watchID)
+	wg.Wait()
+
+	suite.NoError(err)
+	suite.Equal(StopSignalCancel, stopSignal)
+}
+
+// TestJobClient_StopNonexistentClient tests an error will be thrown if
+// tearing down a client with unknown watch id.
+func (suite *WatchProcessorTestSuite) TestJobClient_StopNonexistentClient() {
+	watchID, c, err := suite.processor.NewJobClient(nil)
+	suite.NoError(err)
+	suite.NotEmpty(watchID)
+	suite.NotNil(c)
+
+	err = suite.processor.StopJobClient("00000000-0000-0000-0000-000000000000")
+	suite.Error(err)
+	suite.True(yarpcerrors.IsNotFound(err))
+}
+
+// TestJobClient_StopAllClients tests stop all clients on losing leadership
+func (suite *WatchProcessorTestSuite) TestJobClient_StopAllClients() {
+	watchID1, c, err := suite.processor.NewJobClient(nil)
+	suite.NoError(err)
+	suite.NotEmpty(watchID1)
+	suite.NotNil(c)
+
+	watchID2, c, err := suite.processor.NewJobClient(nil)
+	suite.NoError(err)
+	suite.NotEmpty(watchID2)
+	suite.NotNil(c)
+
+	suite.processor.StopJobClients()
+
+	// all clients are alredy stopped
+	suite.Error(suite.processor.StopJobClient(watchID1))
+	suite.Error(suite.processor.StopJobClient(watchID2))
+}
+
+// TestJobClient_MaxClientReached tests an error will be thrown when
+// creating a new client if max number of clients is reached.
+func (suite *WatchProcessorTestSuite) TestJobClient_MaxClientReached() {
+	for i := 0; i < 3; i++ {
+		watchID, c, err := suite.processor.NewJobClient(nil)
+		if i < 2 {
+			suite.NoError(err)
+			suite.NotEmpty(watchID)
+			suite.NotNil(c)
+		} else {
+			suite.Error(err)
+			suite.True(yarpcerrors.IsResourceExhausted(err))
+		}
+	}
+}
+
+// TestJobClient_EventOverflow tests that a "overflow" stop Signal will be
+// sent to the client and the client will be closed if the client buffer is
+// overflown.
+func (suite *WatchProcessorTestSuite) TestJobClient_EventOverflow() {
+	watchID, c, err := suite.processor.NewJobClient(nil)
+	suite.NoError(err)
+	suite.NotEmpty(watchID)
+	suite.NotNil(c)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	var stopSignal StopSignal
+
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case stopSignal = <-c.Signal:
+				return
+			}
+		}
+	}()
+
+	// send number of events equal to buffer size
+	for i := 0; i < 10; i++ {
+		suite.processor.NotifyJobChange(&stateless.JobSummary{})
+	}
+	time.Sleep(1 * time.Second)
+	suite.Equal(StopSignalUnknown, stopSignal)
+
+	// trigger buffer overflow
+	suite.processor.NotifyJobChange(&stateless.JobSummary{})
+	wg.Wait()
+	suite.Equal(StopSignalOverflow, stopSignal)
+}
+
+func (suite *WatchProcessorTestSuite) TestJobClientJobFilter() {
+	filter := &watch.StatelessJobFilter{
+		JobIds: []*peloton.JobID{suite.jobID},
+	}
+
+	var mutex = &sync.Mutex{}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	received := 0
+
+	watchID, c, err := suite.processor.NewJobClient(filter)
+	suite.NoError(err)
+	suite.NotEmpty(watchID)
+	suite.NotNil(c)
+
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-c.Input:
+				mutex.Lock()
+				received++
+				mutex.Unlock()
+			case <-c.Signal:
+				return
+			}
+		}
+	}()
+
+	suite.processor.NotifyJobChange(&stateless.JobSummary{JobId: suite.jobID})
+
+	suite.processor.NotifyJobChange(&stateless.JobSummary{
+		JobId: &peloton.JobID{Value: uuid.NewRandom().String()},
+	})
+
+	suite.processor.NotifyJobChange(&stateless.JobSummary{
+		JobId: &peloton.JobID{Value: uuid.NewRandom().String()},
+	})
+
+	time.Sleep(1 * time.Second)
+	err = suite.processor.StopJobClient(watchID)
+	suite.NoError(err)
+	wg.Wait()
+
+	mutex.Lock()
+	suite.Equal(received, 1)
+	mutex.Unlock()
+}
+
+func (suite *WatchProcessorTestSuite) TestJobClientLabelFilter() {
+	label1 := &peloton.Label{
+		Key:   "key1",
+		Value: "value1",
+	}
+	label2 := &peloton.Label{
+		Key:   "key2",
+		Value: "value2",
+	}
+
+	filter := &watch.StatelessJobFilter{
+		Labels: []*peloton.Label{label1},
+	}
+
+	var mutex = &sync.Mutex{}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	received := 0
+
+	watchID, c, err := suite.processor.NewJobClient(filter)
+	suite.NoError(err)
+	suite.NotEmpty(watchID)
+	suite.NotNil(c)
+
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-c.Input:
+				mutex.Lock()
+				received++
+				mutex.Unlock()
+			case <-c.Signal:
+				return
+			}
+		}
+	}()
+
+	suite.processor.NotifyJobChange(
+		&stateless.JobSummary{
+			Labels: []*peloton.Label{label1},
+		},
+	)
+
+	suite.processor.NotifyJobChange(
+		&stateless.JobSummary{
+			Labels: []*peloton.Label{label2},
+		},
+	)
+
+	suite.processor.NotifyJobChange(
+		&stateless.JobSummary{
+			Labels: []*peloton.Label{label1, label2},
+		},
+	)
+
+	time.Sleep(1 * time.Second)
+	err = suite.processor.StopJobClient(watchID)
+	suite.NoError(err)
 	wg.Wait()
 
 	mutex.Lock()

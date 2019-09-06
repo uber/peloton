@@ -212,10 +212,14 @@ var (
 
 	watch = app.Command("watch", "watch job / pod runtime changes")
 
+	watchJob       = watch.Command("job", "watch job runtime changes")
+	watchJobIDList = watchJob.Arg("job", "job identifier").Strings()
+	watchJobLabels = watchJob.Flag("labels", "filter on labels (key:value pairs)").Strings()
+
 	watchPod         = watch.Command("pod", "watch pod runtime changes")
 	watchPodJobID    = watchPod.Arg("job", "job identifier").String()
 	watchPodPodNames = watchPod.Arg("pod", "pod name").Strings()
-	watchLabels      = watchPod.Flag("labels", "filter on labels (key:value pairs)").Strings()
+	watchPodLabels   = watchPod.Flag("labels", "filter on labels (key:value pairs)").Strings()
 
 	watchCancel        = watch.Command("cancel", "cancel watch")
 	watchCancelWatchID = watchCancel.Arg("id", "watch id").Required().String()
@@ -1138,8 +1142,10 @@ func main() {
 			*statelessDeleteEntityVersion,
 			*statelessDeleteForce,
 		)
+	case watchJob.FullCommand():
+		err = client.WatchJob(*watchJobIDList, *watchJobLabels)
 	case watchPod.FullCommand():
-		err = client.WatchPod(*watchPodJobID, *watchPodPodNames, *watchLabels)
+		err = client.WatchPod(*watchPodJobID, *watchPodPodNames, *watchPodLabels)
 	case watchCancel.FullCommand():
 		err = client.CancelWatch(*watchCancelWatchID)
 	case lock.FullCommand():

@@ -55,7 +55,24 @@ func (l WatchListener) JobSummaryChanged(
 	jobSummary *job.JobSummary,
 	updateInfo *models.UpdateModel,
 ) {
-	// TODO(kevinxu): to be implemented
+	// for now watch api only supports stateless
+	if jobType != job.JobType_SERVICE {
+		log.Debug("skip JobRuntimeChanged due to not being service type job")
+		return
+	}
+
+	if jobID == nil {
+		log.Debug("skip JobRuntimeChanged due to jobID being nil")
+		return
+	}
+
+	if jobSummary == nil {
+		log.Debug("skip JobRuntimeChanged due to jobSummary being nil")
+		return
+	}
+
+	s := api.ConvertJobSummary(jobSummary, updateInfo)
+	l.processor.NotifyJobChange(s)
 }
 
 // TaskRuntimeChanged is invoked when the runtime for a task is updated

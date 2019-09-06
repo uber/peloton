@@ -17,6 +17,7 @@ package watchsvc_test
 import (
 	"context"
 	"errors"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"testing"
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
@@ -91,17 +92,6 @@ func (suite *WatchServiceHandlerTestSuite) TestWatch_InvalidRequest() {
 	suite.True(yarpcerrors.IsInvalidArgument(err))
 }
 
-func (suite *WatchServiceHandlerTestSuite) TestJobWatch() {
-	req := &watchsvc.WatchRequest{
-		StatelessJobFilter: &watch.StatelessJobFilter{},
-	}
-
-	// job watch is currently unimplemented
-	err := suite.handler.Watch(req, suite.watchServer)
-	suite.Error(err)
-	suite.True(yarpcerrors.IsUnimplemented(err))
-}
-
 // TestTaskWatch sets up a watch client, and verifies the responses
 // are streamed back correctly based on the input, finally the
 // test cancels the watch stream.
@@ -160,7 +150,7 @@ func (suite *WatchServiceHandlerTestSuite) TestTaskWatch() {
 	suite.True(yarpcerrors.IsCancelled(err))
 }
 
-// TestTaskWatch sets up a watch client, and verifies the responses
+// TestTaskWatch_Overflow sets up a watch client, and verifies the responses
 // are streamed back correctly based on the input, finally it simulates
 // a buffer overflow signal and verifies the client received the aborted
 // status code.
@@ -234,7 +224,7 @@ func (suite *WatchServiceHandlerTestSuite) TestTaskWatch_MaxClientReached() {
 	suite.True(yarpcerrors.IsResourceExhausted(err))
 }
 
-// TestTaskWatch_InitSendError tests for error case of iniitial response.
+// TestTaskWatch_InitSendError tests for error case of initial response.
 func (suite *WatchServiceHandlerTestSuite) TestTaskWatch_InitSendError() {
 	watchID := NewWatchID(ClientTypeTask)
 	taskClient := &TaskClient{
@@ -313,6 +303,223 @@ func (suite *WatchServiceHandlerTestSuite) TestTaskWatch_SendError() {
 	go func() {
 		taskClient.Input <- p
 		taskClient.Signal <- StopSignalCancel
+	}()
+
+	err := suite.handler.Watch(req, suite.watchServer)
+	suite.Error(err)
+	suite.Equal(sendErr, err)
+}
+
+// TestJobWatch sets up a watch client, and verifies the responses
+// are streamed back correctly based on the input, finally the
+// test cancels the watch stream.
+func (suite *WatchServiceHandlerTestSuite) TestJobWatch() {
+	watchID := NewWatchID(ClientTypeJob)
+	jobClient := &JobClient{
+		// do not set buffer size for input to make sure the
+		// tests sends all the events before sending stop
+		// signal
+		Input:  make(chan *stateless.JobSummary),
+		Signal: make(chan StopSignal, 1),
+	}
+
+	suite.processor.EXPECT().NewJobClient(gomock.Any()).
+		Return(watchID, jobClient, nil)
+	suite.processor.EXPECT().StopJobClient(watchID)
+
+	jobs := []*stateless.JobSummary{
+		{
+			JobId: &peloton.JobID{Value: "job-0"},
+		},
+		{
+			JobId: &peloton.JobID{Value: "job-1"},
+		},
+	}
+
+	suite.watchServer.EXPECT().
+		Send(&watchsvc.WatchResponse{
+			WatchId: watchID,
+			Pods:    nil,
+		}).
+		Return(nil)
+	for _, j := range jobs {
+		suite.watchServer.EXPECT().
+			Send(&watchsvc.WatchResponse{
+				WatchId:       watchID,
+				StatelessJobs: []*stateless.JobSummary{j},
+			}).
+			Return(nil)
+	}
+
+	req := &watchsvc.WatchRequest{
+		StatelessJobFilter: &watch.StatelessJobFilter{},
+	}
+
+	go func() {
+		for _, j := range jobs {
+			jobClient.Input <- j
+		}
+		// cancelling task watch
+		jobClient.Signal <- StopSignalCancel
+	}()
+
+	err := suite.handler.Watch(req, suite.watchServer)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsCancelled(err))
+}
+
+// TestJobWatch_Overflow sets up a watch client, and verifies the responses
+// are streamed back correctly based on the input, finally it simulates
+// a buffer overflow signal and verifies the client received the aborted
+// status code.
+func (suite *WatchServiceHandlerTestSuite) TestJobWatch_Overflow() {
+	watchID := NewWatchID(ClientTypeJob)
+	jobClient := &JobClient{
+		// do not set buffer size for input to make sure the
+		// tests sends all the events before sending stop
+		// signal
+		Input:  make(chan *stateless.JobSummary),
+		Signal: make(chan StopSignal, 1),
+	}
+
+	suite.processor.EXPECT().NewJobClient(gomock.Any()).
+		Return(watchID, jobClient, nil)
+	suite.processor.EXPECT().StopJobClient(watchID)
+
+	jobs := []*stateless.JobSummary{
+		{
+			JobId: &peloton.JobID{Value: "job-0"},
+		},
+		{
+			JobId: &peloton.JobID{Value: "job-1"},
+		},
+	}
+
+	suite.watchServer.EXPECT().
+		Send(&watchsvc.WatchResponse{
+			WatchId: watchID,
+			Pods:    nil,
+		}).
+		Return(nil)
+	for _, j := range jobs {
+		suite.watchServer.EXPECT().
+			Send(&watchsvc.WatchResponse{
+				WatchId:       watchID,
+				StatelessJobs: []*stateless.JobSummary{j},
+			}).
+			Return(nil)
+	}
+
+	req := &watchsvc.WatchRequest{
+		StatelessJobFilter: &watch.StatelessJobFilter{},
+	}
+
+	go func() {
+		for _, j := range jobs {
+			jobClient.Input <- j
+		}
+		// cancelling task watch
+		jobClient.Signal <- StopSignalOverflow
+	}()
+
+	err := suite.handler.Watch(req, suite.watchServer)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsAborted(err))
+}
+
+// TestJobWatch_MaxClientReached checks Watch will return resource-exhausted
+// error when NewJobClient reached max client.
+func (suite *WatchServiceHandlerTestSuite) TestJobWatch_MaxClientReached() {
+	suite.processor.EXPECT().NewJobClient(gomock.Any()).
+		Return("", nil, yarpcerrors.ResourceExhaustedErrorf("max client reached"))
+
+	req := &watchsvc.WatchRequest{
+		StatelessJobFilter: &watch.StatelessJobFilter{},
+	}
+
+	err := suite.handler.Watch(req, suite.watchServer)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsResourceExhausted(err))
+}
+
+// TestJobWatch_InitSendError tests for error case of initial response.
+func (suite *WatchServiceHandlerTestSuite) TestJobWatch_InitSendError() {
+	watchID := NewWatchID(ClientTypeJob)
+	jobClient := &JobClient{
+		// do not set buffer size for input to make sure the
+		// tests sends all the events before sending stop
+		// signal
+		Input:  make(chan *stateless.JobSummary),
+		Signal: make(chan StopSignal, 1),
+	}
+
+	suite.processor.EXPECT().NewJobClient(gomock.Any()).
+		Return(watchID, jobClient, nil)
+	suite.processor.EXPECT().StopJobClient(watchID)
+
+	sendErr := errors.New("message:transport is closing")
+
+	// initial response
+	suite.watchServer.EXPECT().
+		Send(&watchsvc.WatchResponse{
+			WatchId: watchID,
+		}).
+		Return(sendErr)
+
+	req := &watchsvc.WatchRequest{
+		StatelessJobFilter: &watch.StatelessJobFilter{},
+	}
+
+	err := suite.handler.Watch(req, suite.watchServer)
+	suite.Error(err)
+	suite.Equal(sendErr, err)
+}
+
+// TestJobWatch_InitSendError tests for error case of subsequent response
+// after initial one.
+func (suite *WatchServiceHandlerTestSuite) TestJobWatch_SendError() {
+	watchID := NewWatchID(ClientTypeJob)
+	jobClient := &JobClient{
+		// do not set buffer size for input to make sure the
+		// tests sends all the events before sending stop
+		// signal
+		Input:  make(chan *stateless.JobSummary),
+		Signal: make(chan StopSignal, 1),
+	}
+
+	suite.processor.EXPECT().NewJobClient(gomock.Any()).
+		Return(watchID, jobClient, nil)
+	suite.processor.EXPECT().StopJobClient(watchID)
+
+	j := &stateless.JobSummary{
+		JobId: &peloton.JobID{Value: "job-0"},
+	}
+
+	// initial response
+	suite.watchServer.EXPECT().
+		Send(&watchsvc.WatchResponse{
+			WatchId: watchID,
+			Pods:    nil,
+		}).
+		Return(nil)
+
+	sendErr := errors.New("message:transport is closing")
+
+	// subsequent response
+	suite.watchServer.EXPECT().
+		Send(&watchsvc.WatchResponse{
+			WatchId:       watchID,
+			StatelessJobs: []*stateless.JobSummary{j},
+		}).
+		Return(sendErr)
+
+	req := &watchsvc.WatchRequest{
+		StatelessJobFilter: &watch.StatelessJobFilter{},
+	}
+
+	go func() {
+		jobClient.Input <- j
+		jobClient.Signal <- StopSignalCancel
 	}()
 
 	err := suite.handler.Watch(req, suite.watchServer)
