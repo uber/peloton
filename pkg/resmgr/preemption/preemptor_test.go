@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pb_respool "github.com/uber/peloton/.gen/peloton/api/v0/respool"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
@@ -49,7 +50,7 @@ import (
 	"github.com/uber-go/tally"
 )
 
-type PreemptorTestSuite struct {
+type preemptorTestSuite struct {
 	suite.Suite
 	mockCtrl *gomock.Controller
 
@@ -67,7 +68,7 @@ var (
 	}
 )
 
-func (suite *PreemptorTestSuite) SetupTest() {
+func (suite *preemptorTestSuite) SetupTest() {
 	suite.mockCtrl = gomock.NewController(suite.T())
 	rm_task.InitTaskTracker(
 		tally.NoopScope,
@@ -100,11 +101,11 @@ func (suite *PreemptorTestSuite) SetupTest() {
 	}
 }
 
-func (suite *PreemptorTestSuite) TearDownTest() {
+func (suite *preemptorTestSuite) TearDownTest() {
 	suite.tracker.Clear()
 }
 
-func (suite *PreemptorTestSuite) TestPreemptorStartEnabled() {
+func (suite *preemptorTestSuite) TestPreemptorStartEnabled() {
 	defer suite.preemptor.Stop()
 	suite.preemptor.enabled = true
 	err := suite.preemptor.Start()
@@ -112,7 +113,7 @@ func (suite *PreemptorTestSuite) TestPreemptorStartEnabled() {
 	suite.NotNil(suite.preemptor.lifeCycle.StopCh())
 }
 
-func (suite *PreemptorTestSuite) TestPreemptorStartDisabled() {
+func (suite *preemptorTestSuite) TestPreemptorStartDisabled() {
 	defer suite.preemptor.Stop()
 	suite.preemptor.enabled = false
 	err := suite.preemptor.Start()
@@ -121,7 +122,7 @@ func (suite *PreemptorTestSuite) TestPreemptorStartDisabled() {
 	suite.False(ok)
 }
 
-func (suite *PreemptorTestSuite) TestUpdateResourcePoolsState() {
+func (suite *preemptorTestSuite) TestUpdateResourcePoolsState() {
 	mockResTree := mocks.NewMockTree(suite.mockCtrl)
 	mockResPool := mocks.NewMockResPool(suite.mockCtrl)
 
@@ -218,7 +219,7 @@ func (suite *PreemptorTestSuite) TestUpdateResourcePoolsState() {
 	}
 }
 
-func (suite *PreemptorTestSuite) TestUpdateResourcePoolsStateReset() {
+func (suite *preemptorTestSuite) TestUpdateResourcePoolsStateReset() {
 	mockResTree := mocks.NewMockTree(suite.mockCtrl)
 	mockResPool := mocks.NewMockResPool(suite.mockCtrl)
 
@@ -294,7 +295,7 @@ func (suite *PreemptorTestSuite) TestUpdateResourcePoolsStateReset() {
 	suite.Equal(0, len(respools))
 }
 
-func (suite *PreemptorTestSuite) TestProcessResourcePoolForRunningTasks() {
+func (suite *preemptorTestSuite) TestProcessResourcePoolForRunningTasks() {
 	mockResTree := mocks.NewMockTree(suite.mockCtrl)
 	mockResPool := mocks.NewMockResPool(suite.mockCtrl)
 
@@ -352,7 +353,7 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolForRunningTasks() {
 	suite.Equal(0, suite.preemptor.respoolState["respool-1"])
 }
 
-func (suite *PreemptorTestSuite) TestProcessResourcePoolForReadyTasks() {
+func (suite *preemptorTestSuite) TestProcessResourcePoolForReadyTasks() {
 	mockResTree := mocks.NewMockTree(suite.mockCtrl)
 	mockResPool := mocks.NewMockResPool(suite.mockCtrl)
 
@@ -415,7 +416,7 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolForReadyTasks() {
 		LessThanOrEqual(mockResPool.GetNonSlackEntitlement()))
 }
 
-func (suite *PreemptorTestSuite) TestProcessResourcePoolForPlacingTasks() {
+func (suite *preemptorTestSuite) TestProcessResourcePoolForPlacingTasks() {
 	mockResTree := mocks.NewMockTree(suite.mockCtrl)
 	mockResPool := mocks.NewMockResPool(suite.mockCtrl)
 
@@ -481,7 +482,7 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolForPlacingTasks() {
 		LessThanOrEqual(mockResPool.GetNonSlackEntitlement()))
 }
 
-func (suite *PreemptorTestSuite) TestRevocableTaskPreemptionOnly() {
+func (suite *preemptorTestSuite) TestRevocableTaskPreemptionOnly() {
 	ctr := gomock.NewController(suite.T())
 	defer ctr.Finish()
 	mockResTree := mocks.NewMockTree(ctr)
@@ -592,7 +593,7 @@ func (suite *PreemptorTestSuite) TestRevocableTaskPreemptionOnly() {
 	suite.Equal(allocation.GetByType(scalar.NonSlackAllocation), mockResPool.GetNonSlackAllocatedResources())
 }
 
-func (suite *PreemptorTestSuite) TestProcessResourceGetError() {
+func (suite *preemptorTestSuite) TestProcessResourceGetError() {
 	ctr := gomock.NewController(suite.T())
 	defer ctr.Finish()
 
@@ -637,7 +638,7 @@ var (
 	}
 )
 
-func (suite *PreemptorTestSuite) TestProcessRunningTaskEnqueueError() {
+func (suite *preemptorTestSuite) TestProcessRunningTaskEnqueueError() {
 	ctr := gomock.NewController(suite.T())
 	defer ctr.Finish()
 
@@ -675,7 +676,7 @@ func (suite *PreemptorTestSuite) TestProcessRunningTaskEnqueueError() {
 	suite.Equal(0, len(suite.preemptor.taskSet.ToSlice()))
 }
 
-func (suite *PreemptorTestSuite) TestProcessResourcePoolEnqueueGangError() {
+func (suite *preemptorTestSuite) TestProcessResourcePoolEnqueueGangError() {
 	ctr := gomock.NewController(suite.T())
 	defer ctr.Finish()
 
@@ -740,7 +741,7 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolEnqueueGangError() {
 	suite.True(strings.Contains(err.Error(), fakeEnqueueError.Error()))
 }
 
-func (suite *PreemptorTestSuite) TestProcessResourcePoolSubtractAllocationError() {
+func (suite *preemptorTestSuite) TestProcessResourcePoolSubtractAllocationError() {
 	ctr := gomock.NewController(suite.T())
 	defer ctr.Finish()
 
@@ -807,7 +808,7 @@ func (suite *PreemptorTestSuite) TestProcessResourcePoolSubtractAllocationError(
 	suite.True(strings.Contains(err.Error(), fakeAllocationError.Error()))
 }
 
-func (suite *PreemptorTestSuite) TestPreemptorEnqueue() {
+func (suite *preemptorTestSuite) TestPreemptorEnqueue() {
 	ctr := gomock.NewController(suite.T())
 	defer ctr.Finish()
 
@@ -840,7 +841,7 @@ func (suite *PreemptorTestSuite) TestPreemptorEnqueue() {
 	suite.Equal(1, len(suite.preemptor.taskSet.ToSlice()))
 }
 
-func (suite *PreemptorTestSuite) TestNewPreemptor() {
+func (suite *preemptorTestSuite) TestNewPreemptor() {
 	p := NewPreemptor(tally.NoopScope, &res_common.PreemptionConfig{
 		Enabled:                      true,
 		TaskPreemptionPeriod:         100 * time.Hour,
@@ -852,7 +853,7 @@ func (suite *PreemptorTestSuite) TestNewPreemptor() {
 	suite.NotNil(p)
 }
 
-func (suite *PreemptorTestSuite) TestPreemptionQueueDuplicateTasks() {
+func (suite *preemptorTestSuite) TestPreemptionQueueDuplicateTasks() {
 	mockResTree := mocks.NewMockTree(suite.mockCtrl)
 	mockResPool := mocks.NewMockResPool(suite.mockCtrl)
 
@@ -917,7 +918,7 @@ func (suite *PreemptorTestSuite) TestPreemptionQueueDuplicateTasks() {
 	suite.Equal(numRunningTasks, suite.preemptor.preemptionQueue.Length())
 }
 
-func (suite *PreemptorTestSuite) TestPreemptorDequeueTask() {
+func (suite *preemptorTestSuite) TestPreemptorDequeueTask() {
 	mockResTree := mocks.NewMockTree(suite.mockCtrl)
 	mockResPool := mocks.NewMockResPool(suite.mockCtrl)
 
@@ -981,7 +982,7 @@ func (suite *PreemptorTestSuite) TestPreemptorDequeueTask() {
 	suite.Error(err)
 }
 
-func (suite *PreemptorTestSuite) TestPreemptorDequeueTaskError() {
+func (suite *preemptorTestSuite) TestPreemptorDequeueTaskError() {
 	fakeErr := errors.New("fake error")
 
 	tt := []struct {
@@ -1011,11 +1012,11 @@ func (suite *PreemptorTestSuite) TestPreemptorDequeueTaskError() {
 }
 
 func TestPreemptor(t *testing.T) {
-	suite.Run(t, new(PreemptorTestSuite))
+	suite.Run(t, new(preemptorTestSuite))
 }
 
 // Have to do this because the preemptor depends on the resTree
-func (suite *PreemptorTestSuite) getResourceTree() respool.Tree {
+func (suite *preemptorTestSuite) getResourceTree() respool.Tree {
 	mockResPoolOps := objectmocks.NewMockResPoolOps(suite.mockCtrl)
 	gomock.InOrder(
 		mockResPoolOps.EXPECT().
@@ -1030,7 +1031,7 @@ func (suite *PreemptorTestSuite) getResourceTree() respool.Tree {
 }
 
 // Returns resource pools
-func (suite *PreemptorTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
+func (suite *preemptorTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
 	return map[string]*pb_respool.ResourcePoolConfig{
 		"root": {
 			Name:   "root",
@@ -1066,7 +1067,7 @@ func (suite *PreemptorTestSuite) getResPools() map[string]*pb_respool.ResourcePo
 	}
 }
 
-func (suite *PreemptorTestSuite) createTasks(
+func (suite *preemptorTestSuite) createTasks(
 	numTasks int,
 	mockResPool *mocks.MockResPool) []*resmgr.Task {
 	var tasks []*resmgr.Task
@@ -1082,22 +1083,24 @@ func (suite *PreemptorTestSuite) createTasks(
 	return tasks
 }
 
-func (suite *PreemptorTestSuite) createTask(
+func (suite *preemptorTestSuite) createTask(
 	instance int,
 	priority uint32) *resmgr.Task {
 	taskID := fmt.Sprintf("job1-%d", instance)
+	mesosTaskID := fmt.Sprintf("%s-1", taskID)
 	return &resmgr.Task{
 		Name:        taskID,
 		Priority:    priority,
 		JobId:       &peloton.JobID{Value: "job1"},
 		Id:          &peloton.TaskID{Value: taskID},
+		TaskId:      &mesos_v1.TaskID{Value: &mesosTaskID},
 		Hostname:    "hostname",
 		Resource:    _taskResources,
 		Preemptible: true,
 	}
 }
 
-func (suite *PreemptorTestSuite) createRevocableTasks(
+func (suite *preemptorTestSuite) createRevocableTasks(
 	numTasks int,
 	mockResPool *mocks.MockResPool) []*resmgr.Task {
 	var tasks []*resmgr.Task
@@ -1113,15 +1116,17 @@ func (suite *PreemptorTestSuite) createRevocableTasks(
 	return tasks
 }
 
-func (suite *PreemptorTestSuite) createRevocableTask(
+func (suite *preemptorTestSuite) createRevocableTask(
 	instance int,
 	priority uint32) *resmgr.Task {
 	taskID := fmt.Sprintf("job1-%d", instance)
+	mesosTaskID := fmt.Sprintf("%s-1", taskID)
 	return &resmgr.Task{
 		Name:        taskID,
 		Priority:    priority,
 		JobId:       &peloton.JobID{Value: "job1"},
 		Id:          &peloton.TaskID{Value: taskID},
+		TaskId:      &mesos_v1.TaskID{Value: &mesosTaskID},
 		Hostname:    "hostname",
 		Resource:    _taskResources,
 		Revocable:   true,
@@ -1146,7 +1151,7 @@ func (mr *mockRanker) GetTasksToEvict(
 }
 
 // Returns a mock ranker with the tasks to evict
-func (suite *PreemptorTestSuite) getMockRanker(tasks []*resmgr.Task) ranker {
+func (suite *preemptorTestSuite) getMockRanker(tasks []*resmgr.Task) ranker {
 	var tasksToEvict []*rm_task.RMTask
 	for _, t := range tasks {
 		tasksToEvict = append(tasksToEvict, suite.tracker.GetTask(t.Id))
@@ -1154,7 +1159,7 @@ func (suite *PreemptorTestSuite) getMockRanker(tasks []*resmgr.Task) ranker {
 	return newMockRanker(tasksToEvict)
 }
 
-func (suite *PreemptorTestSuite) transitToPlacing(taskID *peloton.TaskID) {
+func (suite *preemptorTestSuite) transitToPlacing(taskID *peloton.TaskID) {
 	rmTask := suite.tracker.GetTask(taskID)
 	suite.NotNil(rmTask)
 	tasktestutil.ValidateStateTransitions(rmTask,
@@ -1165,7 +1170,7 @@ func (suite *PreemptorTestSuite) transitToPlacing(taskID *peloton.TaskID) {
 		})
 }
 
-func (suite *PreemptorTestSuite) transitToReady(taskID *peloton.TaskID) {
+func (suite *preemptorTestSuite) transitToReady(taskID *peloton.TaskID) {
 	rmTask := suite.tracker.GetTask(taskID)
 	suite.NotNil(rmTask)
 	tasktestutil.ValidateStateTransitions(rmTask,
@@ -1175,7 +1180,7 @@ func (suite *PreemptorTestSuite) transitToReady(taskID *peloton.TaskID) {
 		})
 }
 
-func (suite *PreemptorTestSuite) transitToRunning(taskID *peloton.TaskID) {
+func (suite *preemptorTestSuite) transitToRunning(taskID *peloton.TaskID) {
 	rmTask := suite.tracker.GetTask(taskID)
 	suite.NotNil(rmTask)
 	tasktestutil.ValidateStateTransitions(rmTask,

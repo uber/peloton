@@ -75,8 +75,9 @@ type Preemptor struct {
 	// The map of respool-id -> over allocation count
 	respoolState map[string]int
 
-	// The set of tasks in the preemption queue
-	taskSet stringset.StringSet // Set containing tasks which are currently in the PreemptionQueue
+	// The set of task-ids of the tasks in the preemption queue
+	taskSet stringset.StringSet
+
 	// The queue of tasks to be preempted
 	preemptionQueue queue.Queue
 
@@ -192,7 +193,7 @@ func (p *Preemptor) DequeueTask(maxWaitTime time.Duration) (
 	}
 	taskID := item.(*resmgr.PreemptionCandidate)
 	// Remove task from taskSet
-	p.taskSet.Remove(taskID.GetId().GetValue())
+	p.taskSet.Remove(taskID.GetTaskId().GetValue())
 	return taskID, nil
 }
 
@@ -331,7 +332,7 @@ func (p *Preemptor) processTasks(
 					errs,
 					errors.Wrapf(err,
 						"failed to process running task:%s",
-						t.Task().GetId().Value))
+						t.Task().GetTaskId().GetValue()))
 			}
 		default:
 			// For all non running tasks
@@ -341,7 +342,7 @@ func (p *Preemptor) processTasks(
 					errs, errors.Wrapf(err,
 						"failed to process non-running task:%s with "+
 							"state:%s",
-						t.Task().GetId().Value, state.String()))
+						t.Task().GetTaskId().GetValue(), state.String()))
 			}
 		}
 	}
@@ -351,21 +352,24 @@ func (p *Preemptor) processTasks(
 func (p *Preemptor) processRunningTask(
 	t *task.RMTask,
 	reason resmgr.PreemptionReason) error {
+
+	taskID := t.Task().GetTaskId()
 	// Do not add to preemption queue if it already has an entry for this
 	// Peloton task
-	if p.taskSet.Contains(t.Task().GetId().GetValue()) {
+	if p.taskSet.Contains(taskID.GetValue()) {
 		log.
-			WithField("task_id", t.Task().Id.Value).
+			WithField("task_id", taskID.GetValue()).
 			Debug("Skipping enqueue. Task already present in " +
 				"preemption queue.")
 		return nil
 	}
 
 	log.
-		WithField("task_id", t.Task().Id.Value).
+		WithField("task_id", taskID.GetValue()).
 		Debug("Adding task to preemption queue")
 	preemptionCandidate := &resmgr.PreemptionCandidate{
 		Id:     t.Task().Id,
+		TaskId: taskID,
 		Reason: reason,
 	}
 
@@ -374,13 +378,13 @@ func (p *Preemptor) processRunningTask(
 	if err != nil {
 		return errors.Wrapf(err, "unable to add task to "+
 			"preemption queue task ID:%s",
-			t.Task().GetId().Value)
+			taskID.GetValue())
 	}
 
 	// Adding task to taskSet to dedupe adding the same task to the queue.
 	// There could be cases where preemption is taking longer than usual
 	// so we don't want to add the same task in the next preemption cycle.
-	p.taskSet.Add(preemptionCandidate.GetId().GetValue())
+	p.taskSet.Add(preemptionCandidate.GetTaskId().GetValue())
 
 	// ToDo: ResourcesFreed are speculated to get free if preemption
 	// runs uninterrupted. Fix it to track that running tasks reached
@@ -396,9 +400,8 @@ func (p *Preemptor) processRunningTask(
 
 	p.metrics(t.Respool()).PreemptionQueueSize.Update(
 		float64(p.preemptionQueue.Length()))
-	log.WithFields(log.Fields{
-		"task_id": t.Task().GetId(),
-	}).Info("Adding running task to preemption queue")
+	log.WithField("task_id", taskID.GetValue()).
+		Info("Adding running task to preemption queue")
 
 	return nil
 }
@@ -415,7 +418,7 @@ func (p *Preemptor) processNonRunningTask(
 
 	log.WithFields(log.Fields{
 		"respool_id": resPool.ID(),
-		"task_id":    t.GetId().GetValue(),
+		"task_id":    t.GetTaskId().GetValue(),
 		"state":      rmTask.GetCurrentState(),
 	}).Debug("Evicting non-running task from resource pool")
 
@@ -424,7 +427,7 @@ func (p *Preemptor) processNonRunningTask(
 		statemachine.WithReason(reason.String())); err != nil {
 		log.WithFields(log.Fields{
 			"respool_id": resPool.ID(),
-			"task_id":    t.GetId().GetValue(),
+			"task_id":    t.GetTaskId().GetValue(),
 			"state":      rmTask.GetCurrentState(),
 		}).Debug("Unable to transit non-running task to PENDING for preemption")
 		return nil
@@ -458,7 +461,7 @@ func (p *Preemptor) processNonRunningTask(
 
 	log.WithFields(log.Fields{
 		"respool_id": resPool.ID(),
-		"task_id":    t.GetId().GetValue(),
+		"task_id":    t.GetTaskId().GetValue(),
 		"state":      rmTask.GetCurrentState(),
 		"revocable":  t.GetRevocable(),
 	}).Info("Evicted non-running task from resource pool")

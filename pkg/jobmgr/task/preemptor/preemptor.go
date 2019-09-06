@@ -166,10 +166,10 @@ func (p *preemptor) preemptTasks(
 ) error {
 	errs := new(multierror.Error)
 	for _, task := range preemptionCandidates {
-		log.WithField("task_ID", task.Id.Value).
+		log.WithField("task_id", task.GetTaskId().GetValue()).
 			Info("preempting running task")
 
-		id, instanceID, err := util.ParseTaskID(task.Id.Value)
+		id, instanceID, err := util.ParseJobAndInstanceID(task.GetTaskId().GetValue())
 		if err != nil {
 			errs = multierror.Append(errs, err)
 			continue
@@ -186,6 +186,14 @@ func (p *preemptor) preemptTasks(
 		runtime, err := cachedTask.GetRuntime(ctx)
 		if err != nil {
 			errs = multierror.Append(errs, err)
+			continue
+		}
+
+		// if the mesos-task-id of the task to be preempted is different from
+		// that of the task in runtime, do not kill the task. This is because
+		// the previous run of the task might already be killed and resource
+		// manager might be slow to process the KILLED event.
+		if runtime.GetMesosTaskId().GetValue() != task.GetTaskId().GetValue() {
 			continue
 		}
 

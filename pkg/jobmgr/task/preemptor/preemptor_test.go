@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
+
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	peloton_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
 
@@ -42,7 +44,7 @@ import (
 	"github.com/uber-go/tally"
 )
 
-type PreemptorTestSuite struct {
+type preemptorTestSuite struct {
 	suite.Suite
 	mockCtrl        *gomock.Controller
 	preemptor       *preemptor
@@ -52,7 +54,7 @@ type PreemptorTestSuite struct {
 	taskConfigV2Ops *objectmocks.MockTaskConfigV2Ops
 }
 
-func (suite *PreemptorTestSuite) SetupSuite() {
+func (suite *preemptorTestSuite) SetupTest() {
 	suite.mockCtrl = gomock.NewController(suite.T())
 	suite.mockResmgr = mocks.NewMockResourceManagerServiceYARPCClient(suite.mockCtrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.mockCtrl)
@@ -74,61 +76,81 @@ func (suite *PreemptorTestSuite) SetupSuite() {
 	}
 }
 
-func (suite *PreemptorTestSuite) TearDownSuite() {
+func (suite *preemptorTestSuite) TearDownTest() {
 	suite.mockCtrl.Finish()
 }
 
-func (suite *PreemptorTestSuite) TestPreemptionCycle() {
+func (suite *preemptorTestSuite) TestPreemptionCycle() {
 	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
 	taskID := fmt.Sprintf("%s-%d", jobID.GetValue(), 0)
 	runningTaskID := &peloton.TaskID{Value: taskID}
+	runningMesosTaskID := &mesos_v1.TaskID{
+		Value: &[]string{fmt.Sprintf("%s-1", taskID)}[0],
+	}
 	runningTask := &resmgr.Task{
-		Id: runningTaskID,
+		Id:     runningTaskID,
+		TaskId: runningMesosTaskID,
 	}
 	runningTaskInfo := &peloton_task.TaskInfo{
 		InstanceId: 0,
 		Runtime: &peloton_task.RuntimeInfo{
-			State:     peloton_task.TaskState_RUNNING,
-			GoalState: peloton_task.TaskState_RUNNING,
+			State:       peloton_task.TaskState_RUNNING,
+			GoalState:   peloton_task.TaskState_RUNNING,
+			MesosTaskId: runningMesosTaskID,
 		},
 	}
 
 	taskID = fmt.Sprintf("%s-%d", jobID.GetValue(), 1)
 	killingTaskID := &peloton.TaskID{Value: taskID}
+	killingMesosTaskID := &mesos_v1.TaskID{
+		Value: &[]string{fmt.Sprintf("%s-1", taskID)}[0],
+	}
 	killingTask := &resmgr.Task{
-		Id: killingTaskID,
+		Id:     killingTaskID,
+		TaskId: killingMesosTaskID,
 	}
 	killingTaskInfo := &peloton_task.TaskInfo{
 		InstanceId: 1,
 		Runtime: &peloton_task.RuntimeInfo{
-			State:     peloton_task.TaskState_KILLING,
-			GoalState: peloton_task.TaskState_KILLED,
+			State:       peloton_task.TaskState_KILLING,
+			GoalState:   peloton_task.TaskState_KILLED,
+			MesosTaskId: killingMesosTaskID,
 		},
 	}
 
 	taskID = fmt.Sprintf("%s-%d", jobID.GetValue(), 2)
 	noRestartTaskID := &peloton.TaskID{Value: taskID}
+	noRestartMesosTaskID := &mesos_v1.TaskID{
+		Value: &[]string{fmt.Sprintf("%s-1", taskID)}[0],
+	}
 	noRestartTask := &resmgr.Task{
-		Id: noRestartTaskID,
+		Id:     noRestartTaskID,
+		TaskId: noRestartMesosTaskID,
 	}
 	noRestartTaskInfo := &peloton_task.TaskInfo{
 		InstanceId: 2,
 		Runtime: &peloton_task.RuntimeInfo{
-			State:     peloton_task.TaskState_RUNNING,
-			GoalState: peloton_task.TaskState_RUNNING,
+			State:       peloton_task.TaskState_RUNNING,
+			GoalState:   peloton_task.TaskState_RUNNING,
+			MesosTaskId: noRestartMesosTaskID,
 		},
 	}
 
 	taskID = fmt.Sprintf("%s-%d", jobID.GetValue(), 3)
 	noRestartMaintTaskID := &peloton.TaskID{Value: taskID}
+	noRestartMaintMesosTaskID := &mesos_v1.TaskID{
+		Value: &[]string{fmt.Sprintf("%s-1", taskID)}[0],
+	}
 	noRestartMaintTask := &resmgr.Task{
-		Id: noRestartMaintTaskID,
+		Id:     noRestartMaintTaskID,
+		TaskId: noRestartMaintMesosTaskID,
 	}
 	noRestartMaintTaskInfo := &peloton_task.TaskInfo{
 		InstanceId: 3,
 		Runtime: &peloton_task.RuntimeInfo{
-			State:     peloton_task.TaskState_RUNNING,
-			GoalState: peloton_task.TaskState_RUNNING,
+			State:       peloton_task.TaskState_RUNNING,
+			GoalState:   peloton_task.TaskState_RUNNING,
+			MesosTaskId: noRestartMaintMesosTaskID,
 		},
 	}
 
@@ -146,18 +168,22 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 			PreemptionCandidates: []*resmgr.PreemptionCandidate{
 				{
 					Id:     runningTask.Id,
+					TaskId: runningTask.TaskId,
 					Reason: resmgr.PreemptionReason_PREEMPTION_REASON_REVOKE_RESOURCES,
 				},
 				{
 					Id:     killingTask.Id,
+					TaskId: killingTask.TaskId,
 					Reason: resmgr.PreemptionReason_PREEMPTION_REASON_REVOKE_RESOURCES,
 				},
 				{
 					Id:     noRestartTask.Id,
+					TaskId: noRestartTask.TaskId,
 					Reason: resmgr.PreemptionReason_PREEMPTION_REASON_REVOKE_RESOURCES,
 				},
 				{
 					Id:     noRestartMaintTask.Id,
+					TaskId: noRestartMaintTask.TaskId,
 					Reason: resmgr.PreemptionReason_PREEMPTION_REASON_HOST_MAINTENANCE,
 				},
 			},
@@ -224,7 +250,7 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 		Do(func(ctx context.Context,
 			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
 			_ bool) {
-			suite.EqualValues(util.CreateMesosTaskID(jobID, runningTaskInfo.InstanceId, 1),
+			suite.EqualValues(util.CreateMesosTaskID(jobID, runningTaskInfo.InstanceId, 2),
 				runtimeDiffs[runningTaskInfo.InstanceId][jobmgrcommon.DesiredMesosTaskIDField])
 		}).Return(nil, nil, nil)
 
@@ -280,7 +306,7 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 	suite.NoError(err)
 }
 
-func (suite *PreemptorTestSuite) TestPreemptionCycleGetPreemptibleTasksError() {
+func (suite *preemptorTestSuite) TestPreemptionCycleGetPreemptibleTasksError() {
 	// Test GetPreemptibleTasks error
 	suite.mockResmgr.EXPECT().GetPreemptibleTasks(
 		gomock.Any(),
@@ -292,18 +318,73 @@ func (suite *PreemptorTestSuite) TestPreemptionCycleGetPreemptibleTasksError() {
 	suite.Error(err)
 }
 
-func (suite *PreemptorTestSuite) TestPreemptionCycleGetRuntimeError() {
+// TestPreemptionCycleDifferentMesosTaskID tests the case where mesos task id of
+// the task in runtime is different from the that of the task to be preempted
+func (suite *preemptorTestSuite) TestPreemptionCycleDifferentMesosTaskID() {
+	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
+	taskID := fmt.Sprintf("%s-%d", jobID.GetValue(), 0)
+	runningTaskID := &peloton.TaskID{Value: taskID}
+	runningMesosTaskID := &mesos_v1.TaskID{
+		Value: &[]string{fmt.Sprintf("%s-1", taskID)}[0],
+	}
+	runningTask := &resmgr.Task{
+		Id:     runningTaskID,
+		TaskId: runningMesosTaskID,
+	}
+	runningTaskInfo := &peloton_task.TaskInfo{
+		InstanceId: 0,
+		Runtime: &peloton_task.RuntimeInfo{
+			State:     peloton_task.TaskState_RUNNING,
+			GoalState: peloton_task.TaskState_RUNNING,
+			MesosTaskId: &mesos_v1.TaskID{
+				Value: &[]string{fmt.Sprintf("%s-2", taskID)}[0],
+			},
+		},
+	}
+
+	cachedJob := cachedmocks.NewMockJob(suite.mockCtrl)
+	runningCachedTask := cachedmocks.NewMockTask(suite.mockCtrl)
+
+	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(cachedJob)
+
+	cachedJob.EXPECT().
+		AddTask(gomock.Any(), runningTaskInfo.InstanceId).
+		Return(runningCachedTask, nil)
+
+	runningCachedTask.EXPECT().GetRuntime(gomock.Any()).Return(
+		runningTaskInfo.Runtime,
+		nil,
+	)
+
+	suite.mockResmgr.EXPECT().GetPreemptibleTasks(gomock.Any(), gomock.Any()).Return(
+		&resmgrsvc.GetPreemptibleTasksResponse{
+			PreemptionCandidates: []*resmgr.PreemptionCandidate{
+				{
+					Id:     runningTask.Id,
+					TaskId: runningTask.TaskId,
+					Reason: resmgr.PreemptionReason_PREEMPTION_REASON_REVOKE_RESOURCES,
+				},
+			},
+			Error: nil,
+		}, nil)
+
+	suite.NoError(suite.preemptor.performPreemptionCycle())
+}
+
+func (suite *preemptorTestSuite) TestPreemptionCycleGetRuntimeError() {
 	cachedJob := cachedmocks.NewMockJob(suite.mockCtrl)
 	runningCachedTask := cachedmocks.NewMockTask(suite.mockCtrl)
 	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
 	taskID := fmt.Sprintf("%s-%d", jobID.GetValue(), 0)
 	runningTaskID := &peloton.TaskID{Value: taskID}
+	runningMesosTaskID := &mesos_v1.TaskID{Value: &[]string{fmt.Sprintf("%s-1", taskID)}[0]}
 	// Test GetRuntime and PatchTasks error
 	suite.mockResmgr.EXPECT().GetPreemptibleTasks(gomock.Any(), gomock.Any()).Return(
 		&resmgrsvc.GetPreemptibleTasksResponse{
 			PreemptionCandidates: []*resmgr.PreemptionCandidate{
 				{
 					Id:     runningTaskID,
+					TaskId: runningMesosTaskID,
 					Reason: resmgr.PreemptionReason_PREEMPTION_REASON_REVOKE_RESOURCES,
 				},
 			},
@@ -318,7 +399,7 @@ func (suite *PreemptorTestSuite) TestPreemptionCycleGetRuntimeError() {
 	suite.Error(err)
 }
 
-func (suite *PreemptorTestSuite) TestReconciler_StartStop() {
+func (suite *preemptorTestSuite) TestReconciler_StartStop() {
 	defer func() {
 		suite.preemptor.Stop()
 		_, ok := <-suite.preemptor.lifeCycle.StopCh()
@@ -338,5 +419,5 @@ func (suite *PreemptorTestSuite) TestReconciler_StartStop() {
 }
 
 func TestPreemptor(t *testing.T) {
-	suite.Run(t, new(PreemptorTestSuite))
+	suite.Run(t, new(preemptorTestSuite))
 }

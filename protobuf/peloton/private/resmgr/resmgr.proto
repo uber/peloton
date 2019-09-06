@@ -165,10 +165,14 @@ message Placement {
 */
 message PreemptionCandidate {
   // The unique ID of the task
-  api.v0.peloton.TaskID id = 1;
+  // Deprecated in favor of task_id
+  api.v0.peloton.TaskID id = 1 [deprecated=true];
 
   // The reason for choosing the task for preemption
   PreemptionReason reason = 2;
+
+  // The unique ID of the task
+  mesos.v1.TaskID task_id = 3;
 }
 
 /*
