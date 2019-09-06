@@ -93,12 +93,11 @@ def test__stop_start_all_tasks_stateless_kills_tasks_and_job(stateless_job):
 
 def test__exit_task_automatically_restart():
     job = StatelessJob(
-        job_file="test_stateless_job_exit_without_err_spec.yaml",
         config=IntegrationTestConfig(
             max_retry_attempts=100,
             pool_file='test_stateless_respool.yaml',
         ),
-    )
+    ).set_command('sleep 10')
     job.create()
     job.wait_for_state(goal_state="RUNNING")
 

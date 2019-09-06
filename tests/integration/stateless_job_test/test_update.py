@@ -65,7 +65,6 @@ UPDATE_STATELESS_JOB_WITH_HEALTH_CHECK_SPEC = (
     "test_stateless_job_successful_health_check_spec.yaml"
 )
 UPDATE_STATELESS_JOB_INVALID_SPEC = "test_stateless_job_spec_invalid.yaml"
-UPDATE_STATELESS_JOB_NO_ERR = "test_stateless_job_exit_without_err_spec.yaml"
 UPDATE_STATELESS_JOB_LABEL_UPDATE_SPEC = (
     "test_stateless_job_label_update_spec.yaml"
 )

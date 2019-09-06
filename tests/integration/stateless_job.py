@@ -67,6 +67,22 @@ class StatelessJob(object):
             json_format.ParseDict(job_spec_dump, job_spec)
             self.job_spec = job_spec
 
+    def set_config(self, config):
+        self.config = config
+        self.pool = Pool(self.config, self.client)
+        return self
+
+    def set_command(self, cmd, shell=True, ctn=0):
+        self.job_spec.default_spec.containers[ctn].entrypoint.value = cmd
+        self.job_spec.default_spec.mesos_spec.shell = shell
+        return self
+
+    def set_resources(self, cpu, mem, disk, ctn=0):
+        self.job_spec.default_spec.containers[ctn].resource.cpu_limit = cpu
+        self.job_spec.default_spec.containers[ctn].resource.mem_limit_mb = mem
+        self.job_spec.default_spec.containers[ctn].resource.disk_limit_mb = disk
+        return self
+
     def create(self):
         """
         creates a job based on the config
