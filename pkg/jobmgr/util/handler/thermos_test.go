@@ -27,6 +27,7 @@ import (
 	aurora "github.com/uber/peloton/.gen/thrift/aurora/api"
 
 	"github.com/uber/peloton/pkg/common/config"
+	"github.com/uber/peloton/pkg/common/thermos"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/stretchr/testify/assert"
@@ -1724,7 +1725,7 @@ func TestConvertTaskConfigToBinary(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			data, err := convertTaskConfigToBinary(tc.config)
+			data, err := thermos.EncodeTaskConfig(tc.config)
 			if len(tc.wantErr) > 0 {
 				assert.Contains(t, err.Error(), tc.wantErr)
 			} else {

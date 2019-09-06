@@ -27,6 +27,7 @@ import (
 	"github.com/uber/peloton/pkg/aurorabridge/common"
 	"github.com/uber/peloton/pkg/aurorabridge/fixture"
 	"github.com/uber/peloton/pkg/aurorabridge/label"
+	"github.com/uber/peloton/pkg/common/thermos"
 
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/thriftrw/ptr"
@@ -39,7 +40,7 @@ func TestNewScheduledTask(t *testing.T) {
 	host := "peloton-host-0"
 	hostID := "6a2fe3f4-504c-48e9-b04f-9db7c02aa484-S0"
 
-	sort.Stable(common.MetadataByKey(metadata))
+	sort.Stable(thermos.MetadataByKey(metadata))
 
 	podName1, podID1 := &peloton.PodName{
 		Value: jobID.GetValue() + "-0",

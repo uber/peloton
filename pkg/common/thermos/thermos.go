@@ -12,12 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package common
+package thermos
 
 import (
+	"bytes"
+	"encoding/json"
+	"sort"
 	"strings"
 
 	"github.com/uber/peloton/.gen/thrift/aurora/api"
+
+	"github.com/pkg/errors"
+	"go.uber.org/thriftrw/protocol"
+	"go.uber.org/thriftrw/ptr"
 )
 
 // MetadataByKey sorts a list of Aurora Metadata by key
@@ -114,4 +121,41 @@ func (m MesosFetcherURIByValue) Swap(i, j int) {
 
 func (m MesosFetcherURIByValue) Less(i, j int) bool {
 	return strings.Compare(m[i].GetValue(), m[j].GetValue()) < 0
+}
+
+func EncodeTaskConfig(t *api.TaskConfig) ([]byte, error) {
+	// Sort golang list types in order to make results consistent
+	sort.Stable(MetadataByKey(t.Metadata))
+	sort.Stable(ResourceByType(t.Resources))
+	sort.Stable(ConstraintByName(t.Constraints))
+	sort.Stable(MesosFetcherURIByValue(t.MesosFetcherUris))
+
+	if len(t.GetExecutorConfig().GetData()) != 0 {
+		var dat map[string]interface{}
+
+		err := json.Unmarshal([]byte(t.GetExecutorConfig().GetData()), &dat)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to unmarshal executor data json")
+		}
+
+		data, err := json.MarshalIndent(dat, "", "")
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to re-marshal executor data to json")
+		}
+
+		t.ExecutorConfig.Data = ptr.String(string(data))
+	}
+
+	w, err := t.ToWire()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to convert task config to wire value")
+	}
+
+	var b bytes.Buffer
+	err = protocol.Binary.Encode(w, &b)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to serialize task config to binary")
+	}
+
+	return b.Bytes(), nil
 }

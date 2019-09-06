@@ -15,11 +15,8 @@
 package atop
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"path"
-	"sort"
 	"strings"
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
@@ -31,9 +28,7 @@ import (
 	"github.com/uber/peloton/pkg/aurorabridge/common"
 	"github.com/uber/peloton/pkg/aurorabridge/label"
 	"github.com/uber/peloton/pkg/common/config"
-
-	"go.uber.org/thriftrw/protocol"
-	"go.uber.org/thriftrw/ptr"
+	"github.com/uber/peloton/pkg/common/thermos"
 )
 
 // NewPodSpec creates a new PodSpec.
@@ -49,9 +44,9 @@ func NewPodSpec(
 	// combine it with placement info, and generates aurora AssignedTask
 	// struct, which will be eventually be consumed by thermos executor.
 	//
-	// Leaving encodeTaskConfig at the top since it has the side-effect
+	// Leaving EncodeTaskConfig at the top since it has the side-effect
 	// of sorting all the "list" fields.
-	executorData, err := encodeTaskConfig(t)
+	executorData, err := thermos.EncodeTaskConfig(t)
 	if err != nil {
 		return nil, fmt.Errorf("encode task config: %s", err)
 	}
@@ -298,32 +293,4 @@ func newDockerParameters(ps []*api.DockerParameter) []*apachemesos.PodSpec_Docke
 		})
 	}
 	return result
-}
-
-func encodeTaskConfig(t *api.TaskConfig) ([]byte, error) {
-	// Sort golang list types in order to make results consistent
-	sort.Stable(common.MetadataByKey(t.Metadata))
-	sort.Stable(common.ResourceByType(t.Resources))
-	sort.Stable(common.ConstraintByName(t.Constraints))
-	sort.Stable(common.MesosFetcherURIByValue(t.MesosFetcherUris))
-
-	if len(t.GetExecutorConfig().GetData()) != 0 {
-		var dat map[string]interface{}
-		json.Unmarshal([]byte(t.GetExecutorConfig().GetData()), &dat)
-		data, _ := json.MarshalIndent(dat, "", "")
-		t.ExecutorConfig.Data = ptr.String(string(data))
-	}
-
-	w, err := t.ToWire()
-	if err != nil {
-		return nil, fmt.Errorf("convert task config to wire value: %s", err)
-	}
-
-	var b bytes.Buffer
-	err = protocol.Binary.Encode(w, &b)
-	if err != nil {
-		return nil, fmt.Errorf("serialize task config to binary: %s", err)
-	}
-
-	return b.Bytes(), nil
 }

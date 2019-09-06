@@ -15,7 +15,6 @@
 package handler
 
 import (
-	"bytes"
 	"encoding/json"
 	"math"
 	"strconv"
@@ -31,11 +30,11 @@ import (
 
 	"github.com/uber/peloton/pkg/common/config"
 	"github.com/uber/peloton/pkg/common/taskconfig"
+	"github.com/uber/peloton/pkg/common/thermos"
 	"github.com/uber/peloton/pkg/jobmgr/util/expansion"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
-	"go.uber.org/thriftrw/protocol"
 	"go.uber.org/thriftrw/ptr"
 )
 
@@ -658,23 +657,6 @@ func convertCmdline(
 	return strings.Join(cmd, " ")
 }
 
-// convertTaskConfigToBinary converts thermos executor data thrift struct
-// to byte array using thrift binary encoding.
-func convertTaskConfigToBinary(config *aurora.TaskConfig) ([]byte, error) {
-	configWire, err := config.ToWire()
-	if err != nil {
-		return nil, err
-	}
-
-	var configBuffer bytes.Buffer
-	err = protocol.Binary.Encode(configWire, &configBuffer)
-	if err != nil {
-		return nil, err
-	}
-
-	return configBuffer.Bytes(), nil
-}
-
 // convertToData converts Peloton PodSpec to thermos executor data
 // encoded in thrift binary protocol.
 func convertToData(
@@ -686,7 +668,7 @@ func convertToData(
 		return nil, err
 	}
 
-	taskConfigBytes, err := convertTaskConfigToBinary(taskConfig)
+	taskConfigBytes, err := thermos.EncodeTaskConfig(taskConfig)
 	if err != nil {
 		return nil, err
 	}
