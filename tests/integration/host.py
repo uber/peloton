@@ -43,19 +43,19 @@ def complete_maintenance(hosts, client=None):
     return resp
 
 
-def query_hosts(states):
+def query_hosts(states, client=None):
     """
     query hosts by state
     :param states: list of host_pb2.HostStates
     :return: host_svc_pb2.QueryHostsResponse
     """
+    client = client or Client()
     if not states:
         states = [
             host.HOST_STATE_UP,
             host.HOST_STATE_DRAINING,
             host.HOST_STATE_DOWN,
         ]
-    client = Client()
     request = hostsvc.QueryHostsRequest(host_states=states)
 
     resp = client.host_svc.QueryHosts(
@@ -118,3 +118,114 @@ def get_host_in_state(state):
     resp = query_hosts([state])
     assert len(resp.host_infos) > 0
     return resp.host_infos[0].hostname
+
+
+def list_host_pools(client=None):
+    """
+    list all host pools.
+    :param client: optional peloton client
+    :return: host_svc_pb2.ListHostPoolsResponse
+    """
+    client = client or Client()
+    request = hostsvc.ListHostPoolsRequest()
+
+    resp = client.host_svc.ListHostPools(
+        request, metadata=client.hostmgr_metadata, timeout=10
+    )
+    return resp
+
+
+def create_host_pool(pool_id, client=None):
+    """
+    creates a host pool with given host pool id.
+    :param pool_id: host pool id
+    :param client: optional peloton client
+    :return: host_svc_pb2.CreateHostPoolResponse
+    """
+    client = client or Client()
+    request = hostsvc.CreateHostPoolRequest(name=pool_id)
+
+    resp = client.host_svc.CreateHostPool(
+        request, metadata=client.hostmgr_metadata, timeout=10
+    )
+    return resp
+
+
+def change_host_pool(hostname, src_pool, dest_pool, client=None):
+    """
+    changes host pool of a host from source pool to destination pool
+    :param hostname: hostname of the target host
+    :param src_pool: source host pool id
+    :param dest_pool: destination host pool id
+    :param client: optional peloton client
+    :return: host_svc_pb2.ChangeHostPoolResponse
+    """
+    client = client or Client()
+    request = hostsvc.ChangeHostPoolRequest(
+        hostname=hostname, sourcePool=src_pool, destinationPool=dest_pool)
+
+    resp = client.host_svc.ChangeHostPool(
+        request, metadata=client.hostmgr_metadata, timeout=10
+    )
+    return resp
+
+
+def ensure_host_pool(pool_name, num_hosts):
+    """
+    ensure host pool exists with at least required number of hosts.
+    :param pool_name: target host pool name
+    :param num_hosts: number of hosts required in target host pool
+    """
+    log.info('ensure at least {} hosts in {} host pool'.format(
+        num_hosts, pool_name))
+
+    existing_pool = None
+    default_pool = None
+    num_existing_hosts = 0
+
+    # List all existing host pools.
+    resp = list_host_pools()
+    if not resp:
+        raise Exception('List host pools failed: {}'.format(resp))
+
+    # Get existing target host pool and default host pool.
+    for pool in resp.pools:
+        if pool.name == pool_name:
+            existing_pool = pool
+        if pool.name == "default":
+            default_pool = pool
+
+    # Check if default host pool exists.
+    if default_pool is None:
+        raise Exception(
+            'Missing default host pool, cluster is not initialized properly')
+
+    # Check if target host pool exists and
+    # update number of existing hosts in target host pool.
+    if existing_pool is not None:
+        num_existing_hosts = len(existing_pool.hosts)
+
+    # Check if there are enough hosts to fulfil the request.
+    num_more_hosts_required = num_hosts - num_existing_hosts
+    if num_more_hosts_required <= 0:
+        return
+    if len(default_pool.hosts) < num_more_hosts_required:
+        raise Exception(
+            'No enough hosts to move to {} host pool: '
+            '{} hosts in default host pool, {} more hosts required'.format(
+                pool_name, len(default_pool.hosts), num_more_hosts_required))
+
+    # Create new host pool if not exists.
+    if existing_pool is None:
+        resp = create_host_pool(pool_name)
+        if not resp:
+            raise Exception(
+                'Create {} host pool failed: {}'.format(pool_name, resp))
+
+    # Change host pool of hosts to the given pool.
+    for i in range(num_more_hosts_required):
+        hostname = default_pool.hosts[i]
+        resp = change_host_pool(hostname, "default", pool_name)
+        if not resp:
+            raise Exception(
+                'Change host pool of {} failed: {}'.format(hostname, resp))

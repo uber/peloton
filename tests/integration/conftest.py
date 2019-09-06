@@ -1,6 +1,7 @@
 import logging
 import os
 import pytest
+import sys
 import time
 import grpc
 import requests
@@ -8,7 +9,15 @@ import requests
 from docker import Client
 from tools.minicluster.main import setup, teardown, config as mc_config
 from tools.minicluster.minicluster import run_mesos_agent, teardown_mesos_agent
-from host import start_maintenance, complete_maintenance, wait_for_host_state
+from host import (
+    start_maintenance,
+    complete_maintenance,
+    query_hosts,
+    wait_for_host_state,
+    list_host_pools,
+    create_host_pool,
+    change_host_pool,
+)
 from job import Job
 from job import query_jobs as batch_query_jobs
 from job import kill_jobs as batch_kill_jobs
@@ -54,7 +63,11 @@ collect_metrics = TestMetrics()
 @pytest.fixture(scope="module", autouse=True)
 def setup_cluster(request):
     tests_failed_before_module = request.session.testsfailed
-    setup_minicluster()
+    try:
+        setup_minicluster()
+    except Exception as e:
+        log.error(e)
+        sys.exit(1)
 
     def teardown_cluster():
         dump_logs = False
@@ -190,7 +203,7 @@ def wait_for_all_agents_to_register(
     assert False, "timed out waiting for agents to register"
 
 
-def setup_minicluster(enable_k8s=False):
+def setup_minicluster(enable_k8s=False, use_host_pool=False):
     """
     setup minicluster
     """
@@ -199,7 +212,9 @@ def setup_minicluster(enable_k8s=False):
         log.info("cluster mode")
     else:
         log.info("local minicluster mode")
-        setup(enable_peloton=True, enable_k8s=enable_k8s)
+
+        setup(enable_peloton=True, enable_k8s=enable_k8s,
+              use_host_pool=use_host_pool)
         time.sleep(5)
 
 

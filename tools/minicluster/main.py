@@ -93,6 +93,7 @@ def setup(
     applications={},
     enable_peloton=False,
     enable_k8s=False,
+    use_host_pool=False,
 ):
     minicluster.run_cassandra(config)
     if not disable_mesos:
@@ -102,6 +103,8 @@ def setup(
         minicluster.run_k8s()
 
     if enable_peloton:
+        if use_host_pool:
+            config["use_host_pool"] = True
         run_peloton(applications, enable_k8s)
 
 
@@ -268,6 +271,13 @@ USAGE
         default=False,
         help="disable peloton api server app",
     )
+    parser_setup.add_argument(
+        "--use-host-pool",
+        dest="use_host_pool",
+        action="store_true",
+        default=False,
+        help="Use host pool for placement",
+    )
 
     # Subparser for the 'teardown' command
     subparsers.add_parser("teardown", help="tear down a personal cluster")
@@ -306,6 +316,7 @@ def main():
             enable_peloton=args.enable_peloton,
             applications=applications,
             enable_k8s=args.enable_k8s,
+            use_host_pool=args.use_host_pool,
         )
     elif command == "teardown":
         teardown()

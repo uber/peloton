@@ -274,6 +274,7 @@ func main() {
 	}
 
 	if *useHostPool {
+		log.Info("Use Host Pool for placement")
 		cfg.Placement.UseHostPool = true
 	}
 

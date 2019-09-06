@@ -372,11 +372,13 @@ def run_peloton_hostmgr(config, enable_k8s=False):
     env = {
         "SCARCE_RESOURCE_TYPES": scarce_resource,
         "SLACK_RESOURCE_TYPES": slack_resource,
+        "ENABLE_HOST_POOL": True,
     }
     if enable_k8s:
         k8s = kind.Kind(PELOTON_K8S_NAME)
         kubeconfig_dir = os.path.dirname(k8s.get_kubeconfig())
         mounts = [kubeconfig_dir + ":/.kube"]
+        # Always enable host pool in hostmgr of mini cluster.
         env.update({
             "ENABLE_K8S": True,
             "KUBECONFIG": "/.kube/kind-config-peloton-k8s",
@@ -452,9 +454,15 @@ def run_peloton_placement(config, enable_k8s=False):
             app_type = 'placement'
         else:
             app_type = 'placement_' + task_type.lower()
+
+        use_host_pool = False
+        if config["use_host_pool"]:
+            use_host_pool = True
+
         env = {
             "APP_TYPE": app_type,
             "TASK_TYPE": task_type,
+            "USE_HOST_POOL": use_host_pool,
         }
         if enable_k8s:
             env.update({"HOSTMGR_API_VERSION": "v1alpha"})

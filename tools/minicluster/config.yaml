@@ -109,6 +109,8 @@ peloton_archiver_ports:
   - 5395
 peloton_archiver_instance_count: 0
 
+use_host_pool: false
+
 # auto migrates the database schema on host manager startup
 auto_migrate: "true"
 # log verbose level, set to true for debug
