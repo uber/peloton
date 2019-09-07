@@ -70,8 +70,7 @@ func (suite *v1LifecycleTestSuite) SetupTest() {
 	suite.podID = "af647b98-0ae0-4dac-be42-c74a524dfe44-0"
 }
 
-func (suite *v1LifecycleTestSuite,
-) buildKillPodsReq() *v1_hostsvc.KillPodsRequest {
+func (suite *v1LifecycleTestSuite) buildKillPodsReq() *v1_hostsvc.KillPodsRequest {
 	return &v1_hostsvc.KillPodsRequest{
 		PodIds: []*peloton.PodID{{Value: suite.podID}},
 	}
@@ -234,6 +233,8 @@ func (suite *v1LifecycleTestSuite) TestLaunch() {
 				suite.Equal(req.GetLeaseId().GetValue(), expectedLeaseID)
 				for _, lp := range req.GetPods() {
 					launchedPodSpecMap[lp.PodId.GetValue()] = lp.Spec
+					suite.Equal(1, len(lp.Ports))
+					suite.Equal(uint32(31234), lp.Ports["dynamicport"])
 				}
 			}).
 			Return(&v1_hostsvc.LaunchPodsResponse{}, nil).

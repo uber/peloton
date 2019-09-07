@@ -241,6 +241,7 @@ func (suite *HostMgrHandlerTestSuite) TestLaunchPods() {
 			launchablePods = append(launchablePods, &models.LaunchablePod{
 				PodId: pod.GetPodId(),
 				Spec:  pod.GetSpec(),
+				Ports: pod.GetPorts(),
 			})
 			released = append(released, pod.GetPodId())
 			suite.hostCache.EXPECT().

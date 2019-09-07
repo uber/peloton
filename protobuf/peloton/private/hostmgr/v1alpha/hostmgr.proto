@@ -107,6 +107,9 @@ message LaunchablePod {
 
   // PodSpec for the pod to be launched.
   api.v1alpha.pod.PodSpec spec = 2;
+
+	// Ports allocated to this pod. 
+	map<string, uint32> ports = 3;
 }
 
 // Resource allocation for a resource to be consumed by resmgr.

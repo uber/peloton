@@ -218,16 +218,8 @@ func (suite *HostSummaryTestSuite) TestCompleteLaunchPod() {
 	s := NewKubeletHostSummary(_hostname, nil, _version)
 	s.CompleteLaunchPod(&models.LaunchablePod{
 		PodId: &peloton.PodID{Value: "podid1"},
-		Spec: &pod.PodSpec{
-			Containers: []*pod.ContainerSpec{
-				{
-					Ports: []*pod.PortSpec{
-						{Value: 31001},
-						{Value: 31010},
-					},
-				},
-			},
-		},
+		Spec:  &pod.PodSpec{},
+		Ports: map[string]uint32{"p1": 31001, "p2": 31010},
 	})
 	hl := s.GetHostLease()
 	equalPortRanges(suite.T(), hl.HostSummary.AvailablePorts, 31000, 31000, 31002, 31009, 31011, 32000)

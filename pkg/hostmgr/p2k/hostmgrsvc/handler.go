@@ -152,11 +152,16 @@ func (h *ServiceHandler) LaunchPods(
 		}
 	}
 
+	// Save ports in the first container in PodSpec.
 	podToSpecMap := make(map[string]*pbpod.PodSpec)
 	for _, pod := range req.GetPods() {
+		spec := pod.GetSpec()
+		if ports := pod.GetPorts(); len(ports) > 0 {
+			cs := spec.GetContainers()[0]
+			cs.Ports = buildPortSpec(ports)
+		}
 		// podToSpecMap: Should we check for repeat podID here?
-		podToSpecMap[pod.GetPodId().GetValue()] =
-			pod.GetSpec()
+		podToSpecMap[pod.GetPodId().GetValue()] = spec
 	}
 
 	if err = h.hostCache.CompleteLease(
@@ -179,6 +184,7 @@ func (h *ServiceHandler) LaunchPods(
 		launchablePods = append(launchablePods, &models.LaunchablePod{
 			PodId: pod.GetPodId(),
 			Spec:  pod.GetSpec(),
+			Ports: pod.GetPorts(),
 		})
 	}
 
@@ -196,6 +202,17 @@ func (h *ServiceHandler) LaunchPods(
 	}
 
 	return &svc.LaunchPodsResponse{}, nil
+}
+
+func buildPortSpec(ports map[string]uint32) (pss []*pbpod.PortSpec) {
+	for k, v := range ports {
+		pss = append(pss, &pbpod.PortSpec{
+			Name:    k,
+			Value:   v,
+			EnvName: k,
+		})
+	}
+	return pss
 }
 
 // KillPods implements HostManagerService.KillPods.

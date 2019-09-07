@@ -97,7 +97,8 @@ func (l *v1LifecycleMgr) Launch(
 		launchablePod := pbhostmgr.LaunchablePod{
 			PodId: util.CreatePodIDFromMesosTaskID(
 				pod.Runtime.GetMesosTaskId()),
-			Spec: pod.Spec,
+			Spec:  pod.Spec,
+			Ports: pod.Runtime.Ports,
 		}
 
 		// TODO: peloton system labels contain invalid characters for labels in

@@ -37,12 +37,23 @@ func BuildPodEventFromPod(
 	e PodEventType,
 ) *PodEvent {
 	convertedInitStatuses := make([]*pbpod.ContainerStatus, len(pod.Status.InitContainerStatuses))
-	for i, status := range pod.Status.InitContainerStatuses {
-		convertedInitStatuses[i] = buildContainerStatus(status)
+	for i := range pod.Status.InitContainerStatuses {
+		var icspec *corev1.Container
+		if i < len(pod.Spec.InitContainers) {
+			icspec = &pod.Spec.InitContainers[i]
+		}
+		status := &pod.Status.InitContainerStatuses[i]
+		convertedInitStatuses[i] = buildContainerStatus(icspec, status)
 	}
+
 	convertedContainerStatuses := make([]*pbpod.ContainerStatus, len(pod.Status.ContainerStatuses))
-	for i, status := range pod.Status.ContainerStatuses {
-		convertedContainerStatuses[i] = buildContainerStatus(status)
+	for i := range pod.Status.ContainerStatuses {
+		var cspec *corev1.Container
+		if i < len(pod.Spec.Containers) {
+			cspec = &pod.Spec.Containers[i]
+		}
+		status := &pod.Status.ContainerStatuses[i]
+		convertedContainerStatuses[i] = buildContainerStatus(cspec, status)
 	}
 
 	return &PodEvent{
@@ -106,7 +117,7 @@ func buildPodHealthStatus(conditions []corev1.PodCondition) string {
 
 // buildContainerStatus constructs peloton container status from k8s container status.
 // TODO: missing ports and termination reason.
-func buildContainerStatus(containerStatus corev1.ContainerStatus) *pbpod.ContainerStatus {
+func buildContainerStatus(containerSpec *corev1.Container, containerStatus *corev1.ContainerStatus) *pbpod.ContainerStatus {
 	var reason, message string
 	var startedAt, finishedAt time.Time
 	var terminationStatus *pbpod.TerminationStatus
@@ -148,9 +159,20 @@ func buildContainerStatus(containerStatus corev1.ContainerStatus) *pbpod.Contain
 		}
 	}
 
+	var ports map[string]uint32
+	if containerSpec != nil {
+		for i := range containerSpec.Ports {
+			if i == 0 {
+				ports = make(map[string]uint32, len(containerSpec.Ports))
+			}
+			ports[containerSpec.Ports[i].Name] = uint32(containerSpec.Ports[i].ContainerPort)
+		}
+	}
+
 	return &pbpod.ContainerStatus{
 		Name:              containerStatus.Name,
 		State:             state,
+		Ports:             ports,
 		Reason:            reason,
 		Message:           message,
 		Image:             containerStatus.Image,
@@ -161,6 +183,5 @@ func buildContainerStatus(containerStatus corev1.ContainerStatus) *pbpod.Contain
 		Healthy: &pbpod.HealthStatus{
 			State: healthState,
 		},
-		// TODO: Ports
 	}
 }

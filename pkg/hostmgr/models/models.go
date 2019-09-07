@@ -23,4 +23,5 @@ import (
 type LaunchablePod struct {
 	PodId *peloton.PodID
 	Spec  *pbpod.PodSpec
+	Ports map[string]uint32
 }

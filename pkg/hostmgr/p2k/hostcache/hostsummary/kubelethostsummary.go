@@ -209,14 +209,12 @@ func (a *kubeletHostSummary) getPodToResMap() map[string]scalar.Resources {
 
 func (a *kubeletHostSummary) CompleteLaunchPod(pod *models.LaunchablePod) {
 	// update available ports
-	var ports []int
-	for _, cs := range pod.Spec.GetContainers() {
-		for _, ps := range cs.GetPorts() {
-			ports = append(ports, int(ps.GetValue()))
-		}
-	}
-	if len(ports) == 0 {
+	if len(pod.Ports) == 0 {
 		return
+	}
+	ports := make([]int, 0, len(pod.Ports))
+	for _, v := range pod.Ports {
+		ports = append(ports, int(v))
 	}
 	usedRanges := toPortRanges(ports)
 

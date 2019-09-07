@@ -125,6 +125,9 @@ func createTestTask(instanceID int) *LaunchableTaskInfo {
 				MesosTaskId: &mesos.TaskID{
 					Value: &tid,
 				},
+				Ports: map[string]uint32{
+					"dynamicport": 31234,
+				},
 			},
 		},
 		Spec: &pbpod.PodSpec{

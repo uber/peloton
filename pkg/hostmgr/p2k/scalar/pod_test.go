@@ -128,6 +128,16 @@ func TestBuildPodEventFromPodRunning(t *testing.T) {
 		},
 		Spec: corev1.PodSpec{
 			NodeName: "node1",
+			Containers: []corev1.Container{
+				{
+					Ports: []corev1.ContainerPort{
+						{
+							Name:          "dynamicport",
+							ContainerPort: 31234,
+						},
+					},
+				},
+			},
 		},
 		Status: corev1.PodStatus{
 			Phase:   corev1.PodRunning,
@@ -145,6 +155,7 @@ func TestBuildPodEventFromPodRunning(t *testing.T) {
 	}
 
 	expectedPelotonContainerStatus := []*pbpod.ContainerStatus{}
+	expectedPods := map[string]uint32{"dynamicport": 31234}
 	for i := 0; i < 4; i++ {
 		status := &pbpod.ContainerStatus{
 			Name:              k8sContainerStatus[i].Name,
@@ -159,6 +170,10 @@ func TestBuildPodEventFromPodRunning(t *testing.T) {
 			Healthy: &pbpod.HealthStatus{
 				State: pbpod.HealthState_HEALTH_STATE_UNKNOWN,
 			},
+		}
+		if i == 2 {
+			// first app container
+			status.Ports = expectedPods
 		}
 		expectedPelotonContainerStatus = append(expectedPelotonContainerStatus, status)
 	}
