@@ -513,7 +513,9 @@ func (a *hostSummary) TryMatch(
 
 	// Its a match!
 	var offers []*mesos.Offer
-	for _, offer := range a.unreservedOffers {
+	for _, o := range a.unreservedOffers {
+		offer := proto.Clone(o).(*mesos.Offer)
+
 		if filter.GetResourceConstraint().GetRevocable() {
 			offer.Resources, _ = scalar.FilterMesosResources(
 				offer.GetResources(),

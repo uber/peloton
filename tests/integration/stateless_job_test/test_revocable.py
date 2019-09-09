@@ -10,7 +10,6 @@ pytestmark = [
     pytest.mark.default,
     pytest.mark.stateless,
     pytest.mark.revocable,
-    pytest.mark.random_order(disabled=True),
 ]
 
 
