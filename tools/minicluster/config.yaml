@@ -26,7 +26,6 @@ registry: replicated_log
 # Mesos slave configs
 # Values for oversubscription are recommend at below documentation.
 # https://github.com/apache/mesos/blob/004fb5fa27c2992b11a2fa51a8ec5a3f3de404db/docs/oversubscription.md
-default_agent_port: 5051
 local_agent_port: 5051
 switch_user: 0
 containers: docker,mesos

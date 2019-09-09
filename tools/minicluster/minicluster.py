@@ -154,9 +154,9 @@ def run_mesos_agent(config, agent_index, port_offset, is_exclusive=False,
         name=agent,
         hostname=agent,
         volumes=["/files", "/var/run/docker.sock"],
-        ports=[repr(config["default_agent_port"])],
+        ports=[repr(port)],
         host_config=cli.create_host_config(
-            port_bindings={config["default_agent_port"]: port},
+            port_bindings={port: port},
             binds=[
                 work_dir + "/files:/files",
                 work_dir
@@ -197,7 +197,7 @@ def run_mesos_agent(config, agent_index, port_offset, is_exclusive=False,
         detach=True,
     )
     cli.start(container=container.get("Id"))
-    print_utils.okgreen("started container %s" % agent)
+    utils.wait_for_up(agent, port, "state.json")
 
 
 #

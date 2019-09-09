@@ -5,6 +5,7 @@ Dependencies:
 1. docker engine: expected version >=1.12.1
 2. docker-py: run "pip install docker-py" or
    `$PELOTON_HOME/scripts/bootstrap.sh` to install.
+3. Build peloton_mesos_agent locally: ./tools/packaging/build-mesos-agent-docker.sh
 
 Update 'num_agents' in config.yaml to change number of mesos slaves,
 by default 3 agents.

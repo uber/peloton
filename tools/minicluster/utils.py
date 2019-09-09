@@ -54,10 +54,10 @@ def stop_container(name):
 #
 # Run health check for peloton apps
 #
-def wait_for_up(app, port):
+def wait_for_up(app, port, path=healthcheck_path):
     count = 0
     error = ""
-    url = "http://%s:%s/%s" % (default_host, port, healthcheck_path)
+    url = "http://%s:%s/%s" % (default_host, port, path)
     while count < max_retry_attempts:
         try:
             r = requests.get(url)
