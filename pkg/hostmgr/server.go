@@ -93,6 +93,9 @@ type Server struct {
 	plugin plugins.Plugin
 
 	hostCache hostcache.HostCache
+
+	// temporary workaround to start mesos manager on server start
+	mesosManager plugins.Plugin
 }
 
 // NewServer creates a host manager Server instance.
@@ -109,7 +112,9 @@ func NewServer(
 	reserver reserver.Reserver,
 	watchProcessor watchevent.WatchProcessor,
 	plugin plugins.Plugin,
-	hostCache hostcache.HostCache) *Server {
+	hostCache hostcache.HostCache,
+	mesosManager plugins.Plugin,
+) *Server {
 
 	s := &Server{
 		ID:                   leader.NewID(httpPort, grpcPort),
@@ -129,6 +134,7 @@ func NewServer(
 		watchProcessor:       watchProcessor,
 		plugin:               plugin,
 		hostCache:            hostCache,
+		mesosManager:         mesosManager,
 	}
 	log.Info("Hostmgr server started.")
 	return s
@@ -282,6 +288,10 @@ func (s *Server) ensureRunning() {
 		log.Errorf("Failed to start plugin: %s", err)
 		return
 	}
+	if err := s.mesosManager.Start(); err != nil {
+		log.Errorf("Failed to start mesosManager: %s", err)
+		return
+	}
 
 	if !s.handlersRunning.Load() {
 		s.startHandlers()
@@ -303,6 +313,7 @@ func (s *Server) ensureStopped() {
 	}
 
 	s.plugin.Stop()
+	s.mesosManager.Stop()
 	s.hostCache.Stop()
 }
 

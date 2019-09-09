@@ -70,8 +70,9 @@ type ServerTestSuite struct {
 	reserver       *reserver_mocks.MockReserver
 	watchProcessor *watchmocks.MockWatchProcessor
 
-	plugin    *plugins_mocks.MockPlugin
-	hostCache *hostcache_mocks.MockHostCache
+	plugin      *plugins_mocks.MockPlugin
+	hostCache   *hostcache_mocks.MockHostCache
+	mesosPlugin *plugins_mocks.MockPlugin
 
 	server *Server
 }
@@ -90,6 +91,7 @@ func (suite *ServerTestSuite) SetupTest() {
 	suite.watchProcessor = watchmocks.NewMockWatchProcessor(suite.ctrl)
 	suite.plugin = plugins_mocks.NewMockPlugin(suite.ctrl)
 	suite.hostCache = hostcache_mocks.NewMockHostCache(suite.ctrl)
+	suite.mesosPlugin = plugins_mocks.NewMockPlugin(suite.ctrl)
 
 	suite.server = &Server{
 		ID:   _ID,
@@ -116,8 +118,9 @@ func (suite *ServerTestSuite) SetupTest() {
 		metrics:        metrics.NewMetrics(suite.testScope),
 		watchProcessor: suite.watchProcessor,
 
-		plugin:    suite.plugin,
-		hostCache: suite.hostCache,
+		plugin:       suite.plugin,
+		mesosManager: suite.mesosPlugin,
+		hostCache:    suite.hostCache,
 	}
 	suite.server.Start()
 }
@@ -144,6 +147,7 @@ func (suite *ServerTestSuite) TestNewServer() {
 		suite.watchProcessor,
 		suite.plugin,
 		suite.hostCache,
+		suite.mesosPlugin,
 	)
 	suite.ctrl.Finish()
 	suite.NotNil(s)
@@ -174,6 +178,7 @@ func (suite *ServerTestSuite) TestUnelectedNoOp() {
 	gomock.InOrder(
 		suite.mInbound.EXPECT().IsRunning().Return(false).Times(2),
 		suite.plugin.EXPECT().Stop(),
+		suite.mesosPlugin.EXPECT().Stop(),
 		suite.hostCache.EXPECT().Stop(),
 	)
 	suite.server.ensureStateRound()
@@ -193,6 +198,7 @@ func (suite *ServerTestSuite) TestUnelectedStopConnection() {
 		suite.mInbound.EXPECT().Stop(),
 		suite.mInbound.EXPECT().IsRunning().Return(false).AnyTimes(),
 		suite.plugin.EXPECT().Stop(),
+		suite.mesosPlugin.EXPECT().Stop(),
 		suite.hostCache.EXPECT().Stop(),
 	)
 
@@ -224,6 +230,7 @@ func (suite *ServerTestSuite) TestUnelectedStopHandler() {
 		suite.drainer.EXPECT().Stop(),
 		suite.reserver.EXPECT().Stop(),
 		suite.plugin.EXPECT().Stop(),
+		suite.mesosPlugin.EXPECT().Stop(),
 		suite.hostCache.EXPECT().Stop(),
 	)
 
@@ -249,6 +256,7 @@ func (suite *ServerTestSuite) TestUnelectedStopConnectionAndHandler() {
 		suite.reserver.EXPECT().Stop(),
 		suite.mInbound.EXPECT().IsRunning().Return(false).AnyTimes(),
 		suite.plugin.EXPECT().Stop(),
+		suite.mesosPlugin.EXPECT().Stop(),
 		suite.hostCache.EXPECT().Stop(),
 	)
 
@@ -267,6 +275,7 @@ func (suite *ServerTestSuite) TestElectedNoOp() {
 		suite.mInbound.EXPECT().IsRunning().Return(true).AnyTimes(),
 		suite.hostCache.EXPECT().Start(),
 		suite.plugin.EXPECT().Start(),
+		suite.mesosPlugin.EXPECT().Start(),
 	)
 	suite.server.ensureStateRound()
 	suite.ctrl.Finish()
@@ -301,6 +310,7 @@ func (suite *ServerTestSuite) TestElectedRestartConnection() {
 		suite.mInbound.EXPECT().IsRunning().Return(true),
 		suite.hostCache.EXPECT().Start(),
 		suite.plugin.EXPECT().Start(),
+		suite.mesosPlugin.EXPECT().Start(),
 
 		// Triggers Explicit Reconciliation on Mesos Master re-election
 		suite.recoveryHandler.EXPECT().Start(),
@@ -326,6 +336,7 @@ func (suite *ServerTestSuite) TestElectedRestartHandlers() {
 		suite.mInbound.EXPECT().IsRunning().Return(true).Times(3),
 		suite.hostCache.EXPECT().Start(),
 		suite.plugin.EXPECT().Start(),
+		suite.mesosPlugin.EXPECT().Start(),
 		suite.recoveryHandler.EXPECT().Start(),
 		suite.reconciler.EXPECT().SetExplicitReconcileTurn(true).Times(1),
 		suite.backgroundManager.EXPECT().Start(),
@@ -362,6 +373,7 @@ func (suite *ServerTestSuite) TestElectedRestartConnectionAndHandler() {
 		suite.mInbound.EXPECT().IsRunning().Return(true),
 		suite.hostCache.EXPECT().Start(),
 		suite.plugin.EXPECT().Start(),
+		suite.mesosPlugin.EXPECT().Start(),
 
 		// Triggers Explicit Reconciliation on re-election of host manager.
 		suite.recoveryHandler.EXPECT().Start(),

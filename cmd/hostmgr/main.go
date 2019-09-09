@@ -48,6 +48,7 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/p2k/hostcache"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/hostmgrsvc"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/plugins"
+	mesosplugins "github.com/uber/peloton/pkg/hostmgr/p2k/plugins/mesos"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/podeventmanager"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 	"github.com/uber/peloton/pkg/hostmgr/queue"
@@ -627,6 +628,39 @@ func main() {
 	watchevent.InitWatchProcessor(cfg.HostManager.Watch, metric)
 	watchProcessor := watchevent.GetWatchProcessor()
 
+	plugin := plugins.NewNoopPlugin()
+	var hostCache hostcache.HostCache
+	podEventCh := make(chan *scalar.PodEvent, plugins.EventChanSize)
+	hostEventCh := make(chan *scalar.HostEvent, plugins.EventChanSize)
+
+	// If k8s is enabled, return a k8s plugin.
+	// TODO: start MesosPlugin after it's implemented.
+	if cfg.K8s.Enabled {
+		var err error
+		plugin, err = plugins.NewK8sPlugin(
+			cfg.K8s.Kubeconfig,
+			podEventCh,
+			hostEventCh,
+		)
+		if err != nil {
+			log.WithError(err).Fatal("Cannot init host manager plugin.")
+		}
+	}
+
+	// a temporary measure to enable mesos plugins for some usecases,
+	// it is not fully ready to be used for v1alpha handler.
+	mesosPlugin := mesosplugins.NewMesosManager(
+		dispatcher,
+		driver,
+		schedulerClient,
+		masterOperatorClient,
+		cfg.HostManager.HostmapRefreshInterval,
+		time.Duration(cfg.HostManager.OfferHoldTimeSec)*time.Second,
+		rootScope,
+		podEventCh,
+		hostEventCh,
+	)
+
 	// Initialize offer pool event handler with nil host pool manager.
 	// TODO: Refactor event stream handler and move it out of offer package
 	//  to avoid circular dependency, since now offer pool event handler requires
@@ -643,6 +677,7 @@ func main() {
 		cfg.HostManager,
 		watchProcessor,
 		nil,
+		mesosPlugin,
 	)
 
 	hostInfoOps := ormobjects.NewHostInfoOps(ormStore)
@@ -666,25 +701,6 @@ func main() {
 	}
 
 	maintenanceQueue := queue.NewMaintenanceQueue()
-
-	plugin := plugins.NewNoopPlugin()
-	var hostCache hostcache.HostCache
-	podEventCh := make(chan *scalar.PodEvent, plugins.EventChanSize)
-	hostEventCh := make(chan *scalar.HostEvent, plugins.EventChanSize)
-
-	// If k8s is enabled, return a k8s plugin.
-	// TODO: start MesosPlugin after it's implemented.
-	if cfg.K8s.Enabled {
-		var err error
-		plugin, err = plugins.NewK8sPlugin(
-			cfg.K8s.Kubeconfig,
-			podEventCh,
-			hostEventCh,
-		)
-		if err != nil {
-			log.WithError(err).Fatal("Cannot init host manager plugin.")
-		}
-	}
 
 	// Create host cache instance.
 	hostCache = hostcache.New(
@@ -766,6 +782,7 @@ func main() {
 		watchProcessor,
 		plugin,
 		hostCache,
+		mesosPlugin,
 	)
 	server.Start()
 

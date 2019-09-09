@@ -203,6 +203,7 @@ func (suite *RecoveryTestSuite) SetupTest() {
 		hmConfig,
 		suite.watchProcessor,
 		suite.manager,
+		nil,
 	)
 
 	suite.recoveryHandler = &recoveryHandler{

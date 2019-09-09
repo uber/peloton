@@ -124,19 +124,19 @@ func (m *MesosManager) Start() error {
 		// skip the action
 		return nil
 	}
-
-	m.once.Do(func() {
-		procedures := map[sched.Event_Type]interface{}{
-			sched.Event_OFFERS:  m.Offers,
-			sched.Event_RESCIND: m.Rescind,
-			sched.Event_UPDATE:  m.Update,
-		}
-
-		for typ, hdl := range procedures {
-			name := typ.String()
-			mpb.Register(m.d, hostmgrmesos.ServiceName, mpb.Procedure(name, hdl))
-		}
-	})
+	//TODO: remove comment after MesosManager takes over mesos callback
+	//m.once.Do(func() {
+	//	procedures := map[sched.Event_Type]interface{}{
+	//		sched.Event_OFFERS:  m.Offers,
+	//		sched.Event_RESCIND: m.Rescind,
+	//		sched.Event_UPDATE:  m.Update,
+	//	}
+	//
+	//	for typ, hdl := range procedures {
+	//		name := typ.String()
+	//		mpb.Register(m.d, hostmgrmesos.ServiceName, mpb.Procedure(name, hdl))
+	//	}
+	//})
 
 	m.agentSyncer.Start()
 	m.startProcessAgentInfo(m.agentSyncer.AgentCh())

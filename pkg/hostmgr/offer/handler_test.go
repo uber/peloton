@@ -36,6 +36,7 @@ import (
 	hostmgr_mesos "github.com/uber/peloton/pkg/hostmgr/mesos"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
 	mpb_mocks "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
+	mesosmanager "github.com/uber/peloton/pkg/hostmgr/p2k/plugins/mesos"
 	watchmocks "github.com/uber/peloton/pkg/hostmgr/watchevent/mocks"
 	storage_mocks "github.com/uber/peloton/pkg/storage/mocks"
 
@@ -73,6 +74,7 @@ type HostMgrOfferHandlerTestSuite struct {
 	defragRanker    binpacking.Ranker
 	schedulerClient *mpb_mocks.MockSchedulerClient
 	watchProcessor  *watchmocks.MockWatchProcessor
+	mesosPlugin     *mesosmanager.MesosManager
 }
 
 func (s *HostMgrOfferHandlerTestSuite) SetupSuite() {
@@ -115,6 +117,10 @@ func (s *HostMgrOfferHandlerTestSuite) SetupSuite() {
 		s.store,
 		http.Header{},
 	).(hostmgr_mesos.SchedulerDriver)
+	s.mesosPlugin = mesosmanager.NewMesosManager(
+		s.dispatcher, nil, s.schedulerClient, nil,
+		time.Second, time.Second,
+		tally.NoopScope, nil, nil)
 
 	hmConfig := config.Config{
 		OfferHoldTimeSec:              60,
@@ -137,6 +143,7 @@ func (s *HostMgrOfferHandlerTestSuite) SetupSuite() {
 		hmConfig,
 		s.watchProcessor,
 		nil,
+		s.mesosPlugin,
 	)
 	eh := GetEventHandler()
 	s.NotNil(eh.GetEventStreamHandler())
