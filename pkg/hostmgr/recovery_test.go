@@ -155,7 +155,7 @@ func (suite *RecoveryTestSuite) SetupTest() {
 		HeldHostPruningPeriodSec:      1 * time.Minute,
 		BinPackingRefreshIntervalSec:  1 * time.Minute,
 		TaskUpdateBufferSize:          10,
-		TaskUpdateAckConcurrency:      1,
+		TaskUpdateAckConcurrency:      0,
 	}
 	offer.InitEventHandler(
 		suite.dispatcher,
