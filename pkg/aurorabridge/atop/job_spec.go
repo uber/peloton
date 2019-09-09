@@ -16,6 +16,7 @@ package atop
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
@@ -61,14 +62,22 @@ func NewJobSpecFromJobUpdateRequest(
 		Description:   "",  // Unused.
 		Labels:        l,
 		InstanceCount: uint32(r.GetInstanceCount()),
-		Sla:           newSLASpec(r.GetTaskConfig(), r.GetSettings().GetMaxFailedInstances()),
+		Sla:           newSLASpec(r.GetTaskConfig(), getMaxUnavailableInstances(r)),
 		DefaultSpec:   p,
 		InstanceSpec:  nil, // TODO(codyg): Pinned instance support.
 		RespoolId:     respoolID,
 	}, nil
 }
 
-func newSLASpec(t *api.TaskConfig, maxFailedInstances int32) *stateless.SlaSpec {
+// getMaxUnavailableInstances calculates MaximumUnavailableInstances based on
+// JobUpdateRequest. For jobs with instance_count<10, maxUnavailableInstances
+// is set to 1.
+func getMaxUnavailableInstances(r *api.JobUpdateRequest) uint32 {
+	instanceCount := float64(r.GetInstanceCount())
+	return uint32(math.Max(0.1*instanceCount, 1.0))
+}
+
+func newSLASpec(t *api.TaskConfig, maxUnavailableInstances uint32) *stateless.SlaSpec {
 	preemptible := false
 	revocable := false
 
@@ -91,6 +100,6 @@ func newSLASpec(t *api.TaskConfig, maxFailedInstances int32) *stateless.SlaSpec 
 		Priority:                    uint32(t.GetPriority()),
 		Preemptible:                 preemptible,
 		Revocable:                   revocable,
-		MaximumUnavailableInstances: uint32(maxFailedInstances),
+		MaximumUnavailableInstances: maxUnavailableInstances,
 	}
 }
