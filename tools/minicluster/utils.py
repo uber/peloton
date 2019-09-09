@@ -3,6 +3,7 @@
 from docker import Client
 import os
 import requests
+import socket
 import time
 
 import print_utils
@@ -23,6 +24,25 @@ def get_container_ip(container_name):
     cmd = "docker inspect "
     cmd += '-f "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" %s'
     return os.popen(cmd % container_name).read().strip()
+
+
+#
+# Returns whether the zk listening on the given port is ready.
+#
+def is_zk_ready(port):
+    cmd = "bash -c 'echo ruok | nc localhost {}'".format(port)
+    return os.popen(cmd).read().strip() == "imok"
+
+
+#
+# Returns a free port on the host.
+#
+def find_free_port():
+    s = socket()
+    s.bind(('', 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
 
 
 #
