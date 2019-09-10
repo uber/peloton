@@ -449,6 +449,7 @@ class TestJobMgrFailure(object):
 
     # Test restart job manager when waiting for pod kill due to
     # host maintenance which can violate job SLA.
+    @pytest.mark.skip("test is flaky")
     def test__host_maintenance_violate_sla_restart_jobmgr(self, failure_tester, maintenance):
         """
         1. Create a stateless job(instance_count=4) with host-limit-1 constraint and
@@ -468,7 +469,10 @@ class TestJobMgrFailure(object):
         stateless_job.wait_for_all_pods_running(num_pods=3)
 
         # Pick a host that is UP and start maintenance on it
-        test_host1 = get_host_in_state(host_pb2.HOST_STATE_UP)
+        test_host1 = get_host_in_state(
+            host_pb2.HOST_STATE_UP, failure_tester.client)
+        # update the client in maintenance fixture
+        maintenance["update_client"](failure_tester.client)
         resp = maintenance["start"]([test_host1])
         assert resp
 

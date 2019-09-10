@@ -720,6 +720,40 @@ def test__delete_sla_violated_job():
     raise Exception("job not found error not received")
 
 
+# Test restart job manager when waiting for pod kill due to
+# host maintenance which can violate job SLA.
+def test__host_maintenance_violate_sla_restart_jobmgr(stateless_job, maintenance, jobmgr):
+    """
+    1. Create a stateless job(instance_count=4) with host-limit-1 constraint and
+       MaximumUnavailableInstances=1. Since there are only 3 UP hosts, one of
+       the instances will not get placed (hence unavailable).
+    2. Start host maintenance on one of the hosts (say A).
+    3. Restart job manager.
+    4. Since one instance is already unavailable, no more instances should be
+       killed due to host maintenance. Verify that host A does not transition to DOWN
+    """
+    job_spec_dump = load_test_config('test_stateless_job_spec_sla.yaml')
+    json_format.ParseDict(job_spec_dump, stateless_job.job_spec)
+    stateless_job.job_spec.instance_count = 4
+    stateless_job.create()
+    stateless_job.wait_for_all_pods_running(num_pods=3)
+
+    # Pick a host that is UP and start maintenance on it
+    test_host1 = get_host_in_state(host_pb2.HOST_STATE_UP)
+    resp = maintenance["start"]([test_host1])
+    assert resp
+
+    jobmgr.restart()
+
+    try:
+        wait_for_host_state(test_host1, host_pb2.HOST_STATE_DOWN)
+        assert False, 'Host should not transition to DOWN'
+    except:
+        assert is_host_in_state(test_host1, host_pb2.HOST_STATE_DRAINING)
+        assert len(stateless_job.query_pods(
+            states=[pod_pb2.POD_STATE_RUNNING])) == 3
+
+
 # Test pod stop/start for a job whose SLA is violated
 def test__stop_start_pod_on_sla_violated_job(stateless_job):
     """

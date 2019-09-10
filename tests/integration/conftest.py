@@ -387,7 +387,7 @@ def maintenance(request):
         client[0] = new_client
 
     def start(hosts):
-        resp = start_maintenance(hosts)
+        resp = start_maintenance(hosts, client=client[0])
         if not resp:
             log.error("Start maintenance failed:" + resp)
             return resp
@@ -395,7 +395,7 @@ def maintenance(request):
         return resp
 
     def stop(hosts):
-        resp = complete_maintenance(hosts)
+        resp = complete_maintenance(hosts, client=client[0])
         if not resp:
             log.error("Complete maintenance failed:" + resp)
             return resp

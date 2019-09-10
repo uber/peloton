@@ -19,11 +19,11 @@ def start_maintenance(hosts, client=None):
     :param hosts: list of hostnames
     :return: host_svc_pb2.StartMaintenanceResponse
     """
-    client = client or Client()
+    c = client or Client()
     req = hostsvc.StartMaintenanceRequest(hostnames=hosts)
 
-    resp = client.host_svc.StartMaintenance(
-        req, metadata=client.hostmgr_metadata, timeout=10
+    resp = c.host_svc.StartMaintenance(
+        req, metadata=c.hostmgr_metadata, timeout=10
     )
     return resp
 
@@ -34,11 +34,11 @@ def complete_maintenance(hosts, client=None):
     :param hosts: list of hostnames
     :return: host_svc_pb2.CompleteMaintenanceResponse
     """
-    client = client or Client()
+    c = client or Client()
     request = hostsvc.CompleteMaintenanceRequest(hostnames=hosts)
 
-    resp = client.host_svc.CompleteMaintenance(
-        request, metadata=client.hostmgr_metadata, timeout=10
+    resp = c.host_svc.CompleteMaintenance(
+        request, metadata=c.hostmgr_metadata, timeout=10
     )
     return resp
 
@@ -49,7 +49,7 @@ def query_hosts(states, client=None):
     :param states: list of host_pb2.HostStates
     :return: host_svc_pb2.QueryHostsResponse
     """
-    client = client or Client()
+    c = client or Client()
     if not states:
         states = [
             host.HOST_STATE_UP,
@@ -58,8 +58,8 @@ def query_hosts(states, client=None):
         ]
     request = hostsvc.QueryHostsRequest(host_states=states)
 
-    resp = client.host_svc.QueryHosts(
-        request, metadata=client.hostmgr_metadata, timeout=10
+    resp = c.host_svc.QueryHosts(
+        request, metadata=c.hostmgr_metadata, timeout=10
     )
     return resp
 
@@ -108,14 +108,15 @@ def is_host_in_state(hostname, state):
     return False
 
 
-def get_host_in_state(state):
+def get_host_in_state(state, client=None):
     """
     returns a host in the specified state. Note that the caller should make sure
     there is at least one host in the the requested state.
     :param state: host_pb2.HostState
     :return: Hostname of a host in the specified state
     """
-    resp = query_hosts([state])
+    c = client or Client()
+    resp = query_hosts([state], c)
     assert len(resp.host_infos) > 0
     return resp.host_infos[0].hostname
 
@@ -126,11 +127,11 @@ def list_host_pools(client=None):
     :param client: optional peloton client
     :return: host_svc_pb2.ListHostPoolsResponse
     """
-    client = client or Client()
+    c = client or Client()
     request = hostsvc.ListHostPoolsRequest()
 
-    resp = client.host_svc.ListHostPools(
-        request, metadata=client.hostmgr_metadata, timeout=10
+    resp = c.host_svc.ListHostPools(
+        request, metadata=c.hostmgr_metadata, timeout=10
     )
     return resp
 
@@ -142,11 +143,11 @@ def create_host_pool(pool_id, client=None):
     :param client: optional peloton client
     :return: host_svc_pb2.CreateHostPoolResponse
     """
-    client = client or Client()
+    c = client or Client()
     request = hostsvc.CreateHostPoolRequest(name=pool_id)
 
-    resp = client.host_svc.CreateHostPool(
-        request, metadata=client.hostmgr_metadata, timeout=10
+    resp = c.host_svc.CreateHostPool(
+        request, metadata=c.hostmgr_metadata, timeout=10
     )
     return resp
 
@@ -160,12 +161,12 @@ def change_host_pool(hostname, src_pool, dest_pool, client=None):
     :param client: optional peloton client
     :return: host_svc_pb2.ChangeHostPoolResponse
     """
-    client = client or Client()
+    c = client or Client()
     request = hostsvc.ChangeHostPoolRequest(
         hostname=hostname, sourcePool=src_pool, destinationPool=dest_pool)
 
-    resp = client.host_svc.ChangeHostPool(
-        request, metadata=client.hostmgr_metadata, timeout=10
+    resp = c.host_svc.ChangeHostPool(
+        request, metadata=c.hostmgr_metadata, timeout=10
     )
     return resp
 

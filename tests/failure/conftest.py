@@ -2,6 +2,7 @@ import time
 import pytest
 import grpc
 import failure_fixture
+from retry import retry
 
 from tests.integration.pool import deallocate_pools
 from tests.integration.stateless_job import (
@@ -23,12 +24,11 @@ def failure_tester(request):
     fix.reset_client()
 
     if is_aurora_bridge_test(request):
-        # Delete all stateless jobs without deallocating the pools
+        # Delete all jobs without deallocating the pools
         cleanup_jobs(fix.client)
     else:
-        # terminate all jobs and deallocate all pools
-        stop_jobs(fix.client)
-        deallocate_pools(fix.client)
+        # Stop all jobs and deallocate all the pools
+        cleanup_test(fix.client)
 
     fix.teardown()
 
@@ -104,3 +104,13 @@ def stop_jobs(client):
         job.config.max_retry_attempts = 100
         job.stop()
         job.wait_for_terminated()
+
+
+@retry(tries=10, delay=10)
+def cleanup_test(client):
+    '''
+    Retry with delay if clean up fails.
+    Clean up can fail since job index table can be slow to update.
+    '''
+    stop_jobs(client)
+    deallocate_pools(client)
