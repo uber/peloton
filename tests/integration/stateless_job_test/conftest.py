@@ -12,7 +12,7 @@ import tests.integration.conf_util as util
 def bootstrap_cluster(request):
     tests_failed_before_module = request.session.testsfailed
     enable_k8s = util.minicluster_type()
-    setup_minicluster(enable_k8s=enable_k8s)
+    cluster = setup_minicluster(enable_k8s=enable_k8s)
 
     yield
 
@@ -20,7 +20,7 @@ def bootstrap_cluster(request):
     if (request.session.testsfailed - tests_failed_before_module) > 0:
         dump_logs = True
 
-    teardown_minicluster(dump_logs)
+    teardown_minicluster(cluster, dump_logs)
 
 
 @pytest.fixture(scope="module", autouse=True)

@@ -64,7 +64,7 @@ collect_metrics = TestMetrics()
 def setup_cluster(request):
     tests_failed_before_module = request.session.testsfailed
     try:
-        setup_minicluster()
+        cluster = setup_minicluster()
     except Exception as e:
         log.error(e)
         sys.exit(1)
@@ -74,7 +74,7 @@ def setup_cluster(request):
         if (request.session.testsfailed - tests_failed_before_module) > 0:
             dump_logs = True
 
-        teardown_minicluster(dump_logs)
+        teardown_minicluster(cluster, dump_logs)
 
     request.addfinalizer(teardown_cluster)
 
@@ -210,45 +210,51 @@ def setup_minicluster(enable_k8s=False, use_host_pool=False):
     log.info("setup cluster")
     if os.getenv("CLUSTER", ""):
         log.info("cluster mode")
-    else:
-        log.info("local minicluster mode")
-        cluster = minicluster.Minicluster(mc_config(), enable_peloton=True,
-                                          enable_k8s=enable_k8s,
-                                          use_host_pool=use_host_pool)
-        cluster.setup()
-        time.sleep(5)
+        return None
+
+    log.info("local minicluster mode")
+    cluster = minicluster.Minicluster(mc_config(), enable_peloton=True,
+                                      enable_k8s=enable_k8s,
+                                      use_host_pool=use_host_pool)
+    cluster.setup()
+    time.sleep(5)
+    return cluster
 
 
-def teardown_minicluster(dump_logs=False):
+def teardown_minicluster(cluster, dump_logs=False):
     """
     teardown minicluster
     """
     log.info("\nteardown cluster")
     if os.getenv("CLUSTER", ""):
         log.info("cluster mode, no teardown actions")
+        return
     elif os.getenv("NO_TEARDOWN", ""):
         log.info("skip teardown")
-    else:
-        log.info("tearing down")
+        return
+    elif cluster is None:
+        log.info("no cluster to tear down")
+        return
 
-        cluster = minicluster.Minicluster(mc_config())
-        # dump logs only if tests have failed in the current module
-        if dump_logs:
-            # stop containers so that log stream will not block
-            cluster.teardown(stop=True)
+    log.info("tearing down")
 
-            try:
-                # TODO (varung): enable PE and mesos-master logs if needed
-                cli = Client(base_url="unix://var/run/docker.sock")
-                for c in ("peloton-jobmgr0",
-                          "peloton-resmgr0"):
-                    for l in cli.logs(c, stream=True):
-                        # remove newline character when logging
-                        log.info(l.rstrip())
-            except Exception as e:
-                log.info(e)
+    # dump logs only if tests have failed in the current module
+    if dump_logs:
+        # stop containers so that log stream will not block
+        cluster.teardown(stop=True)
 
-        cluster.teardown()
+        try:
+            # TODO (varung): enable PE and mesos-master logs if needed
+            cli = Client(base_url="unix://var/run/docker.sock")
+            for c in ("peloton-jobmgr0",
+                      "peloton-resmgr0"):
+                for l in cli.logs(c, stream=True):
+                    # remove newline character when logging
+                    log.info(l.rstrip())
+        except Exception as e:
+            log.info(e)
+
+    cluster.teardown()
 
 
 def cleanup_batch_jobs():

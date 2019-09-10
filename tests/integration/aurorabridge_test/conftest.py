@@ -12,7 +12,7 @@ from tests.integration.conftest import (
 @pytest.fixture(scope="session", autouse=True)
 def bootstrap_cluster(request):
     tests_failed_before_module = request.session.testsfailed
-    setup_minicluster()
+    cluster = setup_minicluster()
 
     yield
 
@@ -20,7 +20,7 @@ def bootstrap_cluster(request):
     if (request.session.testsfailed - tests_failed_before_module) > 0:
         dump_logs = True
 
-    teardown_minicluster(dump_logs)
+    teardown_minicluster(cluster, dump_logs)
 
 
 @pytest.fixture(scope="module", autouse=True)
