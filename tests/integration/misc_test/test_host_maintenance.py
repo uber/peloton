@@ -86,8 +86,6 @@ def test__host_maintenance_lifecycle(host_affinity_job, maintenance):
     resp = maintenance["start"]([test_host])
     assert resp
 
-    assert is_host_in_state(test_host, hpb.HOST_STATE_DRAINING)
-
     # Wait for host to transition to DOWN
     wait_for_host_state(test_host, hpb.HOST_STATE_DOWN)
 

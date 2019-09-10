@@ -22,7 +22,7 @@ import (
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/background"
 	"github.com/uber/peloton/pkg/common/leader"
-	"github.com/uber/peloton/pkg/hostmgr/host"
+	"github.com/uber/peloton/pkg/hostmgr/host/drainer"
 	"github.com/uber/peloton/pkg/hostmgr/mesos"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/transport/mhttp"
 	"github.com/uber/peloton/pkg/hostmgr/metrics"
@@ -78,7 +78,7 @@ type Server struct {
 
 	recoveryHandler RecoveryHandler
 
-	drainer host.Drainer
+	drainer drainer.Drainer
 
 	reserver reserver.Reserver
 
@@ -108,7 +108,7 @@ func NewServer(
 	mesosOutbound transport.Outbounds,
 	reconciler reconcile.TaskReconciler,
 	recoveryHandler RecoveryHandler,
-	drainer host.Drainer,
+	drainer drainer.Drainer,
 	reserver reserver.Reserver,
 	watchProcessor watchevent.WatchProcessor,
 	plugin plugins.Plugin,

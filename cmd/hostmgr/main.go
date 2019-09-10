@@ -36,7 +36,9 @@ import (
 	"github.com/uber/peloton/pkg/common/rpc"
 	"github.com/uber/peloton/pkg/hostmgr"
 	bin_packing "github.com/uber/peloton/pkg/hostmgr/binpacking"
+	"github.com/uber/peloton/pkg/hostmgr/goalstate"
 	"github.com/uber/peloton/pkg/hostmgr/host"
+	"github.com/uber/peloton/pkg/hostmgr/host/drainer"
 	"github.com/uber/peloton/pkg/hostmgr/hostpool/manager"
 	"github.com/uber/peloton/pkg/hostmgr/hostsvc"
 	"github.com/uber/peloton/pkg/hostmgr/mesos"
@@ -51,7 +53,6 @@ import (
 	mesosplugins "github.com/uber/peloton/pkg/hostmgr/p2k/plugins/mesos"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/podeventmanager"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
-	"github.com/uber/peloton/pkg/hostmgr/queue"
 	"github.com/uber/peloton/pkg/hostmgr/reconcile"
 	"github.com/uber/peloton/pkg/hostmgr/watchevent"
 	"github.com/uber/peloton/pkg/middleware/inbound"
@@ -560,13 +561,11 @@ func main() {
 		cfg.HostManager.TaskReconcilerConfig,
 	)
 
-	maintenanceHostInfoMap := host.NewMaintenanceHostInfoMap(rootScope)
-
 	loader := host.Loader{
-		OperatorClient:         masterOperatorClient,
-		Scope:                  rootScope.SubScope("hostmap"),
-		SlackResourceTypes:     cfg.HostManager.SlackResourceTypes,
-		MaintenanceHostInfoMap: maintenanceHostInfoMap,
+		OperatorClient:     masterOperatorClient,
+		Scope:              rootScope.SubScope("hostmap"),
+		SlackResourceTypes: cfg.HostManager.SlackResourceTypes,
+		HostInfoOps:        ormobjects.NewHostInfoOps(ormStore),
 	}
 
 	backgroundManager := background.NewManager()
@@ -700,8 +699,6 @@ func main() {
 		offer.GetEventHandler().SetHostPoolManager(hostPoolManager)
 	}
 
-	maintenanceQueue := queue.NewMaintenanceQueue()
-
 	// Create host cache instance.
 	hostCache = hostcache.New(
 		hostEventCh,
@@ -726,6 +723,14 @@ func main() {
 		pem,
 	)
 
+	// Create Goal State Engine driver
+	goalStateDriver := goalstate.NewDriver(
+		ormStore,
+		masterOperatorClient,
+		rootScope,
+		cfg.HostManager.GoalState,
+	)
+
 	// Create new hostmgr internal service handler.
 	serviceHandler := hostmgr.NewServiceHandler(
 		dispatcher,
@@ -736,19 +741,19 @@ func main() {
 		cfg.Mesos,
 		mesosMasterDetector,
 		&cfg.HostManager,
-		maintenanceQueue,
 		cfg.HostManager.SlackResourceTypes,
-		maintenanceHostInfoMap,
 		watchProcessor,
 		hostPoolManager,
+		goalStateDriver,
+		ormStore,
 	)
 
-	drainer := host.NewDrainer(
+	drainer := drainer.NewDrainer(
 		cfg.HostManager.HostDrainerPeriod,
 		cfg.Mesos.Framework.Role,
 		masterOperatorClient,
-		maintenanceQueue,
-		maintenanceHostInfoMap,
+		goalStateDriver,
+		ormStore,
 	)
 
 	hostsvc.InitServiceHandler(
@@ -762,9 +767,6 @@ func main() {
 		rootScope,
 		store,
 		ormStore,
-		maintenanceQueue,
-		masterOperatorClient,
-		maintenanceHostInfoMap,
 	)
 
 	server := hostmgr.NewServer(

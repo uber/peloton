@@ -107,9 +107,29 @@ func (s *HostInfoObjectTestSuite) TestHostInfo() {
 	s.Equal(testHostInfo2, hostInfosAll[0])
 	s.Equal(testHostInfo, hostInfosAll[1])
 
-	// Test Update
+	// Test UpdateState
 	testHostInfo.State = hostpb.HostState_HOST_STATE_DRAINING
-	testHostInfo.GoalState = hostpb.HostState_HOST_STATE_DRAINED
+	err = db.UpdateState(
+		context.Background(),
+		testHostInfo.Hostname,
+		testHostInfo.State)
+	s.NoError(err)
+	hostInfoGot, err := db.Get(context.Background(), testHostInfo.Hostname)
+	s.NoError(err)
+	s.Equal(testHostInfo, hostInfoGot)
+
+	// Test UpdateGoalState
+	testHostInfo.GoalState = hostpb.HostState_HOST_STATE_UP
+	err = db.UpdateGoalState(
+		context.Background(),
+		testHostInfo.Hostname,
+		testHostInfo.GoalState)
+	s.NoError(err)
+	hostInfoGot, err = db.Get(context.Background(), testHostInfo.Hostname)
+	s.NoError(err)
+	s.Equal(testHostInfo, hostInfoGot)
+
+	// Test UpdateLabels
 	testHostInfo.Labels = []*pelotonpb.Label{
 		{
 			Key:   "label1",
@@ -120,19 +140,23 @@ func (s *HostInfoObjectTestSuite) TestHostInfo() {
 	for _, label := range testHostInfo.Labels {
 		labels[label.Key] = label.Value
 	}
-	testHostInfo.DesiredPool = "pool1"
-	err = db.Update(
+	err = db.UpdateLabels(
 		context.Background(),
 		testHostInfo.Hostname,
-		testHostInfo.State,
-		testHostInfo.GoalState,
-		labels,
-		testHostInfo.CurrentPool,
-		testHostInfo.DesiredPool)
+		labels)
 	s.NoError(err)
-	hostInfoGot, err := db.Get(context.Background(), testHostInfo.Hostname)
+	hostInfoGot, err = db.Get(context.Background(), testHostInfo.Hostname)
 	s.NoError(err)
 	s.Equal(testHostInfo, hostInfoGot)
+
+	// Test UpdateDesiredPool
+	testHostInfo.DesiredPool = "pool1"
+	err = db.UpdateDesiredPool(
+		context.Background(),
+		testHostInfo.Hostname,
+		testHostInfo.DesiredPool)
+	s.NoError(err)
+	hostInfoGot, err = db.Get(context.Background(), testHostInfo.Hostname)
 	s.EqualValues(testHostInfo.DesiredPool, hostInfoGot.DesiredPool)
 
 	// Test Delete

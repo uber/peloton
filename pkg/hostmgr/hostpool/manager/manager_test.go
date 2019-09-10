@@ -30,11 +30,10 @@ import (
 	"github.com/uber/peloton/pkg/common/eventstream"
 	"github.com/uber/peloton/pkg/common/lifecycle"
 	"github.com/uber/peloton/pkg/hostmgr/host"
-	hostmocks "github.com/uber/peloton/pkg/hostmgr/host/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/hostpool"
 	mpbmocks "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
-	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
+	orm_mocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pkg/errors"
@@ -56,8 +55,8 @@ type HostPoolManagerTestSuite struct {
 	drainingMachines   []*pbmesos.MachineID
 	manager            HostPoolManager
 	eventStreamHandler *eventstream.Handler
-	hostInfoOps        *objectmocks.MockHostInfoOps
 	hostCapacity       *host.ResourceCapacity
+	mockHostInfoOps    *orm_mocks.MockHostInfoOps
 }
 
 // SetupTest is setup function for this suite.
@@ -101,12 +100,12 @@ func (suite *HostPoolManagerTestSuite) SetupTest() {
 		testScope)
 
 	suite.ctrl = gomock.NewController(suite.T())
-	suite.hostInfoOps = objectmocks.NewMockHostInfoOps(suite.ctrl)
+	suite.mockHostInfoOps = orm_mocks.NewMockHostInfoOps(suite.ctrl)
 
 	suite.manager = New(
 		_testReconcileInterval,
 		suite.eventStreamHandler,
-		suite.hostInfoOps,
+		suite.mockHostInfoOps,
 		tally.NoopScope,
 	)
 }
@@ -162,7 +161,7 @@ func (suite *HostPoolManagerTestSuite) TestGetPoolByHostname() {
 			tc.poolIndex,
 			tc.hostToPoolMap,
 			suite.eventStreamHandler,
-			suite.hostInfoOps,
+			suite.mockHostInfoOps,
 		)
 
 		_, err := suite.manager.GetPoolByHostname(testHostname)
@@ -251,12 +250,12 @@ func (suite *HostPoolManagerTestSuite) TestDeregisterPoolWithHosts() {
 		poolIndex,
 		hostToPoolMap,
 		suite.eventStreamHandler,
-		suite.hostInfoOps,
+		suite.mockHostInfoOps,
 	)
 	suite.manager.RegisterPool("default")
 
 	for _, h := range poolIndex["pool0"] {
-		suite.hostInfoOps.EXPECT().UpdateCurrentPool(
+		suite.mockHostInfoOps.EXPECT().UpdateCurrentPool(
 			gomock.Any(),
 			h,
 			common.DefaultHostPoolID,
@@ -319,7 +318,7 @@ func (suite *HostPoolManagerTestSuite) TestGetHostPoolLabelValues() {
 			tc.poolIndex,
 			tc.hostToPoolMap,
 			suite.eventStreamHandler,
-			suite.hostInfoOps,
+			suite.mockHostInfoOps,
 		)
 		res, err := GetHostPoolLabelValues(suite.manager, tc.hostname)
 		if tc.expectedErrMsg != "" {
@@ -488,10 +487,10 @@ func (suite *HostPoolManagerTestSuite) TestReconcile() {
 	}
 
 	for tcName, tc := range testCases {
-		suite.hostInfoOps.EXPECT().GetAll(gomock.Any()).
+		suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).
 			Return(tc.hostInfo, tc.getHostInfoErr)
 		if tc.numUpdates > 0 {
-			suite.hostInfoOps.EXPECT().UpdateCurrentPool(
+			suite.mockHostInfoOps.EXPECT().UpdateCurrentPool(
 				gomock.Any(),
 				gomock.Any(),
 				gomock.Any(),
@@ -502,7 +501,7 @@ func (suite *HostPoolManagerTestSuite) TestReconcile() {
 			tc.poolIndex,
 			tc.hostToPoolMap,
 			suite.eventStreamHandler,
-			suite.hostInfoOps,
+			suite.mockHostInfoOps,
 		)
 		err := manager.Start()
 		if tc.getHostInfoErr != nil {
@@ -553,7 +552,7 @@ func (suite *HostPoolManagerTestSuite) TestRefreshPoolCapacity() {
 		poolIndex,
 		hostToPoolMap,
 		suite.eventStreamHandler,
-		suite.hostInfoOps)
+		suite.mockHostInfoOps)
 	mgr := manager.(*hostPoolManager)
 
 	ctrl := gomock.NewController(suite.T())
@@ -687,7 +686,7 @@ func (suite *HostPoolManagerTestSuite) TestChangeHostPool() {
 
 	for tcName, tc := range testCases {
 		if tc.updated {
-			suite.hostInfoOps.EXPECT().UpdateCurrentPool(
+			suite.mockHostInfoOps.EXPECT().UpdateCurrentPool(
 				gomock.Any(),
 				tc.host,
 				tc.destPoolID,
@@ -698,7 +697,7 @@ func (suite *HostPoolManagerTestSuite) TestChangeHostPool() {
 			tc.pools,
 			hostToPoolMap,
 			suite.eventStreamHandler,
-			suite.hostInfoOps,
+			suite.mockHostInfoOps,
 		)
 
 		err := suite.manager.ChangeHostPool(tc.host, tc.srcPoolID, tc.destPoolID)
@@ -770,7 +769,7 @@ func (suite *HostPoolManagerTestSuite) TestGetDesiredPool() {
 
 	for tcName, tc := range testCases {
 		if len(tc.hostname) > 0 {
-			suite.hostInfoOps.EXPECT().Get(
+			suite.mockHostInfoOps.EXPECT().Get(
 				gomock.Any(),
 				tc.hostname,
 			).Return(tc.hostInfo, tc.getHostInfoErr)
@@ -815,7 +814,7 @@ func (suite *HostPoolManagerTestSuite) TestUpdateDesiredPool() {
 
 	for tcName, tc := range testCases {
 		if len(tc.hostname) > 0 && len(tc.poolID) > 0 {
-			suite.hostInfoOps.EXPECT().UpdateDesiredPool(
+			suite.mockHostInfoOps.EXPECT().UpdateDesiredPool(
 				gomock.Any(),
 				tc.hostname,
 				tc.poolID,
@@ -867,13 +866,13 @@ func setupTestManager(
 	poolIndex map[string][]string,
 	hostToPoolMap map[string]string,
 	eventStreamHandler *eventstream.Handler,
-	hostInfoOps *objectmocks.MockHostInfoOps,
+	mockHostInfoOps *orm_mocks.MockHostInfoOps,
 ) HostPoolManager {
 	scope := tally.NoopScope
 	manager := &hostPoolManager{
 		reconcileInternal:  _testReconcileInterval,
 		eventStreamHandler: eventStreamHandler,
-		hostInfoOps:        hostInfoOps,
+		hostInfoOps:        mockHostInfoOps,
 		poolIndex:          map[string]hostpool.HostPool{},
 		hostToPoolMap:      map[string]string{},
 		lifecycle:          lifecycle.NewLifeCycle(),
@@ -909,19 +908,17 @@ func (suite *HostPoolManagerTestSuite) setupAgentMapLoader(
 	ctrl *gomock.Controller,
 ) *host.Loader {
 	mockMasterOperatorClient := mpbmocks.NewMockMasterOperatorClient(suite.ctrl)
-	mockMaintenanceMap := hostmocks.NewMockMaintenanceHostInfoMap(suite.ctrl)
 
 	response := suite.makeAgentsResponse()
-	mockMaintenanceMap.EXPECT().
-		GetDrainingHostInfos(gomock.Any()).
-		Return([]*pbhost.HostInfo{}).
-		Times(len(suite.upMachines) + len(suite.drainingMachines))
 	mockMasterOperatorClient.EXPECT().Agents().Return(response, nil)
+	suite.mockHostInfoOps.EXPECT().
+		GetAll(gomock.Any()).
+		Return([]*pbhost.HostInfo{}, nil)
 
 	loader := &host.Loader{
-		OperatorClient:         mockMasterOperatorClient,
-		Scope:                  tally.NewTestScope("", map[string]string{}),
-		MaintenanceHostInfoMap: mockMaintenanceMap,
+		OperatorClient: mockMasterOperatorClient,
+		Scope:          tally.NewTestScope("", map[string]string{}),
+		HostInfoOps:    suite.mockHostInfoOps,
 	}
 	return loader
 }

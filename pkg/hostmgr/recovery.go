@@ -17,24 +17,19 @@ package hostmgr
 import (
 	"context"
 
-	hpb "github.com/uber/peloton/.gen/peloton/api/v0/host"
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
 	"github.com/uber/peloton/pkg/common/recovery"
-	"github.com/uber/peloton/pkg/hostmgr/host"
-	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
 	"github.com/uber/peloton/pkg/hostmgr/metrics"
 	"github.com/uber/peloton/pkg/hostmgr/offer"
-	"github.com/uber/peloton/pkg/hostmgr/queue"
 	"github.com/uber/peloton/pkg/storage"
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
-	"go.uber.org/multierr"
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
@@ -48,11 +43,8 @@ type RecoveryHandler interface {
 // recoveryHandler restores the contents of MaintenanceQueue
 // from Mesos Maintenance Status
 type recoveryHandler struct {
-	metrics                *metrics.Metrics
-	recoveryScope          tally.Scope
-	maintenanceQueue       queue.MaintenanceQueue
-	masterOperatorClient   mpb.MasterOperatorClient
-	maintenanceHostInfoMap host.MaintenanceHostInfoMap
+	metrics       *metrics.Metrics
+	recoveryScope tally.Scope
 
 	taskStore     storage.TaskStore
 	activeJobsOps ormobjects.ActiveJobsOps
@@ -65,9 +57,7 @@ func NewRecoveryHandler(
 	parent tally.Scope,
 	taskStore storage.TaskStore,
 	ormStore *ormobjects.Store,
-	maintenanceQueue queue.MaintenanceQueue,
-	masterOperatorClient mpb.MasterOperatorClient,
-	maintenanceHostInfoMap host.MaintenanceHostInfoMap) RecoveryHandler {
+) RecoveryHandler {
 	recovery := &recoveryHandler{
 		metrics:       metrics.NewMetrics(parent),
 		recoveryScope: parent.SubScope("recovery"),
@@ -76,10 +66,6 @@ func NewRecoveryHandler(
 		activeJobsOps: ormobjects.NewActiveJobsOps(ormStore),
 		jobConfigOps:  ormobjects.NewJobConfigOps(ormStore),
 		jobRuntimeOps: ormobjects.NewJobRuntimeOps(ormStore),
-
-		maintenanceQueue:       maintenanceQueue,
-		masterOperatorClient:   masterOperatorClient,
-		maintenanceHostInfoMap: maintenanceHostInfoMap,
 	}
 	return recovery
 }
@@ -92,12 +78,6 @@ func (r *recoveryHandler) Stop() error {
 
 // Start requeues all 'DRAINING' hosts into maintenance queue
 func (r *recoveryHandler) Start() error {
-	err := r.recoverMaintenanceState()
-	if err != nil {
-		r.metrics.RecoveryFail.Inc(1)
-		return err
-	}
-
 	log.Info("start recovery from DB")
 	if err := recovery.RecoverActiveJobs(
 		context.Background(),
@@ -112,54 +92,6 @@ func (r *recoveryHandler) Start() error {
 
 	r.metrics.RecoverySuccess.Inc(1)
 	return nil
-}
-
-func (r *recoveryHandler) recoverMaintenanceState() error {
-	// Clear contents of maintenance queue before
-	// enqueuing, to ensure removal of stale data
-	r.maintenanceQueue.Clear()
-
-	response, err := r.masterOperatorClient.GetMaintenanceStatus()
-	if err != nil {
-		return err
-	}
-
-	clusterStatus := response.GetStatus()
-	if clusterStatus == nil {
-		log.Info("Empty maintenance status received")
-		return nil
-	}
-
-	var drainingHosts []string
-	var hostInfos []*hpb.HostInfo
-	for _, drainingMachine := range clusterStatus.GetDrainingMachines() {
-		machineID := drainingMachine.GetId()
-		hostInfos = append(hostInfos,
-			&hpb.HostInfo{
-				Hostname: machineID.GetHostname(),
-				Ip:       machineID.GetIp(),
-				State:    hpb.HostState_HOST_STATE_DRAINING,
-			})
-		drainingHosts = append(drainingHosts, machineID.GetHostname())
-	}
-
-	for _, downMachine := range clusterStatus.GetDownMachines() {
-		hostInfos = append(hostInfos,
-			&hpb.HostInfo{
-				Hostname: downMachine.GetHostname(),
-				Ip:       downMachine.GetIp(),
-				State:    hpb.HostState_HOST_STATE_DOWN,
-			})
-	}
-	r.maintenanceHostInfoMap.ClearAndFillMap(hostInfos)
-
-	var errs error
-	for _, drainingHost := range drainingHosts {
-		if err := r.maintenanceQueue.Enqueue(drainingHost); err != nil {
-			errs = multierr.Append(errs, err)
-		}
-	}
-	return errs
 }
 
 // recoverTasks recovers tasks from DB on bootstrap after leadership change.

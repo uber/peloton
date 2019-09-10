@@ -21,7 +21,7 @@ import (
 	"time"
 
 	backgound_mocks "github.com/uber/peloton/pkg/common/background/mocks"
-	host_mocks "github.com/uber/peloton/pkg/hostmgr/host/mocks"
+	drainer_mocks "github.com/uber/peloton/pkg/hostmgr/host/drainer/mocks"
 	hm_mocks "github.com/uber/peloton/pkg/hostmgr/mesos/mocks"
 	mhttp_mocks "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/transport/mhttp/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/metrics"
@@ -66,7 +66,7 @@ type ServerTestSuite struct {
 	recoveryHandler   *recovery_mocks.MockRecoveryHandler
 
 	reconciler     *reconciler_mocks.MockTaskReconciler
-	drainer        *host_mocks.MockDrainer
+	drainer        *drainer_mocks.MockDrainer
 	reserver       *reserver_mocks.MockReserver
 	watchProcessor *watchmocks.MockWatchProcessor
 
@@ -86,7 +86,7 @@ func (suite *ServerTestSuite) SetupTest() {
 	suite.mInbound = mhttp_mocks.NewMockInbound(suite.ctrl)
 	suite.reconciler = reconciler_mocks.NewMockTaskReconciler(suite.ctrl)
 	suite.recoveryHandler = recovery_mocks.NewMockRecoveryHandler(suite.ctrl)
-	suite.drainer = host_mocks.NewMockDrainer(suite.ctrl)
+	suite.drainer = drainer_mocks.NewMockDrainer(suite.ctrl)
 	suite.reserver = reserver_mocks.NewMockReserver(suite.ctrl)
 	suite.watchProcessor = watchmocks.NewMockWatchProcessor(suite.ctrl)
 	suite.plugin = plugins_mocks.NewMockPlugin(suite.ctrl)

@@ -7,7 +7,6 @@
 //    http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
@@ -26,10 +25,11 @@ import (
 
 	"github.com/uber/peloton/pkg/common/stringset"
 	"github.com/uber/peloton/pkg/hostmgr/host"
-	hm "github.com/uber/peloton/pkg/hostmgr/host/mocks"
+	dm "github.com/uber/peloton/pkg/hostmgr/host/drainer/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/hostpool"
 	hpm_mock "github.com/uber/peloton/pkg/hostmgr/hostpool/manager/mocks"
 	ym "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
+	orm_mocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/golang/mock/gomock"
 	log "github.com/sirupsen/logrus"
@@ -47,12 +47,14 @@ type hostSvcHandlerTestSuite struct {
 	downMachines             []*mesos.MachineID
 	drainingMachine          *mesos.MachineID
 	drainingMachines         []*mesos.MachineID
+	drainedMachine           *mesos.MachineID
+	drainedMachines          []*mesos.MachineID
 	mockCtrl                 *gomock.Controller
 	handler                  *serviceHandler
-	mockDrainer              *hm.MockDrainer
+	mockDrainer              *dm.MockDrainer
 	mockMasterOperatorClient *ym.MockMasterOperatorClient
-	mockMaintenanceMap       *hm.MockMaintenanceHostInfoMap
 	mockHostPoolManager      *hpm_mock.MockHostPoolManager
+	mockHostInfoOps          *orm_mocks.MockHostInfoOps
 }
 
 func (suite *hostSvcHandlerTestSuite) SetupSuite() {
@@ -83,31 +85,38 @@ func (suite *hostSvcHandlerTestSuite) SetupSuite() {
 		Ip:       &drainingIP,
 	}
 	suite.drainingMachines = append(suite.drainingMachines, suite.drainingMachine)
+
+	drainedHost := "host4"
+	drainedIP := "172.17.0.8"
+	suite.drainedMachine = &mesos.MachineID{
+		Hostname: &drainedHost,
+		Ip:       &drainedIP,
+	}
+	suite.drainedMachines = append(suite.drainedMachines, suite.drainedMachine)
 }
 
 func (suite *hostSvcHandlerTestSuite) SetupTest() {
 	suite.mockCtrl = gomock.NewController(suite.T())
 	suite.ctx = context.Background()
 	suite.mockMasterOperatorClient = ym.NewMockMasterOperatorClient(suite.mockCtrl)
-	suite.mockMaintenanceMap = hm.NewMockMaintenanceHostInfoMap(suite.mockCtrl)
-	suite.mockDrainer = hm.NewMockDrainer(suite.mockCtrl)
+	suite.mockDrainer = dm.NewMockDrainer(suite.mockCtrl)
 	suite.mockHostPoolManager = hpm_mock.NewMockHostPoolManager(
 		suite.mockCtrl,
 	)
 	suite.handler.hostPoolManager = suite.mockHostPoolManager
 	suite.handler.drainer = suite.mockDrainer
+	suite.mockHostInfoOps = orm_mocks.NewMockHostInfoOps(suite.mockCtrl)
 
 	response := suite.makeAgentsResponse()
 	loader := &host.Loader{
-		OperatorClient:         suite.mockMasterOperatorClient,
-		Scope:                  tally.NewTestScope("", map[string]string{}),
-		MaintenanceHostInfoMap: suite.mockMaintenanceMap,
+		OperatorClient: suite.mockMasterOperatorClient,
+		Scope:          tally.NewTestScope("", map[string]string{}),
+		HostInfoOps:    suite.mockHostInfoOps,
 	}
-	suite.mockMaintenanceMap.EXPECT().
-		GetDrainingHostInfos(gomock.Any()).
-		Return([]*hpb.HostInfo{}).
-		Times(len(suite.upMachines) + len(suite.drainingMachines))
 	suite.mockMasterOperatorClient.EXPECT().Agents().Return(response, nil)
+	suite.mockHostInfoOps.EXPECT().
+		GetAll(gomock.Any()).
+		Return([]*hpb.HostInfo{}, nil).Times(1)
 	loader.Load(nil)
 }
 
@@ -204,8 +213,21 @@ func (suite *hostSvcHandlerTestSuite) TestQueryHosts() {
 	var (
 		hostInfos         []*hpb.HostInfo
 		drainingHostInfos []*hpb.HostInfo
+		drainedHostInfos  []*hpb.HostInfo
 		downHostsInfos    []*hpb.HostInfo
 	)
+
+	response := suite.makeAgentsResponse()
+	loader := &host.Loader{
+		OperatorClient: suite.mockMasterOperatorClient,
+		Scope:          tally.NewTestScope("", map[string]string{}),
+		HostInfoOps:    suite.mockHostInfoOps,
+	}
+	suite.mockMasterOperatorClient.EXPECT().Agents().Return(response, nil)
+	suite.mockHostInfoOps.EXPECT().
+		GetAll(gomock.Any()).
+		Return([]*hpb.HostInfo{}, nil)
+	loader.Load(nil)
 
 	for _, machine := range suite.downMachines {
 		downHostsInfos = append(downHostsInfos, &hpb.HostInfo{
@@ -233,18 +255,36 @@ func (suite *hostSvcHandlerTestSuite) TestQueryHosts() {
 		})
 	}
 
+	for _, machine := range suite.drainedMachines {
+		drainedHostInfos = append(drainedHostInfos, &hpb.HostInfo{
+			Hostname: machine.GetHostname(),
+			Ip:       machine.GetIp(),
+			State:    hpb.HostState_HOST_STATE_DRAINED,
+		})
+		hostInfos = append(hostInfos, &hpb.HostInfo{
+			Hostname: machine.GetHostname(),
+			Ip:       machine.GetIp(),
+			State:    hpb.HostState_HOST_STATE_DRAINED,
+		})
+	}
+
 	suite.mockDrainer.EXPECT().
-		GetDrainingHostInfos([]string{}).
-		Return(drainingHostInfos).
+		GetAllDrainingHostInfos().
+		Return(drainingHostInfos, nil).
 		AnyTimes()
 	suite.mockDrainer.EXPECT().
-		GetDownHostInfos([]string{}).
-		Return(downHostsInfos).
+		GetAllDrainedHostInfos().
+		Return(drainedHostInfos, nil).
+		AnyTimes()
+	suite.mockDrainer.EXPECT().
+		GetAllDownHostInfos().
+		Return(downHostsInfos, nil).
 		AnyTimes()
 	resp, err := suite.handler.QueryHosts(suite.ctx, &svcpb.QueryHostsRequest{
 		HostStates: []hpb.HostState{
 			hpb.HostState_HOST_STATE_UP,
 			hpb.HostState_HOST_STATE_DRAINING,
+			hpb.HostState_HOST_STATE_DRAINED,
 			hpb.HostState_HOST_STATE_DOWN,
 		},
 	})
@@ -253,6 +293,7 @@ func (suite *hostSvcHandlerTestSuite) TestQueryHosts() {
 	suite.Equal(
 		len(suite.upMachines)+
 			len(suite.drainingMachines)+
+			len(suite.drainedMachines)+
 			len(suite.downMachines),
 		len(resp.GetHostInfos()),
 	)
@@ -266,6 +307,9 @@ func (suite *hostSvcHandlerTestSuite) TestQueryHosts() {
 	}
 	for _, drainingMachine := range suite.drainingMachines {
 		suite.True(hostnameSet.Contains(drainingMachine.GetHostname()))
+	}
+	for _, drainedMachine := range suite.drainedMachines {
+		suite.True(hostnameSet.Contains(drainedMachine.GetHostname()))
 	}
 	for _, downMachine := range suite.downMachines {
 		suite.True(hostnameSet.Contains(downMachine.GetHostname()))
@@ -291,6 +335,7 @@ func (suite *hostSvcHandlerTestSuite) TestQueryHosts() {
 	suite.Equal(
 		len(suite.upMachines)+
 			len(suite.drainingMachines)+
+			len(suite.drainedMachines)+
 			len(suite.downMachines),
 		len(resp.GetHostInfos()),
 	)
@@ -305,12 +350,27 @@ func (suite *hostSvcHandlerTestSuite) TestQueryHosts() {
 	for _, drainingMachine := range suite.drainingMachines {
 		suite.True(hostnameSet.Contains(drainingMachine.GetHostname()))
 	}
+	for _, drainedMachine := range suite.drainedMachines {
+		suite.True(hostnameSet.Contains(drainedMachine.GetHostname()))
+	}
 	for _, downMachine := range suite.downMachines {
 		suite.True(hostnameSet.Contains(downMachine.GetHostname()))
 	}
 }
 
 func (suite *hostSvcHandlerTestSuite) TestQueryHostsError() {
+	response := suite.makeAgentsResponse()
+	loader := &host.Loader{
+		OperatorClient: suite.mockMasterOperatorClient,
+		Scope:          tally.NewTestScope("", map[string]string{}),
+		HostInfoOps:    suite.mockHostInfoOps,
+	}
+	suite.mockMasterOperatorClient.EXPECT().Agents().Return(response, nil)
+	suite.mockHostInfoOps.EXPECT().
+		GetAll(gomock.Any()).
+		Return([]*hpb.HostInfo{}, nil)
+	loader.Load(nil)
+
 	// Test ExtractIPFromMesosAgentPID error
 	hostname := "testhost"
 	pid := "invalidPID"
@@ -322,11 +382,14 @@ func (suite *hostSvcHandlerTestSuite) TestQueryHostsError() {
 	}
 
 	suite.mockDrainer.EXPECT().
-		GetDrainingHostInfos(gomock.Any()).
-		Return([]*hpb.HostInfo{}).Times(2)
+		GetAllDrainingHostInfos().
+		Return([]*hpb.HostInfo{}, nil).Times(2)
 	suite.mockDrainer.EXPECT().
-		GetDownHostInfos(gomock.Any()).
-		Return([]*hpb.HostInfo{}).Times(2)
+		GetAllDrainedHostInfos().
+		Return([]*hpb.HostInfo{}, nil).Times(2)
+	suite.mockDrainer.EXPECT().
+		GetAllDownHostInfos().
+		Return([]*hpb.HostInfo{}, nil).Times(2)
 
 	resp, err := suite.handler.QueryHosts(suite.ctx, &svcpb.QueryHostsRequest{
 		HostStates: []hpb.HostState{
@@ -337,13 +400,10 @@ func (suite *hostSvcHandlerTestSuite) TestQueryHostsError() {
 	suite.Nil(resp)
 
 	// Test 'No registered agents'
-	loader := &host.Loader{
-		OperatorClient:         suite.mockMasterOperatorClient,
-		Scope:                  tally.NewTestScope("", map[string]string{}),
-		MaintenanceHostInfoMap: suite.mockMaintenanceMap,
-	}
-
 	suite.mockMasterOperatorClient.EXPECT().Agents().Return(nil, nil)
+	suite.mockHostInfoOps.EXPECT().
+		GetAll(gomock.Any()).
+		Return([]*hpb.HostInfo{}, nil)
 	loader.Load(nil)
 
 	resp, err = suite.handler.QueryHosts(suite.ctx, &svcpb.QueryHostsRequest{

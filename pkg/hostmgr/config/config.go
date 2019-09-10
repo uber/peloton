@@ -17,6 +17,7 @@ package config
 import (
 	"time"
 
+	"github.com/uber/peloton/pkg/hostmgr/goalstate"
 	"github.com/uber/peloton/pkg/hostmgr/reconcile"
 	"github.com/uber/peloton/pkg/hostmgr/watchevent"
 )
@@ -92,4 +93,7 @@ type Config struct {
 	// HostPoolReconcileInterval is the time interval
 	// between every host pool reconcile loop.
 	HostPoolReconcileInterval time.Duration `yaml:"host_pool_reconcile_interval"`
+
+	// GoalState configuration
+	GoalState goalstate.Config `yaml:"goal_state"`
 }

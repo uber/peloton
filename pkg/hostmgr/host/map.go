@@ -15,22 +15,25 @@
 package host
 
 import (
+	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	mesos_master "github.com/uber/peloton/.gen/mesos/v1/master"
-	host "github.com/uber/peloton/.gen/peloton/api/v0/host"
+	pbhost "github.com/uber/peloton/.gen/peloton/api/v0/host"
 
 	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
-	"github.com/uber/peloton/pkg/hostmgr/util"
+	host_util "github.com/uber/peloton/pkg/hostmgr/util"
+	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 
 	log "github.com/sirupsen/logrus"
 	uatomic "github.com/uber-go/atomic"
 	"github.com/uber-go/tally"
-	"go.uber.org/yarpc/yarpcerrors"
 )
 
 // ResourceCapacity contains total quantity of various kinds of host resources.
@@ -95,10 +98,10 @@ func GetAgentMap() *AgentMap {
 // Loader loads hostmap from Mesos and stores in global singleton.
 type Loader struct {
 	sync.Mutex
-	OperatorClient         mpb.MasterOperatorClient
-	MaintenanceHostInfoMap MaintenanceHostInfoMap
-	SlackResourceTypes     []string
-	Scope                  tally.Scope
+	OperatorClient     mpb.MasterOperatorClient
+	SlackResourceTypes []string
+	Scope              tally.Scope
+	HostInfoOps        ormobjects.HostInfoOps // DB ops for host_info table
 }
 
 // Load hostmap into singleton.
@@ -117,9 +120,23 @@ func (loader *Loader) Load(_ *uatomic.Bool) {
 	}
 
 	wg := &sync.WaitGroup{}
+
+	// Get all hosts in draining state to not include them in the agent map
+	// TODO: replace with a host cache read
+	hostInfosFromDB, err := loader.HostInfoOps.GetAll(context.Background())
+	if err != nil {
+		log.WithError(err).Warning("failed to fetch from DB to exclude draining hosts from agent map")
+	}
+	hostsInDraining := make(map[string]bool)
+	for _, hostInfo := range hostInfosFromDB {
+		if hostInfo.GetState() == pbhost.HostState_HOST_STATE_DRAINING {
+			hostsInDraining[hostInfo.GetHostname()] = true
+		}
+	}
+
 	for _, agent := range agents.GetAgents() {
 		hostname := agent.GetAgentInfo().GetHostname()
-		if len(loader.MaintenanceHostInfoMap.GetDrainingHostInfos([]string{hostname})) != 0 {
+		if _, ok := hostsInDraining[hostname]; ok {
 			continue
 		}
 		m.RegisteredAgents[hostname] = agent
@@ -156,7 +173,7 @@ func getResourcesByType(
 			if r.GetRevocable() == nil {
 				return true
 			}
-			return util.IsSlackResourceType(r.GetName(), slackResourceTypes)
+			return host_util.IsSlackResourceType(r.GetName(), slackResourceTypes)
 		})
 
 	revRes, nonrevRes := scalar.FilterRevocableMesosResources(agentRes)
@@ -165,197 +182,72 @@ func getResourcesByType(
 	wg.Done()
 }
 
-// MaintenanceHostInfoMap defines an interface of a map of
-// HostInfos of hosts in maintenance
-// TODO: remove this once GetAgents Response has maintenance state of the agents
-type MaintenanceHostInfoMap interface {
-	// GetDrainingHostInfos returns HostInfo of the specified DRAINING hosts.
-	// If the hostFilter is empty then HostInfos of all DRAINING hosts is returned.
-	GetDrainingHostInfos(hostFilter []string) []*host.HostInfo
-	// GetDownHostInfos returns HostInfo of hosts in DOWN state
-	// If the hostFilter is empty then HostInfos of all DOWN hosts is returned.
-	GetDownHostInfos(hostFilter []string) []*host.HostInfo
-	// AddHostInfo adds a HostInfo to the map. AddHostInfo is called when a host
-	// transitions to a maintenance states (DRAINING and DRAINED).
-	AddHostInfo(hostInfo *host.HostInfo)
-	// RemoveHostInfo removes the host's hostInfo from
-	// the relevant host state based list of hostInfos
-	// RemoveHostInfo is needed to remove entries of hosts from the map when
-	// hosts transition from one of the maintenance states to UP state.
-	RemoveHostInfo(host string)
-	// UpdateHostState updates the HostInfo.HostState of the specified
-	// host from 'from' state to 'to' state.
-	UpdateHostState(hostname string, from host.HostState, to host.HostState) error
-	// ClearAndFillMap clears the content of the
-	// map and fills the map with the given host infos
-	ClearAndFillMap(hostInfos []*host.HostInfo)
-}
-
-// maintenanceHostInfoMap implements MaintenanceHostInfoMap interface
-type maintenanceHostInfoMap struct {
-	lock          sync.RWMutex
-	metrics       *Metrics
-	drainingHosts map[string]*host.HostInfo
-	downHosts     map[string]*host.HostInfo
-}
-
-// NewMaintenanceHostInfoMap returns a new MaintenanceHostInfoMap
-func NewMaintenanceHostInfoMap(scope tally.Scope) MaintenanceHostInfoMap {
-	return &maintenanceHostInfoMap{
-		metrics:       NewMetrics(scope.SubScope("maintenance_map")),
-		drainingHosts: make(map[string]*host.HostInfo),
-		downHosts:     make(map[string]*host.HostInfo),
-	}
-}
-
-// GetDrainingHostInfos returns HostInfo of the specified DRAINING hosts
-// If the hostFilter is empty then HostInfos of all DRAINING hosts is returned
-func (m *maintenanceHostInfoMap) GetDrainingHostInfos(hostFilter []string) []*host.HostInfo {
-	m.lock.RLock()
-	defer m.lock.RUnlock()
-
-	var hostInfos []*host.HostInfo
-	if len(hostFilter) == 0 {
-		for _, hostInfo := range m.drainingHosts {
-			hostInfos = append(hostInfos, hostInfo)
-		}
-		return hostInfos
+// IsRegisteredAsPelotonAgent returns true if the host is registered as Peloton agent
+func IsRegisteredAsPelotonAgent(hostname, pelotonAgentRole string) bool {
+	agentInfo := GetAgentInfo(hostname)
+	if agentInfo == nil {
+		return false
 	}
 
-	for _, host := range hostFilter {
-		if hostInfo, ok := m.drainingHosts[host]; ok {
-			hostInfos = append(hostInfos, hostInfo)
-		}
-	}
-	return hostInfos
-}
-
-// GetDownHosts returns HostInfo of the specified DOWN hosts
-// If the hostFilter is empty then HostInfos of all DOWN hosts is returned
-func (m *maintenanceHostInfoMap) GetDownHostInfos(hostFilter []string) []*host.HostInfo {
-	m.lock.RLock()
-	defer m.lock.RUnlock()
-
-	var hostInfos []*host.HostInfo
-	if len(hostFilter) == 0 {
-		for _, hostInfo := range m.downHosts {
-			hostInfos = append(hostInfos, hostInfo)
-		}
-		return hostInfos
-	}
-
-	for _, host := range hostFilter {
-		if hostInfo, ok := m.downHosts[host]; ok {
-			hostInfos = append(hostInfos, hostInfo)
-		}
-	}
-	return hostInfos
-}
-
-// AddHostInfo adds hostInfo to the specified host state bucket
-func (m *maintenanceHostInfoMap) AddHostInfo(
-	hostInfo *host.HostInfo) {
-	m.lock.Lock()
-	defer m.lock.Unlock()
-
-	switch hostInfo.State {
-	case host.HostState_HOST_STATE_DRAINING:
-		m.drainingHosts[hostInfo.GetHostname()] = hostInfo
-	case host.HostState_HOST_STATE_DOWN:
-		m.downHosts[hostInfo.GetHostname()] = hostInfo
-	}
-
-	m.metrics.DrainingHosts.Update(float64(len(m.drainingHosts)))
-	m.metrics.DownHosts.Update(float64(len(m.downHosts)))
-}
-
-// RemoveHostInfo removes the host's hostInfo from
-// the relevant host state based list of hostInfos
-func (m *maintenanceHostInfoMap) RemoveHostInfo(host string) {
-	m.lock.Lock()
-	defer m.lock.Unlock()
-
-	delete(m.drainingHosts, host)
-	delete(m.downHosts, host)
-
-	m.metrics.DrainingHosts.Update(float64(len(m.drainingHosts)))
-	m.metrics.DownHosts.Update(float64(len(m.downHosts)))
-}
-
-// UpdateHostState updates the HostInfo.HostState of the specified
-// host from 'from' state to 'to' state
-func (m *maintenanceHostInfoMap) UpdateHostState(
-	hostname string,
-	from host.HostState,
-	to host.HostState) error {
-
-	m.lock.Lock()
-	defer m.lock.Unlock()
-
-	if to != host.HostState_HOST_STATE_DRAINING &&
-		to != host.HostState_HOST_STATE_DOWN {
-		return yarpcerrors.InvalidArgumentErrorf("invalid target state")
-	}
-
-	if from == to {
-		return yarpcerrors.
-			InvalidArgumentErrorf("current and target states cannot be same")
-	}
-
-	var (
-		hostInfo *host.HostInfo
-		ok       bool
-	)
-
-	switch from {
-	case host.HostState_HOST_STATE_DRAINING:
-		if hostInfo, ok = m.drainingHosts[hostname]; !ok {
-			return yarpcerrors.InvalidArgumentErrorf("host not in expected state")
-		}
-		delete(m.drainingHosts, hostname)
-	case host.HostState_HOST_STATE_DOWN:
-		if hostInfo, ok = m.downHosts[hostname]; !ok {
-			return yarpcerrors.InvalidArgumentErrorf("host not in expected state")
-		}
-		delete(m.downHosts, hostname)
-	default:
-		return yarpcerrors.InvalidArgumentErrorf("invalid current state")
-	}
-
-	hostInfo.State = to
-	switch to {
-	case host.HostState_HOST_STATE_DRAINING:
-		m.drainingHosts[hostname] = hostInfo
-	case host.HostState_HOST_STATE_DOWN:
-		m.downHosts[hostname] = hostInfo
-	}
-
-	m.metrics.DrainingHosts.Update(float64(len(m.drainingHosts)))
-	m.metrics.DownHosts.Update(float64(len(m.downHosts)))
-	return nil
-}
-
-func (m *maintenanceHostInfoMap) ClearAndFillMap(hostInfos []*host.HostInfo) {
-	m.lock.Lock()
-	defer m.lock.Unlock()
-
-	for hostname := range m.drainingHosts {
-		delete(m.drainingHosts, hostname)
-	}
-
-	for hostname := range m.downHosts {
-		delete(m.downHosts, hostname)
-	}
-
-	for _, hostInfo := range hostInfos {
-		switch hostInfo.State {
-		case host.HostState_HOST_STATE_DRAINING:
-			m.drainingHosts[hostInfo.GetHostname()] = hostInfo
-		case host.HostState_HOST_STATE_DOWN:
-			m.downHosts[hostInfo.GetHostname()] = hostInfo
+	// For Peloton agents, AgentInfo->Resources->Reservations->Role would be set
+	// to Peloton role because of how agents are configured
+	// (check mesos.framework in /config/hostmgr/base.yaml)
+	for _, r := range agentInfo.GetResources() {
+		reservations := r.GetReservations()
+		// look at the latest(active) reservation info and check if the
+		// agent is registered to peloton framework. This check is necessary
+		// to ensure Peloton does not put into maintenance a host which
+		// it does not manage.
+		if len(reservations) > 0 &&
+			reservations[len(reservations)-1].GetRole() == pelotonAgentRole {
+			return true
 		}
 	}
 
-	m.metrics.DrainingHosts.Update(float64(len(m.drainingHosts)))
-	m.metrics.DownHosts.Update(float64(len(m.downHosts)))
+	return false
+}
+
+// IsHostRegistered returns whether the host is registered
+func IsHostRegistered(hostname string) bool {
+	return GetAgentInfo(hostname) != nil
+}
+
+// BuildHostInfoForRegisteredAgents builds host infos for registered agents
+func BuildHostInfoForRegisteredAgents() (map[string]*pbhost.HostInfo, error) {
+	agentMap := GetAgentMap()
+	if agentMap == nil || len(agentMap.RegisteredAgents) == 0 {
+		return nil, nil
+	}
+	upHosts := make(map[string]*pbhost.HostInfo)
+	for _, agent := range agentMap.RegisteredAgents {
+		hostname := agent.GetAgentInfo().GetHostname()
+		agentIP, _, err := util.ExtractIPAndPortFromMesosAgentPID(agent.GetPid())
+		if err != nil {
+			return nil, err
+		}
+		hostInfo := &pbhost.HostInfo{
+			Hostname: hostname,
+			Ip:       agentIP,
+			State:    pbhost.HostState_HOST_STATE_UP,
+		}
+		upHosts[hostname] = hostInfo
+	}
+	return upHosts, nil
+}
+
+// GetUpHostIP gets the IP address of a host in UP state
+func GetUpHostIP(hostname string) (string, error) {
+	agentMap := GetAgentMap()
+	if agentMap == nil || len(agentMap.RegisteredAgents) == 0 {
+		return "", fmt.Errorf("no registered agents")
+	}
+	if _, ok := agentMap.RegisteredAgents[hostname]; !ok {
+		return "", fmt.Errorf("unknown host %s", hostname)
+	}
+	pid := agentMap.RegisteredAgents[hostname].GetPid()
+	ip, _, err := util.ExtractIPAndPortFromMesosAgentPID(pid)
+	if err != nil {
+		return "", err
+	}
+	return ip, nil
 }

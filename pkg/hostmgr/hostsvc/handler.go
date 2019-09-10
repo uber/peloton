@@ -22,8 +22,8 @@ import (
 
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/stringset"
-	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/hostmgr/host"
+	"github.com/uber/peloton/pkg/hostmgr/host/drainer"
 	hostpool_mgr "github.com/uber/peloton/pkg/hostmgr/hostpool/manager"
 
 	log "github.com/sirupsen/logrus"
@@ -36,7 +36,7 @@ import (
 // serviceHandler implements peloton.api.host.svc.HostService
 type serviceHandler struct {
 	metrics         *Metrics
-	drainer         host.Drainer
+	drainer         drainer.Drainer
 	hostPoolManager hostpool_mgr.HostPoolManager
 }
 
@@ -44,7 +44,7 @@ type serviceHandler struct {
 func InitServiceHandler(
 	d *yarpc.Dispatcher,
 	parent tally.Scope,
-	drainer host.Drainer,
+	drainer drainer.Drainer,
 	hostPoolManager hostpool_mgr.HostPoolManager) {
 	handler := &serviceHandler{
 		metrics:         NewMetrics(parent.SubScope("hostsvc")),
@@ -64,7 +64,8 @@ func InitServiceHandler(
 // 		4.HostState_HOST_STATE_DOWN - The host is in maintenance.
 func (m *serviceHandler) QueryHosts(
 	ctx context.Context,
-	request *host_svc.QueryHostsRequest) (*host_svc.QueryHostsResponse, error) {
+	request *host_svc.QueryHostsRequest,
+) (*host_svc.QueryHostsResponse, error) {
 	m.metrics.QueryHostsAPI.Inc(1)
 
 	// Add request.HostStates to a set to remove duplicates
@@ -80,20 +81,33 @@ func (m *serviceHandler) QueryHosts(
 	}
 
 	var hostInfos []*hpb.HostInfo
-	drainingHostsInfo := m.drainer.GetDrainingHostInfos([]string{})
-	downHostsInfo := m.drainer.GetDownHostInfos([]string{})
+	drainingHostsInfo, err := m.drainer.GetAllDrainingHostInfos()
+	if err != nil {
+		return nil, err
+	}
+	drainedHostsInfo, err := m.drainer.GetAllDrainedHostInfos()
+	if err != nil {
+		return nil, err
+	}
+	downHostsInfo, err := m.drainer.GetAllDownHostInfos()
+	if err != nil {
+		return nil, err
+	}
 	for _, hostState := range hostStateSet.ToSlice() {
 		switch hostState {
 		case hpb.HostState_HOST_STATE_UP.String():
-			upHosts, err := buildHostInfoForRegisteredAgents()
+			upHosts, err := host.BuildHostInfoForRegisteredAgents()
 			if err != nil {
 				m.metrics.QueryHostsFail.Inc(1)
 				return nil, yarpcerrors.InternalErrorf(err.Error())
 			}
-			// Remove draining and down hosts from the result.
+			// Remove draining / drained / down hosts from the result.
 			// This is needed because AgentMap is updated every 15s
 			// and might not have the up to date information.
 			for _, hostInfo := range drainingHostsInfo {
+				delete(upHosts, hostInfo.GetHostname())
+			}
+			for _, hostInfo := range drainedHostsInfo {
 				delete(upHosts, hostInfo.GetHostname())
 			}
 			for _, hostInfo := range downHostsInfo {
@@ -105,6 +119,10 @@ func (m *serviceHandler) QueryHosts(
 			}
 		case hpb.HostState_HOST_STATE_DRAINING.String():
 			for _, hostInfo := range drainingHostsInfo {
+				hostInfos = append(hostInfos, hostInfo)
+			}
+		case hpb.HostState_HOST_STATE_DRAINED.String():
+			for _, hostInfo := range drainedHostsInfo {
 				hostInfos = append(hostInfos, hostInfo)
 			}
 		case hpb.HostState_HOST_STATE_DOWN.String():
@@ -308,30 +326,6 @@ func (m *serviceHandler) ChangeHostPool(
 		response = &host_svc.ChangeHostPoolResponse{}
 	}
 	return
-}
-
-// Build host info for registered agents
-func buildHostInfoForRegisteredAgents() (map[string]*hpb.HostInfo, error) {
-	agentMap := host.GetAgentMap()
-	if agentMap == nil || len(agentMap.RegisteredAgents) == 0 {
-		return nil, nil
-	}
-	upHosts := make(map[string]*hpb.HostInfo)
-	for _, agent := range agentMap.RegisteredAgents {
-		hostname := agent.GetAgentInfo().GetHostname()
-		agentIP, _, err := util.ExtractIPAndPortFromMesosAgentPID(
-			agent.GetPid())
-		if err != nil {
-			return nil, err
-		}
-		hostInfo := &hpb.HostInfo{
-			Hostname: hostname,
-			Ip:       agentIP,
-			State:    hpb.HostState_HOST_STATE_UP,
-		}
-		upHosts[hostname] = hostInfo
-	}
-	return upHosts, nil
 }
 
 // NewTestServiceHandler returns an empty new serviceHandler ptr for testing.

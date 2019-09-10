@@ -15,14 +15,11 @@
 package hostmgr
 
 import (
-	"fmt"
 	"net/http"
 	"testing"
 	"time"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
-	mesos_maintenance "github.com/uber/peloton/.gen/mesos/v1/maintenance"
-	mesos_master "github.com/uber/peloton/.gen/mesos/v1/master"
 	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
@@ -37,14 +34,12 @@ import (
 	"github.com/uber/peloton/pkg/common/rpc"
 	"github.com/uber/peloton/pkg/hostmgr/binpacking"
 	"github.com/uber/peloton/pkg/hostmgr/config"
-	host_mocks "github.com/uber/peloton/pkg/hostmgr/host/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/hostpool/manager"
 	hostmgr_mesos "github.com/uber/peloton/pkg/hostmgr/mesos"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
 	mpb_mocks "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/metrics"
 	"github.com/uber/peloton/pkg/hostmgr/offer"
-	qm "github.com/uber/peloton/pkg/hostmgr/queue/mocks"
 	watchmocks "github.com/uber/peloton/pkg/hostmgr/watchevent/mocks"
 	storage_mocks "github.com/uber/peloton/pkg/storage/mocks"
 	store_mocks "github.com/uber/peloton/pkg/storage/mocks"
@@ -69,18 +64,13 @@ const (
 
 type RecoveryTestSuite struct {
 	suite.Suite
-	mockCtrl                 *gomock.Controller
-	recoveryHandler          RecoveryHandler
-	mockTaskStore            *store_mocks.MockTaskStore
-	activeJobsOps            *objectmocks.MockActiveJobsOps
-	jobConfigOps             *objectmocks.MockJobConfigOps
-	jobRuntimeOps            *objectmocks.MockJobRuntimeOps
-	hostInfoOps              *objectmocks.MockHostInfoOps
-	mockMaintenanceQueue     *qm.MockMaintenanceQueue
-	mockMasterOperatorClient *mpb_mocks.MockMasterOperatorClient
-	drainingMachines         []*mesos.MachineID
-	downMachines             []*mesos.MachineID
-	maintenanceHostInfoMap   *host_mocks.MockMaintenanceHostInfoMap
+	mockCtrl        *gomock.Controller
+	recoveryHandler RecoveryHandler
+	mockTaskStore   *store_mocks.MockTaskStore
+	activeJobsOps   *objectmocks.MockActiveJobsOps
+	jobConfigOps    *objectmocks.MockJobConfigOps
+	jobRuntimeOps   *objectmocks.MockJobRuntimeOps
+	hostInfoOps     *objectmocks.MockHostInfoOps
 
 	resMgrClient *res_mocks.MockResourceManagerServiceYARPCClient
 
@@ -99,25 +89,6 @@ type RecoveryTestSuite struct {
 	eventStreamHandler *eventstream.Handler
 }
 
-func (suite *RecoveryTestSuite) SetupSuite() {
-	drainingHostname := "draininghost"
-	drainingIP := "172.17.0.6"
-	drainingMachine := &mesos.MachineID{
-		Hostname: &drainingHostname,
-		Ip:       &drainingIP,
-	}
-	suite.drainingMachines = append(suite.drainingMachines, drainingMachine)
-
-	downHostname := "downhost"
-	downIP := "172.17.0.7"
-	downMachine := &mesos.MachineID{
-		Hostname: &downHostname,
-		Ip:       &downIP,
-	}
-
-	suite.downMachines = append(suite.downMachines, downMachine)
-}
-
 func (suite *RecoveryTestSuite) SetupTest() {
 	log.Info("setting up test")
 	suite.mockCtrl = gomock.NewController(suite.T())
@@ -127,17 +98,10 @@ func (suite *RecoveryTestSuite) SetupTest() {
 	suite.jobRuntimeOps = objectmocks.NewMockJobRuntimeOps(suite.mockCtrl)
 	suite.hostInfoOps = objectmocks.NewMockHostInfoOps(suite.mockCtrl)
 
-	suite.mockMaintenanceQueue = qm.NewMockMaintenanceQueue(suite.mockCtrl)
-	suite.mockMasterOperatorClient = mpb_mocks.NewMockMasterOperatorClient(suite.mockCtrl)
-	suite.maintenanceHostInfoMap = host_mocks.NewMockMaintenanceHostInfoMap(suite.mockCtrl)
-
 	suite.recoveryHandler = NewRecoveryHandler(
 		tally.NoopScope,
 		suite.mockTaskStore,
-		&ormStore.Store{},
-		suite.mockMaintenanceQueue,
-		suite.mockMasterOperatorClient,
-		suite.maintenanceHostInfoMap)
+		&ormStore.Store{})
 
 	t := rpc.NewTransport()
 	outbound := t.NewOutbound(nil)
@@ -214,10 +178,6 @@ func (suite *RecoveryTestSuite) SetupTest() {
 		activeJobsOps: suite.activeJobsOps,
 		jobConfigOps:  suite.jobConfigOps,
 		jobRuntimeOps: suite.jobRuntimeOps,
-
-		maintenanceQueue:       suite.mockMaintenanceQueue,
-		masterOperatorClient:   suite.mockMasterOperatorClient,
-		maintenanceHostInfoMap: suite.maintenanceHostInfoMap,
 	}
 }
 
@@ -231,24 +191,6 @@ func TestHostmgrRecovery(t *testing.T) {
 }
 
 func (suite *RecoveryTestSuite) TestStart() {
-	var clusterDrainingMachines []*mesos_maintenance.ClusterStatus_DrainingMachine
-	for _, drainingMachine := range suite.drainingMachines {
-		clusterDrainingMachines = append(clusterDrainingMachines,
-			&mesos_maintenance.ClusterStatus_DrainingMachine{
-				Id: drainingMachine,
-			})
-	}
-
-	clusterStatus := &mesos_maintenance.ClusterStatus{
-		DrainingMachines: clusterDrainingMachines,
-		DownMachines:     suite.downMachines,
-	}
-
-	var drainingHostnames []string
-	for _, machine := range suite.drainingMachines {
-		drainingHostnames = append(drainingHostnames, machine.GetHostname())
-	}
-
 	hostname := "dummy_host"
 	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
 	taskID := "3851f4c0-a333-4f17-9438-d2f43fe9449e-1-1"
@@ -257,24 +199,6 @@ func (suite *RecoveryTestSuite) TestStart() {
 		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
 		InstanceCount: 1,
 	}
-
-	// Do Recovery for Maintenance Queue
-	suite.mockMaintenanceQueue.EXPECT().Clear()
-
-	suite.mockMasterOperatorClient.EXPECT().
-		GetMaintenanceStatus().
-		Return(&mesos_master.Response_GetMaintenanceStatus{
-			Status: clusterStatus,
-		}, nil)
-
-	suite.maintenanceHostInfoMap.EXPECT().
-		ClearAndFillMap(gomock.Any())
-
-	suite.mockMaintenanceQueue.EXPECT().
-		Enqueue(gomock.Any()).
-		Return(nil).Do(func(hostname string) {
-		suite.EqualValues(drainingHostnames[0], hostname)
-	})
 
 	// Do Recovery for Active Jobs
 	suite.activeJobsOps.EXPECT().
@@ -313,58 +237,12 @@ func (suite *RecoveryTestSuite) TestStart() {
 	suite.NoError(err)
 }
 
-func (suite *RecoveryTestSuite) TestStart_Error() {
-	suite.mockMaintenanceQueue.EXPECT().Clear()
-	suite.mockMasterOperatorClient.EXPECT().
-		GetMaintenanceStatus().
-		Return(nil, fmt.Errorf("Fake GetMaintenance error"))
-
-	err := suite.recoveryHandler.Start()
-	suite.Error(err)
-}
-
 func (suite *RecoveryTestSuite) TestStartDBRecoveryFailure() {
-	var clusterDrainingMachines []*mesos_maintenance.ClusterStatus_DrainingMachine
-	for _, drainingMachine := range suite.drainingMachines {
-		clusterDrainingMachines = append(clusterDrainingMachines,
-			&mesos_maintenance.ClusterStatus_DrainingMachine{
-				Id: drainingMachine,
-			})
-	}
-
-	clusterStatus := &mesos_maintenance.ClusterStatus{
-		DrainingMachines: clusterDrainingMachines,
-		DownMachines:     suite.downMachines,
-	}
-
-	var drainingHostnames []string
-	for _, machine := range suite.drainingMachines {
-		drainingHostnames = append(drainingHostnames, machine.GetHostname())
-	}
-
 	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
 	jobConfig := &job.JobConfig{
 		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
 		InstanceCount: 1,
 	}
-
-	// Do Recovery for Maintenance Queue
-	suite.mockMaintenanceQueue.EXPECT().Clear()
-
-	suite.mockMasterOperatorClient.EXPECT().
-		GetMaintenanceStatus().
-		Return(&mesos_master.Response_GetMaintenanceStatus{
-			Status: clusterStatus,
-		}, nil)
-
-	suite.maintenanceHostInfoMap.EXPECT().
-		ClearAndFillMap(gomock.Any())
-
-	suite.mockMaintenanceQueue.EXPECT().
-		Enqueue(gomock.Any()).
-		Return(nil).Do(func(hostname string) {
-		suite.EqualValues(drainingHostnames[0], hostname)
-	})
 
 	// Do Recovery for Active Jobs
 	suite.activeJobsOps.EXPECT().

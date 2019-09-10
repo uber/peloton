@@ -21,6 +21,7 @@ import (
 
 	hostpb "github.com/uber/peloton/.gen/peloton/api/v0/host"
 	pelotonpb "github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+
 	"github.com/uber/peloton/pkg/storage/objects/base"
 
 	"go.uber.org/yarpc/yarpcerrors"
@@ -91,15 +92,25 @@ type HostInfoOps interface {
 	// GetAll retrieves all rows from the table (with no selection on any key).
 	GetAll(ctx context.Context) ([]*hostpb.HostInfo, error)
 
-	// Update modifies an object in the table.
-	Update(
+	// UpdateState updates the state of an object in the table.
+	UpdateState(
 		ctx context.Context,
 		hostname string,
 		state hostpb.HostState,
+	) error
+
+	// UpdateGoalState updates the goal state of an object in the table.
+	UpdateGoalState(
+		ctx context.Context,
+		hostname string,
 		goalState hostpb.HostState,
+	) error
+
+	// UpdateLables updates the labels an object in the table.
+	UpdateLabels(
+		ctx context.Context,
+		hostname string,
 		labels map[string]string,
-		currentPool string,
-		desiredPool string,
 	) error
 
 	// Delete removes an object from the table based on primary key.
@@ -211,31 +222,68 @@ func (d *hostInfoOps) GetAll(ctx context.Context) ([]*hostpb.HostInfo, error) {
 	return hostInfos, nil
 }
 
-// Update the host state and goal state of a host info by its hostname pk.
-func (d *hostInfoOps) Update(
+// Update the host state of a host info by its hostname pk
+func (d *hostInfoOps) UpdateState(
 	ctx context.Context,
 	hostname string,
 	state hostpb.HostState,
+) error {
+	hostInfoObject := &HostInfoObject{
+		Hostname:   base.NewOptionalString(hostname),
+		State:      state.String(),
+		UpdateTime: time.Now(),
+	}
+	fieldsToUpdate := []string{"State", "UpdateTime"}
+	if err := d.store.oClient.Update(
+		ctx,
+		hostInfoObject,
+		fieldsToUpdate...); err != nil {
+		d.store.metrics.OrmHostInfoMetrics.HostInfoUpdateFail.Inc(1)
+		return err
+	}
+	d.store.metrics.OrmHostInfoMetrics.HostInfoUpdate.Inc(1)
+	return nil
+}
+
+// Update the host goal state of a host info by its hostname pk
+func (d *hostInfoOps) UpdateGoalState(
+	ctx context.Context,
+	hostname string,
 	goalState hostpb.HostState,
+) error {
+	hostInfoObject := &HostInfoObject{
+		Hostname:   base.NewOptionalString(hostname),
+		GoalState:  goalState.String(),
+		UpdateTime: time.Now(),
+	}
+	fieldsToUpdate := []string{"GoalState", "UpdateTime"}
+	if err := d.store.oClient.Update(
+		ctx,
+		hostInfoObject,
+		fieldsToUpdate...); err != nil {
+		d.store.metrics.OrmHostInfoMetrics.HostInfoUpdateFail.Inc(1)
+		return err
+	}
+	d.store.metrics.OrmHostInfoMetrics.HostInfoUpdate.Inc(1)
+	return nil
+}
+
+// Update the labels of a host info by its hostname pk
+func (d *hostInfoOps) UpdateLabels(
+	ctx context.Context,
+	hostname string,
 	labels map[string]string,
-	currentPool string,
-	desiredPool string,
 ) error {
 	bytes, err := json.Marshal(&labels)
 	if err != nil {
 		return err
 	}
 	hostInfoObject := &HostInfoObject{
-		Hostname:    base.NewOptionalString(hostname),
-		State:       state.String(),
-		GoalState:   goalState.String(),
-		Labels:      string(bytes),
-		CurrentPool: currentPool,
-		DesiredPool: desiredPool,
-		UpdateTime:  time.Now(),
+		Hostname:   base.NewOptionalString(hostname),
+		Labels:     string(bytes),
+		UpdateTime: time.Now(),
 	}
-	fieldsToUpdate := []string{"State", "GoalState", "Labels", "CurrentPool",
-		"DesiredPool", "UpdateTime"}
+	fieldsToUpdate := []string{"Labels", "UpdateTime"}
 	if err := d.store.oClient.Update(
 		ctx,
 		hostInfoObject,

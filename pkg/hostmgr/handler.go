@@ -31,11 +31,11 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/constraints"
-	"github.com/uber/peloton/pkg/common/queue"
 	"github.com/uber/peloton/pkg/common/util"
 	yarpcutil "github.com/uber/peloton/pkg/common/util/yarpc"
 	"github.com/uber/peloton/pkg/hostmgr/config"
 	"github.com/uber/peloton/pkg/hostmgr/factory/task"
+	"github.com/uber/peloton/pkg/hostmgr/goalstate"
 	"github.com/uber/peloton/pkg/hostmgr/host"
 	"github.com/uber/peloton/pkg/hostmgr/hostpool/manager"
 	hostmgr_mesos "github.com/uber/peloton/pkg/hostmgr/mesos"
@@ -43,12 +43,12 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/metrics"
 	"github.com/uber/peloton/pkg/hostmgr/offer"
 	"github.com/uber/peloton/pkg/hostmgr/offer/offerpool"
-	mqueue "github.com/uber/peloton/pkg/hostmgr/queue"
 	"github.com/uber/peloton/pkg/hostmgr/reserver"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 	"github.com/uber/peloton/pkg/hostmgr/summary"
 	hmutil "github.com/uber/peloton/pkg/hostmgr/util"
 	"github.com/uber/peloton/pkg/hostmgr/watchevent"
+	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -81,21 +81,21 @@ var (
 
 // ServiceHandler implements peloton.private.hostmgr.InternalHostService.
 type ServiceHandler struct {
-	schedulerClient        mpb.SchedulerClient
-	operatorMasterClient   mpb.MasterOperatorClient
-	metrics                *metrics.Metrics
-	offerPool              offerpool.Pool
-	frameworkInfoProvider  hostmgr_mesos.FrameworkInfoProvider
-	roleName               string
-	mesosDetector          hostmgr_mesos.MasterDetector
-	reserver               reserver.Reserver
-	hmConfig               config.Config
-	maintenanceQueue       mqueue.MaintenanceQueue // queue containing machineIDs of the machines to be put into maintenance
-	slackResourceTypes     []string
-	maintenanceHostInfoMap host.MaintenanceHostInfoMap
-	watchProcessor         watchevent.WatchProcessor
-	disableKillTasks       atomic.Bool
-	hostPoolManager        manager.HostPoolManager
+	schedulerClient       mpb.SchedulerClient
+	operatorMasterClient  mpb.MasterOperatorClient
+	metrics               *metrics.Metrics
+	offerPool             offerpool.Pool
+	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider
+	roleName              string
+	mesosDetector         hostmgr_mesos.MasterDetector
+	reserver              reserver.Reserver
+	hmConfig              config.Config
+	slackResourceTypes    []string
+	watchProcessor        watchevent.WatchProcessor
+	disableKillTasks      atomic.Bool
+	hostPoolManager       manager.HostPoolManager
+	goalStateDriver       goalstate.Driver
+	hostInfoOps           ormobjects.HostInfoOps // DB ops for host_info table
 }
 
 // NewServiceHandler creates a new ServiceHandler.
@@ -108,26 +108,26 @@ func NewServiceHandler(
 	mesosConfig hostmgr_mesos.Config,
 	mesosDetector hostmgr_mesos.MasterDetector,
 	hmConfig *config.Config,
-	maintenanceQueue mqueue.MaintenanceQueue,
 	slackResourceTypes []string,
-	maintenanceHostInfoMap host.MaintenanceHostInfoMap,
 	watchProcessor watchevent.WatchProcessor,
 	hostPoolManager manager.HostPoolManager,
+	goalStateDriver goalstate.Driver,
+	ormStore *ormobjects.Store,
 ) *ServiceHandler {
 
 	handler := &ServiceHandler{
-		schedulerClient:        schedulerClient,
-		operatorMasterClient:   masterOperatorClient,
-		metrics:                metrics,
-		offerPool:              offer.GetEventHandler().GetOfferPool(),
-		frameworkInfoProvider:  frameworkInfoProvider,
-		roleName:               mesosConfig.Framework.Role,
-		mesosDetector:          mesosDetector,
-		maintenanceQueue:       maintenanceQueue,
-		slackResourceTypes:     slackResourceTypes,
-		maintenanceHostInfoMap: maintenanceHostInfoMap,
-		watchProcessor:         watchProcessor,
-		hostPoolManager:        hostPoolManager,
+		schedulerClient:       schedulerClient,
+		operatorMasterClient:  masterOperatorClient,
+		metrics:               metrics,
+		offerPool:             offer.GetEventHandler().GetOfferPool(),
+		frameworkInfoProvider: frameworkInfoProvider,
+		roleName:              mesosConfig.Framework.Role,
+		mesosDetector:         mesosDetector,
+		slackResourceTypes:    slackResourceTypes,
+		watchProcessor:        watchProcessor,
+		hostPoolManager:       hostPoolManager,
+		goalStateDriver:       goalStateDriver,
+		hostInfoOps:           ormobjects.NewHostInfoOps(ormStore),
 	}
 	// Creating Reserver object for handler
 	handler.reserver = reserver.NewReserver(
@@ -1427,31 +1427,29 @@ func (h *ServiceHandler) GetDrainingHosts(
 	ctx context.Context,
 	request *hostsvc.GetDrainingHostsRequest,
 ) (*hostsvc.GetDrainingHostsResponse, error) {
-	timeout := time.Duration(request.GetTimeout())
-	var hostnames []string
+	h.metrics.GetDrainingHosts.Inc(1)
 	limit := request.GetLimit()
-	// If limit is not specified, set limit to length of maintenance queue
-	if limit == 0 {
-		limit = uint32(h.maintenanceQueue.Length())
-	}
 
-	for i := uint32(0); i < limit; i++ {
-		hostname, err := h.maintenanceQueue.Dequeue(timeout * time.Millisecond)
-		if err != nil {
-			if _, isTimeout := err.(queue.DequeueTimeOutError); !isTimeout {
-				// error is not due to timeout so we log the error
-				log.WithError(err).
-					Error("unable to dequeue task from maintenance queue")
-				h.metrics.GetDrainingHostsFail.Inc(1)
-				return nil, yarpcerrors.InternalErrorf(err.Error())
-			}
+	// Get all hosts in maintenance from DB
+	hostInfos, err := h.hostInfoOps.GetAll(ctx)
+	if err != nil {
+		h.metrics.GetDrainingHostsFail.Inc(1)
+		return nil, err
+	}
+	// Filter in only hosts in DRAINING state
+	var hostnames []string
+	for _, h := range hostInfos {
+		if limit > 0 && uint32(len(hostnames)) == limit {
 			break
 		}
-		hostnames = append(hostnames, hostname)
-		h.metrics.GetDrainingHosts.Inc(1)
+		if h.GetState() == hpb.HostState_HOST_STATE_DRAINING {
+			hostnames = append(hostnames, h.GetHostname())
+		}
 	}
-	log.WithField("hosts", hostnames).
-		Debug("Maintenance Queue - Dequeued hosts")
+
+	log.WithField("hostnames", hostnames).
+		Debug("draining hosts returned by GetDrainingHosts")
+
 	return &hostsvc.GetDrainingHostsResponse{
 		Hostnames: hostnames,
 	}, nil
@@ -1464,49 +1462,30 @@ func (h *ServiceHandler) MarkHostDrained(
 	ctx context.Context,
 	request *hostsvc.MarkHostDrainedRequest,
 ) (*hostsvc.MarkHostDrainedResponse, error) {
-
-	// Verify the host requested is in DRAINING state
-	var hostInfo *hpb.HostInfo
-	for _, hostInfoDraining := range h.maintenanceHostInfoMap.GetDrainingHostInfos([]string{}) {
-		if hostInfoDraining.GetHostname() == request.GetHostname() {
-			hostInfo = hostInfoDraining
-		}
+	// Get host from DB
+	hostInfo, err := h.hostInfoOps.Get(ctx, request.GetHostname())
+	if err != nil {
+		return nil, err
 	}
-	if hostInfo == nil {
-		// NOOP if host is not in DRAINING state
+	// Validate host current state is DRAINING
+	if hostInfo.GetState() != hpb.HostState_HOST_STATE_DRAINING {
+		log.WithField("hostname", request.GetHostname()).
+			Error("host cannot be marked as drained since it is not in draining state")
 		return nil, yarpcerrors.NotFoundErrorf("Host not in DRAINING state")
 	}
 
-	machineID := &mesos.MachineID{
-		Hostname: &hostInfo.Hostname,
-		Ip:       &hostInfo.Ip,
+	// Update host state to DRAINED in DB
+	if err := h.hostInfoOps.UpdateState(
+		ctx,
+		request.GetHostname(),
+		hpb.HostState_HOST_STATE_DRAINED); err != nil {
+		return nil, err
 	}
 
-	// Start maintenance on the host by posting to
-	// /machine/down endpoint of the Mesos Master
-	if err := h.operatorMasterClient.StartMaintenance([]*mesos.MachineID{machineID}); err != nil {
-		log.WithError(err).
-			WithField("machine", machineID).
-			Error(fmt.Sprintf("failed to down host"))
-		h.metrics.MarkHostDrainedFail.Inc(1)
-		return nil, yarpcerrors.InternalErrorf(err.Error())
-	}
+	log.WithField("hostname", request.GetHostname()).Info("host marked as drained")
 
-	if err := h.maintenanceHostInfoMap.UpdateHostState(
-		machineID.GetHostname(),
-		hpb.HostState_HOST_STATE_DRAINING,
-		hpb.HostState_HOST_STATE_DOWN); err != nil {
-		// log error and add this host to the list of downedHosts since
-		// the Mesos StartMaintenance call was successful. The maintenance
-		// map will converge on reconciliation with Mesos master.
-		log.WithFields(
-			log.Fields{
-				"hostname": machineID.GetHostname(),
-				"from":     hpb.HostState_HOST_STATE_DRAINING.String(),
-				"to":       hpb.HostState_HOST_STATE_DOWN.String(),
-			}).WithError(err).
-			Error("failed to update host state in host map")
-	}
+	// Enqueue into the Goal State Engine
+	h.goalStateDriver.EnqueueHost(request.GetHostname(), time.Now())
 
 	h.metrics.MarkHostDrained.Inc(1)
 	return &hostsvc.MarkHostDrainedResponse{

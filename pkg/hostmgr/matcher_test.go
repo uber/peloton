@@ -20,21 +20,22 @@ import (
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	mesos_master "github.com/uber/peloton/.gen/mesos/v1/master"
-	hpb "github.com/uber/peloton/.gen/peloton/api/v0/host"
+	pbhost "github.com/uber/peloton/.gen/peloton/api/v0/host"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
+
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/constraints"
 	constraint_mocks "github.com/uber/peloton/pkg/common/constraints/mocks"
 	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/hostmgr/host"
-	hm "github.com/uber/peloton/pkg/hostmgr/host/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/hostpool/manager"
 	hostpool_manager_mocks "github.com/uber/peloton/pkg/hostmgr/hostpool/manager/mocks"
 	hostmgr_hostpool_mocks "github.com/uber/peloton/pkg/hostmgr/hostpool/mocks"
 	mock_mpb "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
+	orm_mocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
@@ -48,41 +49,36 @@ var (
 type MatcherTestSuite struct {
 	suite.Suite
 
-	ctrl               *gomock.Controller
-	testScope          tally.TestScope
-	operatorClient     *mock_mpb.MockMasterOperatorClient
-	response           *mesos_master.Response_GetAgents
-	mockMaintenanceMap *hm.MockMaintenanceHostInfoMap
-	hostPoolManager    *hostpool_manager_mocks.MockHostPoolManager
+	ctrl            *gomock.Controller
+	testScope       tally.TestScope
+	operatorClient  *mock_mpb.MockMasterOperatorClient
+	response        *mesos_master.Response_GetAgents
+	hostPoolManager *hostpool_manager_mocks.MockHostPoolManager
+	mockHostInfoOps *orm_mocks.MockHostInfoOps
 }
 
 func (suite *MatcherTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.testScope = tally.NewTestScope("", map[string]string{})
 	suite.operatorClient = mock_mpb.NewMockMasterOperatorClient(suite.ctrl)
-	suite.mockMaintenanceMap = hm.NewMockMaintenanceHostInfoMap(suite.ctrl)
-	suite.InitializeHosts()
 	suite.hostPoolManager = hostpool_manager_mocks.NewMockHostPoolManager(suite.ctrl)
+	suite.mockHostInfoOps = orm_mocks.NewMockHostInfoOps(suite.ctrl)
+	suite.InitializeHosts()
 }
 
 // InitializeHosts creates the host map for mesos agents
 func (suite *MatcherTestSuite) InitializeHosts() {
 	loader := &host.Loader{
-		OperatorClient:         suite.operatorClient,
-		Scope:                  suite.testScope,
-		MaintenanceHostInfoMap: suite.mockMaintenanceMap,
+		OperatorClient: suite.operatorClient,
+		Scope:          suite.testScope,
+		HostInfoOps:    suite.mockHostInfoOps,
 	}
 	numAgents := 2
 	suite.response = makeAgentsResponse(numAgents)
-	gomock.InOrder(
-		suite.operatorClient.EXPECT().Agents().Return(suite.response, nil),
-
-		suite.mockMaintenanceMap.EXPECT().
-			GetDrainingHostInfos(gomock.Any()).
-			Return([]*hpb.HostInfo{}).
-			Times(len(suite.response.GetAgents())),
-	)
-
+	suite.operatorClient.EXPECT().Agents().Return(suite.response, nil)
+	suite.mockHostInfoOps.EXPECT().
+		GetAll(gomock.Any()).
+		Return([]*pbhost.HostInfo{}, nil)
 	loader.Load(nil)
 }
 
@@ -402,24 +398,19 @@ func (suite *MatcherTestSuite) TestMatchHostsFilterWithDifferentHosts() {
 
 	// Creating different resources hosts in the host map
 	loader := &host.Loader{
-		OperatorClient:         suite.operatorClient,
-		Scope:                  suite.testScope,
-		SlackResourceTypes:     []string{common.MesosCPU},
-		MaintenanceHostInfoMap: suite.mockMaintenanceMap,
+		OperatorClient:     suite.operatorClient,
+		Scope:              suite.testScope,
+		SlackResourceTypes: []string{common.MesosCPU},
+		HostInfoOps:        suite.mockHostInfoOps,
 	}
 	numAgents := 2
 	response := createAgentsResponse(numAgents, false)
-
-	gomock.InOrder(
-		suite.operatorClient.EXPECT().Agents().Return(response, nil),
-
-		suite.mockMaintenanceMap.EXPECT().
-			GetDrainingHostInfos(gomock.Any()).
-			Return([]*hpb.HostInfo{}).
-			Times(len(suite.response.GetAgents())),
-	)
-
+	suite.operatorClient.EXPECT().Agents().Return(response, nil)
+	suite.mockHostInfoOps.EXPECT().
+		GetAll(gomock.Any()).
+		Return([]*pbhost.HostInfo{}, nil)
 	loader.Load(nil)
+
 	filter := &hostsvc.HostFilter{
 		Quantity: &hostsvc.QuantityControl{
 			MaxHosts: 1,
@@ -448,23 +439,18 @@ func (suite *MatcherTestSuite) TestMatchHostsFilterWithDifferentHosts() {
 func (suite *MatcherTestSuite) TestMatchHostsFilterWithZeroResourceHosts() {
 	// Creating host map with not sufficient resources
 	loader := &host.Loader{
-		OperatorClient:         suite.operatorClient,
-		Scope:                  suite.testScope,
-		MaintenanceHostInfoMap: suite.mockMaintenanceMap,
+		OperatorClient: suite.operatorClient,
+		Scope:          suite.testScope,
+		HostInfoOps:    suite.mockHostInfoOps,
 	}
 	numAgents := 2
 	response := createAgentsResponse(numAgents, true)
-
-	gomock.InOrder(
-		suite.operatorClient.EXPECT().Agents().Return(response, nil),
-
-		suite.mockMaintenanceMap.EXPECT().
-			GetDrainingHostInfos(gomock.Any()).
-			Return([]*hpb.HostInfo{}).
-			Times(len(suite.response.GetAgents())),
-	)
-
+	suite.operatorClient.EXPECT().Agents().Return(response, nil)
+	suite.mockHostInfoOps.EXPECT().
+		GetAll(gomock.Any()).
+		Return([]*pbhost.HostInfo{}, nil)
 	loader.Load(nil)
+
 	filter := &hostsvc.HostFilter{
 		Quantity: &hostsvc.QuantityControl{
 			MaxHosts: 1,
@@ -498,9 +484,9 @@ func (suite *MatcherTestSuite) TestMatchHostsFilterExclusiveHosts() {
 		GetPoolByHostname(gomock.Any()).Return(mockHostPool, nil).AnyTimes()
 
 	loader := &host.Loader{
-		OperatorClient:         suite.operatorClient,
-		Scope:                  suite.testScope,
-		MaintenanceHostInfoMap: suite.mockMaintenanceMap,
+		OperatorClient: suite.operatorClient,
+		Scope:          suite.testScope,
+		HostInfoOps:    suite.mockHostInfoOps,
 	}
 	response := createAgentsResponse(2, true)
 	// Make agent at index[0] to have exclusive attribute
@@ -517,15 +503,10 @@ func (suite *MatcherTestSuite) TestMatchHostsFilterExclusiveHosts() {
 		},
 	}
 
-	gomock.InOrder(
-		suite.operatorClient.EXPECT().Agents().Return(response, nil),
-
-		suite.mockMaintenanceMap.EXPECT().
-			GetDrainingHostInfos(gomock.Any()).
-			Return([]*hpb.HostInfo{}).
-			Times(len(suite.response.GetAgents())),
-	)
-
+	suite.operatorClient.EXPECT().Agents().Return(response, nil)
+	suite.mockHostInfoOps.EXPECT().
+		GetAll(gomock.Any()).
+		Return([]*pbhost.HostInfo{}, nil)
 	loader.Load(nil)
 
 	testTable := []struct {

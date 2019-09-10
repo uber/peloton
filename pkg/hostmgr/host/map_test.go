@@ -21,13 +21,13 @@ import (
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	mesos_master "github.com/uber/peloton/.gen/mesos/v1/master"
-	host "github.com/uber/peloton/.gen/peloton/api/v0/host"
+	pbhost "github.com/uber/peloton/.gen/peloton/api/v0/host"
 
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/util"
-	hm "github.com/uber/peloton/pkg/hostmgr/host/mocks"
 	mock_mpb "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
+	orm_mocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
@@ -41,15 +41,17 @@ var (
 type hostMapTestSuite struct {
 	suite.Suite
 
-	ctrl           *gomock.Controller
-	testScope      tally.TestScope
-	operatorClient *mock_mpb.MockMasterOperatorClient
+	ctrl            *gomock.Controller
+	testScope       tally.TestScope
+	operatorClient  *mock_mpb.MockMasterOperatorClient
+	mockHostInfoOps *orm_mocks.MockHostInfoOps
 }
 
 func (suite *hostMapTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.testScope = tally.NewTestScope("", map[string]string{})
 	suite.operatorClient = mock_mpb.NewMockMasterOperatorClient(suite.ctrl)
+	suite.mockHostInfoOps = orm_mocks.NewMockHostInfoOps(suite.ctrl)
 }
 
 func makeAgentsResponse(numAgents int) *mesos_master.Response_GetAgents {
@@ -91,17 +93,19 @@ func makeAgentsResponse(numAgents int) *mesos_master.Response_GetAgents {
 		for _, r := range resources {
 			r.Reservations = []*mesos.Resource_ReservationInfo{
 				{
-					Role: &[]string{pelotonAgentRole}[0],
+					Role: &[]string{"peloton"}[0],
 				},
 			}
 		}
 
+		pid := fmt.Sprintf("slave(%d)@%d.%d.%d.%d:123", i, i, i, i, i)
 		getAgent := &mesos_master.Response_GetAgents_Agent{
 			AgentInfo: &mesos.AgentInfo{
 				Hostname:  &tmpID,
 				Resources: resources,
 			},
 			TotalResources: resources,
+			Pid:            &pid,
 		}
 		response.Agents = append(response.Agents, getAgent)
 	}
@@ -112,12 +116,11 @@ func makeAgentsResponse(numAgents int) *mesos_master.Response_GetAgents {
 func (suite *hostMapTestSuite) TestRefresh() {
 	defer suite.ctrl.Finish()
 
-	mockMaintenanceMap := hm.NewMockMaintenanceHostInfoMap(suite.ctrl)
 	loader := &Loader{
-		OperatorClient:         suite.operatorClient,
-		Scope:                  suite.testScope,
-		SlackResourceTypes:     []string{common.MesosCPU},
-		MaintenanceHostInfoMap: mockMaintenanceMap,
+		OperatorClient:     suite.operatorClient,
+		Scope:              suite.testScope,
+		SlackResourceTypes: []string{common.MesosCPU},
+		HostInfoOps:        suite.mockHostInfoOps,
 	}
 
 	gomock.InOrder(
@@ -129,21 +132,16 @@ func (suite *hostMapTestSuite) TestRefresh() {
 	numAgents := 2000
 	response := makeAgentsResponse(numAgents)
 
-	mockMaintenanceMap.EXPECT().
-		GetDrainingHostInfos(gomock.Any()).
-		Return([]*host.HostInfo{}).Times(len(response.GetAgents()) - 1)
-
 	gomock.InOrder(
 		suite.operatorClient.EXPECT().Agents().Return(response, nil),
-
-		mockMaintenanceMap.EXPECT().
-			GetDrainingHostInfos([]string{*response.Agents[numAgents-1].AgentInfo.Hostname}).
-			Return([]*host.HostInfo{
+		suite.mockHostInfoOps.EXPECT().
+			GetAll(gomock.Any()).
+			Return([]*pbhost.HostInfo{
 				{
 					Hostname: *response.Agents[numAgents-1].AgentInfo.Hostname,
-					State:    host.HostState_HOST_STATE_DRAINING,
+					State:    pbhost.HostState_HOST_STATE_DRAINING,
 				},
-			}),
+			}, nil),
 	)
 	loader.Load(nil)
 
@@ -191,154 +189,98 @@ func (suite *hostMapTestSuite) TestRefresh() {
 	suite.Equal(float64(numRegisteredAgents*_defaultResourceValue), gauges["gpus+"].Value())
 }
 
-func (suite *hostMapTestSuite) TestMaintenanceHostInfoMap() {
-	maintenanceHostInfoMap := NewMaintenanceHostInfoMap(tally.NoopScope)
-	suite.NotNil(maintenanceHostInfoMap)
-
-	drainingHostInfos := []*host.HostInfo{
-		{
-			Hostname: "host1",
-			Ip:       "0.0.0.0",
-			State:    host.HostState_HOST_STATE_DRAINING,
-		},
+// TestIsRegisteredAsPelotonAgent tests IsRegisteredAsPelotonAgent
+func (suite *hostMapTestSuite) TestIsRegisteredAsPelotonAgent() {
+	loader := &Loader{
+		OperatorClient: suite.operatorClient,
+		Scope:          tally.NoopScope,
+		HostInfoOps:    suite.mockHostInfoOps,
 	}
 
-	downHostInfos := []*host.HostInfo{
-		{
-			Hostname: "host2",
-			Ip:       "0.0.0.1",
-			State:    host.HostState_HOST_STATE_DOWN,
-		},
+	// Mock 1 host `id-0` as an non-peloton agent
+	agentsResponse := makeAgentsResponse(2)
+	for _, r := range agentsResponse.Agents[0].GetAgentInfo().GetResources() {
+		r.Reservations[0].Role = &[]string{"*"}[0]
+	}
+	suite.operatorClient.EXPECT().Agents().Return(agentsResponse, nil)
+	suite.mockHostInfoOps.EXPECT().
+		GetAll(gomock.Any()).
+		Return([]*pbhost.HostInfo{}, nil)
+	loader.Load(nil)
+	suite.False(IsRegisteredAsPelotonAgent("id-0", "peloton"))
+	suite.True(IsRegisteredAsPelotonAgent("id-1", "peloton"))
+}
+
+func (suite *hostMapTestSuite) TestIsHostRegistered() {
+	loader := &Loader{
+		OperatorClient: suite.operatorClient,
+		Scope:          tally.NoopScope,
+		HostInfoOps:    suite.mockHostInfoOps,
+	}
+	agentsResponse := makeAgentsResponse(1)
+	suite.operatorClient.EXPECT().Agents().Return(agentsResponse, nil)
+	suite.mockHostInfoOps.EXPECT().
+		GetAll(gomock.Any()).
+		Return([]*pbhost.HostInfo{}, nil)
+	loader.Load(nil)
+	suite.True(IsHostRegistered("id-0"))
+	suite.False(IsHostRegistered("id-1"))
+}
+
+func (suite *hostMapTestSuite) TestBuildHostInfoForRegisteredAgents() {
+	loader := &Loader{
+		OperatorClient: suite.operatorClient,
+		Scope:          tally.NoopScope,
+		HostInfoOps:    suite.mockHostInfoOps,
+	}
+	agentsResponse := makeAgentsResponse(2)
+	suite.operatorClient.EXPECT().Agents().Return(agentsResponse, nil)
+	suite.mockHostInfoOps.EXPECT().
+		GetAll(gomock.Any()).
+		Return([]*pbhost.HostInfo{}, nil)
+	loader.Load(nil)
+
+	hostInfos := make(map[string]*pbhost.HostInfo)
+	hostInfos["id-0"] = &pbhost.HostInfo{
+		Hostname: "id-0",
+		Ip:       "0.0.0.0",
+		State:    pbhost.HostState_HOST_STATE_UP,
+	}
+	hostInfos["id-1"] = &pbhost.HostInfo{
+		Hostname: "id-1",
+		Ip:       "1.1.1.1",
+		State:    pbhost.HostState_HOST_STATE_UP,
 	}
 
-	var (
-		drainingHosts []string
-		downHosts     []string
-	)
-
-	for _, hostInfo := range drainingHostInfos {
-		drainingHosts = append(drainingHosts, hostInfo.GetHostname())
-	}
-	for _, hostInfo := range downHostInfos {
-		downHosts = append(downHosts, hostInfo.GetHostname())
-	}
-	suite.Nil(maintenanceHostInfoMap.GetDrainingHostInfos([]string{}))
-	for _, drainingHostInfo := range drainingHostInfos {
-		maintenanceHostInfoMap.AddHostInfo(drainingHostInfo)
-	}
-	suite.NotEmpty(maintenanceHostInfoMap.GetDrainingHostInfos(drainingHosts))
-
-	suite.Nil(maintenanceHostInfoMap.GetDownHostInfos([]string{}))
-	for _, downHostInfo := range downHostInfos {
-		maintenanceHostInfoMap.AddHostInfo(downHostInfo)
-	}
-	suite.NotEmpty(maintenanceHostInfoMap.GetDownHostInfos(downHosts))
-
-	drainingHostInfoMap := make(map[string]*host.HostInfo)
-	for _, hostInfo := range maintenanceHostInfoMap.GetDrainingHostInfos([]string{}) {
-		drainingHostInfoMap[hostInfo.GetHostname()] = hostInfo
-	}
-	for _, hostInfo := range drainingHostInfos {
-		suite.NotNil(drainingHostInfoMap[hostInfo.GetHostname()])
-		suite.Equal(hostInfo.GetHostname(),
-			drainingHostInfoMap[hostInfo.GetHostname()].GetHostname())
-		suite.Equal(hostInfo.GetIp(),
-			drainingHostInfoMap[hostInfo.GetHostname()].GetIp())
-		suite.Equal(host.HostState_HOST_STATE_DRAINING,
-			drainingHostInfoMap[hostInfo.GetHostname()].GetState())
-	}
-
-	downHostInfoMap := make(map[string]*host.HostInfo)
-	for _, hostInfo := range maintenanceHostInfoMap.GetDownHostInfos([]string{}) {
-		downHostInfoMap[hostInfo.GetHostname()] = hostInfo
-	}
-	for _, hostInfo := range downHostInfos {
-		suite.NotNil(downHostInfoMap[hostInfo.GetHostname()])
-		suite.Equal(hostInfo.GetHostname(),
-			downHostInfoMap[hostInfo.GetHostname()].GetHostname())
-		suite.Equal(hostInfo.GetIp(),
-			downHostInfoMap[hostInfo.GetHostname()].GetIp())
-		suite.Equal(host.HostState_HOST_STATE_DOWN,
-			downHostInfoMap[hostInfo.GetHostname()].GetState())
-	}
-
-	// Test UpdateHostState
-	err := maintenanceHostInfoMap.UpdateHostState(
-		drainingHosts[0],
-		host.HostState_HOST_STATE_DRAINING,
-		host.HostState_HOST_STATE_DOWN)
+	hostInfosBuilt, err := BuildHostInfoForRegisteredAgents()
 	suite.NoError(err)
-	suite.Empty(
-		maintenanceHostInfoMap.GetDrainingHostInfos([]string{drainingHosts[0]}))
-	suite.NotEmpty(
-		maintenanceHostInfoMap.GetDownHostInfos([]string{drainingHosts[0]}))
+	suite.Equal(hostInfos, hostInfosBuilt)
+}
 
-	err = maintenanceHostInfoMap.UpdateHostState(
-		drainingHosts[0],
-		host.HostState_HOST_STATE_DOWN,
-		host.HostState_HOST_STATE_DRAINING)
+func (suite *hostMapTestSuite) TestGetUpHostIP() {
+	loader := &Loader{
+		OperatorClient: suite.operatorClient,
+		Scope:          tally.NoopScope,
+		HostInfoOps:    suite.mockHostInfoOps,
+	}
+	agentsResponse := makeAgentsResponse(2)
+	suite.operatorClient.EXPECT().Agents().Return(agentsResponse, nil)
+	suite.mockHostInfoOps.EXPECT().
+		GetAll(gomock.Any()).
+		Return([]*pbhost.HostInfo{}, nil)
+	loader.Load(nil)
+
+	IP, err := GetUpHostIP("id-0")
 	suite.NoError(err)
-	suite.Empty(
-		maintenanceHostInfoMap.GetDownHostInfos([]string{drainingHosts[0]}))
-	suite.NotEmpty(
-		maintenanceHostInfoMap.GetDrainingHostInfos([]string{drainingHosts[0]}))
+	suite.Equal("0.0.0.0", IP)
 
-	// Test UpdateHostState errors
-	// Test 'invalid current state' error
-	err = maintenanceHostInfoMap.UpdateHostState(
-		drainingHosts[0],
-		host.HostState_HOST_STATE_DRAINED,
-		host.HostState_HOST_STATE_DOWN)
-	suite.Error(err)
-	// Test 'invalid target state' error
-	err = maintenanceHostInfoMap.UpdateHostState(
-		drainingHosts[0],
-		host.HostState_HOST_STATE_DRAINING,
-		host.HostState_HOST_STATE_UP)
-	suite.Error(err)
-	// Test 'host not in expected state' error
-	err = maintenanceHostInfoMap.UpdateHostState(
-		"invalidHost",
-		host.HostState_HOST_STATE_DRAINING,
-		host.HostState_HOST_STATE_DOWN)
-	suite.Error(err)
-	err = maintenanceHostInfoMap.UpdateHostState(
-		"invalidHost",
-		host.HostState_HOST_STATE_DOWN,
-		host.HostState_HOST_STATE_DRAINING)
-	suite.Error(err)
+	IP, err = GetUpHostIP("id-1")
+	suite.NoError(err)
+	suite.Equal("1.1.1.1", IP)
 
-	// Test RemoveHostInfos
-	for _, drainingHost := range drainingHosts {
-		maintenanceHostInfoMap.RemoveHostInfo(drainingHost)
-	}
-	suite.Empty(maintenanceHostInfoMap.GetDrainingHostInfos([]string{}))
-	suite.NotEmpty(maintenanceHostInfoMap.GetDownHostInfos([]string{}))
-
-	for _, downHost := range downHosts {
-		maintenanceHostInfoMap.RemoveHostInfo(downHost)
-	}
-	suite.Empty(maintenanceHostInfoMap.GetDrainingHostInfos([]string{}))
-	suite.Empty(maintenanceHostInfoMap.GetDownHostInfos([]string{}))
-
-	// Test ClearAndFillMap
-	for _, drainingHostInfo := range drainingHostInfos {
-		maintenanceHostInfoMap.AddHostInfo(drainingHostInfo)
-	}
-	suite.NotEmpty(maintenanceHostInfoMap.GetDrainingHostInfos(drainingHosts))
-
-	for _, downHostInfo := range downHostInfos {
-		maintenanceHostInfoMap.AddHostInfo(downHostInfo)
-	}
-	suite.NotEmpty(maintenanceHostInfoMap.GetDownHostInfos(downHosts))
-
-	maintenanceHostInfoMap.ClearAndFillMap(drainingHostInfos)
-	suite.NotEmpty(maintenanceHostInfoMap.GetDrainingHostInfos([]string{}))
-	suite.Empty(maintenanceHostInfoMap.GetDownHostInfos([]string{}))
-
-	maintenanceHostInfoMap.ClearAndFillMap(downHostInfos)
-	suite.NotEmpty(maintenanceHostInfoMap.GetDownHostInfos([]string{}))
-	suite.Empty(maintenanceHostInfoMap.GetDrainingHostInfos([]string{}))
+	IP, err = GetUpHostIP("id-2")
+	suite.Equal(errors.New("unknown host id-2"), err)
+	suite.Equal("", IP)
 }
 
 func TestHostMapTestSuite(t *testing.T) {
