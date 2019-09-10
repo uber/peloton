@@ -1,14 +1,14 @@
 import logging
 import os
 import pytest
-import sys
 import time
 import grpc
 import requests
+import sys
 
 from docker import Client
-from tools.minicluster.main import setup, teardown, config as mc_config
-from tools.minicluster.minicluster import run_mesos_agent, teardown_mesos_agent
+from tools.minicluster.main import load_config as mc_config
+import tools.minicluster.minicluster as minicluster
 from host import (
     start_maintenance,
     complete_maintenance,
@@ -191,7 +191,7 @@ def wait_for_all_agents_to_register(
             if resp.status_code == 200:
                 registered_agents = 0
                 for a in resp.json()['slaves']:
-                    if a['active'] == True:
+                    if a['active']:
                         registered_agents += 1
 
                 if registered_agents == 3:
@@ -212,9 +212,10 @@ def setup_minicluster(enable_k8s=False, use_host_pool=False):
         log.info("cluster mode")
     else:
         log.info("local minicluster mode")
-
-        setup(enable_peloton=True, enable_k8s=enable_k8s,
-              use_host_pool=use_host_pool)
+        cluster = minicluster.Minicluster(mc_config(), enable_peloton=True,
+                                          enable_k8s=enable_k8s,
+                                          use_host_pool=use_host_pool)
+        cluster.setup()
         time.sleep(5)
 
 
@@ -230,10 +231,11 @@ def teardown_minicluster(dump_logs=False):
     else:
         log.info("tearing down")
 
+        cluster = minicluster.Minicluster(mc_config())
         # dump logs only if tests have failed in the current module
         if dump_logs:
             # stop containers so that log stream will not block
-            teardown(stop=True)
+            cluster.teardown(stop=True)
 
             try:
                 # TODO (varung): enable PE and mesos-master logs if needed
@@ -246,7 +248,7 @@ def teardown_minicluster(dump_logs=False):
             except Exception as e:
                 log.info(e)
 
-        teardown()
+        cluster.teardown()
 
 
 def cleanup_batch_jobs():
@@ -541,15 +543,16 @@ the exact opposite.
 
 @pytest.fixture
 def exclusive_host(request):
+    cluster = minicluster.Minicluster(mc_config())
+
     def clean_up():
-        teardown_mesos_agent(mc_config, 0, is_exclusive=True)
-        run_mesos_agent(mc_config, 0, 0)
+        cluster.teardown_mesos_agent(0, is_exclusive=True)
+        cluster.setup_mesos_agent(0, 0)
         time.sleep(5)
 
     # Remove agent #0 and instead create exclusive agent #0
-    teardown_mesos_agent(mc_config, 0)
-    run_mesos_agent(
-        mc_config,
+    cluster.teardown_mesos_agent(0)
+    cluster.setup_mesos_agent(
         0,
         3,
         is_exclusive=True,

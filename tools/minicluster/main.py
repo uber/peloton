@@ -15,40 +15,14 @@ master or apps can be specified to run in containers as well.
 
 from argparse import ArgumentParser
 from argparse import RawDescriptionHelpFormatter
-from collections import OrderedDict
 import os
 import yaml
 
 import minicluster
 import print_utils
-import utils
 
 __date__ = "2016-12-08"
 __author__ = "wu"
-
-RESOURCE_MANAGER = 1
-HOST_MANAGER = 2
-PLACEMENT_ENGINE = 3
-JOB_MANAGER = 4
-ARCHIVER = 5
-AURORABRIDGE = 6
-APISERVER = 7
-
-
-# Defines the order in which the apps are started
-# NB: HOST_MANAGER is tied to database migrations so should be started first
-# TODO: Start all apps at the same time.
-APP_START_ORDER = OrderedDict(
-    [
-        (HOST_MANAGER, minicluster.run_peloton_hostmgr),
-        (RESOURCE_MANAGER, minicluster.run_peloton_resmgr),
-        (PLACEMENT_ENGINE, minicluster.run_peloton_placement),
-        (JOB_MANAGER, minicluster.run_peloton_jobmgr),
-        (ARCHIVER, minicluster.run_peloton_archiver),
-        (AURORABRIDGE, minicluster.run_peloton_aurorabridge),
-        (APISERVER, minicluster.run_peloton_apiserver),
-    ]
-)
 
 
 #
@@ -61,104 +35,6 @@ def load_config():
     with open(config_file, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
     return config
-
-
-config = load_config()
-
-
-#
-# Run peloton
-#
-def run_peloton(applications, enable_k8s=False):
-    print_utils.okblue(
-        'docker image "uber/peloton" has to be built first '
-        "locally by running IMAGE=uber/peloton make docker"
-    )
-
-    for app, func in APP_START_ORDER.iteritems():
-        if app in applications:
-            should_disable = applications[app]
-            if should_disable:
-                continue
-        # TODO: Define class PelotonCluster, set startup ordering and
-        # enable_k8s there.
-        APP_START_ORDER[app](config, enable_k8s)
-
-
-#
-# Set up a personal cluster
-#
-def setup(
-    disable_mesos=False,
-    applications={},
-    enable_peloton=False,
-    enable_k8s=False,
-    use_host_pool=False,
-):
-    minicluster.run_cassandra(config)
-    if not disable_mesos:
-        minicluster.run_mesos(config)
-
-    if enable_k8s:
-        minicluster.run_k8s()
-
-    if enable_peloton:
-        if use_host_pool:
-            config["use_host_pool"] = True
-        run_peloton(applications, enable_k8s)
-
-
-# Tear down a personal cluster
-# TODO (wu): use docker labels when launching containers
-#            and then remove all containers with that label
-def teardown(stop=False):
-    if stop:
-        # Stop existing container
-        func = utils.stop_container
-    else:
-        # Remove existing container
-        func = utils.remove_existing_container
-
-    # 1 - Remove jobmgr instances
-    for i in range(0, config["peloton_jobmgr_instance_count"]):
-        name = config["peloton_jobmgr_container"] + repr(i)
-        func(name)
-
-    # 2 - Remove placement engine instances
-    for i in range(0, len(config["peloton_placement_instances"])):
-        name = config["peloton_placement_container"] + repr(i)
-        func(name)
-
-    # 3 - Remove resmgr instances
-    for i in range(0, config["peloton_resmgr_instance_count"]):
-        name = config["peloton_resmgr_container"] + repr(i)
-        func(name)
-
-    # 4 - Remove hostmgr instances
-    for i in range(0, config["peloton_hostmgr_instance_count"]):
-        name = config["peloton_hostmgr_container"] + repr(i)
-        func(name)
-
-    # 5 - Remove archiver instances
-    for i in range(0, config["peloton_archiver_instance_count"]):
-        name = config["peloton_archiver_container"] + repr(i)
-        func(name)
-
-    # 6 - Remove aurorabridge instances
-    for i in range(0, config["peloton_aurorabridge_instance_count"]):
-        name = config["peloton_aurorabridge_container"] + repr(i)
-        func(name)
-
-    # 7 - Remove apiserver instances
-    for i in range(0, config["peloton_apiserver_instance_count"]):
-        name = config["peloton_apiserver_container"] + repr(i)
-        func(name)
-
-    minicluster.teardown_mesos(config)
-    minicluster.teardown_k8s()
-
-    utils.remove_existing_container(config["cassandra_container"])
-    print_utils.okgreen("teardown complete!")
 
 
 def parse_arguments():
@@ -286,40 +162,43 @@ USAGE
     return parser.parse_args()
 
 
-def customize_config(num_peloton_instance):
+def customize_config(config, num_peloton_instance):
     config['peloton_resmgr_instance_count'] = num_peloton_instance
     config['peloton_hostmgr_instance_count'] = num_peloton_instance
     config['peloton_jobmgr_instance_count'] = num_peloton_instance
+    return config
 
 
 def main():
     args = parse_arguments()
-
-    customize_config(args.num_peloton_instance)
+    config = load_config()
+    config = customize_config(config, args.num_peloton_instance)
 
     command = args.command
 
     if command == "setup":
-        applications = {
-            HOST_MANAGER: args.disable_peloton_hostmgr,
-            RESOURCE_MANAGER: args.disable_peloton_resmgr,
-            PLACEMENT_ENGINE: args.disable_peloton_placement,
-            JOB_MANAGER: args.disable_peloton_jobmgr,
-            ARCHIVER: args.disable_peloton_archiver,
-            AURORABRIDGE: args.disable_peloton_aurorabridge,
+        disabled_applications = {
+            minicluster.HOST_MANAGER: args.disable_peloton_hostmgr,
+            minicluster.RESOURCE_MANAGER: args.disable_peloton_resmgr,
+            minicluster.PLACEMENT_ENGINE: args.disable_peloton_placement,
+            minicluster.JOB_MANAGER: args.disable_peloton_jobmgr,
+            minicluster.ARCHIVER: args.disable_peloton_archiver,
+            minicluster.AURORABRIDGE: args.disable_peloton_aurorabridge,
         }
 
-        global zk_url
-        zk_url = args.zk_url
-        setup(
+        cluster = minicluster.Minicluster(
+            config,
             disable_mesos=args.disable_mesos,
-            enable_peloton=args.enable_peloton,
-            applications=applications,
             enable_k8s=args.enable_k8s,
+            enable_peloton=args.enable_peloton,
+            disabled_applications=disabled_applications,
             use_host_pool=args.use_host_pool,
+            zk_url=args.zk_url,
         )
+        cluster.setup()
     elif command == "teardown":
-        teardown()
+        cluster = minicluster.Minicluster(config)
+        cluster.teardown()
     else:
         # Should never get here.  argparser should prevent it.
         print_utils.fail("Unknown command: %s" % command)

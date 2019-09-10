@@ -115,3 +115,8 @@ use_host_pool: false
 auto_migrate: "true"
 # log verbose level, set to true for debug
 debug: "false"
+
+use_host_pool: false
+
+# K8S Configuration
+k8s_cluster_name: peloton-k8s

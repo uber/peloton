@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from collections import OrderedDict
 import os
 import sys
 import time
@@ -9,497 +10,580 @@ import print_utils
 import kind
 import utils
 
+RESOURCE_MANAGER = 1
+HOST_MANAGER = 2
+PLACEMENT_ENGINE = 3
+JOB_MANAGER = 4
+ARCHIVER = 5
+AURORABRIDGE = 6
+APISERVER = 7
 
-PELOTON_K8S_NAME = "peloton-k8s"
 
-zk_url = None
 cli = Client(base_url="unix://var/run/docker.sock")
 work_dir = os.path.dirname(os.path.abspath(__file__))
 
 
-# Delete the kind cluster.
-def teardown_k8s():
-    k8s = kind.Kind(PELOTON_K8S_NAME)
-    return k8s.teardown()
+class Minicluster(object):
 
+    def __init__(self, config, disable_mesos=False,
+                 enable_k8s=False, enable_peloton=False,
+                 use_host_pool=False,
+                 disabled_applications={}, zk_url=None):
+        self.config = config
+        self.disable_mesos = disable_mesos
+        self.enable_k8s = enable_k8s
+        self.enable_peloton = enable_peloton
+        self.disabled_applications = disabled_applications
+        self.zk_url = zk_url
+        self.config['use_host_pool'] = use_host_pool
 
-def teardown_mesos_agent(config, agent_index, is_exclusive=False):
-    prefix = config["mesos_agent_container"]
-    if is_exclusive:
-        prefix += "-exclusive"
-    agent = prefix + repr(agent_index)
-    utils.remove_existing_container(agent)
+        self.k8s = kind.Kind(config["k8s_cluster_name"])
 
+        # Defines the order in which the apps are started
+        # NB: HOST_MANAGER is tied to database migrations so should
+        # be started first
+        # TODO: Start all apps at the same time.
+        self.APP_START_ORDER = OrderedDict(
+            [
+                (HOST_MANAGER, self.run_peloton_hostmgr),
+                (RESOURCE_MANAGER, self.run_peloton_resmgr),
+                (PLACEMENT_ENGINE, self.run_peloton_placement),
+                (JOB_MANAGER, self.run_peloton_jobmgr),
+                (ARCHIVER, self.run_peloton_archiver),
+                (AURORABRIDGE, self.run_peloton_aurorabridge),
+                (APISERVER, self.run_peloton_apiserver),
+            ]
+        )
 
-#
-# Teardown mesos related containers.
-#
-def teardown_mesos(config):
-    # 1 - Remove all Mesos Agents
-    for i in range(0, config["num_agents"]):
-        teardown_mesos_agent(config, i)
-    for i in range(0, config.get("num_exclusive_agents", 0)):
-        teardown_mesos_agent(config, i, is_exclusive=True)
+    # Isolate changes the port numbers, container names, and other
+    # config values that need to be unique on a single host.
+    def isolate(self):
+        pass
 
-    # 2 - Remove Mesos Master
-    utils.remove_existing_container(config["mesos_master_container"])
+    def setup(self):
+        self._setup_cassandra()
 
-    # 3- Remove orphaned mesos containers.
-    for c in cli.containers(filters={"name": "^/mesos-"}, all=True):
-        utils.remove_existing_container(c.get("Id"))
+        if self.enable_k8s:
+            self._setup_k8s()
 
-    # 4 - Remove ZooKeeper
-    utils.remove_existing_container(config["zk_container"])
+        if not self.disable_mesos:
+            self._setup_mesos()
 
+        if self.enable_peloton:
+            self._setup_peloton()
 
-# Start a kind cluster.
-def run_k8s():
-    print_utils.okgreen("starting k8s cluster")
-    k8s = kind.Kind(PELOTON_K8S_NAME)
-    k8s.teardown()
-    k8s.create()
-    print_utils.okgreen("started k8s cluster")
+    def teardown(self, stop=False):
+        print_utils.okgreen("teardown started...")
+        self._teardown_peloton(stop)
+        self._teardown_mesos()
+        self._teardown_k8s()
+        self._teardown_zk()
+        self._teardown_cassandra()
+        print_utils.okgreen("teardown complete!")
 
-
-#
-# Run mesos cluster
-#
-def run_mesos(config):
-    # Remove existing containers first.
-    teardown_mesos(config)
-
-    # Run zk
-    cli.pull(config["zk_image"])
-    container = cli.create_container(
-        name=config["zk_container"],
-        hostname=config["zk_container"],
-        host_config=cli.create_host_config(
-            port_bindings={config["default_zk_port"]: config["local_zk_port"]}
-        ),
-        image=config["zk_image"],
-        detach=True,
-    )
-    cli.start(container=container.get("Id"))
-    print_utils.okgreen("started container %s" % config["zk_container"])
-
-    # TODO: add retry
-    print_utils.okblue("sleep 20 secs for zk to come up")
-    time.sleep(20)
-
-    # Run mesos master
-    cli.pull(config["mesos_master_image"])
-    container = cli.create_container(
-        name=config["mesos_master_container"],
-        hostname=config["mesos_master_container"],
-        volumes=["/files"],
-        ports=[repr(config["master_port"])],
-        host_config=cli.create_host_config(
-            port_bindings={config["master_port"]: config["master_port"]},
-            binds=[
-                work_dir + "/files:/files",
-                work_dir + "/mesos_config/etc_mesos-master:/etc/mesos-master",
-            ],
-            privileged=True,
-        ),
-        environment=[
-            "MESOS_AUTHENTICATE_HTTP_READWRITE=true",
-            "MESOS_AUTHENTICATE_FRAMEWORKS=true",
-            # TODO: Enable following flags for fully authentication.
-            "MESOS_AUTHENTICATE_HTTP_FRAMEWORKS=true",
-            "MESOS_HTTP_FRAMEWORK_AUTHENTICATORS=basic",
-            "MESOS_CREDENTIALS=/etc/mesos-master/credentials",
-            "MESOS_LOG_DIR=" + config["log_dir"],
-            "MESOS_PORT=" + repr(config["master_port"]),
-            "MESOS_ZK=zk://{0}:{1}/mesos".format(
-                utils.get_container_ip(config["zk_container"]),
-                config["default_zk_port"],
-            ),
-            "MESOS_QUORUM=" + repr(config["quorum"]),
-            "MESOS_REGISTRY=" + config["registry"],
-            "MESOS_WORK_DIR=" + config["work_dir"],
-        ],
-        image=config["mesos_master_image"],
-        entrypoint="bash /files/run_mesos_master.sh",
-        detach=True,
-    )
-    cli.start(container=container.get("Id"))
-    master_container = config["mesos_master_container"]
-    print_utils.okgreen("started container %s" % master_container)
-
-    # Run mesos slaves
-    cli.pull(config['mesos_slave_image'])
-    for i in range(0, config['num_agents']):
-        run_mesos_agent(config, i, i)
-    for i in range(0, config.get('num_exclusive_agents', 0)):
-        run_mesos_agent(
-            config,
-            i, config['num_agents'] + i,
-            is_exclusive=True,
-            exclusive_label_value=config.get('exclusive_label_value', ''))
-
-
-#
-# Run a mesos agent
-#
-def run_mesos_agent(config, agent_index, port_offset, is_exclusive=False,
-                    exclusive_label_value=''):
-    prefix = config["mesos_agent_container"]
-    attributes = config["attributes"]
-    if is_exclusive:
-        prefix += "-exclusive"
-        attributes += ";peloton/exclusive:" + exclusive_label_value
-    agent = prefix + repr(agent_index)
-    port = config["local_agent_port"] + port_offset
-    container = cli.create_container(
-        name=agent,
-        hostname=agent,
-        volumes=["/files", "/var/run/docker.sock"],
-        ports=[repr(port)],
-        host_config=cli.create_host_config(
-            port_bindings={port: port},
-            binds=[
-                work_dir + "/files:/files",
-                work_dir
-                + "/mesos_config/etc_mesos-slave:/etc/mesos-slave",
-                "/var/run/docker.sock:/var/run/docker.sock",
-            ],
-            privileged=True,
-        ),
-        environment=[
-            "MESOS_PORT=" + repr(port),
-            "MESOS_MASTER=zk://{0}:{1}/mesos".format(
-                utils.get_container_ip(config["zk_container"]),
-                config["default_zk_port"],
-            ),
-            "MESOS_SWITCH_USER=" + repr(config["switch_user"]),
-            "MESOS_CONTAINERIZERS=" + config["containers"],
-            "MESOS_LOG_DIR=" + config["log_dir"],
-            "MESOS_ISOLATION=" + config["isolation"],
-            "MESOS_SYSTEMD_ENABLE_SUPPORT=false",
-            "MESOS_IMAGE_PROVIDERS=" + config["image_providers"],
-            "MESOS_IMAGE_PROVISIONER_BACKEND={0}".format(
-                config["image_provisioner_backend"]
-            ),
-            "MESOS_APPC_STORE_DIR=" + config["appc_store_dir"],
-            "MESOS_WORK_DIR=" + config["work_dir"],
-            "MESOS_RESOURCES=" + config["resources"],
-            "MESOS_ATTRIBUTES=" + attributes,
-            "MESOS_MODULES=" + config["modules"],
-            "MESOS_RESOURCE_ESTIMATOR=" + config["resource_estimator"],
-            "MESOS_OVERSUBSCRIBED_RESOURCES_INTERVAL="
-            + config["oversubscribed_resources_interval"],
-            "MESOS_QOS_CONTROLLER=" + config["qos_controller"],
-            "MESOS_QOS_CORRECTION_INTERVAL_MIN="
-            + config["qos_correction_interval_min"],
-        ],
-        image=config["mesos_slave_image"],
-        entrypoint="bash /files/run_mesos_slave.sh",
-        detach=True,
-    )
-    cli.start(container=container.get("Id"))
-    utils.wait_for_up(agent, port, "state.json")
-
-
-#
-# Run cassandra cluster
-#
-def run_cassandra(config):
-    utils.remove_existing_container(config["cassandra_container"])
-    cli.pull(config["cassandra_image"])
-    container = cli.create_container(
-        name=config["cassandra_container"],
-        hostname=config["cassandra_container"],
-        host_config=cli.create_host_config(
-            port_bindings={
-                config["cassandra_cql_port"]: config["cassandra_cql_port"],
-                config["cassandra_thrift_port"]: config[
-                    "cassandra_thrift_port"
+    def setup_mesos_agent(self, index, port_offset, is_exclusive=False,
+                          exclusive_label_value=''):
+        config = self.config
+        prefix = config["mesos_agent_container"]
+        attributes = config["attributes"]
+        if is_exclusive:
+            prefix += "-exclusive"
+            attributes += ";peloton/exclusive:" + exclusive_label_value
+        agent = prefix + repr(index)
+        port = config["local_agent_port"] + port_offset
+        container = cli.create_container(
+            name=agent,
+            hostname=agent,
+            volumes=["/files", "/var/run/docker.sock"],
+            ports=[repr(port)],
+            host_config=cli.create_host_config(
+                port_bindings={port: port},
+                binds=[
+                    work_dir + "/files:/files",
+                    work_dir
+                    + "/mesos_config/etc_mesos-slave:/etc/mesos-slave",
+                    "/var/run/docker.sock:/var/run/docker.sock",
                 ],
-            },
-            binds=[work_dir + "/files:/files"],
-        ),
-        environment=["MAX_HEAP_SIZE=1G", "HEAP_NEWSIZE=256M"],
-        image=config["cassandra_image"],
-        detach=True,
-        entrypoint="bash /files/run_cassandra_with_stratio_index.sh",
-    )
-    cli.start(container=container.get("Id"))
-    print_utils.okgreen("started container %s" % config["cassandra_container"])
-
-    # Create cassandra store
-    create_cassandra_store(config)
-
-
-#
-# Create cassandra store with retries
-#
-def create_cassandra_store(config):
-    retry_attempts = 0
-    while retry_attempts < utils.max_retry_attempts:
-        time.sleep(utils.sleep_time_secs)
-        setup_exe = cli.exec_create(
-            container=config["cassandra_container"],
-            cmd="/files/setup_cassandra.sh",
+                privileged=True,
+            ),
+            environment=[
+                "MESOS_PORT=" + repr(port),
+                "MESOS_MASTER=zk://{0}:{1}/mesos".format(
+                    utils.get_container_ip(config["zk_container"]),
+                    config["default_zk_port"],
+                ),
+                "MESOS_SWITCH_USER=" + repr(config["switch_user"]),
+                "MESOS_CONTAINERIZERS=" + config["containers"],
+                "MESOS_LOG_DIR=" + config["log_dir"],
+                "MESOS_ISOLATION=" + config["isolation"],
+                "MESOS_SYSTEMD_ENABLE_SUPPORT=false",
+                "MESOS_IMAGE_PROVIDERS=" + config["image_providers"],
+                "MESOS_IMAGE_PROVISIONER_BACKEND={0}".format(
+                    config["image_provisioner_backend"]
+                ),
+                "MESOS_APPC_STORE_DIR=" + config["appc_store_dir"],
+                "MESOS_WORK_DIR=" + config["work_dir"],
+                "MESOS_RESOURCES=" + config["resources"],
+                "MESOS_ATTRIBUTES=" + attributes,
+                "MESOS_MODULES=" + config["modules"],
+                "MESOS_RESOURCE_ESTIMATOR=" + config["resource_estimator"],
+                "MESOS_OVERSUBSCRIBED_RESOURCES_INTERVAL="
+                + config["oversubscribed_resources_interval"],
+                "MESOS_QOS_CONTROLLER=" + config["qos_controller"],
+                "MESOS_QOS_CORRECTION_INTERVAL_MIN="
+                + config["qos_correction_interval_min"],
+            ],
+            image=config["mesos_slave_image"],
+            entrypoint="bash /files/run_mesos_slave.sh",
+            detach=True,
         )
-        show_exe = cli.exec_create(
-            container=config["cassandra_container"],
-            cmd='cqlsh -e "describe %s"' % config["cassandra_test_db"],
+        cli.start(container=container.get("Id"))
+        utils.wait_for_up(agent, port, "state.json")
+
+    def teardown_mesos_agent(self, index, is_exclusive=False):
+        prefix = self.config["mesos_agent_container"]
+        if is_exclusive:
+            prefix += "-exclusive"
+        agent = prefix + repr(index)
+        utils.remove_existing_container(agent)
+
+    def _setup_k8s(self):
+        print_utils.okgreen("starting k8s cluster")
+        self.k8s.teardown()
+        self.k8s.create()
+        print_utils.okgreen("started k8s cluster")
+
+    def _teardown_k8s(self):
+        self.k8s.teardown()
+
+    def _setup_mesos(self):
+        self._teardown_mesos()
+        self._teardown_zk()
+        self._setup_zk()
+        self._setup_mesos_master()
+        self._setup_mesos_agents()
+
+    def _teardown_mesos(self):
+        # 1 - Remove all Mesos Agents
+        for i in range(0, self.config["num_agents"]):
+            self.teardown_mesos_agent(i)
+
+        for i in range(0, self.config.get("num_exclusive_agents", 0)):
+            self.teardown_mesos_agent(i, is_exclusive=True)
+
+        # 2 - Remove Mesos Master
+        utils.remove_existing_container(self.config["mesos_master_container"])
+
+        # 3- Remove orphaned mesos containers.
+        for c in cli.containers(filters={"name": "^/mesos-"}, all=True):
+            utils.remove_existing_container(c.get("Id"))
+
+    def _setup_zk(self):
+        config = self.config
+        cli.pull(config["zk_image"])
+        container = cli.create_container(
+            name=config["zk_container"],
+            hostname=config["zk_container"],
+            host_config=cli.create_host_config(
+                port_bindings={
+                    config["default_zk_port"]: config["local_zk_port"],
+                },
+            ),
+            image=config["zk_image"],
+            detach=True,
         )
-        # by api design, exec_start needs to be called after exec_create
-        # to run 'docker exec'
-        resp = cli.exec_start(exec_id=setup_exe)
-        if resp is "":
-            resp = cli.exec_start(exec_id=show_exe)
-            if "CREATE KEYSPACE peloton_test WITH" in resp:
-                print_utils.okgreen("cassandra store is created")
-                return
-        print_utils.warn("failed to create cassandra store, retrying...")
-        retry_attempts += 1
+        cli.start(container=container.get("Id"))
+        print_utils.okgreen("started container %s" % config["zk_container"])
 
-    print_utils.fail(
-        "Failed to create cassandra store after %d attempts, "
-        "aborting..." % utils.max_retry_attempts
-    )
-    sys.exit(1)
+        # TODO: add retry (echo 'ruok' | nc localhost <port>)
+        print_utils.okblue("sleep 20 secs for zk to come up")
+        time.sleep(20)
 
+    def _teardown_zk(self):
+        utils.remove_existing_container(self.config["zk_container"])
 
-#
-# Starts a container and waits for it to come up
-#
-def start_and_wait(
-    application_name, container_name, ports, config, extra_env=None,
-    mounts=None,
-):
-    if mounts is None:
-        mounts = []
-
-    # TODO: It's very implicit that the first port is the HTTP port, perhaps we
-    # should split it out even more.
-    election_zk_servers = None
-    mesos_zk_path = None
-    if zk_url is not None:
-        election_zk_servers = zk_url
-        mesos_zk_path = "zk://{0}/mesos".format(zk_url)
-    else:
-        election_zk_servers = "{0}:{1}".format(
-            utils.get_container_ip(config["zk_container"]),
-            config["default_zk_port"],
+    def _setup_cassandra(self):
+        config = self.config
+        utils.remove_existing_container(config["cassandra_container"])
+        cli.pull(config["cassandra_image"])
+        container = cli.create_container(
+            name=config["cassandra_container"],
+            hostname=config["cassandra_container"],
+            host_config=cli.create_host_config(
+                port_bindings={
+                    config["cassandra_cql_port"]: config["cassandra_cql_port"],
+                    config["cassandra_thrift_port"]: config[
+                        "cassandra_thrift_port"
+                    ],
+                },
+                binds=[work_dir + "/files:/files"],
+            ),
+            environment=["MAX_HEAP_SIZE=1G", "HEAP_NEWSIZE=256M"],
+            image=config["cassandra_image"],
+            detach=True,
+            entrypoint="bash /files/run_cassandra_with_stratio_index.sh",
         )
-        mesos_zk_path = "zk://{0}:{1}/mesos".format(
-            utils.get_container_ip(config["zk_container"]),
-            config["default_zk_port"],
+        cli.start(container=container.get("Id"))
+        print_utils.okgreen("started container %s" %
+                            config["cassandra_container"])
+
+        self._create_cassandra_store()
+
+    def _teardown_cassandra(self):
+        utils.remove_existing_container(self.config["cassandra_container"])
+        print_utils.okgreen("teardown complete!")
+
+    def _setup_mesos_master(self):
+        config = self.config
+        cli.pull(config["mesos_master_image"])
+        container = cli.create_container(
+            name=config["mesos_master_container"],
+            hostname=config["mesos_master_container"],
+            volumes=["/files"],
+            ports=[repr(config["master_port"])],
+            host_config=cli.create_host_config(
+                port_bindings={config["master_port"]: config["master_port"]},
+                binds=[
+                    work_dir + "/files:/files",
+                    work_dir + "/mesos_config/etc_mesos-master:/etc/mesos-master",
+                ],
+                privileged=True,
+            ),
+            environment=[
+                "MESOS_AUTHENTICATE_HTTP_READWRITE=true",
+                "MESOS_AUTHENTICATE_FRAMEWORKS=true",
+                # TODO: Enable following flags for fully authentication.
+                "MESOS_AUTHENTICATE_HTTP_FRAMEWORKS=true",
+                "MESOS_HTTP_FRAMEWORK_AUTHENTICATORS=basic",
+                "MESOS_CREDENTIALS=/etc/mesos-master/credentials",
+                "MESOS_LOG_DIR=" + config["log_dir"],
+                "MESOS_PORT=" + repr(config["master_port"]),
+                "MESOS_ZK=zk://{0}:{1}/mesos".format(
+                    utils.get_container_ip(config["zk_container"]),
+                    config["default_zk_port"],
+                ),
+                "MESOS_QUORUM=" + repr(config["quorum"]),
+                "MESOS_REGISTRY=" + config["registry"],
+                "MESOS_WORK_DIR=" + config["work_dir"],
+            ],
+            image=config["mesos_master_image"],
+            entrypoint="bash /files/run_mesos_master.sh",
+            detach=True,
         )
-    cass_hosts = utils.get_container_ip(config["cassandra_container"])
-    env = {
-        "CONFIG_DIR": "config",
-        "APP": application_name,
-        "HTTP_PORT": ports[0],
-        "DB_HOST": utils.get_container_ip(config["cassandra_container"]),
-        "ELECTION_ZK_SERVERS": election_zk_servers,
-        "MESOS_ZK_PATH": mesos_zk_path,
-        "MESOS_SECRET_FILE": "/files/hostmgr_mesos_secret",
-        "CASSANDRA_HOSTS": cass_hosts,
-        "ENABLE_DEBUG_LOGGING": config["debug"],
-        "DATACENTER": "",
-        # used to migrate the schema;used inside host manager
-        "AUTO_MIGRATE": config["auto_migrate"],
-        "CLUSTER": "minicluster",
-        'AUTH_TYPE': os.getenv('AUTH_TYPE', 'NOOP'),
-        'AUTH_CONFIG_FILE': os.getenv('AUTH_CONFIG_FILE'),
-    }
-    if len(ports) > 1:
-        env["GRPC_PORT"] = ports[1]
-    if extra_env:
-        env.update(extra_env)
-    environment = []
-    for key, value in env.iteritems():
-        environment.append("%s=%s" % (key, value))
-    # BIND_MOUNTS allows additional files to be mounted in the
-    # the container. Expected format is a comma-separated list
-    # of items of the form <host-path>:<container-path>
-    extra_mounts = os.environ.get("BIND_MOUNTS", "").split(",") or []
-    mounts.extend(list(filter(None, extra_mounts)))
-    container = cli.create_container(
-        name=container_name,
-        hostname=container_name,
-        ports=[repr(port) for port in ports],
-        environment=environment,
-        host_config=cli.create_host_config(
-            port_bindings={port: port for port in ports},
-            binds=[work_dir + "/files:/files"] + mounts,
-        ),
-        # pull or build peloton image if not exists
-        image=config["peloton_image"],
-        detach=True,
-    )
-    cli.start(container=container.get("Id"))
-    utils.wait_for_up(
-        container_name, ports[0]
-    )  # use the first port as primary
+        cli.start(container=container.get("Id"))
+        master_container = config["mesos_master_container"]
+        print_utils.okgreen("started container %s" % master_container)
 
+    def _setup_mesos_agents(self):
+        config = self.config
+        cli.pull(config['mesos_slave_image'])
+        for i in range(0, config['num_agents']):
+            self.setup_mesos_agent(i, i)
 
-#
-# Run peloton resmgr app
-#
-def run_peloton_resmgr(config, enable_k8s=False):
-    env = {}
-    if enable_k8s:
-        env.update({"HOSTMGR_API_VERSION": "v1alpha"})
+        for i in range(0, config.get('num_exclusive_agents', 0)):
+            self.setup_mesos_agent(
+                i, config['num_agents'] + i,
+                is_exclusive=True,
+                exclusive_label_value=config.get('exclusive_label_value', ''))
 
-    # TODO: move docker run logic into a common function for all apps to share
-    for i in range(0, config["peloton_resmgr_instance_count"]):
-        # to not cause port conflicts among apps, increase port by 10
-        # for each instance
-        ports = [port + i * 10 for port in config["peloton_resmgr_ports"]]
-        name = config["peloton_resmgr_container"] + repr(i)
-        utils.remove_existing_container(name)
-        start_and_wait(
-            "resmgr",
-            name,
-            ports,
-            config,
-            extra_env=env,
+    def _create_cassandra_store(self):
+        config = self.config
+        retry_attempts = 0
+        while retry_attempts < utils.max_retry_attempts:
+            time.sleep(utils.sleep_time_secs)
+            setup_exe = cli.exec_create(
+                container=config["cassandra_container"],
+                cmd="/files/setup_cassandra.sh",
+            )
+            show_exe = cli.exec_create(
+                container=config["cassandra_container"],
+                cmd='cqlsh -e "describe %s"' % config["cassandra_test_db"],
+            )
+            # by api design, exec_start needs to be called after exec_create
+            # to run 'docker exec'
+            resp = cli.exec_start(exec_id=setup_exe)
+            if resp == "":
+                resp = cli.exec_start(exec_id=show_exe)
+                if "CREATE KEYSPACE peloton_test WITH" in resp:
+                    print_utils.okgreen("cassandra store is created")
+                    return
+            print_utils.warn("failed to create cassandra store, retrying...")
+            retry_attempts += 1
+
+        print_utils.fail(
+            "Failed to create cassandra store after %d attempts, "
+            "aborting..." % utils.max_retry_attempts
         )
+        sys.exit(1)
 
-
-#
-# Run peloton hostmgr app
-#
-def run_peloton_hostmgr(config, enable_k8s=False):
-    scarce_resource = ",".join(config["scarce_resource_types"])
-    slack_resource = ",".join(config["slack_resource_types"])
-    mounts = []
-    env = {
-        "SCARCE_RESOURCE_TYPES": scarce_resource,
-        "SLACK_RESOURCE_TYPES": slack_resource,
-        "ENABLE_HOST_POOL": True,
-    }
-    if enable_k8s:
-        k8s = kind.Kind(PELOTON_K8S_NAME)
-        kubeconfig_dir = os.path.dirname(k8s.get_kubeconfig())
-        mounts = [kubeconfig_dir + ":/.kube"]
-        # Always enable host pool in hostmgr of mini cluster.
-        env.update({
-            "ENABLE_K8S": True,
-            "KUBECONFIG": "/.kube/kind-config-peloton-k8s",
-        })
-
-    for i in range(0, config["peloton_hostmgr_instance_count"]):
-        # to not cause port conflicts among apps, increase port
-        # by 10 for each instance
-        ports = [port + i * 10 for port in config["peloton_hostmgr_ports"]]
-        name = config["peloton_hostmgr_container"] + repr(i)
-        utils.remove_existing_container(name)
-        start_and_wait(
-            "hostmgr",
-            name,
-            ports,
-            config,
-            extra_env=env,
-            mounts=mounts,
+    def _setup_peloton(self):
+        print_utils.okblue(
+            'docker image "uber/peloton" has to be built first '
+            "locally by running IMAGE=uber/peloton make docker"
         )
 
+        for app, func in self.APP_START_ORDER.iteritems():
+            if app in self.disabled_applications:
+                should_disable = self.disabled_applications[app]
+                if should_disable:
+                    continue
+            self.APP_START_ORDER[app]()
 
-#
-# Run peloton jobmgr app
-#
-def run_peloton_jobmgr(config, enable_k8s=False):
-    env = {
-        "MESOS_AGENT_WORK_DIR": config["work_dir"],
-        "JOB_TYPE": os.getenv("JOB_TYPE", "BATCH"),
-    }
-    if enable_k8s:
-        env.update({"HOSTMGR_API_VERSION": "v1alpha"})
-
-    for i in range(0, config["peloton_jobmgr_instance_count"]):
-        # to not cause port conflicts among apps, increase port by 10
-        #  for each instance
-        ports = [port + i * 10 for port in config["peloton_jobmgr_ports"]]
-        name = config["peloton_jobmgr_container"] + repr(i)
-        utils.remove_existing_container(name)
-        start_and_wait(
-            "jobmgr",
-            name,
-            ports,
-            config,
-            extra_env=env,
-        )
-
-
-#
-# Run peloton aurora bridge app
-#
-def run_peloton_aurorabridge(config, enable_k8s=False):
-    for i in range(0, config["peloton_aurorabridge_instance_count"]):
-        ports = [
-            port + i * 10 for port in config["peloton_aurorabridge_ports"]
-        ]
-        name = config["peloton_aurorabridge_container"] + repr(i)
-        utils.remove_existing_container(name)
-        start_and_wait("aurorabridge", name, ports, config)
-
-
-#
-# Run peloton placement app
-#
-def run_peloton_placement(config, enable_k8s=False):
-    i = 0
-    for task_type in config["peloton_placement_instances"]:
-        # to not cause port conflicts among apps, increase port by 10
-        # for each instance
-        ports = [port + i * 10 for port in config["peloton_placement_ports"]]
-        name = config["peloton_placement_container"] + repr(i)
-        utils.remove_existing_container(name)
-        if task_type == 'BATCH':
-            app_type = 'placement'
+    def _teardown_peloton(self, stop):
+        config = self.config
+        if stop:
+            # Stop existing container
+            func = utils.stop_container
         else:
-            app_type = 'placement_' + task_type.lower()
+            # Remove existing container
+            func = utils.remove_existing_container
 
-        use_host_pool = False
-        if config["use_host_pool"]:
-            use_host_pool = True
+        # 1 - Remove jobmgr instances
+        for i in range(0, config["peloton_jobmgr_instance_count"]):
+            name = config["peloton_jobmgr_container"] + repr(i)
+            func(name)
 
-        env = {
-            "APP_TYPE": app_type,
-            "TASK_TYPE": task_type,
-            "USE_HOST_POOL": use_host_pool,
-        }
-        if enable_k8s:
+        # 2 - Remove placement engine instances
+        for i in range(0, len(config["peloton_placement_instances"])):
+            name = config["peloton_placement_container"] + repr(i)
+            func(name)
+
+        # 3 - Remove resmgr instances
+        for i in range(0, config["peloton_resmgr_instance_count"]):
+            name = config["peloton_resmgr_container"] + repr(i)
+            func(name)
+
+        # 4 - Remove hostmgr instances
+        for i in range(0, config["peloton_hostmgr_instance_count"]):
+            name = config["peloton_hostmgr_container"] + repr(i)
+            func(name)
+
+        # 5 - Remove archiver instances
+        for i in range(0, config["peloton_archiver_instance_count"]):
+            name = config["peloton_archiver_container"] + repr(i)
+            func(name)
+
+        # 6 - Remove aurorabridge instances
+        for i in range(0, config["peloton_aurorabridge_instance_count"]):
+            name = config["peloton_aurorabridge_container"] + repr(i)
+            func(name)
+
+        # 7 - Remove apiserver instances
+        for i in range(0, config["peloton_apiserver_instance_count"]):
+            name = config["peloton_apiserver_container"] + repr(i)
+            func(name)
+
+    # Run peloton resmgr app
+    def run_peloton_resmgr(self):
+        env = {}
+        if self.enable_k8s:
             env.update({"HOSTMGR_API_VERSION": "v1alpha"})
-        start_and_wait(
-            "placement",
-            name,
-            ports,
-            config,
-            extra_env=env,
+
+        # TODO: move docker run logic into a common function for all
+        # apps to share
+        config = self.config
+        for i in range(0, config["peloton_resmgr_instance_count"]):
+            # to not cause port conflicts among apps, increase port by 10
+            # for each instance
+            ports = [port + i * 10 for port in config["peloton_resmgr_ports"]]
+            name = config["peloton_resmgr_container"] + repr(i)
+            utils.remove_existing_container(name)
+            self.start_and_wait(
+                "resmgr",
+                name,
+                ports,
+                extra_env=env,
+            )
+
+    # Run peloton hostmgr app
+    def run_peloton_hostmgr(self):
+        config = self.config
+        scarce_resource = ",".join(config["scarce_resource_types"])
+        slack_resource = ",".join(config["slack_resource_types"])
+        mounts = []
+        env = {
+            "SCARCE_RESOURCE_TYPES": scarce_resource,
+            "SLACK_RESOURCE_TYPES": slack_resource,
+            "ENABLE_HOST_POOL": True,
+        }
+        if self.enable_k8s:
+            kubeconfig_dir = os.path.dirname(self.k8s.get_kubeconfig())
+            mounts = [kubeconfig_dir + ":/.kube"]
+            # Always enable host pool in hostmgr of mini cluster.
+            env.update({
+                "ENABLE_K8S": True,
+                "KUBECONFIG": "/.kube/kind-config-peloton-k8s",
+            })
+
+        for i in range(0, config["peloton_hostmgr_instance_count"]):
+            # to not cause port conflicts among apps, increase port
+            # by 10 for each instance
+            ports = [port + i * 10 for port in config["peloton_hostmgr_ports"]]
+            name = config["peloton_hostmgr_container"] + repr(i)
+            utils.remove_existing_container(name)
+            self.start_and_wait(
+                "hostmgr",
+                name,
+                ports,
+                extra_env=env,
+                mounts=mounts,
+            )
+
+    # Run peloton jobmgr app
+    def run_peloton_jobmgr(self):
+        config = self.config
+        env = {
+            "MESOS_AGENT_WORK_DIR": config["work_dir"],
+            "JOB_TYPE": os.getenv("JOB_TYPE", "BATCH"),
+        }
+        if self.enable_k8s:
+            env.update({"HOSTMGR_API_VERSION": "v1alpha"})
+
+        for i in range(0, config["peloton_jobmgr_instance_count"]):
+            # to not cause port conflicts among apps, increase port by 10
+            #  for each instance
+            ports = [port + i * 10 for port in config["peloton_jobmgr_ports"]]
+            name = config["peloton_jobmgr_container"] + repr(i)
+            utils.remove_existing_container(name)
+            self.start_and_wait(
+                "jobmgr",
+                name,
+                ports,
+                extra_env=env,
+            )
+
+    # Run peloton aurora bridge app
+    def run_peloton_aurorabridge(self):
+        config = self.config
+        for i in range(0, config["peloton_aurorabridge_instance_count"]):
+            ports = [
+                port + i * 10 for port in config["peloton_aurorabridge_ports"]
+            ]
+            name = config["peloton_aurorabridge_container"] + repr(i)
+            utils.remove_existing_container(name)
+            self.start_and_wait("aurorabridge", name, ports)
+
+    # Run peloton placement app
+    def run_peloton_placement(self):
+        i = 0
+        config = self.config
+        for task_type in config["peloton_placement_instances"]:
+            # to not cause port conflicts among apps, increase port by 10
+            # for each instance
+            ports = [port + i * 10 for port in config["peloton_placement_ports"]]
+            name = config["peloton_placement_container"] + repr(i)
+            utils.remove_existing_container(name)
+            if task_type == 'BATCH':
+                app_type = 'placement'
+            else:
+                app_type = 'placement_' + task_type.lower()
+            env = {
+                "APP_TYPE": app_type,
+                "TASK_TYPE": task_type,
+                "USE_HOST_POOL": config.get("use_host_pool", False),
+            }
+            if self.enable_k8s:
+                env.update({"HOSTMGR_API_VERSION": "v1alpha"})
+            self.start_and_wait(
+                "placement",
+                name,
+                ports,
+                extra_env=env,
+            )
+            i = i + 1
+
+    # Run peloton api server
+    def run_peloton_apiserver(self):
+        config = self.config
+        for i in range(0, config["peloton_apiserver_instance_count"]):
+            ports = [
+                port + i * 10 for port in config["peloton_apiserver_ports"]
+            ]
+            name = config["peloton_apiserver_container"] + repr(i)
+            utils.remove_existing_container(name)
+            self.start_and_wait("apiserver", name, ports)
+
+    # Run peloton archiver app
+    def run_peloton_archiver(self):
+        config = self.config
+        for i in range(0, config["peloton_archiver_instance_count"]):
+            ports = [port + i * 10 for port in config["peloton_archiver_ports"]]
+            name = config["peloton_archiver_container"] + repr(i)
+            utils.remove_existing_container(name)
+            self.start_and_wait(
+                "archiver",
+                name,
+                ports,
+            )
+
+    # Starts a container and waits for it to come up
+    def start_and_wait(self, application_name, container_name, ports,
+                       extra_env=None, mounts=None):
+        if mounts is None:
+            mounts = []
+
+        # TODO: It's very implicit that the first port is the HTTP
+        # port, perhaps we should split it out even more.
+        election_zk_servers = None
+        mesos_zk_path = None
+        zk_url = self.zk_url
+        config = self.config
+        if zk_url is not None:
+            election_zk_servers = zk_url
+            mesos_zk_path = "zk://{0}/mesos".format(zk_url)
+        else:
+            election_zk_servers = "{0}:{1}".format(
+                utils.get_container_ip(config["zk_container"]),
+                config["default_zk_port"],
+            )
+            mesos_zk_path = "zk://{0}:{1}/mesos".format(
+                utils.get_container_ip(config["zk_container"]),
+                config["default_zk_port"],
+            )
+        cass_hosts = utils.get_container_ip(config["cassandra_container"])
+        env = {
+            "CONFIG_DIR": "config",
+            "APP": application_name,
+            "HTTP_PORT": ports[0],
+            "DB_HOST": utils.get_container_ip(config["cassandra_container"]),
+            "ELECTION_ZK_SERVERS": election_zk_servers,
+            "MESOS_ZK_PATH": mesos_zk_path,
+            "MESOS_SECRET_FILE": "/files/hostmgr_mesos_secret",
+            "CASSANDRA_HOSTS": cass_hosts,
+            "ENABLE_DEBUG_LOGGING": config["debug"],
+            "DATACENTER": "",
+            # used to migrate the schema;used inside host manager
+            "AUTO_MIGRATE": config["auto_migrate"],
+            "CLUSTER": "minicluster",
+            'AUTH_TYPE': os.getenv('AUTH_TYPE', 'NOOP'),
+            'AUTH_CONFIG_FILE': os.getenv('AUTH_CONFIG_FILE'),
+        }
+        if len(ports) > 1:
+            env["GRPC_PORT"] = ports[1]
+        if extra_env:
+            env.update(extra_env)
+        environment = []
+        for key, value in env.iteritems():
+            environment.append("%s=%s" % (key, value))
+        # BIND_MOUNTS allows additional files to be mounted in the
+        # the container. Expected format is a comma-separated list
+        # of items of the form <host-path>:<container-path>
+        extra_mounts = os.environ.get("BIND_MOUNTS", "").split(",") or []
+        mounts.extend(list(filter(None, extra_mounts)))
+        container = cli.create_container(
+            name=container_name,
+            hostname=container_name,
+            ports=[repr(port) for port in ports],
+            environment=environment,
+            host_config=cli.create_host_config(
+                port_bindings={port: port for port in ports},
+                binds=[work_dir + "/files:/files"] + mounts,
+            ),
+            # pull or build peloton image if not exists
+            image=config["peloton_image"],
+            detach=True,
         )
-        i = i + 1
-
-
-#
-# Run peloton api server
-#
-def run_peloton_apiserver(config, enable_k8s=False):
-    for i in range(0, config["peloton_apiserver_instance_count"]):
-        ports = [
-            port + i * 10 for port in config["peloton_apiserver_ports"]
-        ]
-        name = config["peloton_apiserver_container"] + repr(i)
-        utils.remove_existing_container(name)
-        start_and_wait("apiserver", name, ports, config)
-
-
-#
-# Run peloton archiver app
-#
-def run_peloton_archiver(config, enable_k8s=False):
-    for i in range(0, config["peloton_archiver_instance_count"]):
-        ports = [port + i * 10 for port in config["peloton_archiver_ports"]]
-        name = config["peloton_archiver_container"] + repr(i)
-        utils.remove_existing_container(name)
-        start_and_wait(
-            "archiver",
-            name,
-            ports,
-            config,
-        )
+        cli.start(container=container.get("Id"))
+        utils.wait_for_up(
+            container_name, ports[0]
+        )  # use the first port as primary
