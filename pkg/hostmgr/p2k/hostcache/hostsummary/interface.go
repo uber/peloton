@@ -93,6 +93,10 @@ type HostSummary interface {
 	// CompleteLaunchPod is called when a pod is successfully launched,
 	// for example to remove the ports from the available port ranges.
 	CompleteLaunchPod(pod *models.LaunchablePod)
+
+	// RecoverPodInfo updates pods info on the host, it is used only
+	// when hostsummary needs to recover the info upon restart
+	RecoverPodInfo(id *peloton.PodID, state pbpod.PodState, spec *pbpod.PodSpec)
 }
 
 // hostStrategy defines methods that shared by mesos/k8s hosts, but have

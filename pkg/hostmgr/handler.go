@@ -43,6 +43,7 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/metrics"
 	"github.com/uber/peloton/pkg/hostmgr/offer"
 	"github.com/uber/peloton/pkg/hostmgr/offer/offerpool"
+	"github.com/uber/peloton/pkg/hostmgr/p2k/hostcache"
 	"github.com/uber/peloton/pkg/hostmgr/reserver"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 	"github.com/uber/peloton/pkg/hostmgr/summary"
@@ -96,6 +97,7 @@ type ServiceHandler struct {
 	hostPoolManager       manager.HostPoolManager
 	goalStateDriver       goalstate.Driver
 	hostInfoOps           ormobjects.HostInfoOps // DB ops for host_info table
+	hostCache             hostcache.HostCache
 }
 
 // NewServiceHandler creates a new ServiceHandler.
@@ -113,6 +115,7 @@ func NewServiceHandler(
 	hostPoolManager manager.HostPoolManager,
 	goalStateDriver goalstate.Driver,
 	ormStore *ormobjects.Store,
+	hostCache hostcache.HostCache,
 ) *ServiceHandler {
 
 	handler := &ServiceHandler{
@@ -128,6 +131,7 @@ func NewServiceHandler(
 		hostPoolManager:       hostPoolManager,
 		goalStateDriver:       goalStateDriver,
 		hostInfoOps:           ormobjects.NewHostInfoOps(ormStore),
+		hostCache:             hostCache,
 	}
 	// Creating Reserver object for handler
 	handler.reserver = reserver.NewReserver(
@@ -750,6 +754,10 @@ func (h *ServiceHandler) LaunchTasks(
 			},
 		}, errors.Wrap(err, "claim for launch failed")
 	}
+
+	// temporary workaround to add hosts into cache. This step
+	// was part of ClaimForLaunch
+	h.hostCache.AddPodsToHost(req.GetTasks(), req.GetHostname())
 
 	var offerIds []*mesos.OfferID
 	var mesosResources []*mesos.Resource

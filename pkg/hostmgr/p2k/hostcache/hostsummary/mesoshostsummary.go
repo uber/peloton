@@ -31,9 +31,10 @@ type mesosHostSummary struct {
 	*baseHostSummary
 }
 
-func NewMesosHostSummary(hostname string, version string) HostSummary {
+func NewMesosHostSummary(hostname string) HostSummary {
 	ms := &mesosHostSummary{
-		baseHostSummary: newBaseHostSummary(hostname, version),
+		// mesos does not has concept of host version
+		baseHostSummary: newBaseHostSummary(hostname, ""),
 	}
 
 	ms.baseHostSummary.strategy = ms

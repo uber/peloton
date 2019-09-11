@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/uber/peloton/pkg/hostmgr/models"
 
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 
@@ -48,6 +49,17 @@ func (f *FakeHostSummary) SetAllocated(allocated scalar.Resources) {
 	f.allocated = models.HostResources{
 		NonSlack: allocated,
 	}
+}
+
+func (f *FakeHostSummary) GetPodInfo(
+	podID *peloton.PodID,
+) (pbpod.PodState, *pbpod.PodSpec, bool) {
+	podInfo, ok := f.pods.GetPodInfo(podID.GetValue())
+	if !ok {
+		return pbpod.PodState_POD_STATE_INVALID, nil, false
+	}
+
+	return podInfo.state, podInfo.spec, ok
 }
 
 // NewFakeHostSummary is used for testing. It offers methods for easier

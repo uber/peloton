@@ -22,9 +22,12 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
+	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/common/recovery"
+	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/hostmgr/metrics"
 	"github.com/uber/peloton/pkg/hostmgr/offer"
+	"github.com/uber/peloton/pkg/hostmgr/p2k/hostcache"
 	"github.com/uber/peloton/pkg/storage"
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 
@@ -47,6 +50,7 @@ type recoveryHandler struct {
 	recoveryScope tally.Scope
 
 	taskStore     storage.TaskStore
+	hostCache     hostcache.HostCache
 	activeJobsOps ormobjects.ActiveJobsOps
 	jobConfigOps  ormobjects.JobConfigOps
 	jobRuntimeOps ormobjects.JobRuntimeOps
@@ -57,11 +61,13 @@ func NewRecoveryHandler(
 	parent tally.Scope,
 	taskStore storage.TaskStore,
 	ormStore *ormobjects.Store,
+	hostCache hostcache.HostCache,
 ) RecoveryHandler {
 	recovery := &recoveryHandler{
 		metrics:       metrics.NewMetrics(parent),
 		recoveryScope: parent.SubScope("recovery"),
 
+		hostCache:     hostCache,
 		taskStore:     taskStore,
 		activeJobsOps: ormobjects.NewActiveJobsOps(ormStore),
 		jobConfigOps:  ormobjects.NewJobConfigOps(ormStore),
@@ -139,6 +145,12 @@ func (r *recoveryHandler) recoverTasks(
 			runtime.GetMesosTaskId().GetValue(),
 			runtime.GetState(),
 			taskInfo)
+		r.hostCache.RecoverPodInfoOnHost(
+			util.CreatePodIDFromMesosTaskID(runtime.GetMesosTaskId()),
+			runtime.GetHost(),
+			api.ConvertTaskStateToPodState(runtime.GetState()),
+			api.ConvertTaskConfigToPodSpec(taskInfo.Config, id, taskInfo.InstanceId),
+		)
 	}
 
 	return

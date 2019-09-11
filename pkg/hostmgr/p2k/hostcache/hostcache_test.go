@@ -471,6 +471,62 @@ func (suite *HostCacheTestSuite) TestAcquireLeasesParallel() {
 	suite.Equal(numHosts, len(aggrLeases))
 }
 
+// TestRecoverPodInfoOnHostWithNonTerminalState tests recover pods on host with
+// running state
+func (suite *HostCacheTestSuite) TestRecoverPodInfoOnHostWithNonTerminalState() {
+	podID := &peloton.PodID{Value: uuid.New()}
+	hs := hostsummary.GenerateFakeHostSummaries(1)[0]
+	hc := &hostCache{
+		hostIndex:    map[string]hostsummary.HostSummary{hs.GetHostname(): hs},
+		podHeldIndex: map[string]string{},
+	}
+	podState := pod.PodState_POD_STATE_RUNNING
+	podSpec := &pod.PodSpec{
+		PodName: &peloton.PodName{Value: "pod_name"},
+	}
+	hostname := "hostname1"
+	hc.hostIndex[hostname] = hs
+
+	hc.RecoverPodInfoOnHost(
+		podID,
+		hostname,
+		podState,
+		podSpec,
+	)
+
+	state, spec, ok := hs.GetPodInfo(podID)
+	suite.True(ok)
+	suite.Equal(state, podState)
+	suite.Equal(spec, podSpec)
+}
+
+// TestRecoverPodInfoOnHostWithTerminalState tests recover pods on host with
+// terminal state. RecoverPodInfoOnHost should remove the pod on host.
+func (suite *HostCacheTestSuite) TestRecoverPodInfoOnHostWithTerminalState() {
+	podID := &peloton.PodID{Value: uuid.New()}
+	hs := hostsummary.GenerateFakeHostSummaries(1)[0]
+	hc := &hostCache{
+		hostIndex:    map[string]hostsummary.HostSummary{hs.GetHostname(): hs},
+		podHeldIndex: map[string]string{},
+	}
+	podState := pod.PodState_POD_STATE_KILLED
+	podSpec := &pod.PodSpec{
+		PodName: &peloton.PodName{Value: "pod_name"},
+	}
+	hostname := "hostname1"
+	hc.hostIndex[hostname] = hs
+
+	// RecoverPodInfoOnHost should remove the pod on host
+	hc.RecoverPodInfoOnHost(
+		podID,
+		hostname,
+		podState,
+		podSpec,
+	)
+	_, _, ok := hs.GetPodInfo(podID)
+	suite.False(ok)
+}
+
 // TODO: move to use mock after host summary is moved to a different package.
 func TestHoldForPods(t *testing.T) {
 	require := require.New(t)

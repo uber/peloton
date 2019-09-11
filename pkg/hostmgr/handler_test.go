@@ -48,6 +48,7 @@ import (
 	mpb_mocks "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/metrics"
 	"github.com/uber/peloton/pkg/hostmgr/offer/offerpool"
+	hostcache_mocks "github.com/uber/peloton/pkg/hostmgr/p2k/hostcache/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/reserver"
 	reserver_mocks "github.com/uber/peloton/pkg/hostmgr/reserver/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
@@ -210,6 +211,7 @@ type HostMgrHandlerTestSuite struct {
 	mockedCQosClient       *cqosmocks.MockQoSAdvisorServiceYARPCClient
 	metric                 *metrics.Metrics
 	hostPoolManager        *hostpool_manager_mocks.MockHostPoolManager
+	hostCache              *hostcache_mocks.MockHostCache
 	mockHostInfoOps        *orm_mocks.MockHostInfoOps
 	mockGoalStateDriver    *goalstate_mocks.MockDriver
 }
@@ -234,6 +236,7 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 	suite.watchHostSummaryServer = hostsvcmocks.NewMockInternalHostServiceServiceWatchHostSummaryEventYARPCServer(suite.ctrl)
 	suite.topicsSupported = []watchevent.Topic{watchevent.EventStream, watchevent.HostSummary}
 	suite.hostPoolManager = hostpool_manager_mocks.NewMockHostPoolManager(suite.ctrl)
+	suite.hostCache = hostcache_mocks.NewMockHostCache(suite.ctrl)
 	suite.mockHostInfoOps = orm_mocks.NewMockHostInfoOps(suite.ctrl)
 	suite.mockGoalStateDriver = goalstate_mocks.NewMockDriver(suite.ctrl)
 
@@ -268,6 +271,7 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 		hostPoolManager:       suite.hostPoolManager,
 		goalStateDriver:       suite.mockGoalStateDriver,
 		hostInfoOps:           suite.mockHostInfoOps,
+		hostCache:             suite.hostCache,
 	}
 	suite.handler.reserver = reserver.NewReserver(
 		metrics.NewMetrics(suite.testScope),
@@ -736,6 +740,10 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 
 	gomock.InOrder(
 		suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()),
+		suite.hostCache.EXPECT().AddPodsToHost(
+			gomock.Any(),
+			gomock.Any()).
+			Return(),
 		// Set expectations on provider
 		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
 			suite.frameworkID),
@@ -834,6 +842,10 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunchOnNonHeldTask() {
 	gomock.InOrder(
 		// set expectation on watch processor
 		suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()),
+		suite.hostCache.EXPECT().AddPodsToHost(
+			gomock.Any(),
+			gomock.Any()).
+			Return(),
 		// Set expectations on provider
 		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
 			suite.frameworkID),
@@ -2235,6 +2247,10 @@ func (suite *HostMgrHandlerTestSuite) TestLaunchTasksSchedulerError() {
 	gomock.InOrder(
 		// set expectation on watch Processor
 		suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()),
+		suite.hostCache.EXPECT().AddPodsToHost(
+			gomock.Any(),
+			gomock.Any()).
+			Return(),
 		// Set expectations on provider
 		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
 			suite.frameworkID),

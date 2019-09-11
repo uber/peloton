@@ -22,7 +22,7 @@ import (
 // TestMesosHostSummarySetCapacity tests for mesos change capacity
 // only affects capacity
 func (suite *HostSummaryTestSuite) TestMesosHostSummarySetCapacity() {
-	ms := NewMesosHostSummary(_hostname, _version).(*mesosHostSummary)
+	ms := NewMesosHostSummary(_hostname).(*mesosHostSummary)
 	available := scalar.Resources{
 		CPU: 1.0,
 		Mem: 100.0,
@@ -120,7 +120,7 @@ func (suite *HostSummaryTestSuite) TestMesosHostSummarySetAvailable() {
 	}
 
 	for msg, test := range testTable {
-		ms := NewMesosHostSummary(_hostname, _version).(*mesosHostSummary)
+		ms := NewMesosHostSummary(_hostname).(*mesosHostSummary)
 		ms.capacity.NonSlack = test.capacity
 		ms.SetAvailable(models.HostResources{
 			NonSlack: test.available,

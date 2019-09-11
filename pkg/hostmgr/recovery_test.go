@@ -27,6 +27,7 @@ import (
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 	res_mocks "github.com/uber/peloton/.gen/peloton/private/resmgrsvc/mocks"
+	hostcache_mocks "github.com/uber/peloton/pkg/hostmgr/p2k/hostcache/mocks"
 
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/background"
@@ -87,6 +88,7 @@ type RecoveryTestSuite struct {
 	watchProcessor     *watchmocks.MockWatchProcessor
 	manager            manager.HostPoolManager
 	eventStreamHandler *eventstream.Handler
+	hostcache          *hostcache_mocks.MockHostCache
 }
 
 func (suite *RecoveryTestSuite) SetupTest() {
@@ -98,10 +100,13 @@ func (suite *RecoveryTestSuite) SetupTest() {
 	suite.jobRuntimeOps = objectmocks.NewMockJobRuntimeOps(suite.mockCtrl)
 	suite.hostInfoOps = objectmocks.NewMockHostInfoOps(suite.mockCtrl)
 
+	suite.hostcache = hostcache_mocks.NewMockHostCache(suite.mockCtrl)
 	suite.recoveryHandler = NewRecoveryHandler(
 		tally.NoopScope,
 		suite.mockTaskStore,
-		&ormStore.Store{})
+		&ormStore.Store{},
+		suite.hostcache,
+	)
 
 	t := rpc.NewTransport()
 	outbound := t.NewOutbound(nil)
@@ -178,6 +183,7 @@ func (suite *RecoveryTestSuite) SetupTest() {
 		activeJobsOps: suite.activeJobsOps,
 		jobConfigOps:  suite.jobConfigOps,
 		jobRuntimeOps: suite.jobRuntimeOps,
+		hostCache:     suite.hostcache,
 	}
 }
 
@@ -229,6 +235,13 @@ func (suite *RecoveryTestSuite) TestStart() {
 				},
 			},
 		}, nil)
+
+	suite.hostcache.EXPECT().RecoverPodInfoOnHost(
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any(),
+		gomock.Any(),
+	)
 
 	err := suite.recoveryHandler.Start()
 	pool := offer.GetEventHandler().GetOfferPool()

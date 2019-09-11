@@ -20,9 +20,12 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
+	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	hostmgr "github.com/uber/peloton/.gen/peloton/private/hostmgr/v1alpha"
+	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/common/background"
 	"github.com/uber/peloton/pkg/common/lifecycle"
+	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/hostmgr/models"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/hostcache/hostsummary"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
@@ -93,6 +96,20 @@ type HostCache interface {
 	// For example, ports should not be removed after a failed launch,
 	// otherwise the ports are leaked.
 	CompleteLaunchPod(hostname string, pod *models.LaunchablePod) error
+
+	// RecoverPodInfo updates pods info running on a particular host,
+	// it is used only when hostsummary needs to recover the info
+	// upon restart
+	RecoverPodInfoOnHost(
+		id *peloton.PodID,
+		hostname string,
+		state pbpod.PodState,
+		spec *pbpod.PodSpec,
+	)
+
+	// AddPodsToHost is a temporary method to add host entries in host cache.
+	// It would be removed after CompleteLease is called when launching pod.
+	AddPodsToHost(tasks []*hostsvc.LaunchableTask, hostname string)
 }
 
 // hostCache is an implementation of HostCache interface.
@@ -601,7 +618,7 @@ func (c *hostCache) updateAgent(event *scalar.HostEvent) {
 	hs, ok = c.hostIndex[hostInfo.GetHostName()]
 
 	if !ok {
-		hs = hostsummary.NewMesosHostSummary(hostInfo.GetHostName(), evtVersion)
+		hs = hostsummary.NewMesosHostSummary(hostInfo.GetHostName())
 		c.hostIndex[hostInfo.GetHostName()] = hs
 	}
 
@@ -628,7 +645,7 @@ func (c *hostCache) updateHostAvailable(event *scalar.HostEvent) {
 	hs, ok = c.hostIndex[hostInfo.GetHostName()]
 
 	if !ok {
-		hs = hostsummary.NewMesosHostSummary(hostInfo.GetHostName(), evtVersion)
+		hs = hostsummary.NewMesosHostSummary(hostInfo.GetHostName())
 		c.hostIndex[hostInfo.GetHostName()] = hs
 	}
 
@@ -687,4 +704,52 @@ func (c *hostCache) Stop() {
 func (c *hostCache) Reconcile() error {
 	// TODO: Implement
 	return nil
+}
+
+// RecoverPodInfo updates pods info running on a particular host,
+// it is used only when hostsummary needs to recover the info
+// upon restart
+func (c *hostCache) RecoverPodInfoOnHost(
+	id *peloton.PodID,
+	hostname string,
+	state pbpod.PodState,
+	spec *pbpod.PodSpec,
+) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	var hs hostsummary.HostSummary
+	hs, ok := c.hostIndex[hostname]
+	if !ok {
+		if spec.GetMesosSpec() != nil {
+			hs = hostsummary.NewMesosHostSummary(hostname)
+		} else {
+			// TODO: populate capacity and version correctly
+			hs = hostsummary.NewKubeletHostSummary(hostname, models.HostResources{}, "")
+		}
+		c.hostIndex[hostname] = hs
+	}
+
+	hs.RecoverPodInfo(id, state, spec)
+}
+
+// AddPodsToHost is a temporary method to add host entries in host cache.
+// It would be removed after CompleteLease is called when launching pod.
+func (c *hostCache) AddPodsToHost(tasks []*hostsvc.LaunchableTask, hostname string) {
+	for _, lt := range tasks {
+		jobID, instanceID, err := util.ParseJobAndInstanceID(lt.GetTaskId().GetValue())
+		if err != nil {
+			log.WithFields(log.Fields{
+				"mesos_id": lt.GetTaskId().GetValue(),
+			}).WithError(err).Error("fail to parse ID when RecoverPodInfoOnHost in LaunchTask")
+			continue
+		}
+
+		c.RecoverPodInfoOnHost(
+			util.CreatePodIDFromMesosTaskID(lt.GetTaskId()),
+			hostname,
+			pbpod.PodState_POD_STATE_LAUNCHED,
+			api.ConvertTaskConfigToPodSpec(lt.GetConfig(), jobID, instanceID),
+		)
+	}
 }

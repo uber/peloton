@@ -747,6 +747,7 @@ func main() {
 		hostPoolManager,
 		goalStateDriver,
 		ormStore,
+		hostCache,
 	)
 
 	drainer := drainer.NewDrainer(
@@ -768,6 +769,7 @@ func main() {
 		rootScope,
 		store,
 		ormStore,
+		hostCache,
 	)
 
 	server := hostmgr.NewServer(

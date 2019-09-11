@@ -598,6 +598,33 @@ func (a *baseHostSummary) matchHostFilter(
 func (a *baseHostSummary) CompleteLaunchPod(pod *models.LaunchablePod) {
 }
 
+// RecoverPodInfo updates pods info on the host, it is used only
+// when hostsummary needs to recover the info upon restart
+func (a *baseHostSummary) RecoverPodInfo(
+	id *peloton.PodID,
+	state pbpod.PodState,
+	spec *pbpod.PodSpec) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if util.IsPelotonPodStateTerminal(state) {
+		a.pods.RemovePod(id.GetValue())
+		return
+	}
+
+	info, ok := a.pods.GetPodInfo(id.GetValue())
+	if !ok {
+		a.pods.AddPodInfo(id.GetValue(), &podInfo{
+			spec:  spec,
+			state: state,
+		})
+		return
+	}
+
+	info.state = state
+	info.spec = spec
+}
+
 type noopHostStrategy struct{}
 
 func (s *noopHostStrategy) postCompleteLease(podToSpecMap map[string]*pbpod.PodSpec) error {
