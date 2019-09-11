@@ -452,6 +452,10 @@ func TestRequiresThermosConvert(t *testing.T) {
 								Name:  "test-env",
 								Value: "test-value",
 							},
+							{
+								Name:  "empty-env",
+								Value: "",
+							},
 						},
 					},
 				},

@@ -197,10 +197,6 @@ func requiresThermosConvert(podSpec *pod.PodSpec) (bool, error) {
 				return false, yarpcerrors.InvalidArgumentErrorf("environment variable name not defined")
 			}
 
-			if len(e.GetValue()) == 0 {
-				return false, yarpcerrors.InvalidArgumentErrorf("environment variable value not defined")
-			}
-
 			if _, ok := envs[e.GetName()]; ok {
 				return false, yarpcerrors.InvalidArgumentErrorf("duplicate environment variable not allowed")
 			}
