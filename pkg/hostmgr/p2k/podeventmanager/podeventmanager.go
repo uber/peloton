@@ -12,6 +12,7 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/p2k/plugins"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 )
@@ -25,6 +26,11 @@ type PodEventManager interface {
 }
 
 type podEventManagerImpl struct {
+	// when enabledStream is true, pod events are sent to eventStreamHandler.
+	// TODO: we need this flag because v1alpha event stream is only tested with
+	// k8s. Remove it after we can handle both mesos and k8s.
+	enabledStream bool
+
 	// v1alpha event stream handler.
 	eventStreamHandler *eventstream.Handler
 
@@ -38,18 +44,17 @@ func (pem *podEventManagerImpl) GetEvents() ([]*pbevent.Event, error) {
 
 func (pem *podEventManagerImpl) Run(podEventCh chan *scalar.PodEvent) {
 	for e := range podEventCh {
-		// TODO: remove comment when event stream is ready to be used
-		//err := pem.eventStreamHandler.AddEvent(
-		//	&pbevent.Event{
-		//		PodEvent: e.Event,
-		//	})
-		//if err != nil {
-		//	log.WithField("pod_event", e.Event).Error("add pod event")
-		//} else {
-		//	// This should be called so that we handle resource accounting for
-		//	// k8s pods using the pod status. This will be a noop for Mesos.
-		//	pem.hostCache.HandlePodEvent(e)
-		//}
+		if pem.enabledStream {
+			err := pem.eventStreamHandler.AddEvent(
+				&pbevent.Event{
+					PodEvent: e.Event,
+				})
+			if err != nil {
+				log.WithField("pod_event", e.Event).Error("add pod event")
+			}
+		}
+		// This should be called so that we handle resource accounting for
+		// k8s pods using the pod status. This will be a noop for Mesos.
 		pem.hostCache.HandlePodEvent(e)
 	}
 }
@@ -61,8 +66,10 @@ func New(
 	hostCache hostcache.HostCache,
 	bufferSize int,
 	parentScope tally.Scope,
+	enabledStream bool,
 ) PodEventManager {
 	pem := &podEventManagerImpl{
+		enabledStream: enabledStream,
 		eventStreamHandler: eventstream.NewEventStreamHandler(
 			bufferSize,
 			[]string{common.PelotonJobManager, common.PelotonResourceManager},

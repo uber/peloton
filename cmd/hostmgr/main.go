@@ -712,7 +712,8 @@ func main() {
 		plugin,
 		hostCache,
 		cfg.HostManager.TaskUpdateBufferSize,
-		rootScope)
+		rootScope,
+		cfg.K8s.Enabled)
 
 	// Create v1alpha hostmgr internal service handler.
 	hostmgrsvc.NewServiceHandler(
