@@ -303,7 +303,7 @@ func (a *baseHostSummary) GetHostLease() *hostmgr.HostLease {
 		HostSummary: &pbhost.HostSummary{
 			Hostname: a.hostname,
 			// TODO: replace this with models.HostResources.
-			Resources:      scalar.ToPelotonResources(a.GetAvailable().NonSlack),
+			Resources:      scalar.ToPelotonResources(a.available.NonSlack),
 			Labels:         a.labels,
 			AvailablePorts: a.ports,
 		},
