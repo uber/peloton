@@ -131,6 +131,18 @@ func (m *serviceHandler) QueryHosts(
 			}
 		}
 	}
+	if m.hostPoolManager != nil {
+		for _, h := range hostInfos {
+			p, err := m.hostPoolManager.GetPoolByHostname(h.GetHostname())
+			if err == nil {
+				h.CurrentPool = p.ID()
+			}
+			d, err := m.hostPoolManager.GetDesiredPool(h.GetHostname())
+			if err == nil {
+				h.DesiredPool = d
+			}
+		}
+	}
 
 	m.metrics.QueryHostsSuccess.Inc(1)
 	return &host_svc.QueryHostsResponse{

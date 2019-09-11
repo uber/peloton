@@ -29,8 +29,8 @@ import (
 )
 
 const (
-	hostQueryFormatHeader = "Hostname\tIP\tState\n"
-	hostQueryFormatBody   = "%s\t%s\t%s\n"
+	hostQueryFormatHeader = "Hostname\tIP\tState\tHostPool\n"
+	hostQueryFormatBody   = "%s\t%s\t%s\t%s\n"
 	hostSeparator         = ","
 	getHostsFormatHeader  = "Hostname\tCPU\tGPU\tMEM\tDisk\tState\t Task Hold\t Task Running\n"
 	getHostsFormatBody    = "%s\t%.2f\t%.2f\t%.2f MB\t%.2f MB\t%s\t%s\t%s\n"
@@ -158,6 +158,7 @@ func printHostQueryResponse(r *host_svc.QueryHostsResponse, debug bool) {
 				h.GetHostname(),
 				h.GetIp(),
 				h.GetState(),
+				h.GetCurrentPool(),
 			)
 		}
 	}

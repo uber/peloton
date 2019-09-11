@@ -210,12 +210,17 @@ func (suite *hostSvcHandlerTestSuite) TestCompleteMaintenance() {
 }
 
 func (suite *hostSvcHandlerTestSuite) TestQueryHosts() {
+	suite.doTestQueryHosts()
+}
+
+func (suite *hostSvcHandlerTestSuite) doTestQueryHosts() {
 	var (
 		hostInfos         []*hpb.HostInfo
 		drainingHostInfos []*hpb.HostInfo
 		drainedHostInfos  []*hpb.HostInfo
 		downHostsInfos    []*hpb.HostInfo
 	)
+	useHostPool := suite.handler.hostPoolManager != nil
 
 	response := suite.makeAgentsResponse()
 	loader := &host.Loader{
@@ -267,6 +272,12 @@ func (suite *hostSvcHandlerTestSuite) TestQueryHosts() {
 			State:    hpb.HostState_HOST_STATE_DRAINED,
 		})
 	}
+	expectedCurrentPool, expectedDesiredPool := "", ""
+	hpool := hostpool.New("pool1", tally.NoopScope)
+	if useHostPool {
+		expectedCurrentPool = hpool.ID()
+		expectedDesiredPool = "pool-other"
+	}
 
 	suite.mockDrainer.EXPECT().
 		GetAllDrainingHostInfos().
@@ -280,6 +291,16 @@ func (suite *hostSvcHandlerTestSuite) TestQueryHosts() {
 		GetAllDownHostInfos().
 		Return(downHostsInfos, nil).
 		AnyTimes()
+	if useHostPool {
+		suite.mockHostPoolManager.EXPECT().
+			GetPoolByHostname(gomock.Any()).
+			Return(hpool, nil).
+			AnyTimes()
+		suite.mockHostPoolManager.EXPECT().
+			GetDesiredPool(gomock.Any()).
+			Return("pool-other", nil).
+			AnyTimes()
+	}
 	resp, err := suite.handler.QueryHosts(suite.ctx, &svcpb.QueryHostsRequest{
 		HostStates: []hpb.HostState{
 			hpb.HostState_HOST_STATE_UP,
@@ -301,6 +322,14 @@ func (suite *hostSvcHandlerTestSuite) TestQueryHosts() {
 	hostnameSet := stringset.New()
 	for _, hostInfo := range resp.GetHostInfos() {
 		hostnameSet.Add(hostInfo.GetHostname())
+		suite.Equal(
+			expectedCurrentPool,
+			hostInfo.GetCurrentPool(),
+			"host %s", hostInfo.GetHostname())
+		suite.Equal(
+			expectedDesiredPool,
+			hostInfo.GetDesiredPool(),
+			"host %s", hostInfo.GetHostname())
 	}
 	for _, upMachine := range suite.upMachines {
 		suite.True(hostnameSet.Contains(upMachine.GetHostname()))
@@ -413,6 +442,11 @@ func (suite *hostSvcHandlerTestSuite) TestQueryHostsError() {
 	})
 	suite.NoError(err)
 	suite.NotNil(resp)
+}
+
+func (suite *hostSvcHandlerTestSuite) TestQueryHostsHostPoolsNotEnabled() {
+	suite.handler.hostPoolManager = nil
+	suite.doTestQueryHosts()
 }
 
 // TestHostPoolsNotEnabled exercises the host-pools APIs when
