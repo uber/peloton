@@ -61,14 +61,13 @@ class Minicluster(object):
         pass
 
     def setup(self):
-        self._setup_cassandra()
-
         if self.enable_k8s:
             self._setup_k8s()
 
         if not self.disable_mesos:
             self._setup_mesos()
 
+        self._setup_cassandra()
         if self.enable_peloton:
             self._setup_peloton()
 
@@ -77,8 +76,8 @@ class Minicluster(object):
         self._teardown_peloton(stop)
         self._teardown_mesos()
         self._teardown_k8s()
-        self._teardown_zk()
         self._teardown_cassandra()
+        self._teardown_zk()
         print_utils.okgreen("teardown complete!")
 
     def setup_mesos_agent(self, index, port_offset, is_exclusive=False,
@@ -194,10 +193,16 @@ class Minicluster(object):
         )
         cli.start(container=container.get("Id"))
         print_utils.okgreen("started container %s" % config["zk_container"])
+        print_utils.okgreen("waiting on %s to be rdy" % config["zk_container"])
 
-        # TODO: add retry (echo 'ruok' | nc localhost <port>)
-        print_utils.okblue("sleep 20 secs for zk to come up")
-        time.sleep(20)
+        count = 0
+        while count < utils.max_retry_attempts:
+            count += 1
+            if utils.is_zk_ready(config["local_zk_port"]):
+                return
+            time.sleep(utils.sleep_time_secs)
+
+        raise Exception("zk failed to come up in time")
 
     def _teardown_zk(self):
         utils.remove_existing_container(self.config["zk_container"])
