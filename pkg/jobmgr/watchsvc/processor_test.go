@@ -17,16 +17,14 @@ package watchsvc
 import (
 	"context"
 	"fmt"
-	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"sync"
 	"testing"
 	"time"
 
-	v0peloton "github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/watch"
-	"github.com/uber/peloton/pkg/common/api"
 
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
@@ -175,13 +173,13 @@ func (suite *WatchProcessorTestSuite) TestTaskClient_EventOverflow() {
 
 	// send number of events equal to buffer size
 	for i := 0; i < 10; i++ {
-		suite.processor.NotifyTaskChange(&pod.PodSummary{}, nil)
+		suite.processor.NotifyPodChange(&pod.PodSummary{}, nil)
 	}
 	time.Sleep(1 * time.Second)
 	suite.Equal(StopSignalUnknown, stopSignal)
 
 	// trigger buffer overflow
-	suite.processor.NotifyTaskChange(&pod.PodSummary{}, nil)
+	suite.processor.NotifyPodChange(&pod.PodSummary{}, nil)
 	wg.Wait()
 	suite.Equal(StopSignalOverflow, stopSignal)
 }
@@ -216,15 +214,15 @@ func (suite *WatchProcessorTestSuite) TestTaskClientPodFilter() {
 		}
 	}()
 
-	suite.processor.NotifyTaskChange(&pod.PodSummary{
+	suite.processor.NotifyPodChange(&pod.PodSummary{
 		PodName: suite.podName,
 	}, nil)
 
-	suite.processor.NotifyTaskChange(&pod.PodSummary{
+	suite.processor.NotifyPodChange(&pod.PodSummary{
 		PodName: &peloton.PodName{Value: "abc-1"},
 	}, nil)
 
-	suite.processor.NotifyTaskChange(&pod.PodSummary{
+	suite.processor.NotifyPodChange(&pod.PodSummary{
 		PodName: &peloton.PodName{Value: fmt.Sprintf("%s-%d", suite.jobID, 5)},
 	}, nil)
 
@@ -239,17 +237,17 @@ func (suite *WatchProcessorTestSuite) TestTaskClientPodFilter() {
 }
 
 func (suite *WatchProcessorTestSuite) TestTaskClientPodLabelFilter() {
-	label1 := &v0peloton.Label{
+	label1 := &peloton.Label{
 		Key:   "key1",
 		Value: "value1",
 	}
-	label2 := &v0peloton.Label{
+	label2 := &peloton.Label{
 		Key:   "key2",
 		Value: "value2",
 	}
 
 	filter := &watch.PodFilter{
-		Labels: api.ConvertLabels([]*v0peloton.Label{label1}),
+		Labels: []*peloton.Label{label1},
 	}
 
 	var mutex = &sync.Mutex{}
@@ -276,19 +274,19 @@ func (suite *WatchProcessorTestSuite) TestTaskClientPodLabelFilter() {
 		}
 	}()
 
-	suite.processor.NotifyTaskChange(
+	suite.processor.NotifyPodChange(
 		&pod.PodSummary{},
-		[]*v0peloton.Label{label1},
+		[]*peloton.Label{label1},
 	)
 
-	suite.processor.NotifyTaskChange(
+	suite.processor.NotifyPodChange(
 		&pod.PodSummary{},
-		[]*v0peloton.Label{label2},
+		[]*peloton.Label{label2},
 	)
 
-	suite.processor.NotifyTaskChange(
+	suite.processor.NotifyPodChange(
 		&pod.PodSummary{},
-		[]*v0peloton.Label{label1, label2},
+		[]*peloton.Label{label1, label2},
 	)
 
 	time.Sleep(1 * time.Second)

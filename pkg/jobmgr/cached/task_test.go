@@ -25,10 +25,14 @@ import (
 	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
+	v1peloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 
 	storemocks "github.com/uber/peloton/pkg/storage/mocks"
 	objectmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
+	"github.com/uber/peloton/pkg/common/api"
+	"github.com/uber/peloton/pkg/common/util"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 
 	"github.com/golang/mock/gomock"
@@ -147,10 +151,14 @@ func (suite *taskTestSuite) checkListeners(tt *task, jobType pbjob.JobType) {
 	suite.NotZero(len(suite.listeners))
 	for i, l := range suite.listeners {
 		msg := fmt.Sprintf("Listener %d", i)
-		suite.Equal(suite.jobID, l.jobID, msg)
-		suite.Equal(suite.instanceID, l.instanceID, msg)
 		suite.Equal(jobType, l.jobType, msg)
-		suite.Equal(tt.runtime, l.taskRuntime, msg)
+		summary := &pod.PodSummary{
+			PodName: &v1peloton.PodName{
+				Value: util.CreatePelotonTaskID(tt.jobID.GetValue(), tt.id),
+			},
+			Status: api.ConvertTaskRuntimeToPodStatus(tt.runtime),
+		}
+		suite.Equal(summary, l.summary, msg)
 	}
 }
 
@@ -159,8 +167,7 @@ func (suite *taskTestSuite) checkListenersNotCalled() {
 	suite.NotZero(len(suite.listeners))
 	for i, l := range suite.listeners {
 		msg := fmt.Sprintf("Listener %d", i)
-		suite.Nil(l.jobID, msg)
-		suite.Nil(l.taskRuntime, msg)
+		suite.Nil(l.summary, msg)
 	}
 }
 

@@ -18,9 +18,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
-	v1peloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/watch"
 
@@ -87,9 +86,9 @@ type WatchProcessor interface {
 	// StopTaskClients stops all the task clients on leadership change.
 	StopTaskClients()
 
-	// NotifyTaskChange receives pod event, and notifies all the clients
+	// NotifyPodChange receives pod event, and notifies all the clients
 	// which are interested in the pod.
-	NotifyTaskChange(pod *pod.PodSummary, podLabels []*peloton.Label)
+	NotifyPodChange(pod *pod.PodSummary, podLabels []*peloton.Label)
 
 	// NewJobClient creates a new watch client for job event changes.
 	// Returns the watch id and an new instance of JobClient.
@@ -123,7 +122,7 @@ var onceInitWatchProcessor sync.Once
 type podFilter struct {
 	jobID    string
 	podNames map[string]struct{}
-	labels   []*v1peloton.Label
+	labels   []*peloton.Label
 }
 
 // TaskClient represents a client which interested in task event changes.
@@ -136,7 +135,7 @@ type TaskClient struct {
 
 type jobFilter struct {
 	jobIDs map[string]struct{}
-	labels []*v1peloton.Label
+	labels []*peloton.Label
 }
 
 // JobClient represents a client which interested in job event changes.
@@ -273,9 +272,9 @@ func (p *watchProcessor) stopTaskClient(
 	return nil
 }
 
-// NotifyTaskChange receives pod event, and notifies all the clients
+// NotifyPodChange receives pod event, and notifies all the clients
 // which are interested in the pod.
-func (p *watchProcessor) NotifyTaskChange(
+func (p *watchProcessor) NotifyPodChange(
 	pod *pod.PodSummary,
 	podLabels []*peloton.Label) {
 	sw := p.metrics.ProcessorLockDuration.Start()

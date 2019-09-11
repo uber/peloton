@@ -17,8 +17,9 @@ package cached
 import (
 	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
-	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
-	"github.com/uber/peloton/.gen/peloton/private/models"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
+	v1peloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 )
 
 // JobTaskListener defines an interface that must to be implemented by
@@ -40,22 +41,23 @@ type JobTaskListener interface {
 	// Name returns a user-friendly name for the listener
 	Name() string
 
-	// JobSummaryChanged is invoked when the runtime for a job is updated
-	// in cache and persistent store.
-	JobSummaryChanged(
+	// StatelessJobSummaryChanged is invoked when the runtime for a stateless
+	// job is updated in cache and persistent store.
+	StatelessJobSummaryChanged(jobSummary *stateless.JobSummary)
+
+	// BatchJobSummaryChanged is invoked when the runtime for a batch
+	// job is updated in cache and persistent store.
+	BatchJobSummaryChanged(
 		jobID *peloton.JobID,
-		jobType pbjob.JobType,
 		jobSummary *pbjob.JobSummary,
-		updateInfo *models.UpdateModel,
 	)
 
-	// TaskRuntimeChanged is invoked when the runtime for a task is updated
+	// PodSummaryChanged is invoked when the status for a task is updated
 	// in cache and persistent store.
-	TaskRuntimeChanged(
-		jobID *peloton.JobID,
-		instanceID uint32,
+	PodSummaryChanged(
+		// TODO Remove once batch moves to v1 alpha apis
 		jobType pbjob.JobType,
-		runtime *pbtask.RuntimeInfo,
-		labels []*peloton.Label,
+		summary *pod.PodSummary,
+		labels []*v1peloton.Label,
 	)
 }

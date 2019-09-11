@@ -22,8 +22,12 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	pbupdate "github.com/uber/peloton/.gen/peloton/api/v0/update"
+	v1peloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
+	"github.com/uber/peloton/pkg/common/api"
+	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/storage"
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 
@@ -351,9 +355,21 @@ func (f *jobFactory) notifyJobSummaryChanged(
 	jobSummary *pbjob.JobSummary,
 	updateInfo *models.UpdateModel,
 ) {
-	if jobSummary != nil {
+	if jobSummary == nil {
+		return
+	}
+
+	if jobType == pbjob.JobType_SERVICE {
+		s := api.ConvertJobSummary(jobSummary, updateInfo)
 		for _, l := range f.listeners {
-			l.JobSummaryChanged(jobID, jobType, jobSummary, updateInfo)
+			l.StatelessJobSummaryChanged(s)
+		}
+		// TODO add metric for listener execution latency
+	}
+
+	if jobType == pbjob.JobType_BATCH {
+		for _, l := range f.listeners {
+			l.BatchJobSummaryChanged(jobID, jobSummary)
 		}
 		// TODO add metric for listener execution latency
 	}
@@ -367,8 +383,14 @@ func (f *jobFactory) notifyTaskRuntimeChanged(
 	labels []*peloton.Label,
 ) {
 	if runtime != nil {
+		summary := &pod.PodSummary{
+			PodName: &v1peloton.PodName{
+				Value: util.CreatePelotonTaskID(jobID.GetValue(), instanceID),
+			},
+			Status: api.ConvertTaskRuntimeToPodStatus(runtime),
+		}
 		for _, l := range f.listeners {
-			l.TaskRuntimeChanged(jobID, instanceID, jobType, runtime, labels)
+			l.PodSummaryChanged(jobType, summary, api.ConvertLabels(labels))
 		}
 		// TODO add metric for listener execution latency
 	}

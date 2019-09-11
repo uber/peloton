@@ -31,6 +31,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
 	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/common/api"
 	versionutil "github.com/uber/peloton/pkg/common/util/entityversion"
 	jobmgrcommon "github.com/uber/peloton/pkg/jobmgr/common"
 	storemocks "github.com/uber/peloton/pkg/storage/mocks"
@@ -230,11 +231,16 @@ func (suite *jobTestSuite) checkListeners() {
 	for i, l := range suite.listeners {
 		msg := fmt.Sprintf("Listener %d", i)
 		jobSummary, updateInfo := suite.job.generateJobSummaryFromCache(suite.job.runtime, suite.job.runtime.GetUpdateID())
+		s := api.ConvertJobSummary(jobSummary, updateInfo)
 
-		suite.Equal(suite.jobID, l.jobID, msg)
-		suite.Equal(suite.job.GetJobType(), l.jobType, msg)
-		suite.Equal(jobSummary, l.jobSummary, msg)
-		suite.Equal(updateInfo, l.updateInfo, msg)
+		if l.jobType == pbjob.JobType_SERVICE {
+			suite.Equal(s, l.statelessJobSummary, msg)
+		}
+
+		if l.jobType == pbjob.JobType_BATCH {
+			suite.Equal(suite.jobID, l.jobID, msg)
+			suite.Equal(jobSummary, l.jobSummary, msg)
+		}
 	}
 }
 
@@ -245,7 +251,7 @@ func (suite *jobTestSuite) checkListenersNotCalled() {
 		msg := fmt.Sprintf("Listener %d", i)
 		suite.Nil(l.jobID, msg)
 		suite.Nil(l.jobSummary, msg)
-		suite.Nil(l.updateInfo, msg)
+		suite.Nil(l.statelessJobSummary, msg)
 	}
 }
 

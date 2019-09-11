@@ -17,14 +17,11 @@ package watchsvc
 import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	v0peloton "github.com/uber/peloton/.gen/peloton/api/v0/peloton"
-	"github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
 	v1peloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
-	"github.com/uber/peloton/.gen/peloton/private/models"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/uber/peloton/pkg/common/api"
-	"github.com/uber/peloton/pkg/common/util"
 )
 
 const _listenerName = "WatchListener"
@@ -49,40 +46,35 @@ func (l WatchListener) Name() string {
 
 // JobSummaryChanged is invoked when the runtime for a job is updated
 // in cache and persistent store.
-func (l WatchListener) JobSummaryChanged(
-	jobID *v0peloton.JobID,
-	jobType job.JobType,
-	jobSummary *job.JobSummary,
-	updateInfo *models.UpdateModel,
+func (l WatchListener) StatelessJobSummaryChanged(
+	jobSummary *stateless.JobSummary,
 ) {
-	// for now watch api only supports stateless
-	if jobType != job.JobType_SERVICE {
-		log.Debug("skip JobRuntimeChanged due to not being service type job")
-		return
-	}
-
-	if jobID == nil {
-		log.Debug("skip JobRuntimeChanged due to jobID being nil")
-		return
-	}
-
 	if jobSummary == nil {
 		log.Debug("skip JobRuntimeChanged due to jobSummary being nil")
 		return
 	}
 
-	s := api.ConvertJobSummary(jobSummary, updateInfo)
-	l.processor.NotifyJobChange(s)
+	if len(jobSummary.GetJobId().GetValue()) == 0 {
+		log.Debug("skip JobRuntimeChanged due to jobID being nil")
+		return
+	}
+
+	l.processor.NotifyJobChange(jobSummary)
 }
 
-// TaskRuntimeChanged is invoked when the runtime for a task is updated
-// in cache and persistent store.
-func (l WatchListener) TaskRuntimeChanged(
+func (l WatchListener) BatchJobSummaryChanged(
 	jobID *v0peloton.JobID,
-	instanceID uint32,
+	jobSummary *job.JobSummary,
+) {
+	// for now watch api only supports stateless
+}
+
+// PodSummaryChanged is invoked when the summary for a pod is updated
+// in cache and persistent store.
+func (l WatchListener) PodSummaryChanged(
 	jobType job.JobType,
-	runtime *task.RuntimeInfo,
-	labels []*v0peloton.Label,
+	summary *pod.PodSummary,
+	labels []*v1peloton.Label,
 ) {
 	// for now watch api only supports stateless
 	if jobType != job.JobType_SERVICE {
@@ -90,21 +82,15 @@ func (l WatchListener) TaskRuntimeChanged(
 		return
 	}
 
-	if jobID == nil {
-		log.Debug("skip TaskRuntimeChanged due to jobID being nil")
-		return
-	}
-
-	if runtime == nil {
+	if summary == nil {
 		log.Debug("skip TaskRuntimeChanged due to runtime being nil")
 		return
 	}
 
-	p := &pod.PodSummary{
-		PodName: &v1peloton.PodName{
-			Value: util.CreatePelotonTaskID(jobID.GetValue(), instanceID),
-		},
-		Status: api.ConvertTaskRuntimeToPodStatus(runtime),
+	if len(summary.GetPodName().GetValue()) == 0 {
+		log.Debug("skip TaskRuntimeChanged due to pod name being nil")
+		return
 	}
-	l.processor.NotifyTaskChange(p, labels)
+
+	l.processor.NotifyPodChange(summary, labels)
 }

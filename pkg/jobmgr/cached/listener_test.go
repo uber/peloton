@@ -16,38 +16,42 @@ package cached
 
 import (
 	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
-	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
-	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
-	"github.com/uber/peloton/.gen/peloton/private/models"
+	v0peloton "github.com/uber/peloton/.gen/peloton/api/v0/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 )
 
 type FakeJobListener struct {
-	jobID      *peloton.JobID
-	jobType    pbjob.JobType
-	jobSummary *pbjob.JobSummary
-	updateInfo *models.UpdateModel
+	jobID               *v0peloton.JobID
+	jobType             pbjob.JobType
+	statelessJobSummary *stateless.JobSummary
+	jobSummary          *pbjob.JobSummary
 }
 
 func (l *FakeJobListener) Name() string {
 	return "fake_job_listener"
 }
 
-func (l *FakeJobListener) JobSummaryChanged(
-	jobID *peloton.JobID,
-	jobType pbjob.JobType,
-	jobSummary *pbjob.JobSummary,
-	updateInfo *models.UpdateModel) {
-	l.jobID = jobID
-	l.jobType = jobType
-	l.jobSummary = jobSummary
-	l.updateInfo = updateInfo
+func (l *FakeJobListener) StatelessJobSummaryChanged(
+	jobSummary *stateless.JobSummary,
+) {
+	l.statelessJobSummary = jobSummary
+	l.jobType = pbjob.JobType_SERVICE
 }
 
-func (l *FakeJobListener) TaskRuntimeChanged(
-	jobID *peloton.JobID,
-	instanceID uint32,
+func (l *FakeJobListener) BatchJobSummaryChanged(
+	jobID *v0peloton.JobID,
+	jobSummary *pbjob.JobSummary,
+) {
+	l.jobID = jobID
+	l.jobSummary = jobSummary
+	l.jobType = pbjob.JobType_BATCH
+}
+
+func (l *FakeJobListener) PodSummaryChanged(
 	jobType pbjob.JobType,
-	runtime *pbtask.RuntimeInfo,
+	summary *pod.PodSummary,
 	labels []*peloton.Label,
 ) {
 }
@@ -55,38 +59,36 @@ func (l *FakeJobListener) TaskRuntimeChanged(
 func (l *FakeJobListener) Reset() {
 	l.jobID = nil
 	l.jobSummary = nil
-	l.updateInfo = nil
+	l.statelessJobSummary = nil
 }
 
 type FakeTaskListener struct {
-	jobID       *peloton.JobID
-	jobType     pbjob.JobType
-	instanceID  uint32
-	taskRuntime *pbtask.RuntimeInfo
-	labels      []*peloton.Label
+	jobType pbjob.JobType
+	summary *pod.PodSummary
+	labels  []*peloton.Label
 }
 
 func (l *FakeTaskListener) Name() string {
 	return "fake_task_listener"
 }
 
-func (l *FakeTaskListener) JobSummaryChanged(
-	jobID *peloton.JobID,
-	jobType pbjob.JobType,
-	jobSummary *pbjob.JobSummary,
-	updateInfo *models.UpdateModel) {
+func (l *FakeTaskListener) StatelessJobSummaryChanged(
+	jobSummary *stateless.JobSummary,
+) {
 }
 
-func (l *FakeTaskListener) TaskRuntimeChanged(
-	jobID *peloton.JobID,
-	instanceID uint32,
+func (l *FakeTaskListener) BatchJobSummaryChanged(
+	jobID *v0peloton.JobID,
+	jobSummary *pbjob.JobSummary,
+) {
+}
+
+func (l *FakeTaskListener) PodSummaryChanged(
 	jobType pbjob.JobType,
-	runtime *pbtask.RuntimeInfo,
+	summary *pod.PodSummary,
 	labels []*peloton.Label,
 ) {
-	l.jobID = jobID
-	l.instanceID = instanceID
 	l.jobType = jobType
-	l.taskRuntime = runtime
+	l.summary = summary
 	l.labels = labels
 }
