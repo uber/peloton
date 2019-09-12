@@ -40,6 +40,7 @@ pytestmark = [
 log = logging.getLogger(__name__)
 
 
+@pytest.mark.k8s
 @pytest.mark.smoketest
 def test__create_job(stateless_job):
     stateless_job.create()
@@ -60,6 +61,7 @@ def test__create_job(stateless_job):
     assert len(podSummaries) == statelessJobSummary.instance_count
 
 
+@pytest.mark.k8s
 @pytest.mark.smoketest
 def test__stop_stateless_job(stateless_job):
     stateless_job.create()
@@ -68,6 +70,7 @@ def test__stop_stateless_job(stateless_job):
     stateless_job.wait_for_state(goal_state="KILLED")
 
 
+@pytest.mark.k8s
 @pytest.mark.smoketest
 def test__create_job_without_default_spec(stateless_job):
     default_spec = stateless_job.job_spec.default_spec
@@ -79,6 +82,7 @@ def test__create_job_without_default_spec(stateless_job):
     stateless_job.wait_for_state(goal_state="RUNNING")
 
 
+@pytest.mark.k8s
 @pytest.mark.smoketest
 def test__stop_start_all_tasks_stateless_kills_tasks_and_job(stateless_job):
     stateless_job.create()
