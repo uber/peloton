@@ -156,6 +156,17 @@ const (
 
 	// HostPoolKey is the key of host pool constraint.
 	HostPoolKey = "host_pool"
+
+	// BatchReservedHostPoolID is reserved batch host pool for
+	// non-preemptible tasks
+	BatchReservedHostPoolID = "batch_reserved"
+
+	// SharedHostPoolID is shared host pool between stateless and
+	// batch (preemptible) jobs
+	SharedHostPoolID = "shared"
+
+	// StatelessHostPoolID is reserved for stateless services
+	StatelessHostPoolID = "stateless"
 )
 
 const (

@@ -17,7 +17,6 @@ package models
 import (
 	"time"
 
-	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/pkg/placement/plugins"
 )
 
@@ -73,11 +72,6 @@ type Task interface {
 
 	// Returns the reason for the placement failure.
 	GetPlacementFailure() string
-
-	// Returns the resource manager v0 task.
-	// NOTE: This was done to get the host reservation feature working. We
-	// should figure out a way to avoid having to do this.
-	GetResmgrTaskV0() *resmgr.Task
 }
 
 // ToPluginTasks transforms an array of tasks into an array of placement

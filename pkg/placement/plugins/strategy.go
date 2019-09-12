@@ -102,6 +102,11 @@ type Task interface {
 
 	// A task inherently has its own PlacementNeeds.
 	GetPlacementNeeds() PlacementNeeds
+
+	// Returns the resource manager v0 task.
+	// NOTE: This was done to get the host reservation feature working. We
+	// should figure out a way to avoid having to do this.
+	GetResmgrTaskV0() *resmgr.Task
 }
 
 // Host is the interface that the host offers or leases must satisfy in order

@@ -21,6 +21,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	peloton_api_v0_peloton "github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	peloton_api_v0_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/pkg/common"
 )
 
@@ -38,9 +39,20 @@ func GroupByPlacementNeeds(tasks []Task, config *Config) []*TasksByPlacementNeed
 	for i, task := range tasks {
 		needs := task.GetPlacementNeeds()
 		// TODO: This is ok for now since this is the only place getting constraint
-		//  from task placement needs; once host pool is enabled,
-		//  host pool constraint upsert should be moved into task.GetPlacementNeeds().
+		// from task placement needs; once host pool is enabled,
+		// host pool constraint upsert should be moved into task.GetPlacementNeeds().
 		if config.UseHostPool {
+			var poolID string
+			if config.TaskType == resmgr.TaskType_BATCH {
+				if task.GetResmgrTaskV0().GetPreemptible() {
+					poolID = common.SharedHostPoolID
+				} else {
+					poolID = common.BatchReservedHostPoolID
+				}
+			} else if config.TaskType == resmgr.TaskType_STATELESS {
+				poolID = common.StatelessHostPoolID
+			}
+
 			hostPoolConstraint := &peloton_api_v0_task.Constraint{
 				Type: peloton_api_v0_task.Constraint_LABEL_CONSTRAINT,
 				LabelConstraint: &peloton_api_v0_task.LabelConstraint{
@@ -49,9 +61,9 @@ func GroupByPlacementNeeds(tasks []Task, config *Config) []*TasksByPlacementNeed
 					Label: &peloton_api_v0_peloton.Label{
 						Key: common.HostPoolKey,
 						// TODO: Need a different way to annotate required
-						//  host pool when supporting more host pool types
-						//  other than batch and stateless.
-						Value: config.TaskType.String(),
+						// host pool when supporting more host pool types
+						// other than batch and stateless.
+						Value: poolID,
 					},
 					Requirement: 1,
 				},

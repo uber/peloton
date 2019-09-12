@@ -20,6 +20,7 @@ import (
 
 	peloton_api_v0_peloton "github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	peloton_api_v0_task "github.com/uber/peloton/.gen/peloton/api/v0/task"
+	"github.com/uber/peloton/.gen/peloton/private/resmgr"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 	"github.com/uber/peloton/pkg/placement/plugins/mimir/lib/model/placement"
 
@@ -388,6 +389,11 @@ func (t *fakeTask) GetPlacementNeeds() PlacementNeeds {
 	return PlacementNeeds{
 		Constraint: t.constraint,
 	}
+}
+
+// GetResmgrTaskV0 returns resmgr task of fakeTask.
+func (t *fakeTask) GetResmgrTaskV0() *resmgr.Task {
+	return &resmgr.Task{}
 }
 
 func getFakeLabelConstraint(key, value string) *peloton_api_v0_task.Constraint {
