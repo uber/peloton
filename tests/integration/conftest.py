@@ -335,20 +335,6 @@ def aurorabridge():
 
 
 @pytest.fixture
-def long_running_job(request):
-    job = Job(job_file="long_running_job.yaml")
-
-    # teardown
-    def kill_long_running_job():
-        print("\nstopping long running job")
-        job.stop()
-
-    request.addfinalizer(kill_long_running_job)
-
-    return job
-
-
-@pytest.fixture
 def stateless_job(request):
     job = StatelessJob()
     if util.minicluster_type() == "k8s":

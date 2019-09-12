@@ -8,11 +8,13 @@ import time
 
 import print_utils
 
+HTTP_LOCALHOST = "http://localhost"
+
 cli = Client(base_url="unix://var/run/docker.sock")
-max_retry_attempts = 20
+max_retry_attempts = 100
 default_host = "localhost"
 healthcheck_path = "/health"
-sleep_time_secs = 5
+sleep_time_secs = 1
 
 
 #
@@ -85,7 +87,8 @@ def wait_for_up(app, port, path=healthcheck_path):
                 print_utils.okgreen("started %s" % app)
                 return
         except Exception as e:
-            print_utils.warn("app %s is not up yet, retrying..." % app)
+            if count % 5 == 1:
+                print_utils.warn("app %s is not up yet, retrying..." % app)
             error = str(e)
             time.sleep(sleep_time_secs)
             count += 1

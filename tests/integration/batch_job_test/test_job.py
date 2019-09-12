@@ -1,5 +1,5 @@
 import pytest
-from tests.integration.job import Job, kill_jobs
+from tests.integration.job import kill_jobs
 from tests.integration.common import IntegrationTestConfig
 
 
@@ -12,8 +12,8 @@ pytestmark = [
 
 
 @pytest.mark.smoketest
-def test__create_batch_job():
-    job = Job(
+def test__create_batch_job(job_factory):
+    job = job_factory(
         job_file="test_job_no_container.yaml",
         config=IntegrationTestConfig(max_retry_attempts=100),
     )
@@ -22,15 +22,15 @@ def test__create_batch_job():
 
 
 @pytest.mark.smoketest
-def test__create_job():
-    job = Job(config=IntegrationTestConfig(max_retry_attempts=100))
+def test__create_job(job_factory):
+    job = job_factory(config=IntegrationTestConfig(max_retry_attempts=100))
     job.create()
     job.wait_for_state()
 
 
 @pytest.mark.smoketest
-def test__create_job_without_default_config():
-    job = Job(config=IntegrationTestConfig(max_retry_attempts=100))
+def test__create_job_without_default_config(job_factory):
+    job = job_factory(config=IntegrationTestConfig(max_retry_attempts=100))
     default_config = job.job_config.defaultConfig
     job.job_config.ClearField("defaultConfig")
 
@@ -52,8 +52,8 @@ def test__stop_long_running_batch_job_immediately(long_running_job):
     long_running_job.wait_for_state(goal_state="KILLED")
 
 
-def test__run_failing_job():
-    job = Job(
+def test__run_failing_job(job_factory):
+    job = job_factory(
         job_file="test_job_fail.yaml",
         config=IntegrationTestConfig(max_retry_attempts=100),
     )
@@ -72,8 +72,8 @@ def test__run_failing_job():
 
 
 @pytest.mark.smoketest
-def test_update_job_increase_instances():
-    job = Job(
+def test_update_job_increase_instances(job_factory):
+    job = job_factory(
         job_file="long_running_job.yaml",
         config=IntegrationTestConfig(max_retry_attempts=100),
     )

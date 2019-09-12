@@ -2,10 +2,12 @@
 
 from collections import OrderedDict
 import os
+import requests
 import sys
 import time
 from docker import Client
 
+import client
 import print_utils
 import kind
 import utils
@@ -38,6 +40,7 @@ class Minicluster(object):
         self.config['use_host_pool'] = use_host_pool
 
         self.k8s = kind.Kind(config["k8s_cluster_name"])
+        self._peloton_client = None
 
         # Defines the order in which the apps are started
         # NB: HOST_MANAGER is tied to database migrations so should
@@ -205,6 +208,11 @@ class Minicluster(object):
         raise Exception("zk failed to come up in time")
 
     def _teardown_zk(self):
+        if self._peloton_client is not None:
+            try:
+                self._peloton_client.discovery.stop()
+            except Exception as e:
+                print_utils.fail("failed to stop discovery: {}".format(e))
         utils.remove_existing_container(self.config["zk_container"])
 
     def _setup_cassandra(self):
@@ -312,7 +320,8 @@ class Minicluster(object):
                 if "CREATE KEYSPACE peloton_test WITH" in resp:
                     print_utils.okgreen("cassandra store is created")
                     return
-            print_utils.warn("failed to create cassandra store, retrying...")
+            if retry_attempts % 5 == 1:
+                print_utils.warn("failed to create c* store, retrying...")
             retry_attempts += 1
 
         print_utils.fail(
@@ -592,3 +601,58 @@ class Minicluster(object):
         utils.wait_for_up(
             container_name, ports[0]
         )  # use the first port as primary
+
+    def peloton_client(self):
+        if self._peloton_client is not None:
+            return self._peloton_client
+
+        name = self.config.get("name", "standard-minicluster")
+        zk_servers = "localhost:{}".format(self.config["local_zk_port"])
+        self._peloton_client = client.PelotonClientWrapper(
+            name=name, zk_servers=zk_servers)
+        return self._peloton_client
+
+    def wait_for_mesos_master_leader(self, timeout_secs=20):
+        """
+        util method to wait for mesos master leader elected
+        """
+
+        port = self.config.get("master_port")
+        url = "{}:{}/state.json".format(utils.HTTP_LOCALHOST, port)
+        print_utils.warn("waiting for mesos master leader")
+        deadline = time.time() + timeout_secs
+        while time.time() < deadline:
+            try:
+                resp = requests.get(url)
+                if resp.status_code != 200:
+                    time.sleep(1)
+                    continue
+                return
+            except Exception:
+                pass
+
+        assert False, "timed out waiting for mesos master leader"
+
+    def wait_for_all_agents_to_register(self, timeout_secs=300):
+        """
+        util method to wait for all agents to register
+        """
+        port = self.config.get("master_port")
+        url = "{}:{}/state.json".format(utils.HTTP_LOCALHOST, port)
+        print_utils.warn("waiting for all mesos agents")
+
+        deadline = time.time() + timeout_secs
+        while time.time() < deadline:
+            try:
+                resp = requests.get(url)
+                if resp.status_code == 200:
+                    registered_agents = 0
+                    for a in resp.json()['slaves']:
+                        if a['active']:
+                            registered_agents += 1
+
+                    if registered_agents == 3:
+                        return
+                time.sleep(1)
+            except Exception:
+                pass

@@ -28,9 +28,9 @@ __author__ = "wu"
 #
 # Load configs from file
 #
-def load_config():
+def load_config(config='config.yaml', dir=""):
     config_file = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "config.yaml"
+        os.path.dirname(os.path.abspath(__file__)) + dir, config
     )
     with open(config_file, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
