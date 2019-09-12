@@ -91,6 +91,14 @@ type Manager interface {
 		agentID string,
 		leaseID string,
 	) error
+
+	// GetTasksOnDrainingHosts gets the taskIDs of the tasks on the
+	// hosts in DRAINING state
+	GetTasksOnDrainingHosts(
+		ctx context.Context,
+		limit uint32,
+		timeout uint32,
+	) ([]string, error)
 }
 
 // New gets hostmgr API specific task/pod lifecycle mgr instance

@@ -22,8 +22,8 @@ import (
 	"github.com/uber/peloton/pkg/jobmgr/goalstate"
 	"github.com/uber/peloton/pkg/jobmgr/jobsvc"
 	"github.com/uber/peloton/pkg/jobmgr/task/deadline"
+	"github.com/uber/peloton/pkg/jobmgr/task/evictor"
 	"github.com/uber/peloton/pkg/jobmgr/task/placement"
-	"github.com/uber/peloton/pkg/jobmgr/task/preemptor"
 	"github.com/uber/peloton/pkg/jobmgr/watchsvc"
 	"github.com/uber/peloton/pkg/jobmgr/workflow/progress"
 )
@@ -48,8 +48,8 @@ type Config struct {
 	// GoalState configuration
 	GoalState goalstate.Config `yaml:"goal_state"`
 
-	// Preemption related config
-	Preemptor preemptor.Config `yaml:"task_preemptor"`
+	// Eviction related config
+	Evictor evictor.Config `yaml:"task_evictor"`
 
 	Deadline deadline.Config `yaml:"deadline"`
 

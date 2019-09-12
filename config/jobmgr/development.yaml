@@ -27,5 +27,5 @@ job_manager:
   job_service:
     enable_secrets: true
   active_task_update_period: 100s
-  task_preemptor:
-      preemption_period: 10s
+  task_evictor:
+    eviction_period: 10s

@@ -12,21 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package preemptor
+package evictor
 
 import (
 	"github.com/uber-go/tally"
 )
 
 // Metrics is the struct containing all the counters that track internal state
-// of task preemptor.
+// of task evictor.
 type Metrics struct {
-	TaskPreemptSuccess tally.Counter
-	TaskPreemptFail    tally.Counter
+	TaskEvictPreemptionSuccess tally.Counter
+	TaskEvictPreemptionFail    tally.Counter
 
-	GetPreemptibleTasks             tally.Counter
-	GetPreemptibleTasksFail         tally.Counter
+	TaskEvictHostMaintenanceSuccess tally.Counter
+	TaskEvictHostMaintenanceFail    tally.Counter
+
 	GetPreemptibleTasksCallDuration tally.Timer
+
+	GetTasksOnDrainingHostsCallDuration tally.Timer
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics
@@ -34,15 +37,18 @@ type Metrics struct {
 func NewMetrics(scope tally.Scope) *Metrics {
 	taskSuccessScope := scope.Tagged(map[string]string{"result": "success"})
 	taskFailScope := scope.Tagged(map[string]string{"result": "fail"})
-	taskAPIScope := scope.SubScope("task_api")
 	getTasksToPreemptScope := scope.SubScope("get_preemptible_tasks")
+	getTasksOnDrainingHostsScope := scope.SubScope("get_tasks_on_draining_hosts")
 
 	return &Metrics{
-		TaskPreemptSuccess: taskSuccessScope.Counter("preempt"),
-		TaskPreemptFail:    taskFailScope.Counter("preempt"),
+		TaskEvictPreemptionSuccess: taskSuccessScope.Counter("preempt"),
+		TaskEvictPreemptionFail:    taskFailScope.Counter("preempt"),
 
-		GetPreemptibleTasks:             taskAPIScope.Counter("get_preemptible_tasks"),
-		GetPreemptibleTasksFail:         taskFailScope.Counter("get_preemptible_tasks"),
+		TaskEvictHostMaintenanceSuccess: taskSuccessScope.Counter("host_maintenance"),
+		TaskEvictHostMaintenanceFail:    taskFailScope.Counter("host_maintenance"),
+
 		GetPreemptibleTasksCallDuration: getTasksToPreemptScope.Timer("call_duration"),
+
+		GetTasksOnDrainingHostsCallDuration: getTasksOnDrainingHostsScope.Timer("call_duration"),
 	}
 }

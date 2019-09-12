@@ -35,6 +35,9 @@ type Metrics struct {
 
 	TerminateLease     tally.Counter
 	TerminateLeaseFail tally.Counter
+
+	GetTasksOnDrainingHosts     tally.Counter
+	GetTasksOnDrainingHostsFail tally.Counter
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics
@@ -61,5 +64,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		TerminateLease:     successScope.Counter("terminate_lease"),
 		TerminateLeaseFail: failScope.Counter("terminate_lease"),
+
+		GetTasksOnDrainingHosts:     successScope.Counter("tasks_on_draining_hosts"),
+		GetTasksOnDrainingHostsFail: failScope.Counter("tasks_on_draining_hosts"),
 	}
 }

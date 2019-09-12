@@ -240,3 +240,13 @@ func (l *v1LifecycleMgr) TerminateLease(
 	l.metrics.TerminateLease.Inc(1)
 	return nil
 }
+
+// GetTasksOnDrainingHosts gets the taskIDs of the tasks on the
+// hosts in DRAINING state
+func (l *v1LifecycleMgr) GetTasksOnDrainingHosts(
+	ctx context.Context,
+	limit uint32,
+	timeout uint32,
+) ([]string, error) {
+	return nil, errors.New("not implemented")
+}

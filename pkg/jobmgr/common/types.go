@@ -32,7 +32,7 @@ const (
 	InstanceAvailability_KILLED InstanceAvailability_Type = 2
 	// instance has been deleted
 	InstanceAvailability_DELETED InstanceAvailability_Type = 3
-	// instance is any state other than the ones specified above is said to be
+	// instance in any state other than the ones specified above is said to be
 	// unavailable
 	InstanceAvailability_UNAVAILABLE InstanceAvailability_Type = 4
 )

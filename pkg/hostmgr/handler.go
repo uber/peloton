@@ -1547,6 +1547,14 @@ func (h *ServiceHandler) ReleaseHostsHeldForTasks(
 	return &hostsvc.ReleaseHostsHeldForTasksResponse{}, nil
 }
 
+// GetTasksByHostState gets tasks on hosts in the specified host state.
+func (h *ServiceHandler) GetTasksByHostState(
+	ctx context.Context,
+	req *hostsvc.GetTasksByHostStateRequest,
+) (response *hostsvc.GetTasksByHostStateResponse, err error) {
+	return &hostsvc.GetTasksByHostStateResponse{}, nil
+}
+
 func (h *ServiceHandler) releaseHostsHeldForTasks(taskIDs []*peloton.TaskID) error {
 	var errs []error
 	hostHeldForTasks := make(map[string][]*peloton.TaskID)

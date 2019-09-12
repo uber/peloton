@@ -47,8 +47,8 @@ import (
 	"github.com/uber/peloton/pkg/jobmgr/task/activermtask"
 	"github.com/uber/peloton/pkg/jobmgr/task/deadline"
 	"github.com/uber/peloton/pkg/jobmgr/task/event"
+	"github.com/uber/peloton/pkg/jobmgr/task/evictor"
 	"github.com/uber/peloton/pkg/jobmgr/task/placement"
-	"github.com/uber/peloton/pkg/jobmgr/task/preemptor"
 	"github.com/uber/peloton/pkg/jobmgr/tasksvc"
 	"github.com/uber/peloton/pkg/jobmgr/updatesvc"
 	"github.com/uber/peloton/pkg/jobmgr/volumesvc"
@@ -66,7 +66,7 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
 	"golang.org/x/time/rate"
-	"gopkg.in/alecthomas/kingpin.v2"
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 const (
@@ -565,14 +565,15 @@ func main() {
 		rootScope,
 	)
 
-	// Create a new task preemptor
-	taskPreemptor := preemptor.New(
+	// Create a new task evictor
+	taskEvictor := evictor.New(
 		dispatcher,
 		common.PelotonResourceManager,
 		ormStore, // store implements TaskStore
 		jobFactory,
 		goalStateDriver,
-		&cfg.JobManager.Preemptor,
+		cfg.JobManager.HostManagerAPIVersion,
+		&cfg.JobManager.Evictor,
 		rootScope,
 	)
 
@@ -606,7 +607,7 @@ func main() {
 		cfg.JobManager.GRPCPort,
 		jobFactory,
 		goalStateDriver,
-		taskPreemptor,
+		taskEvictor,
 		deadlineTracker,
 		placementProcessor,
 		statusUpdate,

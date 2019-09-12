@@ -23,6 +23,7 @@ import (
 	"time"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	pbhost "github.com/uber/peloton/.gen/peloton/api/v0/host"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
@@ -54,6 +55,7 @@ const (
 	testTaskConfigData   = "../../../../example/thermos-executor-task-config.bin"
 	testAssignedTaskData = "../../../../example/thermos-executor-assigned-task.bin"
 	_testJobID           = "bca875f5-322a-4439-b0c9-63e3cf9f982e"
+	_testMesosTaskID     = "067687c5-2461-475f-b006-68e717f0493b-3-1"
 )
 
 type v0LifecycleTestSuite struct {
@@ -561,6 +563,62 @@ func (suite *v0LifecycleTestSuite) TestPopulateExecutorData() {
 		agentID,
 	)
 	suite.NoError(err)
+}
+
+// TestGetTasksOnDrainingHosts tests the success case of
+// getting tasks on hosts in DRAINING state
+func (suite *v0LifecycleTestSuite) TestGetTasksOnDrainingHosts() {
+	limit := uint32(10)
+	timeout := uint32(10)
+	mesosTaskIDs := []*mesos.TaskID{
+		{Value: &[]string{_testMesosTaskID}[0]},
+	}
+
+	suite.mockHostMgr.EXPECT().GetTasksByHostState(
+		gomock.Any(),
+		&v0_hostsvc.GetTasksByHostStateRequest{
+			HostState: pbhost.HostState_HOST_STATE_DRAINING,
+			Limit:     limit,
+			Timeout:   timeout,
+		},
+	).Return(&v0_hostsvc.GetTasksByHostStateResponse{
+		TaskIds: mesosTaskIDs,
+	}, nil)
+
+	taskIDs, err := suite.lm.GetTasksOnDrainingHosts(
+		suite.ctx,
+		limit,
+		timeout,
+	)
+	suite.NoError(err)
+	suite.Len(taskIDs, len(mesosTaskIDs))
+	for i, t := range taskIDs {
+		suite.Equal(mesosTaskIDs[i].GetValue(), t)
+	}
+}
+
+// TestGetTasksOnDrainingHostsError tests the failure case of
+// getting tasks on hosts in DRAINING state
+func (suite *v0LifecycleTestSuite) TestGetTasksOnDrainingHostsError() {
+	limit := uint32(10)
+	timeout := uint32(10)
+
+	suite.mockHostMgr.EXPECT().GetTasksByHostState(
+		gomock.Any(),
+		&v0_hostsvc.GetTasksByHostStateRequest{
+			HostState: pbhost.HostState_HOST_STATE_DRAINING,
+			Limit:     limit,
+			Timeout:   timeout,
+		},
+	).Return(nil, fmt.Errorf("test GetTasksByHostState error"))
+
+	taskIDs, err := suite.lm.GetTasksOnDrainingHosts(
+		suite.ctx,
+		limit,
+		timeout,
+	)
+	suite.Error(err)
+	suite.Nil(taskIDs)
 }
 
 // getTaskConfigData returns a sample binary-serialized TaskConfig

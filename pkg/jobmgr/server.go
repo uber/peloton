@@ -25,8 +25,8 @@ import (
 	"github.com/uber/peloton/pkg/jobmgr/goalstate"
 	"github.com/uber/peloton/pkg/jobmgr/task/deadline"
 	"github.com/uber/peloton/pkg/jobmgr/task/event"
+	"github.com/uber/peloton/pkg/jobmgr/task/evictor"
 	"github.com/uber/peloton/pkg/jobmgr/task/placement"
-	"github.com/uber/peloton/pkg/jobmgr/task/preemptor"
 	"github.com/uber/peloton/pkg/jobmgr/watchsvc"
 )
 
@@ -41,7 +41,7 @@ type Server struct {
 	role string
 
 	jobFactory         cached.JobFactory
-	taskPreemptor      preemptor.Preemptor
+	taskEvictor        evictor.Evictor
 	goalstateDriver    goalstate.Driver
 	deadlineTracker    deadline.Tracker
 	placementProcessor placement.Processor
@@ -58,7 +58,7 @@ func NewServer(
 	httpPort, grpcPort int,
 	jobFactory cached.JobFactory,
 	goalstateDriver goalstate.Driver,
-	taskPreemptor preemptor.Preemptor,
+	taskPreemptor evictor.Evictor,
 	deadlineTracker deadline.Tracker,
 	placementProcessor placement.Processor,
 	statusUpdate event.StatusUpdate,
@@ -69,7 +69,7 @@ func NewServer(
 		ID:                 leader.NewID(httpPort, grpcPort),
 		role:               common.JobManagerRole,
 		jobFactory:         jobFactory,
-		taskPreemptor:      taskPreemptor,
+		taskEvictor:        taskPreemptor,
 		goalstateDriver:    goalstateDriver,
 		deadlineTracker:    deadlineTracker,
 		placementProcessor: placementProcessor,
@@ -99,7 +99,7 @@ func (s *Server) GainedLeadershipCallback() error {
 	// job manager cache has the baseline state of all jobs recovered
 	// from DB before handling any events which can modify this state.
 	s.goalstateDriver.Start()
-	s.taskPreemptor.Start()
+	s.taskEvictor.Start()
 	s.placementProcessor.Start()
 	s.deadlineTracker.Start()
 	s.statusUpdate.Start()
@@ -119,7 +119,7 @@ func (s *Server) LostLeadershipCallback() error {
 
 	s.statusUpdate.Stop()
 	s.placementProcessor.Stop()
-	s.taskPreemptor.Stop()
+	s.taskEvictor.Stop()
 	s.deadlineTracker.Stop()
 	s.backgroundManager.Stop()
 	s.goalstateDriver.Stop(true)
@@ -148,7 +148,7 @@ func (s *Server) ShutDownCallback() error {
 
 	s.statusUpdate.Stop()
 	s.placementProcessor.Stop()
-	s.taskPreemptor.Stop()
+	s.taskEvictor.Stop()
 	s.deadlineTracker.Stop()
 	s.backgroundManager.Stop()
 	s.goalstateDriver.Stop(true)

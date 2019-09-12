@@ -20,8 +20,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/uber/peloton/.gen/mesos/v1"
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
+	pbhost "github.com/uber/peloton/.gen/peloton/api/v0/host"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	v0_hostsvc "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/.gen/peloton/private/models"
@@ -87,7 +87,7 @@ func (l *v0LifecycleMgr) kill(
 	taskID string,
 ) error {
 	req := &v0_hostsvc.KillTasksRequest{
-		TaskIds: []*mesos_v1.TaskID{{Value: &taskID}},
+		TaskIds: []*mesos.TaskID{{Value: &taskID}},
 	}
 	res, err := l.hostManagerV0.KillTasks(ctx, req)
 	if err != nil {
@@ -118,7 +118,7 @@ func (l *v0LifecycleMgr) killAndReserve(
 		Entries: []*v0_hostsvc.KillAndReserveTasksRequest_Entry{
 			{
 				Id:            &peloton.TaskID{Value: pelotonTaskID},
-				TaskId:        &mesos_v1.TaskID{Value: &taskID},
+				TaskId:        &mesos.TaskID{Value: &taskID},
 				HostToReserve: hostToReserve,
 			},
 		},
@@ -326,8 +326,8 @@ func (l *v0LifecycleMgr) ShutdownExecutor(
 	req := &v0_hostsvc.ShutdownExecutorsRequest{
 		Executors: []*v0_hostsvc.ExecutorOnAgent{
 			{
-				ExecutorId: &mesos_v1.ExecutorID{Value: &taskID},
-				AgentId:    &mesos_v1.AgentID{Value: &agentID},
+				ExecutorId: &mesos.ExecutorID{Value: &taskID},
+				AgentId:    &mesos.AgentID{Value: &agentID},
 			},
 		},
 	}
@@ -359,7 +359,7 @@ func (l *v0LifecycleMgr) TerminateLease(
 	request := &v0_hostsvc.ReleaseHostOffersRequest{
 		HostOffers: []*v0_hostsvc.HostOffer{{
 			Hostname: hostname,
-			AgentId:  &mesos_v1.AgentID{Value: &agentID},
+			AgentId:  &mesos.AgentID{Value: &agentID},
 			Id:       &peloton.HostOfferID{Value: leaseID},
 		}},
 	}
@@ -374,6 +374,35 @@ func (l *v0LifecycleMgr) TerminateLease(
 	}
 	l.metrics.TerminateLease.Inc(1)
 	return nil
+}
+
+// GetTasksOnDrainingHosts gets the taskIDs of the tasks on the
+// hosts in DRAINING state
+func (l *v0LifecycleMgr) GetTasksOnDrainingHosts(
+	ctx context.Context,
+	limit uint32,
+	timeout uint32,
+) ([]string, error) {
+	request := &v0_hostsvc.GetTasksByHostStateRequest{
+		HostState: pbhost.HostState_HOST_STATE_DRAINING,
+		Limit:     limit,
+		Timeout:   timeout,
+	}
+
+	response, err := l.hostManagerV0.GetTasksByHostState(ctx, request)
+	if err != nil {
+		l.metrics.GetTasksOnDrainingHostsFail.Inc(1)
+		return nil, errors.Wrapf(err,
+			"failed to get tasks on hosts in DRAINING state")
+	}
+
+	var taskIDs []string
+	for _, t := range response.GetTaskIds() {
+		taskIDs = append(taskIDs, t.GetValue())
+	}
+
+	l.metrics.GetTasksOnDrainingHosts.Inc(1)
+	return taskIDs, nil
 }
 
 // populateExecutorData transforms executor data in TaskConfig to data
