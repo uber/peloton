@@ -37,6 +37,11 @@ ACTIVE_JOB_STATES = ["PENDING", "RUNNING", "INITIALIZED"]
 TASK_STATES = ["SUCCEEDED", "FAILED", "RUNNING"]
 DEFAUILT_TASKS_COUNT = len(TASK_STATES)
 
+HOSTPOOL_DEFAULT = "default"
+HOSTPOOL_BATCH_RESERVED = "batch_reserved"
+HOSTPOOL_SHARED = "shared"
+HOSTPOOL_STATELESS = "stateless"
+
 log = logging.getLogger(__name__)
 
 
@@ -217,3 +222,8 @@ def _create_sla_cfg(curr, tasks_count=DEFAUILT_TASKS_COUNT):
 # "mesos" or "".
 def minicluster_type():
     return os.getenv("MINICLUSTER_TYPE")
+
+
+# Returns whether host-pools should be used for placement decisions.
+def use_host_pool():
+    return os.getenv("USE_HOST_POOL", "false").lower() in ["true", "1"]

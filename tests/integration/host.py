@@ -7,6 +7,9 @@ from peloton_client.pbgen.peloton.api.v0.host import host_pb2 as host
 from peloton_client.pbgen.peloton.api.v0.host.svc import (
     host_svc_pb2 as hostsvc,
 )
+from tests.integration.conf_util import HOSTPOOL_DEFAULT
+
+from retry import retry
 
 log = logging.getLogger(__name__)
 
@@ -152,6 +155,22 @@ def create_host_pool(pool_id, client=None):
     return resp
 
 
+def delete_host_pool(pool_id, client=None):
+    """
+    deletes host pool with given host pool id.
+    :param pool_id: host pool id
+    :param client: optional peloton client
+    :return: host_svc_pb2.DeleteHostPoolResponse
+    """
+    c = client or Client()
+    request = hostsvc.DeleteHostPoolRequest(name=pool_id)
+
+    resp = c.host_svc.DeleteHostPool(
+        request, metadata=c.hostmgr_metadata, timeout=10
+    )
+    return resp
+
+
 def change_host_pool(hostname, src_pool, dest_pool, client=None):
     """
     changes host pool of a host from source pool to destination pool
@@ -171,11 +190,13 @@ def change_host_pool(hostname, src_pool, dest_pool, client=None):
     return resp
 
 
-def ensure_host_pool(pool_name, num_hosts):
+@retry(tries=50, delay=1)
+def ensure_host_pool(pool_name, num_hosts, client=None):
     """
     ensure host pool exists with at least required number of hosts.
     :param pool_name: target host pool name
     :param num_hosts: number of hosts required in target host pool
+    :param client: optional peloton client
     """
     log.info('ensure at least {} hosts in {} host pool'.format(
         num_hosts, pool_name))
@@ -185,7 +206,7 @@ def ensure_host_pool(pool_name, num_hosts):
     num_existing_hosts = 0
 
     # List all existing host pools.
-    resp = list_host_pools()
+    resp = list_host_pools(client=client)
     if not resp:
         raise Exception('List host pools failed: {}'.format(resp))
 
@@ -193,7 +214,7 @@ def ensure_host_pool(pool_name, num_hosts):
     for pool in resp.pools:
         if pool.name == pool_name:
             existing_pool = pool
-        if pool.name == "default":
+        if pool.name == HOSTPOOL_DEFAULT:
             default_pool = pool
 
     # Check if default host pool exists.
@@ -218,7 +239,7 @@ def ensure_host_pool(pool_name, num_hosts):
 
     # Create new host pool if not exists.
     if existing_pool is None:
-        resp = create_host_pool(pool_name)
+        resp = create_host_pool(pool_name, client=client)
         if not resp:
             raise Exception(
                 'Create {} host pool failed: {}'.format(pool_name, resp))
@@ -226,7 +247,36 @@ def ensure_host_pool(pool_name, num_hosts):
     # Change host pool of hosts to the given pool.
     for i in range(num_more_hosts_required):
         hostname = default_pool.hosts[i]
-        resp = change_host_pool(hostname, "default", pool_name)
+        resp = change_host_pool(
+            hostname,
+            HOSTPOOL_DEFAULT,
+            pool_name,
+            client=client)
         if not resp:
             raise Exception(
                 'Change host pool of {} failed: {}'.format(hostname, resp))
+
+
+def cleanup_other_host_pools(pool_names, client=None):
+    """
+    Deletes all host-pools other than the specified pools. Hosts from deleted
+    pools go to the "default" pool
+    :param pool_names: List host pools to keep.
+    :param client: optional peloton client
+    """
+    # List all existing host pools.
+    resp = list_host_pools(client=client)
+    if not resp:
+        raise Exception('List host pools failed: {}'.format(resp))
+
+    failed = []
+    for pool in resp.pools:
+        if pool.name == HOSTPOOL_DEFAULT or pool.name in pool_names:
+            continue
+        log.info("Deleting pool {}".format(pool.name))
+        resp = delete_host_pool(pool.name, client=client)
+        if not resp:
+            log.info("Failed to delete pool {}: {}".format(pool.name, resp))
+            failed.append(pool.name)
+    if failed:
+        raise Exception("Delete pool failed for %s" % ",".join(failed))

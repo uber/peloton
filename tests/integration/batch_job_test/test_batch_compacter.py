@@ -1,31 +1,39 @@
 import pytest
 import time
 
+from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
+from peloton_client.pbgen.peloton.private.hostmgr.hostsvc import (
+    hostsvc_pb2 as hostmgr)
+
 from tests.integration.job import Job, kill_jobs, with_instance_count
 from tests.integration.common import IntegrationTestConfig
+import tests.integration.conf_util as util
 from tests.integration.client import Client, with_private_stubs
 from tests.integration.pool import Pool
-from tests.integration.host import ensure_host_pool, list_host_pools
-from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
-from peloton_client.pbgen.peloton.private.hostmgr.hostsvc import hostsvc_pb2 as hostmgr
+from tests.integration.host import (
+    ensure_host_pool,
+    list_host_pools,
+    delete_host_pool,
+)
+
 
 # Mark test module so that we can run tests by tags
 pytestmark = [
-    pytest.mark.default,
+    pytest.mark.hostpool,
 ]
 
-BATCH_RESERVED = "batch_reserved"
-SHARED = "shared"
-STATELESS = "stateless"
 
-
-@pytest.mark.skip(reason="Till we enable host pool config for placement engine")
 def test__dynamic_partition_pool_restrictions():
-    hostToPool = dict()
-    ensure_host_pool(BATCH_RESERVED, 1)
-    ensure_host_pool(SHARED, 1)
-    ensure_host_pool(STATELESS, 1)
+    # we start with shared=1, batch_reserved=2
+    # delete batch_reserved so that its hosts go to "default"
+    delete_host_pool(util.HOSTPOOL_BATCH_RESERVED)
 
+    # setup 3 host-pools with 1 host each
+    ensure_host_pool(util.HOSTPOOL_BATCH_RESERVED, 1)
+    ensure_host_pool(util.HOSTPOOL_SHARED, 1)
+    ensure_host_pool(util.HOSTPOOL_STATELESS, 1)
+
+    hostToPool = dict()
     resp = list_host_pools()
     for pool in resp.pools:
         for h in pool.hosts:
@@ -46,7 +54,7 @@ def test__dynamic_partition_pool_restrictions():
             count = count + 1
         else:
             hostname = npjob.get_task(t).get_runtime().host
-            assert hostToPool[hostname] == BATCH_RESERVED
+            assert hostToPool[hostname] == util.HOSTPOOL_BATCH_RESERVED
 
     assert count == 1
 
@@ -65,7 +73,7 @@ def test__dynamic_partition_pool_restrictions():
             count = count + 1
         else:
             hostname = sjob.get_task(t).get_runtime().host
-            assert hostToPool[hostname] == STATELESS
+            assert hostToPool[hostname] == util.HOSTPOOL_STATELESS
 
     assert count == 3
 
@@ -84,7 +92,7 @@ def test__dynamic_partition_pool_restrictions():
             count = count + 1
         else:
             hostname = pjob.get_task(t).get_runtime().host
-            assert hostToPool[hostname] == SHARED
+            assert hostToPool[hostname] == util.HOSTPOOL_SHARED
 
     assert count == 8
 

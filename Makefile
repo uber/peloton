@@ -294,6 +294,9 @@ aurorabridge-integ-test: $(GOKIND)
 	ls -la $(shell pwd)/bin
 	PATH="$(PATH):$(shell pwd)/bin" ./tests/run-aurorabridge-integration-tests.sh
 
+hostpool-integ-test: $(GOKIND)
+	PATH="$(PATH):$(shell pwd)/bin" ./tests/run-hostpool-integration-tests.sh
+
 # launch peloton with PELOTON={any value}, default to none
 minicluster: $(GOKIND)
 	PATH="$(PATH):$(shell pwd)/bin" PELOTON=$(PELOTON) ./scripts/minicluster.sh setup $(K8S)

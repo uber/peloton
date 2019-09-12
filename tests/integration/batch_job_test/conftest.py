@@ -1,7 +1,13 @@
 import pytest
+
 from tests.integration.conftest import (
     setup_minicluster,
     teardown_minicluster,
+)
+import tests.integration.conf_util as util
+from tests.integration.host import (
+    ensure_host_pool,
+    cleanup_other_host_pools,
 )
 from tests.integration.job import Job
 
@@ -9,7 +15,7 @@ from tests.integration.job import Job
 @pytest.fixture(scope="session", autouse=True)
 def minicluster(request):
     tests_failed_before_module = request.session.testsfailed
-    cluster = setup_minicluster()
+    cluster = setup_minicluster(use_host_pool=util.use_host_pool())
 
     yield cluster
 
@@ -31,7 +37,16 @@ def setup_cluster(request):
 @pytest.fixture(autouse=True)
 def run_around_tests(minicluster):
     minicluster.wait_for_all_agents_to_register()
+    use_host_pool = util.use_host_pool()
+    if use_host_pool:
+        ensure_host_pool(util.HOSTPOOL_BATCH_RESERVED, 2)
+        ensure_host_pool(util.HOSTPOOL_SHARED, 1)
     yield
+
+    if use_host_pool:
+        cleanup_other_host_pools(
+            [util.HOSTPOOL_BATCH_RESERVED, util.HOSTPOOL_SHARED],
+        )
 
 
 @pytest.fixture

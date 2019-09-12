@@ -1,4 +1,5 @@
 import pytest
+
 from tests.integration.conftest import (
     setup_minicluster,
     teardown_minicluster,
@@ -6,13 +7,19 @@ from tests.integration.conftest import (
     wait_for_all_agents_to_register,
 )
 import tests.integration.conf_util as util
+from tests.integration.host import (
+    ensure_host_pool,
+    cleanup_other_host_pools,
+)
 
 
 @pytest.fixture(scope="module", autouse=True)
 def bootstrap_cluster(request):
     tests_failed_before_module = request.session.testsfailed
     enable_k8s = util.minicluster_type()
-    cluster = setup_minicluster(enable_k8s=enable_k8s)
+    cluster = setup_minicluster(
+        enable_k8s=enable_k8s,
+        use_host_pool=util.use_host_pool())
 
     yield
 
@@ -34,6 +41,11 @@ def setup_cluster(request):
 @pytest.fixture(autouse=True)
 def run_around_tests():
     wait_for_all_agents_to_register()
+    use_host_pool = util.use_host_pool()
+    if use_host_pool:
+        ensure_host_pool(util.HOSTPOOL_STATELESS, 3)
     yield
     # after each test
     cleanup_stateless_jobs()
+    if use_host_pool:
+        cleanup_other_host_pools([util.HOSTPOOL_STATELESS])
