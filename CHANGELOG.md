@@ -3,6 +3,65 @@
 0.9.0 (unreleased)
 ------------------
 
+0.8.12
+------
+* 2019-09-11    make set_command use mesosSpec.shell from the base job spec                            evelynl@uber.com
+* 2019-09-11    Enable stateless smoketest for k8s                                                     evelynl@uber.com
+* 2019-09-11    Consolidate API Server Procedure Building                                              xuanh@uber.com
+* 2019-09-11    Minicluster: Change order of ZK/Cass setup                                             pourchet@uber.com
+* 2019-09-11    Populate host to pod map upon restart and during pod launch                            zhixin@uber.com
+* 2019-09-11    Fix deadlock in GetHostLease                                                           adityacb@uber.com
+* 2019-09-11    Fill host-pool info in QueryHosts                                                      amitbose@uber.com
+* 2019-09-11    Re-enable podeventmanager stream for k8s                                               evelynl@uber.com
+* 2019-09-11    Minicluster: Keep instance of Minicluster class around for teardown                    pourchet@uber.com
+* 2019-09-11    First cut for scaffording CQosAdvisor for testing purpose                              sishi@uber.com
+* 2019-09-10    clean up resource pools                                                                zhaokai@uber.com
+* 2019-09-10    Fix flaky unit test TestStatusUpdateDedupe                                             varung@uber.com
+* 2019-09-10    Minicluster: Add lib function to check if ZK is ready                                  pourchet@uber.com
+* 2019-09-10    Minicluster: Get rid of globals                                                        pourchet@uber.com
+* 2019-09-10    Add slack-nonslack resources to hostcache                                              adityacb@uber.com
+* 2019-09-10    Host Maintenance relying on Cassandra as source of truth                               rcharles@uber.com
+* 2019-09-09    Set maxUnavailableInstances based on instance count                                    kevinxu@uber.com
+* 2019-09-09    Enable host pool for integration tests                                                 yunpeng@uber.com
+* 2019-09-09    Populate host to task map upon mesos event                                             zhixin@uber.com
+* 2019-09-09    Fix revocable resources set to nil                                                     varung@uber.com
+* 2019-09-09    Increase offer timeout value                                                           varung@uber.com
+* 2019-09-09    Publish host-pool capacity                                                             amitbose@uber.com
+* 2019-09-09    Add instructions to build peloton mesos agent locally                                  varung@uber.com
+* 2019-09-06    set ports in LaunchPod                                                                 binz@uber.com
+* 2019-09-06    Preempt tasks on mesos-task-id                                                         sachins@uber.com
+* 2019-09-06    Integration Tests: Edit configs from code instead of using yaml                        pourchet@uber.com
+* 2019-09-06    Implement api server stream forwarding handler                                         yunpeng@uber.com
+* 2019-09-06    Persist host pool data in Cassandra                                                    yunpeng@uber.com
+* 2019-09-06    [p2k] Separate host summary into its own package; Define podInfoMap as its own struct  yiran@uber.com
+* 2019-09-06    Revert "Fix mesos agent takes too long to come up in minicluster"                      varung@uber.com
+* 2019-09-06    P2K: Integ Tests: Allow for code sharing between k8s and mesos tests                   pourchet@uber.com
+* 2019-09-06    Populate correct hostname in MesosManager pod events                                   zhixin@uber.com
+* 2019-09-06    Add support for a separate resource pool for GPU resources in aurora bridge            apoorvaj@uber.com
+* 2019-09-05    Watch api for jobs handler implementation                                              kevinxu@uber.com
+* 2019-09-05    Fix executor data encoding in thermos executor api converter                           kevinxu@uber.com
+* 2019-09-05    Fix mesos agent takes too long to come up in minicluster                               kevinxu@uber.com
+* 2019-09-05    Add host to pod map in host summary                                                    zhixin@uber.com
+* 2019-09-04    Add task status update acks to mesos plugin                                            adityacb@uber.com
+* 2019-09-03    P2K: Track port ranges allocated and report available port ranges                      binz@uber.com
+* 2019-09-03    Enhanced the QoS API GetServicesImpacted                                               kulkarni@uber.com
+* 2019-09-03    Hook up notifyJobRuntimeChanged for workflow operations                                kevinxu@uber.com
+* 2019-09-03    Add simple integration test to co-locate batch and stateless job                       varung@uber.com
+* 2019-09-03    Remove unnecessary log at stapi::buildQuery                                            varung@uber.com
+* 2019-08-30    migration of failure tests                                                             zhaokai@uber.com
+* 2019-08-30    Add network specification to the apachemesos pod specification.                        apoorvaj@uber.com
+* 2019-08-30    Adding Host pool information into host info table for Goal State for host mover        mabansal@uber.com
+* 2019-08-30    Handle volume mounts in k8s plugin                                                     adityacb@uber.com
+* 2019-08-30    add support for python binding                                                         arpit.goyal@uber.com
+* 2019-08-29    Do hasInstanceConfigChanged check in parallel for instances in that job                varung@uber.com
+* 2019-08-29    Make `Job Stop` limit configurable                                                     yuweit@uber.com
+* 2019-08-29    Fix files in mesos protobuf to their correct version from upstream 1.7.x branch        adityacb@uber.com
+* 2019-08-29    Add Job Manager procedure forwarding from API Proxy                                    anants@uber.com
+* 2019-08-29    Add change log for 0.8.11                                                              zhixin@uber.com
+* 2019-08-29    Add event id to the v1alpha event stream for dedupe                                    adityacb@uber.com
+* 2019-08-28    Add back test for TestCreateGetAllIter                                                 sishi@uber.com
+* 2019-08-28    Add KillAndHoldPods handler in hostmgtsvc                                              evelynl@uber.com
+
 0.8.11
 ------
 * 2019-08-28    Implement Rescind mesos offers in MesosManager                                         zhixin@uber.com
