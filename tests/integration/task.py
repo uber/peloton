@@ -44,6 +44,9 @@ class Task(object):
     def restart(self):
         return self.job.restart(ranges=self._get_range())
 
+    def get_runtime(self):
+        return self.get_info().runtime
+
     def get_info(self):
         return self.job.get_task_info(self.instance_id)
 

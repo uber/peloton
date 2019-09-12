@@ -5,7 +5,7 @@ from tests.integration.job import Job, kill_jobs, with_instance_count
 from tests.integration.common import IntegrationTestConfig
 from tests.integration.client import Client, with_private_stubs
 from tests.integration.pool import Pool
-from tests.integration.host import ensure_host_pool
+from tests.integration.host import ensure_host_pool, list_host_pools
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
 from peloton_client.pbgen.peloton.private.hostmgr.hostsvc import hostsvc_pb2 as hostmgr
 
@@ -21,9 +21,15 @@ STATELESS = "stateless"
 
 @pytest.mark.skip(reason="Till we enable host pool config for placement engine")
 def test__dynamic_partition_pool_restrictions():
+    hostToPool = dict()
     ensure_host_pool(BATCH_RESERVED, 1)
     ensure_host_pool(SHARED, 1)
     ensure_host_pool(STATELESS, 1)
+
+    resp = list_host_pools()
+    for pool in resp.pools:
+        for h in pool.hosts:
+            hostToPool[h] = pool.name
 
     # Job has two instances with 3 cpus each.
     # Only one instance will run.
@@ -38,6 +44,9 @@ def test__dynamic_partition_pool_restrictions():
     for t in npjob.get_tasks():
         if npjob.get_task(t).state_str == "PENDING":
             count = count + 1
+        else:
+            hostname = npjob.get_task(t).get_runtime().host
+            assert hostToPool[hostname] == BATCH_RESERVED
 
     assert count == 1
 
@@ -54,6 +63,9 @@ def test__dynamic_partition_pool_restrictions():
     for t in sjob.get_tasks():
         if sjob.get_task(t).state_str == "PENDING":
             count = count + 1
+        else:
+            hostname = sjob.get_task(t).get_runtime().host
+            assert hostToPool[hostname] == STATELESS
 
     assert count == 3
 
@@ -70,6 +82,9 @@ def test__dynamic_partition_pool_restrictions():
     for t in pjob.get_tasks():
         if pjob.get_task(t).state_str == "PENDING":
             count = count + 1
+        else:
+            hostname = pjob.get_task(t).get_runtime().host
+            assert hostToPool[hostname] == SHARED
 
     assert count == 8
 
