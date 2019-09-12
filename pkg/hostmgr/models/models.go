@@ -33,3 +33,40 @@ type HostResources struct {
 	Slack    scalar.Resources
 	NonSlack scalar.Resources
 }
+
+// Add adds other resources onto current one.
+func (r HostResources) Add(other HostResources) HostResources {
+	return HostResources{
+		Slack:    r.Slack.Add(other.Slack),
+		NonSlack: r.NonSlack.Add(other.NonSlack),
+	}
+}
+
+// TrySubtract attempts to subtract a host resource from current one
+// but returns false if other has more resources.
+func (r HostResources) TrySubtract(other HostResources) (HostResources, bool) {
+	if !r.NonSlack.Contains(other.NonSlack) {
+		return HostResources{}, false
+	}
+	if !r.Slack.Contains(other.Slack) {
+		return HostResources{}, false
+	}
+	return HostResources{
+		Slack:    r.Slack.Subtract(other.Slack),
+		NonSlack: r.NonSlack.Subtract(other.NonSlack),
+	}, true
+}
+
+// Subtract the other host resource from current one.
+func (r HostResources) Subtract(other HostResources) HostResources {
+	return HostResources{
+		Slack:    r.Slack.Subtract(other.Slack),
+		NonSlack: r.NonSlack.Subtract(other.NonSlack),
+	}
+}
+
+// Contains determines whether current Resources is large enough to contain
+// the other one.
+func (r HostResources) Contains(other HostResources) bool {
+	return r.Slack.Contains(other.Slack) && r.NonSlack.Contains(other.NonSlack)
+}

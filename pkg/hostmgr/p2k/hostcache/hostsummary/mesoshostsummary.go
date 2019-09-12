@@ -59,7 +59,7 @@ func (a *mesosHostSummary) SetAvailable(r models.HostResources) {
 	var ok bool
 
 	a.available = r
-	a.allocated.NonSlack, ok = a.capacity.NonSlack.TrySubtract(r.NonSlack)
+	a.allocated, ok = a.capacity.TrySubtract(r)
 	if !ok {
 		// continue with available set to scalar.Resources{}. This would
 		// organically fail in the following steps.

@@ -218,7 +218,7 @@ func (suite *HostSummaryTestSuite) TestHostSummaryTerminateLease() {
 		s.status = tt.beforeStatus
 		// initialize host cache with a podMap
 		s.allocated.NonSlack = tt.beforeAllocated
-		s.available.NonSlack = s.capacity.NonSlack.Subtract(s.allocated.NonSlack)
+		s.available = s.capacity.Subtract(s.allocated)
 		s.leaseID = tt.leaseID
 
 		if tt.preExistingPodID != "" {

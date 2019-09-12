@@ -111,7 +111,7 @@ func (a *kubeletHostSummary) SetAvailable(r models.HostResources) {
 }
 
 func (a *kubeletHostSummary) calculateAvailable() models.HostResources {
-	available, ok := a.capacity.NonSlack.TrySubtract(a.allocated.NonSlack)
+	available, ok := a.capacity.TrySubtract(a.allocated)
 	if !ok {
 		// Continue with available set to scalar.Resources{}. This would
 		// organically fail in the following steps.
@@ -127,9 +127,7 @@ func (a *kubeletHostSummary) calculateAvailable() models.HostResources {
 			NonSlack: scalar.Resources{},
 		}
 	}
-	return models.HostResources{
-		NonSlack: available,
-	}
+	return available
 }
 
 func (a *kubeletHostSummary) postCompleteLease(podToSpecMap map[string]*pbpod.PodSpec) error {
@@ -152,7 +150,7 @@ func (a *kubeletHostSummary) validateEnoughResToLaunch(
 	podToSpecMap map[string]*pbpod.PodSpec,
 ) error {
 	// TODO validate slack too.
-	var nonSlackNeeded scalar.Resources
+	var slackNeeded, nonSlackNeeded scalar.Resources
 
 	podToResMap := make(map[string]scalar.Resources)
 	for id, spec := range podToSpecMap {
@@ -162,7 +160,11 @@ func (a *kubeletHostSummary) validateEnoughResToLaunch(
 	for _, res := range podToResMap {
 		nonSlackNeeded = nonSlackNeeded.Add(res)
 	}
-	if !a.available.NonSlack.Contains(nonSlackNeeded) {
+
+	if !a.available.Contains(models.HostResources{
+		Slack:    slackNeeded,
+		NonSlack: nonSlackNeeded,
+	}) {
 		return errors.New("host has insufficient resources")
 	}
 	return nil
@@ -172,15 +174,19 @@ func (a *kubeletHostSummary) validateEnoughResToLaunch(
 // calculates total allocated resources.
 // This function assumes baseHostSummary lock is held before calling.
 func (a *kubeletHostSummary) calculateAllocated() {
-	var nonSlackallocated scalar.Resources
+	var slackAllocated, nonSlackallocated scalar.Resources
 	var ok bool
 
 	// calculate current allocation based on the new pods map
+	// TODO: populate slackAllocated from this map.
 	for _, r := range a.getPodToResMap() {
 		nonSlackallocated = nonSlackallocated.Add(r)
 	}
 	a.allocated.NonSlack = nonSlackallocated
-	a.available.NonSlack, ok = a.capacity.NonSlack.TrySubtract(nonSlackallocated)
+	a.available, ok = a.capacity.TrySubtract(models.HostResources{
+		Slack:    slackAllocated,
+		NonSlack: nonSlackallocated,
+	})
 	if !ok {
 		// continue with available set to scalar.Resources{}. This would
 		// organically fail in the following steps.
