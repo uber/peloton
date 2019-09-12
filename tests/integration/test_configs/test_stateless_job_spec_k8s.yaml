@@ -27,5 +27,3 @@ defaultSpec:
       # k8s does not have the notion of shell:true, and does not take raw command string.
       # Calling top so the spec works for both mesos and k8s, and runs forever.
       value: '/bin/top'
-  mesosSpec:
-    shell: true

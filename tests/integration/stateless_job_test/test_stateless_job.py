@@ -95,28 +95,27 @@ def test__stop_start_all_tasks_stateless_kills_tasks_and_job(stateless_job):
     stateless_job.wait_for_all_pods_running()
 
 
-def test__exit_task_automatically_restart():
-    job = StatelessJob(
-        config=IntegrationTestConfig(
-            max_retry_attempts=100,
-            pool_file='test_stateless_respool.yaml',
-        ),
-    ).set_command('sleep 10')
-    job.create()
-    job.wait_for_state(goal_state="RUNNING")
+@pytest.mark.k8s
+def test__exit_task_automatically_restart(stateless_job):
+    stateless_job.config = IntegrationTestConfig(
+        max_retry_attempts=100,
+        pool_file='test_stateless_respool.yaml')
+    stateless_job.set_command('sleep', args=['10'])
+    stateless_job.create()
+    stateless_job.wait_for_state(goal_state="RUNNING")
 
-    old_pod_id = job.get_pod(0).get_pod_status().pod_id.value
+    old_pod_id = stateless_job.get_pod(0).get_pod_status().pod_id.value
 
     def job_not_running():
-        return job.get_status().state != "JOB_STATE_RUNNING"
+        return stateless_job.get_status().state != "JOB_STATE_RUNNING"
 
-    job.wait_for_condition(job_not_running)
+    stateless_job.wait_for_condition(job_not_running)
 
     def pod_id_changed():
-        new_pod_id = job.get_pod(0).get_pod_status().pod_id.value
+        new_pod_id = stateless_job.get_pod(0).get_pod_status().pod_id.value
         return old_pod_id != new_pod_id
 
-    job.wait_for_condition(pod_id_changed)
+    stateless_job.wait_for_condition(pod_id_changed)
 
 
 def test__failed_task_automatically_restart():

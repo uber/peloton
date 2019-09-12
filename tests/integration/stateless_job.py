@@ -72,9 +72,14 @@ class StatelessJob(object):
         self.pool = Pool(self.config, self.client)
         return self
 
-    def set_command(self, cmd, shell=True, ctn=0):
-        self.job_spec.default_spec.containers[ctn].entrypoint.value = cmd
-        self.job_spec.default_spec.mesos_spec.shell = shell
+    def set_command(self, cmd, args=None, ctn=0):
+        if self.job_spec.default_spec.mesos_spec.shell:
+            self.job_spec.default_spec.containers[ctn].entrypoint.value = ' '.join(
+                [cmd] + args)
+        else:
+            self.job_spec.default_spec.containers[ctn].entrypoint.value = cmd
+            self.job_spec.default_spec.containers[ctn].entrypoint.arguments.extend(
+                args)
         return self
 
     def set_resources(self, cpu, mem, disk, ctn=0):
