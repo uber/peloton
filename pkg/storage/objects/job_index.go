@@ -47,6 +47,9 @@ var (
 		"StartTime",
 		"CompletionTime",
 	}
+	_slaFields = []string{
+		"SLA",
+	}
 )
 
 // init adds a JobIndexObject instance to the global list of storage objects
@@ -123,7 +126,6 @@ type JobIndexOps interface {
 		id *peloton.JobID,
 		config *job.JobConfig,
 		runtime *job.RuntimeInfo,
-		slaConfig *job.SlaConfig,
 	) error
 
 	// Get retrieves a row from the table.
@@ -155,7 +157,7 @@ func newJobIndexObject(
 	id *peloton.JobID,
 	config *job.JobConfig,
 	runtime *job.RuntimeInfo,
-	slaConfig *job.SlaConfig) (*JobIndexObject, error) {
+) (*JobIndexObject, error) {
 
 	obj := &JobIndexObject{
 		JobID: base.NewOptionalString(id.GetValue()),
@@ -191,8 +193,8 @@ func newJobIndexObject(
 		obj.Labels = string(labelBuffer)
 	}
 
-	if slaConfig != nil {
-		slaBuffer, err := json.Marshal(slaConfig)
+	if config.GetSLA() != nil {
+		slaBuffer, err := json.Marshal(config.GetSLA())
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to marshal job sla config")
 		}
@@ -307,10 +309,9 @@ func (d *jobIndexOps) Create(
 	id *peloton.JobID,
 	config *job.JobConfig,
 	runtime *job.RuntimeInfo,
-	slaConfig *job.SlaConfig,
 ) error {
 
-	obj, err := newJobIndexObject(id, config, runtime, slaConfig)
+	obj, err := newJobIndexObject(id, config, runtime)
 	if err != nil {
 		d.store.metrics.OrmJobMetrics.JobIndexCreateFail.Inc(1)
 		return errors.Wrap(err, "Failed to construct JobIndexObject")
@@ -400,7 +401,7 @@ func (d *jobIndexOps) Update(
 		return nil
 	}
 
-	obj, err := newJobIndexObject(id, config, runtime, nil)
+	obj, err := newJobIndexObject(id, config, runtime)
 	if err != nil {
 		d.store.metrics.OrmJobMetrics.JobIndexUpdateFail.Inc(1)
 		return errors.Wrap(err, "Failed to construct JobIndexObject")
@@ -413,6 +414,10 @@ func (d *jobIndexOps) Update(
 
 	if runtime != nil {
 		fields = append(fields, _runtimeFields...)
+	}
+
+	if config.GetSLA() != nil {
+		fields = append(fields, _slaFields...)
 	}
 
 	err = d.store.oClient.Update(ctx, obj, fields...)

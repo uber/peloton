@@ -764,7 +764,6 @@ func (j *job) Create(
 		ctx, j.ID(),
 		config,
 		j.runtime,
-		j.config.GetSLA(),
 	); err != nil {
 		j.invalidateCache()
 		return err
@@ -909,7 +908,6 @@ func (j *job) RollingCreate(
 		j.id,
 		config,
 		j.runtime,
-		j.config.GetSLA(),
 	); err != nil {
 		j.invalidateCache()
 		return err

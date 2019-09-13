@@ -1575,13 +1575,13 @@ func (suite *jobTestSuite) TestJobCreate() {
 		}).Return(nil)
 
 	suite.jobIndexOps.EXPECT().
-		Create(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any(), gomock.Any()).
+		Create(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 		Do(func(
 			_ context.Context,
 			_ *peloton.JobID,
 			config *pbjob.JobConfig,
 			runtime *pbjob.RuntimeInfo,
-			sla *pbjob.SlaConfig) {
+		) {
 			suite.Equal(config.InstanceCount, jobConfig.InstanceCount)
 			suite.Equal(config.Type, jobConfig.Type)
 			suite.Equal(runtime.GetState(), pbjob.JobState_INITIALIZED)
@@ -5975,7 +5975,7 @@ func (suite *jobTestSuite) TestJobRollingCreateSuccess() {
 			suite.Equal(runtime.GetState(), pbjob.JobState_PENDING)
 		}).Return(nil)
 	suite.jobIndexOps.EXPECT().
-		Create(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any(), gomock.Any()).
+		Create(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	err := suite.job.RollingCreate(
