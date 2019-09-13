@@ -1,2 +1,3 @@
 docker-py==1.7.2
+peloton-client>=0.8.10
 pyyaml
