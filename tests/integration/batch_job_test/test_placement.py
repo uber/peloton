@@ -17,8 +17,9 @@ pytestmark = [
 # Create a job with 5 instances and small resource requirements
 # such that all can run on the same host. Verify that they are
 # packed onto the same host
-def test_placement_strategy_pack():
+def test_placement_strategy_pack(peloton_client):
     job = Job(
+        client=peloton_client,
         job_file="test_task.yaml",
         options=[with_instance_count(5)])
     job.job_config.placementStrategy = job_pb2.PLACEMENT_STRATEGY_PACK_HOST
@@ -37,8 +38,9 @@ def test_placement_strategy_pack():
 # Create a job with 3 instances and small resource requirements
 # such that all can run on the same host. Verify that they are
 # spread over different hosts
-def test_placement_strategy_spread():
+def test_placement_strategy_spread(peloton_client):
     job = Job(
+        client=peloton_client,
         job_file="test_task.yaml",
         options=[with_instance_count(3)])
     job.job_config.placementStrategy = job_pb2.PLACEMENT_STRATEGY_SPREAD_JOB

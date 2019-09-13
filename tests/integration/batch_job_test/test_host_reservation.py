@@ -3,7 +3,7 @@ import pytest
 
 from tests.integration.job import Job, kill_jobs, with_instance_count
 from tests.integration.common import IntegrationTestConfig
-from tests.integration.client import Client, with_private_stubs
+from tests.integration.client import with_private_stubs
 from tests.integration.pool import Pool
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
 from peloton_client.pbgen.peloton.private.hostmgr.hostsvc import hostsvc_pb2 as hostmgr
@@ -16,8 +16,11 @@ pytestmark = [
 ]
 
 
-def respool(request, pool_file):
-    pool = Pool(config=IntegrationTestConfig(pool_file=pool_file))
+def respool(request, pool_file, peloton_client):
+    pool = Pool(
+        client=peloton_client,
+        config=IntegrationTestConfig(pool_file=pool_file),
+    )
 
     # teardown
     def delete_pool():
@@ -28,8 +31,9 @@ def respool(request, pool_file):
 
 
 @pytest.fixture(scope="function", autouse=True)
-def hostreservepool(request):
-    return respool(request, pool_file='test_hostreservation_pool.yaml')
+def hostreservepool(request, peloton_client):
+    return respool(request, pool_file='test_hostreservation_pool.yaml',
+                   peloton_client=peloton_client)
 
 
 # Test the basic host reservation scenario:
@@ -37,8 +41,9 @@ def hostreservepool(request):
 # 2. Create job 2 with one task which doesn't have enough resource on any host
 #    and the task changes to RESERVED state
 # 3. Job 2 changes to RUNNING state and finishes
-def test__tasks_reserve_execution(hostreservepool):
+def test__tasks_reserve_execution(hostreservepool, peloton_client):
     p_job_median = Job(
+        client=peloton_client,
         job_file='test_hostreservation_job_median.yaml',
         pool=hostreservepool,
         config=IntegrationTestConfig(
@@ -56,7 +61,7 @@ def test__tasks_reserve_execution(hostreservepool):
     p_job_median.wait_for_condition(all_running)
 
     # decorate the client to add peloton private API stubs
-    client = with_private_stubs(Client())
+    client = with_private_stubs(peloton_client)
 
     p_job_large = Job(
         job_file='test_hostreservation_job_large.yaml',

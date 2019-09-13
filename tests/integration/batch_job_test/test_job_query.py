@@ -1,7 +1,6 @@
 import pytest
 from datetime import datetime, timedelta
 
-from tests.integration.client import Client
 from peloton_client.pbgen.peloton.api.v0.job import job_pb2
 from peloton_client.pbgen.peloton.api.v0.query import query_pb2 as query
 from peloton_client.pbgen.peloton.api.v0 import peloton_pb2 as peloton
@@ -32,8 +31,8 @@ Raises:
 """
 
 
-def query_by_spec(respool_id=None, spec=None):
-    client = Client()
+def query_by_spec(peloton_client, respool_id=None, spec=None):
+    client = peloton_client
     request = job_pb2.QueryRequest(
         respoolID=respool_id, spec=spec, summaryOnly=True
     )
@@ -54,7 +53,7 @@ creation time in desc order with pagination
 """
 
 
-def test__query_active_jobs(create_jobs):
+def test__query_active_jobs(create_jobs, peloton_client):
     salt = create_jobs[0]
     respoolID = create_jobs[1]
     running_jobs = create_jobs[2]["RUNNING"]
@@ -78,7 +77,7 @@ def test__query_active_jobs(create_jobs):
             ],
         ),
     )
-    resp = query_by_spec(respoolID, spec=spec_active_jobs)
+    resp = query_by_spec(peloton_client, respoolID, spec=spec_active_jobs)
     assert len(resp.results) == NUM_JOBS_PER_STATE
     # test descending order, the last created active job should show up first
     assert (
@@ -93,7 +92,7 @@ creation time in desc order with pagination
 """
 
 
-def test__query_completed_jobs(create_jobs):
+def test__query_completed_jobs(create_jobs, peloton_client):
     salt = create_jobs[0]
     respoolID = create_jobs[1]
     failed_jobs = create_jobs[2]["FAILED"]
@@ -119,7 +118,7 @@ def test__query_completed_jobs(create_jobs):
             ],
         ),
     )
-    resp = query_by_spec(respoolID, spec=spec_completed_jobs)
+    resp = query_by_spec(peloton_client, respoolID, spec=spec_completed_jobs)
 
     # We should see NUM_JOBS_PER_STATE SUCCEEDED
     # and NUM_JOBS_PER_STATE FAILED jobs
@@ -135,76 +134,65 @@ def test__query_completed_jobs(create_jobs):
 
 
 # test pagination
-
-
-def test__query_pagination(create_jobs):
-
+def test__query_pagination(create_jobs, peloton_client):
     salt = create_jobs[0]
     respoolID = create_jobs[1]
 
     pagination = query.PaginationSpec(offset=0, limit=2, maxLimit=5)
     spec_pagination = job_pb2.QuerySpec(keywords=[salt], pagination=pagination)
-    resp = query_by_spec(respoolID, spec=spec_pagination)
+    resp = query_by_spec(peloton_client, respoolID, spec=spec_pagination)
     assert len(resp.results) == 2
 
     pagination.maxLimit = 2
     spec_pagination = job_pb2.QuerySpec(keywords=[salt], pagination=pagination)
-    resp = query_by_spec(respoolID, spec=spec_pagination)
+    resp = query_by_spec(peloton_client, respoolID, spec=spec_pagination)
     assert len(resp.results) == 2
 
     pagination.offset = 1
     spec_pagination = job_pb2.QuerySpec(keywords=[salt], pagination=pagination)
-    resp = query_by_spec(respoolID, spec=spec_pagination)
+    resp = query_by_spec(peloton_client, respoolID, spec=spec_pagination)
     assert len(resp.results) == 1
 
 
 # test job query by name (no respoolID)
-
-
-def test__query_job_by_name(create_jobs):
+def test__query_job_by_name(create_jobs, peloton_client):
     running_jobs = create_jobs[2]["RUNNING"]
 
     spec_by_name = job_pb2.QuerySpec(
         name=running_jobs[0].get_info().config.name
     )
-    resp = query_by_spec(spec=spec_by_name)
+    resp = query_by_spec(peloton_client, spec=spec_by_name)
     assert len(resp.results) == NUM_JOBS_PER_STATE
 
 
 # test job query by owner
-
-
-def test__query_job_by_owner(create_jobs):
+def test__query_job_by_owner(create_jobs, peloton_client):
     respoolID = create_jobs[1]
     running_jobs = create_jobs[2]["RUNNING"]
 
     spec_by_owner = job_pb2.QuerySpec(
         owner=running_jobs[0].get_info().config.owningTeam
     )
-    resp = query_by_spec(respoolID, spec_by_owner)
+    resp = query_by_spec(peloton_client, respoolID, spec_by_owner)
     # We should find NUM_JOBS_PER_STATE number of jobs for each of the
     # three states (RUNNING, FAILED, SUCCEEDED) for this owner
     assert len(resp.results) == 3 * NUM_JOBS_PER_STATE
 
 
 # test job query by keyword
-
-
-def test__query_job_by_keyword(create_jobs):
+def test__query_job_by_keyword(create_jobs, peloton_client):
     respoolID = create_jobs[1]
     running_jobs = create_jobs[2]["RUNNING"]
 
     spec_by_keyword = job_pb2.QuerySpec(
         keywords=[running_jobs[0].get_info().config.name]
     )
-    resp = query_by_spec(respoolID, spec_by_keyword)
+    resp = query_by_spec(peloton_client, respoolID, spec_by_keyword)
     assert len(resp.results) == NUM_JOBS_PER_STATE
 
 
 # test job query by owner and name
-
-
-def test__query_job_by_owner_by_name(create_jobs):
+def test__query_job_by_owner_by_name(create_jobs, peloton_client):
     respoolID = create_jobs[1]
     running_jobs = create_jobs[2]["RUNNING"]
 
@@ -212,14 +200,12 @@ def test__query_job_by_owner_by_name(create_jobs):
         owner=running_jobs[0].get_info().config.owningTeam,
         name=running_jobs[0].get_info().config.name,
     )
-    resp = query_by_spec(respoolID, spec_by_owner_name)
+    resp = query_by_spec(peloton_client, respoolID, spec_by_owner_name)
     assert len(resp.results) == NUM_JOBS_PER_STATE
 
 
 # test job query by name and label
-
-
-def test__query_job_by_name_by_label(create_jobs):
+def test__query_job_by_name_by_label(create_jobs, peloton_client):
     respoolID = create_jobs[1]
     running_jobs = create_jobs[2]["RUNNING"]
 
@@ -228,22 +214,20 @@ def test__query_job_by_name_by_label(create_jobs):
         name=running_jobs[0].get_info().config.name,
         labels=[peloton.Label(key="testKey0", value="testVal0")],
     )
-    resp = query_by_spec(respoolID, spec_by_label)
+    resp = query_by_spec(peloton_client, respoolID, spec_by_label)
     assert len(resp.results) == NUM_JOBS_PER_STATE
 
 
 # test job query with bad query spec. Expect empty results
-
-
-def test__query_job_negative(create_jobs):
+def test__query_job_negative(create_jobs, peloton_client):
     respoolID = create_jobs[1]
     # query by name and label
     spec_by_name = job_pb2.QuerySpec(name="deadbeef")
-    resp = query_by_spec(respoolID, spec_by_name)
+    resp = query_by_spec(peloton_client, respoolID, spec_by_name)
     assert len(resp.results) == 0
 
 
-def test__query_time_range(create_jobs):
+def test__query_time_range(create_jobs, peloton_client):
     salt = create_jobs[0]
     respoolID = create_jobs[1]
 
@@ -254,7 +238,7 @@ def test__query_time_range(create_jobs):
     max_time.GetCurrentTime()
     time_range = peloton.TimeRange(min=min_time, max=max_time)
     spec = job_pb2.QuerySpec(keywords=[salt], completionTimeRange=time_range)
-    resp = query_by_spec(respoolID, spec=spec)
+    resp = query_by_spec(peloton_client, respoolID, spec=spec)
     # This is a query with keyword for jobs completed
     # over last one day. This should yield
     # 2 * NUM_JOBS_PER_STATE jobs for SUCCEEDED and
@@ -262,7 +246,7 @@ def test__query_time_range(create_jobs):
     assert len(resp.results) == 2 * NUM_JOBS_PER_STATE
 
     spec = job_pb2.QuerySpec(keywords=[salt], creationTimeRange=time_range)
-    resp = query_by_spec(respoolID, spec=spec)
+    resp = query_by_spec(peloton_client, respoolID, spec=spec)
     # This is a query with keyword for jobs completed
     # over last one day. This should yield
     # 3 * NUM_JOBS_PER_STATE jobs for RUNNING, SUCCEEDED and
@@ -273,5 +257,5 @@ def test__query_time_range(create_jobs):
     # This should result in error in response
     bad_time_range = peloton.TimeRange(max=min_time, min=max_time)
     spec = job_pb2.QuerySpec(keywords=[salt], creationTimeRange=bad_time_range)
-    resp = query_by_spec(respoolID, spec=spec)
+    resp = query_by_spec(peloton_client, respoolID, spec=spec)
     assert resp.HasField("error")

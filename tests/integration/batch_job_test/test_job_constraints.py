@@ -21,8 +21,9 @@ pytestmark = [
 # Since we have 3 mesos agents , 3 tasks should start running on different
 # hosts and have 1 task PENDING since there's no other host to satisfy the
 # constraint.
-def test__host_limit():
+def test__host_limit(peloton_client):
     job = Job(
+        client=peloton_client,
         job_file="test_stateless_job_host_limit_1.yaml",
         config=IntegrationTestConfig(max_retry_attempts=100, sleep_time_sec=2),
     )
@@ -53,10 +54,11 @@ def test__host_limit():
 
 # Test placement of job without exclusive constraint and verify that the tasks
 # don't run on exclusive host
-def test_placement_non_exclusive_job(exclusive_host):
+def test_placement_non_exclusive_job(exclusive_host, peloton_client):
     # Set number of instances to be a few more than what can run on
     # 2 (non-exclusive) hosts
     job = Job(
+        client=peloton_client,
         job_file="long_running_job.yaml",
         config=IntegrationTestConfig(max_retry_attempts=100, sleep_time_sec=2),
         options=[with_instance_count(12)],
@@ -73,7 +75,7 @@ def test_placement_non_exclusive_job(exclusive_host):
 
 # Test placement of job with exclusive constraint and verify that the tasks
 # run only on exclusive host
-def test_placement_exclusive_job(exclusive_host):
+def test_placement_exclusive_job(exclusive_host, peloton_client):
     excl_constraint = task_pb2.Constraint(
         type=1,  # Label constraint
         labelConstraint=task_pb2.LabelConstraint(
@@ -88,6 +90,7 @@ def test_placement_exclusive_job(exclusive_host):
     # Set number of instances to be a few more than what can run on
     # a single exclusive host
     job = Job(
+        client=peloton_client,
         job_file="long_running_job.yaml",
         config=IntegrationTestConfig(max_retry_attempts=100, sleep_time_sec=2),
         options=[with_constraint(excl_constraint), with_instance_count(6)],

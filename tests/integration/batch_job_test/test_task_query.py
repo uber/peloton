@@ -63,7 +63,7 @@ def query_request(
     return request
 
 
-def query_response(request):
+def query_response(request, client):
     """
     Invokes task query API, and returns a task.QueryRequest object
     from api response.
@@ -162,10 +162,10 @@ all tasks are returned from api.
 @pytest.mark.parametrize(
     "task_test_fixture", [([("SUCCEEDED", 3)])], indirect=True
 )
-def test__query_succeeded_tasks(task_test_fixture):
+def test__query_succeeded_tasks(task_test_fixture, peloton_client):
     succeeded_state = to_spec("SUCCEEDED")
     request = query_request(task_test_fixture, succeeded_state)
-    succeeded_tasks = query_response(request)
+    succeeded_tasks = query_response(request, peloton_client)
 
     assert len(succeeded_tasks.records) == DEFAUILT_TASKS_COUNT
 
@@ -179,10 +179,10 @@ expects that all tasks are returned and are running.
 @pytest.mark.parametrize(
     "task_test_fixture", [([("RUNNING", DEFAUILT_TASKS_COUNT)])], indirect=True
 )
-def test__query_running_tasks(task_test_fixture):
+def test__query_running_tasks(task_test_fixture, peloton_client):
     running_state = to_spec("RUNNING")
     request = query_request(task_test_fixture, running_state)
-    running_tasks = query_response(request)
+    running_tasks = query_response(request, peloton_client)
 
     assert len(running_tasks.records) == DEFAUILT_TASKS_COUNT
 
@@ -196,10 +196,10 @@ expects all tasks are returned and are failed.
 @pytest.mark.parametrize(
     "task_test_fixture", [([("FAILED", DEFAUILT_TASKS_COUNT)])], indirect=True
 )
-def test__query_failed_tasks(task_test_fixture):
+def test__query_failed_tasks(task_test_fixture, peloton_client):
     failed_state = to_spec("FAILED")
     request = query_request(task_test_fixture, failed_state)
-    failed_tasks = query_response(request)
+    failed_tasks = query_response(request, peloton_client)
 
     assert len(failed_tasks.records) == DEFAUILT_TASKS_COUNT
 
@@ -213,13 +213,13 @@ total tasks number.
 @pytest.mark.parametrize(
     "task_test_fixture", [([("SUCCEEDED", 1), ("FAILED", 2)])], indirect=True
 )
-def test__jobs_consist_of_mixed_task_states(task_test_fixture):
+def test__jobs_consist_of_mixed_task_states(task_test_fixture, peloton_client):
     req_succeeded = query_request(task_test_fixture, to_spec("SUCCEEDED"))
-    succeeded = query_response(req_succeeded)
+    succeeded = query_response(req_succeeded, peloton_client)
     count_succeeded = len(succeeded.records)
 
     req_failed = query_request(task_test_fixture, to_spec("FAILED"))
-    failed = query_response(req_failed)
+    failed = query_response(req_failed, peloton_client)
     count_failed = len(failed.records)
     assert count_succeeded == 1
     assert count_failed == 2
@@ -233,9 +233,9 @@ TaskQuery by name.
 @pytest.mark.parametrize(
     "task_test_fixture", [([("SUCCEEDED", 3), ("FAILED", 2)])], indirect=True
 )
-def test__task_query_by_name(task_test_fixture):
+def test__task_query_by_name(task_test_fixture, peloton_client):
     req_by_name_1 = query_request(task_test_fixture, names=["task-1"])
-    resp = query_response(req_by_name_1)
+    resp = query_response(req_by_name_1, peloton_client)
     assert len(resp.records) == 1
     for resp_task in resp.records:
         assert resp_task.config.name == "task-1"
@@ -243,7 +243,7 @@ def test__task_query_by_name(task_test_fixture):
     req_by_name_2 = query_request(
         task_test_fixture, names=["task-2", "task-3"]
     )
-    response = query_response(req_by_name_2)
+    response = query_response(req_by_name_2, peloton_client)
     assert len(response.records) == 2
     for resp_task in response.records:
         assert (
@@ -260,9 +260,9 @@ TaskQuery by host.
 @pytest.mark.parametrize(
     "task_test_fixture", [([("SUCCEEDED", 3), ("FAILED", 2)])], indirect=True
 )
-def test__task_query_by_host(task_test_fixture):
+def test__task_query_by_host(task_test_fixture, peloton_client):
     req_by_hosts = query_request(task_test_fixture, hosts=MESOS_AGENTS)
-    resp = query_response(req_by_hosts)
+    resp = query_response(req_by_hosts, peloton_client)
     assert len(resp.records) == 5
     for resp_task in resp.records:
         assert resp_task.runtime.host in MESOS_AGENTS
@@ -277,18 +277,18 @@ sorting on task page.
 @pytest.mark.parametrize(
     "task_test_fixture", [([("SUCCEEDED", 3)])], indirect=True
 )
-def test__sort_by_creation_time(task_test_fixture):
+def test__sort_by_creation_time(task_test_fixture, peloton_client):
     # test desc order.
     sort_by_creation = update_orderby("creation_time")
     request = query_request(task_test_fixture, pagination=sort_by_creation)
-    sort_response = query_response(request)
+    sort_response = query_response(request, peloton_client)
 
     assert is_sorted(sort_response.records, "creation_time", "DESC")
 
     # test asc order.
     asc_sort_by_creation = update_orderby("creation_time", "ASC")
     request = query_request(task_test_fixture, pagination=asc_sort_by_creation)
-    sort_response = query_response(request)
+    sort_response = query_response(request, peloton_client)
 
     assert is_sorted(sort_response.records, "creation_time", "ASC")
 
@@ -296,17 +296,17 @@ def test__sort_by_creation_time(task_test_fixture):
 @pytest.mark.parametrize(
     "task_test_fixture", [([("SUCCEEDED", 3)])], indirect=True
 )
-def test__sort_by_state(task_test_fixture):
+def test__sort_by_state(task_test_fixture, peloton_client):
     # test desc order.
     sort_by_state = update_orderby("state")
     request = query_request(task_test_fixture, pagination=sort_by_state)
-    sort_response = query_response(request)
+    sort_response = query_response(request, peloton_client)
 
     assert is_sorted(sort_response.records, "state", "DESC")
 
     # test asc order.
     asc_sort_by_state = update_orderby("state", "ASC")
     request = query_request(task_test_fixture, pagination=asc_sort_by_state)
-    sort_response = query_response(request)
+    sort_response = query_response(request, peloton_client)
 
     assert is_sorted(sort_response.records, "state", "ASC")

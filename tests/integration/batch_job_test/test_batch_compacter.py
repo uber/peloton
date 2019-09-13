@@ -1,5 +1,4 @@
 import pytest
-import time
 
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
 from peloton_client.pbgen.peloton.private.hostmgr.hostsvc import (
@@ -23,7 +22,7 @@ pytestmark = [
 ]
 
 
-def test__dynamic_partition_pool_restrictions():
+def test__dynamic_partition_pool_restrictions(peloton_client):
     # we start with shared=1, batch_reserved=2
     # delete batch_reserved so that its hosts go to "default"
     delete_host_pool(util.HOSTPOOL_BATCH_RESERVED)
@@ -42,6 +41,7 @@ def test__dynamic_partition_pool_restrictions():
     # Job has two instances with 3 cpus each.
     # Only one instance will run.
     npjob = Job(
+        client=peloton_client,
         job_file="test_non_preemptible_job.yaml",
         config=IntegrationTestConfig(max_retry_attempts=100),
     )
@@ -61,6 +61,7 @@ def test__dynamic_partition_pool_restrictions():
     # Stateless job has 4 instances with host limit 1
     # so only one instance will run
     sjob = Job(
+        client=peloton_client,
         job_file="test_stateless_job_host_limit_1.yaml",
         config=IntegrationTestConfig(max_retry_attempts=100, sleep_time_sec=2),
     )
@@ -80,6 +81,7 @@ def test__dynamic_partition_pool_restrictions():
     # Preemptible batch job has 12 instances with 1 CPU each,
     # so 4 instances will run.
     pjob = Job(
+        client=peloton_client,
         job_file="test_preemptible_job.yaml",
         config=IntegrationTestConfig(max_retry_attempts=100, sleep_time_sec=2),
     )

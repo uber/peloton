@@ -55,14 +55,6 @@ def peloton_client(minicluster):
 
 
 @pytest.fixture
-def job_factory(peloton_client):
-    def factory(*args, **kwargs):
-        kwargs["client"] = peloton_client
-        return Job(*args, **kwargs)
-    return factory
-
-
-@pytest.fixture
 def long_running_job(request, peloton_client):
     job = Job(job_file="long_running_job.yaml", client=peloton_client)
 

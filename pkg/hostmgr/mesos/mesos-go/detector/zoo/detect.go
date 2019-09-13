@@ -336,12 +336,13 @@ detectLoop:
 				rewatch = true
 			}
 			// rate-limit master changes
-			if elapsed := time.Now().Sub(started); elapsed > 0 {
-				log.Info("resting before next detection cycle")
+			if elapsed := time.Since(started); elapsed > 0 {
+				sleep := md.minDetectorCyclePeriod - elapsed
+				log.Infof("resting %v before next detection cycle", sleep)
 				select {
 				case <-md.Done():
 					return
-				case <-time.After(md.minDetectorCyclePeriod - elapsed): // noop
+				case <-time.After(sleep): // noop
 				}
 			}
 			if rewatch {

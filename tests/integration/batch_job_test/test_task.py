@@ -90,8 +90,10 @@ def test__stop_start_partial_tests_with_multiple_ranges(long_running_job):
     long_running_job.wait_for_state(goal_state="KILLED")
 
 
-def test__start_stop_task_without_job_id():
-    job_without_id = Job()
+def test__start_stop_task_without_job_id(peloton_client):
+    job_without_id = Job(
+        client=peloton_client,
+    )
     resp = job_without_id.start()
     assert resp.HasField("error")
     assert resp.error.HasField("notFound")
@@ -101,8 +103,8 @@ def test__start_stop_task_without_job_id():
     assert resp.error.HasField("notFound")
 
 
-def test__start_stop_task_with_nonexistent_job_id():
-    job_with_nonexistent_id = Job()
+def test__start_stop_task_with_nonexistent_job_id(peloton_client):
+    job_with_nonexistent_id = Job(client=peloton_client)
     job_with_nonexistent_id.job_id = "nonexistent-job-id"
     resp = job_with_nonexistent_id.start()
     assert resp.HasField("error")
@@ -113,7 +115,7 @@ def test__start_stop_task_with_nonexistent_job_id():
     assert resp.error.HasField("notFound")
 
 
-def test_controller_task_limit():
+def test_controller_task_limit(peloton_client):
     # This tests the controller limit of a resource pool. Once it is fully
     # allocated by a controller task, subsequent tasks can't be admitted.
     # 1. start controller job1 which uses all the controller limit
@@ -122,6 +124,7 @@ def test_controller_task_limit():
 
     # job1 uses all the controller limit
     job1 = Job(
+        client=peloton_client,
         job_file="test_controller_job.yaml",
         config=IntegrationTestConfig(
             pool_file="test_respool_controller_limit.yaml"
@@ -133,6 +136,7 @@ def test_controller_task_limit():
 
     # job2 should remain pending as job1 used the controller limit
     job2 = Job(
+        client=peloton_client,
         job_file="test_controller_job.yaml",
         config=IntegrationTestConfig(
             pool_file="test_respool_controller_limit.yaml"
@@ -156,7 +160,7 @@ def test_controller_task_limit():
     kill_jobs([job2])
 
 
-def test_controller_task_limit_executor_can_run():
+def test_controller_task_limit_executor_can_run(peloton_client):
     # This tests the controller limit isn't applied to non-controller jobs.
     # 1. start controller cjob1 which uses all the controller limit
     # 2. start controller cjob2, make sure it remains pending.
@@ -164,6 +168,7 @@ def test_controller_task_limit_executor_can_run():
 
     # job1 uses all the controller limit
     cjob1 = Job(
+        client=peloton_client,
         job_file="test_controller_job.yaml",
         config=IntegrationTestConfig(
             pool_file="test_respool_controller_limit.yaml"
@@ -175,6 +180,7 @@ def test_controller_task_limit_executor_can_run():
 
     # job2 should remain pending as job1 used the controller limit
     cjob2 = Job(
+        client=peloton_client,
         job_file="test_controller_job.yaml",
         config=IntegrationTestConfig(
             pool_file="test_respool_controller_limit.yaml"
@@ -190,6 +196,7 @@ def test_controller_task_limit_executor_can_run():
 
     # start a normal executor job
     job = Job(
+        client=peloton_client,
         job_file="test_job.yaml",
         config=IntegrationTestConfig(
             pool_file="test_respool_controller_limit.yaml"
@@ -203,11 +210,14 @@ def test_controller_task_limit_executor_can_run():
     kill_jobs([cjob1, cjob2])
 
 
-def test_job_succeeds_if_controller_task_succeeds():
+def test_job_succeeds_if_controller_task_succeeds(peloton_client):
     # only controller task in cjob would succeed.
     # other tasks would fail, but only controller task should determine
     # job terminal state
-    cjob = Job(job_file="test_job_succecced_controller_task.yaml")
+    cjob = Job(
+        client=peloton_client,
+        job_file="test_job_succecced_controller_task.yaml",
+    )
 
     cjob.create()
     cjob.wait_for_state(goal_state="SUCCEEDED")
@@ -215,7 +225,7 @@ def test_job_succeeds_if_controller_task_succeeds():
     kill_jobs([cjob])
 
 
-def test_task_killed_in_ready_succeeds_when_re_enqueued(placement_engines):
+def test_task_killed_in_ready_succeeds_when_re_enqueued(peloton_client, placement_engines):
     # Tests that a if task is deleted which is in READY state in resource
     # manager and if is re-enqueued succeeds.
 
@@ -223,7 +233,7 @@ def test_task_killed_in_ready_succeeds_when_re_enqueued(placement_engines):
     placement_engines.stop()
 
     # decorate the client to add peloton private API stubs
-    c = with_private_stubs(Client())
+    c = with_private_stubs(peloton_client)
 
     # create long running job with 2 instances
     long_running_job = Job(
