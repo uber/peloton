@@ -29,6 +29,7 @@ from aurora.api.ttypes import (
     TaskConstraint,
     LimitConstraint,
     Resource,
+    Metadata,
 )
 from aurora.schema.thermos.schema_base import (
     Task as ThermosTask,
@@ -129,6 +130,8 @@ class App(object):
         self.auth_config_file = ""
         self.enable_inplace_update = False
         self.use_host_pool = False
+        self.http_port = None
+        self.grpc_port = None
 
         for k, v in kwargs.iteritems():
             setattr(self, k, v)
@@ -359,6 +362,20 @@ class App(object):
                 "/bin/entrypoint.sh",
             ]
         )
+        # Override executor command for api server to inject
+        # ports environment variable
+        if self.name == "apiserver" and \
+                self.http_port is None and \
+                self.grpc_port is None:
+            cmdline = " && ".join(
+                [
+                    "rm -rf %s" % host_logdir,
+                    "ln -s %s %s" % (sandbox_logdir, host_logdir),
+                    "exec env HTTP_PORT={{thermos.ports[http]}} "
+                    "GRPC_PORT={{thermos.ports[grpc]}} "
+                    "/bin/entrypoint.sh",
+                ]
+            )
         entrypoint_process = ThermosProcess(
             name=self.name,
             cmdline=cmdline,
@@ -390,6 +407,10 @@ class App(object):
         announce = Announcer()
         if self.http_port is not None:
             announce = Announcer(portmap={"health": self.http_port})
+        elif self.name == "apiserver":
+            # Use assigned http port for health check if it is api server
+            # and static http port is not configured
+            announce = Announcer(portmap={"health": "{{thermos.ports[http]}}"})
         thermos_job = ThermosJob(
             name=self.name,
             role=AURORA_ROLE,
@@ -427,6 +448,27 @@ class App(object):
             constraint=TaskConstraint(limit=LimitConstraint(limit=1)),
         )
 
+        # Set task metadata if presents in config
+        if hasattr(self, 'metadata'):
+            taskMetaData = set(
+                [Metadata(key=k, value=v) for k, v in self.metadata.items()])
+        else:
+            taskMetaData = set()
+
+        # Set task resources
+        resources = set(
+            [
+                Resource(numCpus=self.cpu_limit),
+                Resource(ramMb=self.mem_limit / MB),
+                Resource(diskMb=self.disk_limit / MB),
+            ]
+        )
+        if self.name == "apiserver":
+            if self.http_port is None:
+                resources.add(Resource(namedPort="http"))
+            if self.grpc_port is None:
+                resources.add(Resource(namedPort="grpc"))
+
         task_config = TaskConfig(
             job=self.job_key,
             owner=Identity(user=AURORA_USER),
@@ -438,13 +480,7 @@ class App(object):
             maxTaskFailures=0,
             production=False,
             tier="preemptible",
-            resources=set(
-                [
-                    Resource(numCpus=self.cpu_limit),
-                    Resource(ramMb=self.mem_limit / MB),
-                    Resource(diskMb=self.disk_limit / MB),
-                ]
-            ),
+            resources=resources,
             contactEmail="peloton-oncall-group@uber.com",
             executorConfig=self.get_executor_config(),
             container=container,
@@ -452,7 +488,7 @@ class App(object):
             requestedPorts=set(),
             mesosFetcherUris=set(),
             taskLinks={},
-            metadata=set(),
+            metadata=taskMetaData,
         )
 
         job_config = JobConfiguration(
