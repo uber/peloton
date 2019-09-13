@@ -458,6 +458,170 @@ func (suite *statelessActionsTestSuite) TestStatelessReplaceJobActionGetJobFail(
 	))
 }
 
+func (suite *statelessActionsTestSuite) TestStatelessRollbackJobActionSuccess() {
+	batchSize := uint32(1)
+	maxInstanceRetries := uint32(2)
+	maxTolerableInstanceFailures := uint32(1)
+	startPaused := true
+	inPlace := false
+	startPods := false
+	opaque := "test"
+	entityVersion := "1-1-1"
+
+	suite.statelessClient.EXPECT().
+		GetJob(gomock.Any(), gomock.Any()).
+		Return(&svc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: &stateless.JobSpec{
+					Name: "new-job",
+				},
+			},
+		}, nil)
+
+	suite.statelessClient.EXPECT().
+		GetJob(gomock.Any(), gomock.Any()).
+		Return(&svc.GetJobResponse{
+			Summary: &stateless.JobSummary{
+				Status: &stateless.JobStatus{
+					Version: &v1alphapeloton.EntityVersion{Value: testEntityVersion},
+				},
+			},
+		}, nil)
+
+	suite.statelessClient.EXPECT().
+		ReplaceJob(gomock.Any(), gomock.Any()).
+		Return(&svc.ReplaceJobResponse{
+			Version: &v1alphapeloton.EntityVersion{Value: testEntityVersion},
+		}, nil)
+
+	suite.NoError(suite.client.StatelessRollbackJobAction(
+		testJobID,
+		batchSize,
+		entityVersion,
+		maxInstanceRetries,
+		maxTolerableInstanceFailures,
+		startPaused,
+		opaque,
+		inPlace,
+		startPods,
+	))
+}
+
+// TestStatelessReplaceJobActionLookupResourcePoolIDFail tests the failure case of replace
+// job due to look up resource pool fails
+func (suite *statelessActionsTestSuite) TestStatelessRollbackJobGetFailure() {
+	batchSize := uint32(1)
+	maxInstanceRetries := uint32(2)
+	maxTolerableInstanceFailures := uint32(1)
+	startPaused := true
+	inPlace := false
+	startPods := false
+	opaque := "test"
+	entityVersion := "1-1-1"
+
+	suite.statelessClient.EXPECT().
+		GetJob(gomock.Any(), gomock.Any()).
+		Return(&svc.GetJobResponse{}, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.StatelessRollbackJobAction(
+		testJobID,
+		batchSize,
+		entityVersion,
+		maxInstanceRetries,
+		maxTolerableInstanceFailures,
+		startPaused,
+		opaque,
+		inPlace,
+		startPods,
+	))
+}
+
+// TestStatelessReplaceJobActionGetJobFail tests the failure case of replace
+// job due to get job fails
+func (suite *statelessActionsTestSuite) TestStatelessRollbackJobGetJobSummaryFail() {
+	batchSize := uint32(1)
+	maxInstanceRetries := uint32(2)
+	maxTolerableInstanceFailures := uint32(1)
+	startPaused := true
+	inPlace := false
+	startPods := false
+	opaque := "test"
+	entityVersion := "1-1-1"
+
+	suite.statelessClient.EXPECT().
+		GetJob(gomock.Any(), gomock.Any()).
+		Return(&svc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: &stateless.JobSpec{
+					Name: "new-job",
+				},
+			},
+		}, nil)
+
+	suite.statelessClient.EXPECT().
+		GetJob(gomock.Any(), gomock.Any()).
+		Return(&svc.GetJobResponse{}, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.StatelessRollbackJobAction(
+		testJobID,
+		batchSize,
+		entityVersion,
+		maxInstanceRetries,
+		maxTolerableInstanceFailures,
+		startPaused,
+		opaque,
+		inPlace,
+		startPods,
+	))
+}
+
+func (suite *statelessActionsTestSuite) TestStatelessRollbackJobReplaceFailure() {
+	batchSize := uint32(1)
+	maxInstanceRetries := uint32(2)
+	maxTolerableInstanceFailures := uint32(1)
+	startPaused := true
+	inPlace := false
+	startPods := false
+	opaque := "test"
+	entityVersion := "1-1-1"
+
+	suite.statelessClient.EXPECT().
+		GetJob(gomock.Any(), gomock.Any()).
+		Return(&svc.GetJobResponse{
+			JobInfo: &stateless.JobInfo{
+				Spec: &stateless.JobSpec{
+					Name: "new-job",
+				},
+			},
+		}, nil)
+
+	suite.statelessClient.EXPECT().
+		GetJob(gomock.Any(), gomock.Any()).
+		Return(&svc.GetJobResponse{
+			Summary: &stateless.JobSummary{
+				Status: &stateless.JobStatus{
+					Version: &v1alphapeloton.EntityVersion{Value: testEntityVersion},
+				},
+			},
+		}, nil)
+
+	suite.statelessClient.EXPECT().
+		ReplaceJob(gomock.Any(), gomock.Any()).
+		Return(&svc.ReplaceJobResponse{}, yarpcerrors.InternalErrorf("test error"))
+
+	suite.Error(suite.client.StatelessRollbackJobAction(
+		testJobID,
+		batchSize,
+		entityVersion,
+		maxInstanceRetries,
+		maxTolerableInstanceFailures,
+		startPaused,
+		opaque,
+		inPlace,
+		startPods,
+	))
+}
+
 // TestStatelessListJobsActionSuccess tests executing
 // ListJobsAction successfully
 func (suite *statelessActionsTestSuite) TestStatelessListJobsActionSuccess() {

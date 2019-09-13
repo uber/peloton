@@ -301,6 +301,29 @@ var (
 	statelessStartPods = statelessReplace.Flag("start-pods",
 		"start pods affected by the update if they are not running").Default("false").Bool()
 
+	statelessRollback              = stateless.Command("rollback", "rollback the job to a previous configuration")
+	statelessRollbackJobID         = statelessRollback.Arg("job", "job identifier").Required().String()
+	statelessRollbackBatchSize     = statelessRollback.Arg("batch-size", "batch size for the rollback").Required().Uint32()
+	statelessRollbackEntityVersion = statelessRollback.Arg("entityVersion",
+		"the entity version for the previous configuration to rollback to").Required().String()
+	statelessRollbackMaxInstanceRetries = statelessRollback.Flag(
+		"maxInstanceRetries",
+		"maximum instance retries to bring up the instance after rollback before marking it failed."+
+			"If the value is 0, the instance can be retried for infinite times.").Default("0").Uint32()
+	statelessRollbackMaxTolerableInstanceFailures = statelessRollback.Flag(
+		"maxTolerableInstanceFailures",
+		"maximum number of instance failures tolerable before failing the rollback."+
+			"If the value is 0, there is no limit for max failure instances and"+
+			"the rollback is marked successful even if all of the instances fail.").Default("0").Uint32()
+	statelessRollbackStartPaused = statelessRollback.Flag("start-paused",
+		"start the rollback in a paused state").Default("false").Bool()
+	statelessRollbackOpaqueData = statelessRollback.Flag("opaque-data",
+		"opaque data provided by the user").Default("").String()
+	statelessRollbackInPlace = statelessRollback.Flag("in-place",
+		"start the rollback with best effort in-place update").Default("false").Bool()
+	statelessRollbackStartPods = statelessRollback.Flag("start-pods",
+		"start pods affected by the rollback if they are not running").Default("false").Bool()
+
 	statelessListJobs = stateless.Command("list", "list all jobs")
 
 	statelessListPods              = stateless.Command("list-pods", "list all pods in a job")
@@ -1070,6 +1093,18 @@ func main() {
 			*statelessReplaceOpaqueData,
 			*statelessReplaceInPlace,
 			*statelessStartPods,
+		)
+	case statelessRollback.FullCommand():
+		err = client.StatelessRollbackJobAction(
+			*statelessRollbackJobID,
+			*statelessRollbackBatchSize,
+			*statelessRollbackEntityVersion,
+			*statelessRollbackMaxInstanceRetries,
+			*statelessRollbackMaxTolerableInstanceFailures,
+			*statelessRollbackStartPaused,
+			*statelessRollbackOpaqueData,
+			*statelessRollbackInPlace,
+			*statelessRollbackStartPods,
 		)
 	case statelessReplaceJobDiff.FullCommand():
 		err = client.StatelessReplaceJobDiffAction(

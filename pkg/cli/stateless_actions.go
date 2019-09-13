@@ -364,6 +364,90 @@ func (c *Client) StatelessReplaceJobAction(
 	return nil
 }
 
+// StatelessRollbackJobAction roll backs a job to an older entity version by
+// getting the old configuration, and triggering a replace action
+// with the old configiuration.
+func (c *Client) StatelessRollbackJobAction(
+	jobID string,
+	batchSize uint32,
+	entityVersion string,
+	maxInstanceRetries uint32,
+	maxTolerableInstanceFailures uint32,
+	startPaused bool,
+	opaqueData string,
+	inPlace bool,
+	startPods bool,
+) error {
+	// First fetch the previous job configuration.
+	getConfigRequest := statelesssvc.GetJobRequest{
+		JobId: &v1alphapeloton.JobID{
+			Value: jobID,
+		},
+		Version: &v1alphapeloton.EntityVersion{
+			Value: entityVersion,
+		},
+	}
+	getConfigResponse, err := c.statelessClient.GetJob(
+		c.ctx,
+		&getConfigRequest,
+	)
+	if err != nil {
+		return err
+	}
+
+	jobSpec := getConfigResponse.GetJobInfo().GetSpec()
+
+	// Get the latest entity version.
+	getRequest := statelesssvc.GetJobRequest{
+		JobId: &v1alphapeloton.JobID{
+			Value: jobID,
+		},
+		SummaryOnly: true,
+	}
+
+	getResponse, err := c.statelessClient.GetJob(
+		c.ctx,
+		&getRequest,
+	)
+	if err != nil {
+		return err
+	}
+
+	version := getResponse.GetSummary().GetStatus().GetVersion().GetValue()
+
+	jobSpec.Revision = nil
+
+	var opaque *v1alphapeloton.OpaqueData
+	if len(opaqueData) > 0 {
+		opaque = &v1alphapeloton.OpaqueData{Data: opaqueData}
+	}
+
+	req := &statelesssvc.ReplaceJobRequest{
+		JobId:   &v1alphapeloton.JobID{Value: jobID},
+		Version: &v1alphapeloton.EntityVersion{Value: version},
+		Spec:    jobSpec,
+		UpdateSpec: &stateless.UpdateSpec{
+			BatchSize:                    batchSize,
+			RollbackOnFailure:            false,
+			MaxInstanceRetries:           maxInstanceRetries,
+			MaxTolerableInstanceFailures: maxTolerableInstanceFailures,
+			StartPaused:                  startPaused,
+			InPlace:                      inPlace,
+			StartPods:                    startPods,
+		},
+		OpaqueData: opaque,
+	}
+
+	resp, err := c.statelessClient.ReplaceJob(c.ctx, req)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("New EntityVersion: %s\n", resp.GetVersion().GetValue())
+
+	return nil
+}
+
 // StatelessListJobsAction prints summary of all jobs using the ListJobs API
 func (c *Client) StatelessListJobsAction() error {
 	defer tabWriter.Flush()
