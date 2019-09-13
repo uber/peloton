@@ -178,3 +178,72 @@ func HostUp(ctx context.Context, entity goalstate.Entity) error {
 
 	return nil
 }
+
+// HostTriggerMaintenance will make the goal state to DOWN by that we can start draining
+func HostTriggerMaintenance(ctx context.Context, entity goalstate.Entity) error {
+	hostEntity := entity.(*hostEntity)
+	hostname := hostEntity.hostname
+	gsDriver := hostEntity.driver
+
+	// Update host state to DOWN in DB
+	if err := gsDriver.hostInfoOps.UpdateGoalState(
+		ctx,
+		hostname,
+		hpb.HostState_HOST_STATE_DOWN); err != nil {
+		return err
+	}
+
+	// Enqueue into goal state engine for host by that
+	// state converged to goal state
+	gsDriver.EnqueueHost(hostname, time.Now())
+
+	return nil
+}
+
+// HostChangePool action will set the host's current pool to its desired pool
+// And update the goal state to UP and enqueue the host to reevaluation.
+func HostChangePool(ctx context.Context, entity goalstate.Entity) error {
+	hostEntity := entity.(*hostEntity)
+	hostname := hostEntity.hostname
+	gsDriver := hostEntity.driver
+
+	// Get host info from host table in DB
+	h, err := gsDriver.hostInfoOps.Get(ctx, hostname)
+	if err != nil {
+		return err
+	}
+
+	// Changing the host pool
+	if err := gsDriver.hostPoolMgr.ChangeHostPool(hostname,
+		h.GetCurrentPool(),
+		h.GetDesiredPool()); err != nil {
+		return err
+	}
+
+	// Update host state to UP
+	if err := gsDriver.hostInfoOps.UpdateGoalState(
+		ctx,
+		hostname,
+		hpb.HostState_HOST_STATE_UP); err != nil {
+		return err
+	}
+
+	// Enqueue into goal state engine for host by that
+	// state converged to goal state
+	gsDriver.EnqueueHost(hostname, time.Now())
+
+	return nil
+}
+
+// HostInvalidAction action is a error state transition and should
+// not happen
+func HostInvalidAction(ctx context.Context, entity goalstate.Entity) error {
+	hostEntity := entity.(*hostEntity)
+	hostname := hostEntity.hostname
+	log.WithFields(log.Fields{
+		"hostname":  hostname,
+		"state":     hostEntity.GetState(),
+		"GoalState": hostEntity.GetGoalState(),
+	}).Error("Unexpected host state")
+	return nil
+}

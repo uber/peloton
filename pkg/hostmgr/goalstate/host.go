@@ -45,6 +45,19 @@ const (
 	// UntrackAction untracks the host by removing it
 	// from the goal state engine's entity map
 	UntrackAction HostAction = "untrack"
+
+	// ChangePoolAction is to change the host pool of the
+	// host. This action will do two things
+	// 1. Change the current pool in db as desired pool
+	// 2. Make the goal state to Up and reenqueue
+	ChangePoolAction HostAction = "ChangePool"
+
+	// StartMaintenanceAction is to start the Maintenance
+	// if we find pool is not equal to desired pool
+	StartMaintenanceAction HostAction = "StartMaintenance"
+
+	// InvalidAction is a invalid action and this should not occur
+	InvalidAction HostAction = "InvalidAction"
 )
 
 // _hostActionsMap maps the HostAction string to the Action function.
@@ -52,12 +65,15 @@ const (
 // backed by host cache instead of DB
 var (
 	_hostActionsMap = map[HostAction]goalstate.ActionExecute{
-		NoAction:      nil,
-		DrainAction:   HostDrain,
-		DownAction:    HostDown,
-		UpAction:      HostUp,
-		RequeueAction: HostRequeue,
-		UntrackAction: HostUntrack,
+		NoAction:               nil,
+		DrainAction:            HostDrain,
+		DownAction:             HostDown,
+		UpAction:               HostUp,
+		RequeueAction:          HostRequeue,
+		UntrackAction:          HostUntrack,
+		StartMaintenanceAction: HostTriggerMaintenance,
+		ChangePoolAction:       HostChangePool,
+		InvalidAction:          HostInvalidAction,
 	}
 )
 
@@ -75,9 +91,34 @@ var (
 			hpb.HostState_HOST_STATE_DOWN:     UntrackAction,
 		},
 		hpb.HostState_HOST_STATE_UP: {
-			hpb.HostState_HOST_STATE_INVALID: RequeueAction,
-			hpb.HostState_HOST_STATE_UP:      UntrackAction,
-			hpb.HostState_HOST_STATE_DOWN:    UpAction,
+			hpb.HostState_HOST_STATE_INVALID:  RequeueAction,
+			hpb.HostState_HOST_STATE_UP:       UntrackAction,
+			hpb.HostState_HOST_STATE_DOWN:     UpAction,
+			hpb.HostState_HOST_STATE_DRAINING: InvalidAction,
+		},
+		hpb.HostState_HOST_STATE_INVALID: {
+			hpb.HostState_HOST_STATE_INVALID:  RequeueAction,
+			hpb.HostState_HOST_STATE_UP:       RequeueAction,
+			hpb.HostState_HOST_STATE_DRAINING: RequeueAction,
+			hpb.HostState_HOST_STATE_DRAINED:  RequeueAction,
+			hpb.HostState_HOST_STATE_DOWN:     RequeueAction,
+		},
+	}
+
+	// This is the action list if pool is different then current pool
+	_hostRulesDifferentPool = map[hpb.HostState]map[hpb.HostState]HostAction{
+		hpb.HostState_HOST_STATE_DOWN: {
+			hpb.HostState_HOST_STATE_INVALID:  RequeueAction,
+			hpb.HostState_HOST_STATE_UP:       DrainAction,
+			hpb.HostState_HOST_STATE_DRAINING: DrainAction,
+			hpb.HostState_HOST_STATE_DRAINED:  DownAction,
+			hpb.HostState_HOST_STATE_DOWN:     ChangePoolAction,
+		},
+		hpb.HostState_HOST_STATE_UP: {
+			hpb.HostState_HOST_STATE_INVALID:  RequeueAction,
+			hpb.HostState_HOST_STATE_UP:       StartMaintenanceAction,
+			hpb.HostState_HOST_STATE_DOWN:     ChangePoolAction,
+			hpb.HostState_HOST_STATE_DRAINING: InvalidAction,
 		},
 		hpb.HostState_HOST_STATE_INVALID: {
 			hpb.HostState_HOST_STATE_INVALID:  RequeueAction,
@@ -90,8 +131,17 @@ var (
 )
 
 type hostEntity struct {
-	hostname string  // host hostname used as identifier
-	driver   *driver // goal state driver
+	hostname string           // host hostname used as identifier
+	driver   *driver          // goal state driver
+	state    *hostEntityState // host entity state
+}
+
+// hostEntityState will be the composite state of
+// 1. Hoststate
+// 2. hostpool
+type hostEntityState struct {
+	hostState hpb.HostState // Host states
+	hostPool  string        // host pool
 }
 
 // NewHostEntity implements the goal state Entity interface for hosts.
@@ -114,9 +164,15 @@ func (h *hostEntity) GetState() interface{} {
 	if err != nil {
 		// By convention return INVALID state on DB read failure
 		// which is specifically handled with retries
-		return hpb.HostState_HOST_STATE_INVALID
+		return &hostEntityState{
+			hostState: hpb.HostState_HOST_STATE_INVALID,
+			hostPool:  "",
+		}
 	}
-	return hostInfo.GetState()
+	return &hostEntityState{
+		hostState: hostInfo.GetState(),
+		hostPool:  hostInfo.GetCurrentPool(),
+	}
 }
 
 // GetGoalState returns the entity's goal state
@@ -126,9 +182,15 @@ func (h *hostEntity) GetGoalState() interface{} {
 	if err != nil {
 		// By convention return INVALID state on DB read failure
 		// which is specifically handled with retries
-		return hpb.HostState_HOST_STATE_INVALID
+		return &hostEntityState{
+			hostState: hpb.HostState_HOST_STATE_INVALID,
+			hostPool:  "",
+		}
 	}
-	return hostInfo.GetGoalState()
+	return &hostEntityState{
+		hostState: hostInfo.GetGoalState(),
+		hostPool:  hostInfo.GetDesiredPool(),
+	}
 }
 
 // GetActionList returns the list of actions
@@ -138,18 +200,24 @@ func (h *hostEntity) GetActionList(
 	goalState interface{},
 ) (context.Context, context.CancelFunc, []goalstate.Action) {
 	// Retrieve action based on goal state and current state
-	hostState := state.(hpb.HostState)
-	hostGoalState := goalState.(hpb.HostState)
-	if tr, ok := _hostRules[hostGoalState]; ok {
-		if a, ok := tr[hostState]; ok {
+	hostState := state.(*hostEntityState)
+	hostGoalState := goalState.(*hostEntityState)
+	_actionRules := _hostRules
+	if hostState.hostPool != hostGoalState.hostPool {
+		_actionRules = _hostRulesDifferentPool
+	}
+	if tr, ok := _actionRules[hostGoalState.hostState]; ok {
+		if a, ok := tr[hostState.hostState]; ok {
 			action := goalstate.Action{
 				Name:    string(a),
 				Execute: _hostActionsMap[a],
 			}
 			log.WithFields(log.Fields{
-				"hostname":   h.hostname,
-				"state":      hostState.String(),
-				"goal_state": hostGoalState.String(),
+				"hostname":     h.hostname,
+				"state":        hostState.hostState.String(),
+				"pool":         hostState.hostPool,
+				"goal_state":   hostGoalState.hostState.String(),
+				"desired_pool": hostGoalState.hostPool,
 			}).Info("running host action")
 			return context.Background(), nil, []goalstate.Action{action}
 		}

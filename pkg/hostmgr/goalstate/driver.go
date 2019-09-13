@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/uber/peloton/pkg/common/goalstate"
+	"github.com/uber/peloton/pkg/hostmgr/hostpool/manager"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 
@@ -64,7 +65,6 @@ type Driver interface {
 // driver implements the Driver interface
 type driver struct {
 	sync.RWMutex
-
 	hostEngine              goalstate.Engine         // goal state engine for processing hosts
 	mesosMasterClient       mpb.MasterOperatorClient // mesos master client
 	hostInfoOps             ormobjects.HostInfoOps   // DB ops for host_info table
@@ -72,6 +72,7 @@ type driver struct {
 	cfg                     *Config                  // goal state engine configuration
 	scope                   tally.Scope              // scope for overall goal state
 	running                 int32                    // whether driver is running or not
+	hostPoolMgr             manager.HostPoolManager  // Host pool manager to get pool info
 }
 
 // NewDriver returns a new goal state driver object.
@@ -80,6 +81,7 @@ func NewDriver(
 	mesosMasterClient mpb.MasterOperatorClient,
 	parentScope tally.Scope,
 	cfg Config,
+	hostpoolManager manager.HostPoolManager,
 ) Driver {
 	cfg.normalize()
 	scope := parentScope.SubScope("goalstate")
@@ -94,6 +96,7 @@ func NewDriver(
 		hostInfoOps:       ormobjects.NewHostInfoOps(ormStore),
 		cfg:               &cfg,
 		scope:             scope,
+		hostPoolMgr:       hostpoolManager,
 	}
 }
 

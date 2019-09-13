@@ -26,6 +26,7 @@ import (
 
 	"github.com/uber/peloton/pkg/common/goalstate"
 	goalstatemocks "github.com/uber/peloton/pkg/common/goalstate/mocks"
+	hpoolmocks "github.com/uber/peloton/pkg/hostmgr/hostpool/manager/mocks"
 	mpb_mocks "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
 	orm_mocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
@@ -40,6 +41,7 @@ type actionTestSuite struct {
 	mockHostEngine           *goalstatemocks.MockEngine
 	mockMasterOperatorClient *mpb_mocks.MockMasterOperatorClient
 	mockHostInfoOps          *orm_mocks.MockHostInfoOps
+	mockHostPoolmgr          *hpoolmocks.MockHostPoolManager
 	hostname                 string
 	IP                       string
 	ctx                      context.Context
@@ -52,6 +54,7 @@ func (suite *actionTestSuite) SetupTest() {
 	suite.mockHostEngine = goalstatemocks.NewMockEngine(suite.mockCtrl)
 	suite.mockMasterOperatorClient = mpb_mocks.NewMockMasterOperatorClient(suite.mockCtrl)
 	suite.mockHostInfoOps = orm_mocks.NewMockHostInfoOps(suite.mockCtrl)
+	suite.mockHostPoolmgr = hpoolmocks.NewMockHostPoolManager(suite.mockCtrl)
 	suite.hostname = "hostname"
 	suite.IP = "IP"
 	suite.ctx = context.Background()
@@ -61,6 +64,7 @@ func (suite *actionTestSuite) SetupTest() {
 		hostInfoOps:       suite.mockHostInfoOps,
 		scope:             tally.NoopScope,
 		cfg:               &Config{},
+		hostPoolMgr:       suite.mockHostPoolmgr,
 	}
 	suite.hostEntity = &hostEntity{
 		hostname: suite.hostname,
@@ -331,4 +335,80 @@ func (suite *actionTestSuite) TestHostUpFailureDBWrite() {
 		Return(errors.New("some error"))
 
 	suite.Error(HostUp(suite.ctx, suite.hostEntity))
+}
+
+// TestHostTriggerMaintenanceAction will test the TriggerMaintainance Action
+// In the host actions. It will mock DB call with update goal state
+func (suite *actionTestSuite) TestHostTriggerMaintenanceAction() {
+	suite.mockHostInfoOps.EXPECT().
+		UpdateGoalState(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil)
+	suite.mockHostEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any())
+	suite.NoError(HostTriggerMaintenance(suite.ctx, suite.hostEntity))
+}
+
+// TestHostTriggerMaintenanceActionError will test the
+// error in TriggerMaintainance Action
+func (suite *actionTestSuite) TestHostTriggerMaintenanceActionError() {
+	suite.mockHostInfoOps.EXPECT().
+		UpdateGoalState(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(errors.New("error"))
+	suite.Error(HostTriggerMaintenance(suite.ctx, suite.hostEntity))
+}
+
+// TestHostChangePool will test the ChangePool Action
+// In the host actions. It will mocj host pool manager for update
+// the desired pool.
+func (suite *actionTestSuite) TestHostChangePool() {
+	hostInfo := &pbhost.HostInfo{
+		Hostname:    suite.hostname,
+		Ip:          suite.IP,
+		DesiredPool: "p1",
+		CurrentPool: "p2",
+	}
+
+	suite.mockHostInfoOps.EXPECT().
+		Get(gomock.Any(), gomock.Any()).
+		Return(hostInfo, nil)
+
+	suite.mockHostPoolmgr.EXPECT().ChangeHostPool(hostInfo.Hostname,
+		hostInfo.CurrentPool, hostInfo.DesiredPool).Return(nil)
+	suite.mockHostInfoOps.EXPECT().
+		UpdateGoalState(gomock.Any(), suite.hostname, pbhost.HostState_HOST_STATE_UP).
+		Return(nil)
+	suite.mockHostEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any())
+	suite.NoError(HostChangePool(suite.ctx, suite.hostEntity))
+}
+
+// TestHostChangePoolError will test the ChangePool Action
+// error conditions
+func (suite *actionTestSuite) TestHostChangePoolError() {
+	hostInfo := &pbhost.HostInfo{
+		Hostname:    suite.hostname,
+		Ip:          suite.IP,
+		DesiredPool: "p1",
+		CurrentPool: "p2",
+	}
+
+	suite.mockHostInfoOps.EXPECT().
+		Get(gomock.Any(), gomock.Any()).
+		Return(hostInfo, errors.New("error"))
+	suite.Error(HostChangePool(suite.ctx, suite.hostEntity))
+
+	suite.mockHostInfoOps.EXPECT().
+		Get(gomock.Any(), gomock.Any()).
+		Return(hostInfo, nil).Times(2)
+	suite.mockHostPoolmgr.EXPECT().ChangeHostPool(hostInfo.Hostname,
+		hostInfo.CurrentPool, hostInfo.DesiredPool).Return(errors.New("error"))
+	suite.Error(HostChangePool(suite.ctx, suite.hostEntity))
+
+	suite.mockHostPoolmgr.EXPECT().ChangeHostPool(hostInfo.Hostname,
+		hostInfo.CurrentPool, hostInfo.DesiredPool).Return(nil)
+	suite.mockHostInfoOps.EXPECT().
+		UpdateGoalState(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(errors.New("error"))
+
+	suite.Error(HostChangePool(suite.ctx, suite.hostEntity))
 }

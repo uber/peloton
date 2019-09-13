@@ -730,6 +730,7 @@ func main() {
 		masterOperatorClient,
 		rootScope,
 		cfg.HostManager.GoalState,
+		hostPoolManager,
 	)
 
 	// Create new hostmgr internal service handler.

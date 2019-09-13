@@ -73,6 +73,7 @@ func (suite *driverTestSuite) TestNewDriver() {
 		suite.mockMesosMasterClient,
 		tally.NoopScope,
 		Config{},
+		nil,
 	)
 	suite.NotNil(dr)
 }

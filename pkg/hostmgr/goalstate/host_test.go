@@ -96,7 +96,7 @@ func (suite *HostTestSuite) TestGetState() {
 
 	suite.Equal(
 		pbhost.HostState_HOST_STATE_DOWN,
-		suite.hostEntity.GetState(),
+		suite.hostEntity.GetState().(*hostEntityState).hostState,
 	)
 }
 
@@ -108,7 +108,7 @@ func (suite *HostTestSuite) TestGetStateFailure() {
 
 	suite.Equal(
 		pbhost.HostState_HOST_STATE_INVALID,
-		suite.hostEntity.GetState(),
+		suite.hostEntity.GetState().(*hostEntityState).hostState,
 	)
 }
 
@@ -122,7 +122,7 @@ func (suite *HostTestSuite) TestGetGoalState() {
 
 	suite.Equal(
 		pbhost.HostState_HOST_STATE_DOWN,
-		suite.hostEntity.GetGoalState(),
+		suite.hostEntity.GetGoalState().(*hostEntityState).hostState,
 	)
 }
 
@@ -134,7 +134,7 @@ func (suite *HostTestSuite) TestGetGoalStateFailure() {
 
 	suite.Equal(
 		pbhost.HostState_HOST_STATE_INVALID,
-		suite.hostEntity.GetGoalState(),
+		suite.hostEntity.GetGoalState().(*hostEntityState).hostState,
 	)
 }
 
@@ -142,8 +142,14 @@ func (suite *HostTestSuite) TestGetGoalStateFailure() {
 func (suite *HostTestSuite) TestGetActionList() {
 	// Validate INVALID -> DOWN
 	_, _, actions := suite.hostEntity.GetActionList(
-		pbhost.HostState_HOST_STATE_INVALID,
-		pbhost.HostState_HOST_STATE_DOWN,
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_INVALID,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DOWN,
+			hostPool:  "p1",
+		},
 	)
 	suite.Len(actions, 1)
 	suite.EqualValues(
@@ -153,8 +159,14 @@ func (suite *HostTestSuite) TestGetActionList() {
 
 	// Validate UP -> DOWN
 	_, _, actions = suite.hostEntity.GetActionList(
-		pbhost.HostState_HOST_STATE_UP,
-		pbhost.HostState_HOST_STATE_DOWN,
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_UP,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DOWN,
+			hostPool:  "p1",
+		},
 	)
 	suite.Len(actions, 1)
 	suite.EqualValues(
@@ -164,8 +176,14 @@ func (suite *HostTestSuite) TestGetActionList() {
 
 	// Validate DRAINING -> DOWN
 	_, _, actions = suite.hostEntity.GetActionList(
-		pbhost.HostState_HOST_STATE_DRAINING,
-		pbhost.HostState_HOST_STATE_DOWN,
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DRAINING,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DOWN,
+			hostPool:  "p1",
+		},
 	)
 	suite.Len(actions, 1)
 	suite.EqualValues(
@@ -175,8 +193,14 @@ func (suite *HostTestSuite) TestGetActionList() {
 
 	// Validate DRAINED -> DOWN
 	_, _, actions = suite.hostEntity.GetActionList(
-		pbhost.HostState_HOST_STATE_DRAINED,
-		pbhost.HostState_HOST_STATE_DOWN,
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DRAINED,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DOWN,
+			hostPool:  "p1",
+		},
 	)
 	suite.Len(actions, 1)
 	suite.EqualValues(
@@ -186,8 +210,14 @@ func (suite *HostTestSuite) TestGetActionList() {
 
 	// Validate DOWN -> DOWN
 	_, _, actions = suite.hostEntity.GetActionList(
-		pbhost.HostState_HOST_STATE_DOWN,
-		pbhost.HostState_HOST_STATE_DOWN,
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DOWN,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DOWN,
+			hostPool:  "p1",
+		},
 	)
 	suite.Len(actions, 1)
 	suite.EqualValues(
@@ -197,8 +227,14 @@ func (suite *HostTestSuite) TestGetActionList() {
 
 	// Validate INVALID -> UP
 	_, _, actions = suite.hostEntity.GetActionList(
-		pbhost.HostState_HOST_STATE_INVALID,
-		pbhost.HostState_HOST_STATE_UP,
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_INVALID,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_UP,
+			hostPool:  "p1",
+		},
 	)
 	suite.Len(actions, 1)
 	suite.EqualValues(
@@ -208,8 +244,14 @@ func (suite *HostTestSuite) TestGetActionList() {
 
 	// Validate UP -> UP
 	_, _, actions = suite.hostEntity.GetActionList(
-		pbhost.HostState_HOST_STATE_UP,
-		pbhost.HostState_HOST_STATE_UP,
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_UP,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_UP,
+			hostPool:  "p1",
+		},
 	)
 	suite.Len(actions, 1)
 	suite.EqualValues(
@@ -219,8 +261,14 @@ func (suite *HostTestSuite) TestGetActionList() {
 
 	// Validate DOWN -> UP
 	_, _, actions = suite.hostEntity.GetActionList(
-		pbhost.HostState_HOST_STATE_DOWN,
-		pbhost.HostState_HOST_STATE_UP,
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DOWN,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_UP,
+			hostPool:  "p1",
+		},
 	)
 	suite.Len(actions, 1)
 	suite.EqualValues(
@@ -230,8 +278,14 @@ func (suite *HostTestSuite) TestGetActionList() {
 
 	// Validate INVALID -> INVALID
 	_, _, actions = suite.hostEntity.GetActionList(
-		pbhost.HostState_HOST_STATE_INVALID,
-		pbhost.HostState_HOST_STATE_INVALID,
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_INVALID,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_INVALID,
+			hostPool:  "p1",
+		},
 	)
 	suite.Len(actions, 1)
 	suite.EqualValues(
@@ -241,8 +295,14 @@ func (suite *HostTestSuite) TestGetActionList() {
 
 	// Validate UP -> INVALID
 	_, _, actions = suite.hostEntity.GetActionList(
-		pbhost.HostState_HOST_STATE_UP,
-		pbhost.HostState_HOST_STATE_INVALID,
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_UP,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_INVALID,
+			hostPool:  "p1",
+		},
 	)
 	suite.Len(actions, 1)
 	suite.EqualValues(
@@ -252,8 +312,14 @@ func (suite *HostTestSuite) TestGetActionList() {
 
 	// Validate DRAINING -> INVALID
 	_, _, actions = suite.hostEntity.GetActionList(
-		pbhost.HostState_HOST_STATE_DRAINING,
-		pbhost.HostState_HOST_STATE_INVALID,
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DRAINING,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_INVALID,
+			hostPool:  "p1",
+		},
 	)
 	suite.Len(actions, 1)
 	suite.EqualValues(
@@ -263,8 +329,14 @@ func (suite *HostTestSuite) TestGetActionList() {
 
 	// Validate DRAINED -> INVALID
 	_, _, actions = suite.hostEntity.GetActionList(
-		pbhost.HostState_HOST_STATE_DRAINED,
-		pbhost.HostState_HOST_STATE_INVALID,
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DRAINED,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_INVALID,
+			hostPool:  "p1",
+		},
 	)
 	suite.Len(actions, 1)
 	suite.EqualValues(
@@ -274,12 +346,261 @@ func (suite *HostTestSuite) TestGetActionList() {
 
 	// Validate DOWN -> INVALID
 	_, _, actions = suite.hostEntity.GetActionList(
-		pbhost.HostState_HOST_STATE_DOWN,
-		pbhost.HostState_HOST_STATE_INVALID,
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DOWN,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_INVALID,
+			hostPool:  "p1",
+		},
 	)
 	suite.Len(actions, 1)
 	suite.EqualValues(
 		RequeueAction,
+		actions[0].Name,
+	)
+}
+
+func (suite *HostTestSuite) TestGetActionListDifferentPool() {
+	// Validate INVALID -> DOWN
+	_, _, actions := suite.hostEntity.GetActionList(
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_INVALID,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DOWN,
+			hostPool:  "p2",
+		},
+	)
+	suite.Len(actions, 1)
+	suite.EqualValues(
+		RequeueAction,
+		actions[0].Name,
+	)
+
+	// Validate UP -> DOWN
+	_, _, actions = suite.hostEntity.GetActionList(
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_UP,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DOWN,
+			hostPool:  "p2",
+		},
+	)
+	suite.Len(actions, 1)
+	suite.EqualValues(
+		DrainAction,
+		actions[0].Name,
+	)
+
+	// Validate DRAINING -> DOWN
+	_, _, actions = suite.hostEntity.GetActionList(
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DRAINING,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DOWN,
+			hostPool:  "p2",
+		},
+	)
+	suite.Len(actions, 1)
+	suite.EqualValues(
+		DrainAction,
+		actions[0].Name,
+	)
+
+	// Validate DRAINED -> DOWN
+	_, _, actions = suite.hostEntity.GetActionList(
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DRAINED,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DOWN,
+			hostPool:  "p2",
+		},
+	)
+	suite.Len(actions, 1)
+	suite.EqualValues(
+		DownAction,
+		actions[0].Name,
+	)
+
+	// Validate INVALID -> UP
+	_, _, actions = suite.hostEntity.GetActionList(
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_INVALID,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_UP,
+			hostPool:  "p2",
+		},
+	)
+	suite.Len(actions, 1)
+	suite.EqualValues(
+		RequeueAction,
+		actions[0].Name,
+	)
+
+	// Validate INVALID -> INVALID
+	_, _, actions = suite.hostEntity.GetActionList(
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_INVALID,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_INVALID,
+			hostPool:  "p2",
+		},
+	)
+	suite.Len(actions, 1)
+	suite.EqualValues(
+		RequeueAction,
+		actions[0].Name,
+	)
+
+	// Validate UP -> INVALID
+	_, _, actions = suite.hostEntity.GetActionList(
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_UP,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_INVALID,
+			hostPool:  "p2",
+		},
+	)
+	suite.Len(actions, 1)
+	suite.EqualValues(
+		RequeueAction,
+		actions[0].Name,
+	)
+
+	// Validate DRAINING -> INVALID
+	_, _, actions = suite.hostEntity.GetActionList(
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DRAINING,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_INVALID,
+			hostPool:  "p2",
+		},
+	)
+	suite.Len(actions, 1)
+	suite.EqualValues(
+		RequeueAction,
+		actions[0].Name,
+	)
+
+	// Validate DRAINED -> INVALID
+	_, _, actions = suite.hostEntity.GetActionList(
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DRAINED,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_INVALID,
+			hostPool:  "p2",
+		},
+	)
+	suite.Len(actions, 1)
+	suite.EqualValues(
+		RequeueAction,
+		actions[0].Name,
+	)
+
+	// Validate DOWN -> INVALID
+	_, _, actions = suite.hostEntity.GetActionList(
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DOWN,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_INVALID,
+			hostPool:  "p2",
+		},
+	)
+	suite.Len(actions, 1)
+	suite.EqualValues(
+		RequeueAction,
+		actions[0].Name,
+	)
+	// Validate INVALID -> DOWN
+	_, _, actions = suite.hostEntity.GetActionList(
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_INVALID,
+			hostPool:  "p1",
+		},
+
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DOWN,
+			hostPool:  "p2",
+		},
+	)
+	suite.Len(actions, 1)
+	suite.EqualValues(
+		RequeueAction,
+		actions[0].Name,
+	)
+
+	// Validate Up -> UP
+	_, _, actions = suite.hostEntity.GetActionList(
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_UP,
+			hostPool:  "p1",
+		},
+
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_UP,
+			hostPool:  "p2",
+		},
+	)
+	suite.Len(actions, 1)
+	suite.EqualValues(
+		StartMaintenanceAction,
+		actions[0].Name,
+	)
+
+	// Validate Up -> DOWN
+	_, _, actions = suite.hostEntity.GetActionList(
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DOWN,
+			hostPool:  "p1",
+		},
+
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_UP,
+			hostPool:  "p2",
+		},
+	)
+	suite.Len(actions, 1)
+	suite.EqualValues(
+		ChangePoolAction,
+		actions[0].Name,
+	)
+
+	// Validate DOWN -> DOWN
+	_, _, actions = suite.hostEntity.GetActionList(
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DOWN,
+			hostPool:  "p1",
+		},
+
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DOWN,
+			hostPool:  "p2",
+		},
+	)
+	suite.Len(actions, 1)
+	suite.EqualValues(
+		ChangePoolAction,
 		actions[0].Name,
 	)
 }

@@ -113,14 +113,21 @@ type HostInfoOps interface {
 		labels map[string]string,
 	) error
 
+	// UpdateCurrentPool updates the current host pool of an object in the table.
+	UpdateCurrentPool(
+		ctx context.Context,
+		hostname string,
+		currentPool string,
+	) error
+
+	// UpdateDesiredPool updates the desired host pool of an object in the table.
+	UpdateDesiredPool(
+		ctx context.Context,
+		hostname string,
+		desiredPool string,
+	) error
 	// Delete removes an object from the table based on primary key.
 	Delete(ctx context.Context, hostname string) error
-
-	// UpdateCurrentPool updates current pool on a host.
-	UpdateCurrentPool(ctx context.Context, hostname string, pool string) error
-
-	// UpdateDesiredPool updates desired pool on a host.
-	UpdateDesiredPool(ctx context.Context, hostname string, pool string) error
 }
 
 // hostInfoOps implements HostInfoOps using a particular Store.
