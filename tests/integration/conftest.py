@@ -208,16 +208,15 @@ def setup_minicluster(enable_k8s=False, use_host_pool=False):
     setup minicluster
     """
     log.info("setup cluster")
-    if os.getenv("CLUSTER", ""):
-        log.info("cluster mode")
-        return None
-
-    log.info("local minicluster mode")
     cluster = minicluster.Minicluster(mc_config(), enable_peloton=True,
                                       enable_k8s=enable_k8s,
                                       use_host_pool=use_host_pool)
+    if os.getenv("CLUSTER", ""):
+        log.info("cluster mode")
+        return cluster
+
+    log.info("local minicluster mode")
     cluster.setup()
-    time.sleep(5)
     return cluster
 
 
