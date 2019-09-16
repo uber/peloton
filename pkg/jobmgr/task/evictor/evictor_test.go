@@ -248,28 +248,20 @@ func (suite *evictorTestSuite) TestPreemptionCycle() {
 		nil,
 	)
 
-	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any(), false).
-		Do(func(ctx context.Context,
-			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
-			_ bool) {
-			suite.EqualValues(util.CreateMesosTaskID(jobID, runningTaskInfo.InstanceId, 2),
-				runtimeDiffs[runningTaskInfo.InstanceId][jobmgrcommon.DesiredMesosTaskIDField])
-		}).Return(nil, nil, nil)
-
 	termStatusResource := &peloton_task.TerminationStatus{
 		Reason: peloton_task.TerminationStatus_TERMINATION_STATUS_REASON_PREEMPTED_RESOURCES,
 	}
 	termStatusMaint := &peloton_task.TerminationStatus{
 		Reason: peloton_task.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_HOST_MAINTENANCE,
 	}
-	runtimeDiffsNoRestartTask := map[string]interface{}{
+	runtimeDiffNoRestartTask := map[string]interface{}{
 		jobmgrcommon.GoalStateField: peloton_task.TaskState_PREEMPTING,
 		jobmgrcommon.ReasonField:    "EvictionReason_PREEMPTION",
 		jobmgrcommon.MessageField:   _msgEvictingRunningTask,
 
 		jobmgrcommon.TerminationStatusField: termStatusResource,
 	}
-	runtimeDiffsNoRestartMaintTask := map[string]interface{}{
+	runtimeDiffNoRestartMaintTask := map[string]interface{}{
 		jobmgrcommon.GoalStateField: peloton_task.TaskState_PREEMPTING,
 		jobmgrcommon.ReasonField:    "EvictionReason_HOST_MAINTENANCE",
 		jobmgrcommon.MessageField:   _msgEvictingRunningTask,
@@ -280,16 +272,19 @@ func (suite *evictorTestSuite) TestPreemptionCycle() {
 		Do(func(ctx context.Context,
 			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
 			_ bool) {
-			suite.EqualValues(runtimeDiffsNoRestartTask,
-				runtimeDiffs[noRestartTaskInfo.InstanceId])
-		}).Return(nil, nil, nil)
-	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any(), false).
-		Do(func(ctx context.Context,
-			runtimeDiffs map[uint32]jobmgrcommon.RuntimeDiff,
-			_ bool) {
-			suite.EqualValues(runtimeDiffsNoRestartMaintTask,
-				runtimeDiffs[noRestartMaintTaskInfo.InstanceId])
-		}).Return(nil, nil, nil)
+			if _, ok := runtimeDiffs[runningTaskInfo.InstanceId]; ok {
+				suite.EqualValues(util.CreateMesosTaskID(jobID, runningTaskInfo.InstanceId, 2),
+					runtimeDiffs[runningTaskInfo.InstanceId][jobmgrcommon.DesiredMesosTaskIDField])
+			} else if _, ok := runtimeDiffs[noRestartTaskInfo.InstanceId]; ok {
+				suite.EqualValues(runtimeDiffNoRestartTask,
+					runtimeDiffs[noRestartTaskInfo.InstanceId])
+			} else if _, ok := runtimeDiffs[noRestartMaintTaskInfo.InstanceId]; ok {
+				suite.EqualValues(runtimeDiffNoRestartMaintTask,
+					runtimeDiffs[noRestartMaintTaskInfo.InstanceId])
+			} else {
+				suite.FailNow("unknown call to patch tasks")
+			}
+		}).Return(nil, nil, nil).Times(3)
 
 	suite.goalStateDriver.EXPECT().
 		EnqueueTask(gomock.Any(), gomock.Any(), gomock.Any()).
@@ -623,7 +618,7 @@ func (suite *evictorTestSuite) TestHostMaintenanceCyclePatchTasksError() {
 	suite.Error(suite.evictor.performHostMaintenanceCycle())
 }
 
-func (suite *evictorTestSuite) TestReconciler_StartStop() {
+func (suite *evictorTestSuite) TestEvictor_StartStop() {
 	defer func() {
 		suite.evictor.Stop()
 		_, ok := <-suite.evictor.lifeCycle.StopCh()
@@ -642,6 +637,6 @@ func (suite *evictorTestSuite) TestReconciler_StartStop() {
 	suite.NoError(err)
 }
 
-func TestPreemptor(t *testing.T) {
+func TestEvictor(t *testing.T) {
 	suite.Run(t, new(evictorTestSuite))
 }
