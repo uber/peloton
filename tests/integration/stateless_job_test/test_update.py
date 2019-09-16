@@ -1037,7 +1037,8 @@ def test__create_update_before_job_fully_created(stateless_job, in_place):
 # It starts a job with 30 instances, and start the in-place update
 # without batch size, then it tests if any pod is running on unexpected
 # host.
-@pytest.mark.k8s
+# TODO: Re-enable k8s when it stops being flaky.
+# @pytest.mark.k8s
 def test__in_place_update_success_rate(stateless_job):
     stateless_job.job_spec.instance_count = 30
     stateless_job.create()
