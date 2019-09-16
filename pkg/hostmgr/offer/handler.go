@@ -481,8 +481,8 @@ func (h *eventHandler) EventPurged(events []*cirbuf.CircularBufferItem) {
 			h.metrics.taskUpdateAckDeDupe.Inc(1)
 			continue
 		}
-		h.ackChannel <- event.GetMesosTaskStatus()
 		h.ackStatusMap.Store(uid, struct{}{})
+		h.ackChannel <- event.GetMesosTaskStatus()
 	}
 }
 
