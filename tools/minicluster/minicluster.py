@@ -3,6 +3,8 @@
 from collections import OrderedDict
 import os
 import requests
+import random
+import string
 import sys
 import time
 from docker import Client
@@ -41,6 +43,8 @@ class Minicluster(object):
 
         self.k8s = kind.Kind(config["k8s_cluster_name"])
         self._peloton_client = None
+        self._namespace = ""  # Used for isolating miniclusters from each other
+        self._create_peloton_ports()
 
         # Defines the order in which the apps are started
         # NB: HOST_MANAGER is tied to database migrations so should
@@ -58,10 +62,74 @@ class Minicluster(object):
             ]
         )
 
+    def _create_peloton_ports(self):
+        config = self.config
+        self.resmgr_ports = []
+        for i in range(0, config["peloton_resmgr_instance_count"]):
+            # to not cause port conflicts among apps, increase port by 10
+            # for each instance
+            portset = [
+                port + i * 10 for port in config["peloton_resmgr_ports"]]
+            self.resmgr_ports.append(portset)
+
+        self.hostmgr_ports = []
+        for i in range(0, config["peloton_hostmgr_instance_count"]):
+            portset = [
+                port + i * 10 for port in config["peloton_hostmgr_ports"]]
+            self.hostmgr_ports.append(portset)
+
+        self.jobmgr_ports = []
+        for i in range(0, config["peloton_jobmgr_instance_count"]):
+            portset = [
+                port + i * 10 for port in config["peloton_jobmgr_ports"]]
+            self.jobmgr_ports.append(portset)
+
+        self.aurorabridge_ports = []
+        for i in range(0, config["peloton_aurorabridge_instance_count"]):
+            portset = [
+                port + i * 10 for port in config["peloton_aurorabridge_ports"]]
+            self.aurorabridge_ports.append(portset)
+
+        self.apiserver_ports = []
+        for i in range(0, config["peloton_apiserver_instance_count"]):
+            portset = [
+                port + i * 10 for port in config["peloton_apiserver_ports"]]
+            self.apiserver_ports.append(portset)
+
+        self.archiver_ports = []
+        for i in range(0, config["peloton_archiver_instance_count"]):
+            portset = [
+                port + i * 10 for port in config["peloton_archiver_ports"]]
+            self.archiver_ports.append(portset)
+
+        self.placement_ports = []
+        for i in range(0, len(config["peloton_placement_instances"])):
+            portset = [
+                port + i * 10 for port in config["peloton_placement_ports"]]
+            self.placement_ports.append(portset)
+
     # Isolate changes the port numbers, container names, and other
     # config values that need to be unique on a single host.
     def isolate(self):
-        pass
+        # Generate a random string, which will be the "namespace" of the
+        # minicluster. This namespace will be used to add random suffixes to
+        # container names so that they do not collide on the same docker
+        # daemon.
+        # TODO: Use this namespace.
+        letters = string.ascii_lowercase
+        rand_str = ''.join(random.choice(letters) for i in range(3))
+        self._namespace = rand_str
+
+        # Now we need to randomize the ports.
+        # TODO: Fix race condition between the find_free_port() and the process
+        # that will actually bind to that port.
+        self.config["local_master_port"] = utils.find_free_port()
+        self.config["local_agent_port"] = utils.find_free_port()
+        self.config["local_zk_port"] = utils.find_free_port()
+        self.config["local_cassandra_cql_port"] = utils.find_free_port()
+        self.config["local_cassandra_thrift_port"] = utils.find_free_port()
+        # TODO: Peloton ports
+        # TODO: Save those to local disk, or print them to stdout.
 
     def setup(self):
         if self.enable_k8s:
@@ -92,14 +160,15 @@ class Minicluster(object):
             prefix += "-exclusive"
             attributes += ";peloton/exclusive:" + exclusive_label_value
         agent = prefix + repr(index)
-        port = config["local_agent_port"] + port_offset
+        local_port = config["local_agent_port"] + port_offset
+        ctn_port = config["agent_port"]
         container = cli.create_container(
             name=agent,
             hostname=agent,
             volumes=["/files", "/var/run/docker.sock"],
-            ports=[repr(port)],
+            ports=[repr(ctn_port)],
             host_config=cli.create_host_config(
-                port_bindings={port: port},
+                port_bindings={ctn_port: local_port},
                 binds=[
                     work_dir + "/files:/files",
                     work_dir
@@ -109,7 +178,7 @@ class Minicluster(object):
                 privileged=True,
             ),
             environment=[
-                "MESOS_PORT=" + repr(port),
+                "MESOS_PORT=" + repr(ctn_port),
                 "MESOS_MASTER=zk://{0}:{1}/mesos".format(
                     utils.get_container_ip(config["zk_container"]),
                     config["default_zk_port"],
@@ -140,7 +209,7 @@ class Minicluster(object):
             detach=True,
         )
         cli.start(container=container.get("Id"))
-        utils.wait_for_up(agent, port, "state.json")
+        utils.wait_for_up(agent, local_port, "state.json")
 
     def teardown_mesos_agent(self, index, is_exclusive=False):
         prefix = self.config["mesos_agent_container"]
@@ -224,9 +293,11 @@ class Minicluster(object):
             hostname=config["cassandra_container"],
             host_config=cli.create_host_config(
                 port_bindings={
-                    config["cassandra_cql_port"]: config["cassandra_cql_port"],
+                    config["cassandra_cql_port"]: config[
+                        "local_cassandra_cql_port"
+                    ],
                     config["cassandra_thrift_port"]: config[
-                        "cassandra_thrift_port"
+                        "local_cassandra_thrift_port"
                     ],
                 },
                 binds=[work_dir + "/files:/files"],
@@ -255,7 +326,9 @@ class Minicluster(object):
             volumes=["/files"],
             ports=[repr(config["master_port"])],
             host_config=cli.create_host_config(
-                port_bindings={config["master_port"]: config["master_port"]},
+                port_bindings={config["master_port"]: config[
+                    "local_master_port"
+                ]},
                 binds=[
                     work_dir + "/files:/files",
                     work_dir + "/mesos_config/etc_mesos-master:/etc/mesos-master",
@@ -397,9 +470,7 @@ class Minicluster(object):
         # apps to share
         config = self.config
         for i in range(0, config["peloton_resmgr_instance_count"]):
-            # to not cause port conflicts among apps, increase port by 10
-            # for each instance
-            ports = [port + i * 10 for port in config["peloton_resmgr_ports"]]
+            ports = self.resmgr_ports[i]
             name = config["peloton_resmgr_container"] + repr(i)
             utils.remove_existing_container(name)
             self.start_and_wait(
@@ -430,9 +501,7 @@ class Minicluster(object):
             })
 
         for i in range(0, config["peloton_hostmgr_instance_count"]):
-            # to not cause port conflicts among apps, increase port
-            # by 10 for each instance
-            ports = [port + i * 10 for port in config["peloton_hostmgr_ports"]]
+            ports = self.hostmgr_ports[i]
             name = config["peloton_hostmgr_container"] + repr(i)
             utils.remove_existing_container(name)
             self.start_and_wait(
@@ -454,9 +523,7 @@ class Minicluster(object):
             env.update({"HOSTMGR_API_VERSION": "v1alpha"})
 
         for i in range(0, config["peloton_jobmgr_instance_count"]):
-            # to not cause port conflicts among apps, increase port by 10
-            #  for each instance
-            ports = [port + i * 10 for port in config["peloton_jobmgr_ports"]]
+            ports = self.jobmgr_ports[i]
             name = config["peloton_jobmgr_container"] + repr(i)
             utils.remove_existing_container(name)
             self.start_and_wait(
@@ -470,9 +537,7 @@ class Minicluster(object):
     def run_peloton_aurorabridge(self):
         config = self.config
         for i in range(0, config["peloton_aurorabridge_instance_count"]):
-            ports = [
-                port + i * 10 for port in config["peloton_aurorabridge_ports"]
-            ]
+            ports = self.aurorabridge_ports[i]
             name = config["peloton_aurorabridge_container"] + repr(i)
             utils.remove_existing_container(name)
             self.start_and_wait("aurorabridge", name, ports)
@@ -482,9 +547,7 @@ class Minicluster(object):
         i = 0
         config = self.config
         for task_type in config["peloton_placement_instances"]:
-            # to not cause port conflicts among apps, increase port by 10
-            # for each instance
-            ports = [port + i * 10 for port in config["peloton_placement_ports"]]
+            ports = self.placement_ports[i]
             name = config["peloton_placement_container"] + repr(i)
             utils.remove_existing_container(name)
             if task_type == 'BATCH':
@@ -510,9 +573,7 @@ class Minicluster(object):
     def run_peloton_apiserver(self):
         config = self.config
         for i in range(0, config["peloton_apiserver_instance_count"]):
-            ports = [
-                port + i * 10 for port in config["peloton_apiserver_ports"]
-            ]
+            ports = self.apiserver_ports[i]
             name = config["peloton_apiserver_container"] + repr(i)
             utils.remove_existing_container(name)
             self.start_and_wait("apiserver", name, ports)
@@ -521,7 +582,7 @@ class Minicluster(object):
     def run_peloton_archiver(self):
         config = self.config
         for i in range(0, config["peloton_archiver_instance_count"]):
-            ports = [port + i * 10 for port in config["peloton_archiver_ports"]]
+            ports = self.archiver_ports[i]
             name = config["peloton_archiver_container"] + repr(i)
             utils.remove_existing_container(name)
             self.start_and_wait(

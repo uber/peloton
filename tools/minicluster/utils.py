@@ -88,7 +88,8 @@ def wait_for_up(app, port, path=healthcheck_path):
                 return
         except Exception as e:
             if count % 5 == 1:
-                print_utils.warn("app %s is not up yet, retrying..." % app)
+                msg = "app %s is not up yet, retrying at %s" % (app, url)
+                print_utils.warn(msg)
             error = str(e)
             time.sleep(sleep_time_secs)
             count += 1
