@@ -46,6 +46,7 @@ class Minicluster(object):
         self._peloton_client = None
         self._namespace = ""  # Used for isolating miniclusters from each other
         self._create_peloton_ports()
+        self._create_mesos_ports()
 
         # Defines the order in which the apps are started
         # NB: HOST_MANAGER is tied to database migrations so should
@@ -63,6 +64,15 @@ class Minicluster(object):
                 (APISERVER, self.run_peloton_apiserver),
             ]
         )
+
+    def _create_mesos_ports(self):
+        self.mesos_agent_ports = []
+        base = self.config["local_agent_port"]
+        for i in range(0, self.config['num_agents']):
+            self.mesos_agent_ports.append(base + i)
+
+        for i in range(0, self.config.get('num_exclusive_agents', 0)):
+            self.mesos_agent_ports.append(base + self.config['num_agents'] + i)
 
     def _create_peloton_ports(self):
         config = self.config
@@ -126,12 +136,23 @@ class Minicluster(object):
         # TODO: Fix race condition between the find_free_port() and the process
         # that will actually bind to that port.
         self.config["local_master_port"] = utils.find_free_port()
-        self.config["local_agent_port"] = utils.find_free_port()
         self.config["local_zk_port"] = utils.find_free_port()
         self.config["local_cassandra_cql_port"] = utils.find_free_port()
         self.config["local_cassandra_thrift_port"] = utils.find_free_port()
-        # TODO: Peloton ports
+
+        self.mesos_agent_ports = utils.randomize_ports(self.mesos_agent_ports)
+
+        self.resmgr_ports = utils.randomize_ports(self.resmgr_ports)
+        self.hostmgr_ports = utils.randomize_ports(self.hostmgr_ports)
+        self.jobmgr_ports = utils.randomize_ports(self.jobmgr_ports)
+        self.aurorabridge_ports = utils.randomize_ports(
+            self.aurorabridge_ports)
+        self.apiserver_ports = utils.randomize_ports(self.apiserver_ports)
+        self.archiver_ports = utils.randomize_ports(self.archiver_ports)
+        self.placement_ports = utils.randomize_ports(self.placement_ports)
+
         # TODO: Save those to local disk, or print them to stdout.
+        return self._namespace
 
     def setup(self):
         if self.enable_k8s:
@@ -153,7 +174,7 @@ class Minicluster(object):
         self._teardown_zk()
         print_utils.okgreen("teardown complete!")
 
-    def setup_mesos_agent(self, index, port_offset, is_exclusive=False,
+    def setup_mesos_agent(self, index, local_port, is_exclusive=False,
                           exclusive_label_value=''):
         config = self.config
         prefix = config["mesos_agent_container"]
@@ -162,7 +183,6 @@ class Minicluster(object):
             prefix += "-exclusive"
             attributes += ";peloton/exclusive:" + exclusive_label_value
         agent = prefix + repr(index)
-        local_port = config["local_agent_port"] + port_offset
         ctn_port = config["agent_port"]
         container = cli.create_container(
             name=agent,
@@ -366,11 +386,13 @@ class Minicluster(object):
         config = self.config
         cli.pull(config['mesos_slave_image'])
         for i in range(0, config['num_agents']):
-            self.setup_mesos_agent(i, i)
+            port = self.mesos_agent_ports[i]
+            self.setup_mesos_agent(i, port)
 
         for i in range(0, config.get('num_exclusive_agents', 0)):
+            port = self.mesos_agent_ports[config['num_agents'] + i]
             self.setup_mesos_agent(
-                i, config['num_agents'] + i,
+                i, port,
                 is_exclusive=True,
                 exclusive_label_value=config.get('exclusive_label_value', ''))
 
@@ -697,7 +719,7 @@ class Minicluster(object):
         util method to wait for mesos master leader elected
         """
 
-        port = self.config.get("master_port")
+        port = self.config.get("local_master_port")
         url = "{}:{}/state.json".format(utils.HTTP_LOCALHOST, port)
         print_utils.warn("waiting for mesos master leader")
         deadline = time.time() + timeout_secs
@@ -717,7 +739,7 @@ class Minicluster(object):
         """
         util method to wait for all agents to register
         """
-        port = self.config.get("master_port")
+        port = self.config.get("local_master_port")
         url = "{}:{}/state.json".format(utils.HTTP_LOCALHOST, port)
         print_utils.warn("waiting for all mesos agents")
 

@@ -1,4 +1,5 @@
 import pytest
+import os
 
 from tests.integration.conftest import (
     setup_minicluster,
@@ -15,7 +16,12 @@ from tests.integration.job import Job
 @pytest.fixture(scope="session", autouse=True)
 def minicluster(request):
     tests_failed_before_module = request.session.testsfailed
-    cluster = setup_minicluster(use_host_pool=util.use_host_pool())
+
+    should_isolate = os.getenv("MINICLUSTER_ISOLATE") == "1"
+    cluster = setup_minicluster(
+        use_host_pool=util.use_host_pool(),
+        isolate_cluster=should_isolate,
+    )
 
     yield cluster
 

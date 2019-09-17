@@ -3,7 +3,7 @@
 from docker import Client
 import os
 import requests
-import socket
+from socket import socket
 import time
 
 import print_utils
@@ -45,6 +45,23 @@ def find_free_port():
     port = s.getsockname()[1]
     s.close()
     return port
+
+
+#
+# Goes through the input list and replaces any integer it finds with a random
+# free port. If one of the elements is a list itself, we will recursively
+# perform this operation in there.
+#
+def randomize_ports(array):
+    for i in range(0, len(array)):
+        if type(array[i]) is int:
+            array[i] = find_free_port()
+        elif type(array[i]) is list:
+            array[i] = randomize_ports(array[i])
+        else:
+            raise Exception("randomize_ports must only be called on lists " +
+                            "of lists or integers")
+    return array
 
 
 #

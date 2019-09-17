@@ -203,7 +203,8 @@ def wait_for_all_agents_to_register(
     assert False, "timed out waiting for agents to register"
 
 
-def setup_minicluster(enable_k8s=False, use_host_pool=False):
+def setup_minicluster(enable_k8s=False, use_host_pool=False,
+                      isolate_cluster=False):
     """
     setup minicluster
     """
@@ -214,8 +215,12 @@ def setup_minicluster(enable_k8s=False, use_host_pool=False):
     if os.getenv("CLUSTER", ""):
         log.info("cluster mode")
         return cluster
-
     log.info("local minicluster mode")
+
+    if isolate_cluster:
+        ns = cluster.isolate()
+        log.info("local minicluster isolated: " + ns)
+
     cluster.setup()
     return cluster
 
@@ -538,16 +543,16 @@ def exclusive_host(request):
 
     def clean_up():
         cluster.teardown_mesos_agent(0, is_exclusive=True)
-        cluster.setup_mesos_agent(0, 0)
+        cluster.setup_mesos_agent(0, 5051)  # TODO: port isolation
         time.sleep(5)
 
     # Remove agent #0 and instead create exclusive agent #0
     cluster.teardown_mesos_agent(0)
     cluster.setup_mesos_agent(
         0,
-        3,
+        5054,
         is_exclusive=True,
         exclusive_label_value="exclusive-test-label",
-    )
+    )  # TODO: port isolation
     time.sleep(5)
     request.addfinalizer(clean_up)
