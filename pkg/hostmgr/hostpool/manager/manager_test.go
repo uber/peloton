@@ -255,9 +255,10 @@ func (suite *HostPoolManagerTestSuite) TestDeregisterPoolWithHosts() {
 	suite.manager.RegisterPool("default")
 
 	for _, h := range poolIndex["pool0"] {
-		suite.mockHostInfoOps.EXPECT().UpdateCurrentPool(
+		suite.mockHostInfoOps.EXPECT().UpdatePool(
 			gomock.Any(),
 			h,
+			common.DefaultHostPoolID,
 			common.DefaultHostPoolID,
 		).Return(nil)
 	}
@@ -492,7 +493,8 @@ func (suite *HostPoolManagerTestSuite) TestReconcile() {
 		suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).
 			Return(tc.hostInfo, tc.getHostInfoErr)
 		if tc.numUpdates > 0 {
-			suite.mockHostInfoOps.EXPECT().UpdateCurrentPool(
+			suite.mockHostInfoOps.EXPECT().UpdatePool(
+				gomock.Any(),
 				gomock.Any(),
 				gomock.Any(),
 				gomock.Any(),
@@ -688,9 +690,10 @@ func (suite *HostPoolManagerTestSuite) TestChangeHostPool() {
 
 	for tcName, tc := range testCases {
 		if tc.updated {
-			suite.mockHostInfoOps.EXPECT().UpdateCurrentPool(
+			suite.mockHostInfoOps.EXPECT().UpdatePool(
 				gomock.Any(),
 				tc.host,
+				tc.destPoolID,
 				tc.destPoolID,
 			).Return(tc.updatedErr)
 		}

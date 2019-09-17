@@ -113,11 +113,13 @@ type HostInfoOps interface {
 		labels map[string]string,
 	) error
 
-	// UpdateCurrentPool updates the current host pool of an object in the table.
-	UpdateCurrentPool(
+	// UpdatePool updates the current & desired host pool of an object
+	// in the table.
+	UpdatePool(
 		ctx context.Context,
 		hostname string,
 		currentPool string,
+		desiredPool string,
 	) error
 
 	// UpdateDesiredPool updates the desired host pool of an object in the table.
@@ -315,18 +317,20 @@ func (d *hostInfoOps) Delete(ctx context.Context, hostname string) error {
 	return nil
 }
 
-// UpdateCurrentPool updates current pool on a host.
-func (d *hostInfoOps) UpdateCurrentPool(
+// UpdateCurrentPool updates current and desired pool on a host.
+func (d *hostInfoOps) UpdatePool(
 	ctx context.Context,
 	hostname string,
-	pool string,
+	currentPool string,
+	desiredPool string,
 ) error {
 	hostInfoObject := &HostInfoObject{
 		Hostname:    base.NewOptionalString(hostname),
-		CurrentPool: pool,
+		CurrentPool: currentPool,
+		DesiredPool: desiredPool,
 		UpdateTime:  time.Now(),
 	}
-	fieldsToUpdate := []string{"CurrentPool", "UpdateTime"}
+	fieldsToUpdate := []string{"CurrentPool", "DesiredPool", "UpdateTime"}
 
 	err := d.store.oClient.Update(ctx, hostInfoObject, fieldsToUpdate...)
 	if err != nil {

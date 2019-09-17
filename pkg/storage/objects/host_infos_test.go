@@ -262,11 +262,12 @@ func (s *HostInfoObjectTestSuite) TestUpdatePools() {
 	)
 	s.NoError(err)
 
-	err = db.UpdateCurrentPool(ctx, testHostInfo.Hostname, "pool2")
+	err = db.UpdatePool(ctx, testHostInfo.Hostname, "pool2", "pool3")
 	s.NoError(err)
 	hostInfo, err := db.Get(ctx, testHostInfo.Hostname)
 	s.NoError(err)
 	s.EqualValues("pool2", hostInfo.CurrentPool)
+	s.Equal("pool3", hostInfo.DesiredPool)
 
 	err = db.UpdateDesiredPool(ctx, testHostInfo.Hostname, "pool2")
 	s.NoError(err)

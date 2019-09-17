@@ -208,14 +208,19 @@ func (m *hostPoolManager) RegisterPool(poolID string) {
 	}
 }
 
-// updateCurrentPoolInHostInfo updates current pool on given host in host_infos table.
-func (m *hostPoolManager) updateCurrentPoolInHostInfo(hostname, poolID string) error {
+// updatePoolInHostInfo updates current & desired pool on given host
+// in host_infos table.
+func (m *hostPoolManager) updatePoolInHostInfo(hostname, poolID string) error {
 	if len(hostname) == 0 {
 		m.metrics.UpdateCurrentPoolErr.Inc(1)
 		return errors.New("hostname is empty")
 	}
 
-	err := m.hostInfoOps.UpdateCurrentPool(context.Background(), hostname, poolID)
+	err := m.hostInfoOps.UpdatePool(
+		context.Background(),
+		hostname,
+		poolID,
+		poolID)
 	if err != nil {
 		m.metrics.UpdateCurrentPoolErr.Inc(1)
 		return err
@@ -251,10 +256,10 @@ func (m *hostPoolManager) DeregisterPool(poolID string) error {
 				"%s host pool not found", common.DefaultHostPoolID)
 		}
 		for h := range pool.Hosts() {
-			err := m.updateCurrentPoolInHostInfo(h, common.DefaultHostPoolID)
+			err := m.updatePoolInHostInfo(h, common.DefaultHostPoolID)
 			if err != nil {
 				return yarpcerrors.InternalErrorf(
-					"failed to update host info of %s in db: %v",
+					"failed to update current pool of %s in db: %v",
 					h,
 					err,
 				)
@@ -311,7 +316,7 @@ func (m *hostPoolManager) ChangeHostPool(
 		return
 	}
 
-	if err = m.updateCurrentPoolInHostInfo(hostname, destPoolID); err != nil {
+	if err = m.updatePoolInHostInfo(hostname, destPoolID); err != nil {
 		return
 	}
 	m.hostToPoolMap[hostname] = destPoolID
@@ -508,7 +513,7 @@ func (m *hostPoolManager) reconcile() error {
 	for poolID, pool := range m.poolIndex {
 		for hostname := range pool.Hosts() {
 			if _, ok := registeredAgents[hostname]; !ok {
-				err := m.updateCurrentPoolInHostInfo(hostname, "")
+				err := m.updatePoolInHostInfo(hostname, "")
 				if err != nil {
 					log.WithError(err).WithField("hostname", hostname).
 						Error(_updateHostPoolErrMsg)
@@ -522,7 +527,7 @@ func (m *hostPoolManager) reconcile() error {
 
 			prevPoolID, ok := m.hostToPoolMap[hostname]
 			if !ok {
-				err := m.updateCurrentPoolInHostInfo(hostname, "")
+				err := m.updatePoolInHostInfo(hostname, "")
 				if err != nil {
 					log.WithError(err).WithField("hostname", hostname).
 						Error(_updateHostPoolErrMsg)
@@ -538,7 +543,7 @@ func (m *hostPoolManager) reconcile() error {
 				continue
 			}
 
-			err := m.updateCurrentPoolInHostInfo(hostname, prevPoolID)
+			err := m.updatePoolInHostInfo(hostname, prevPoolID)
 			if err != nil {
 				log.WithError(err).WithField("hostname", hostname).
 					Error(_updateHostPoolErrMsg)
@@ -561,7 +566,7 @@ func (m *hostPoolManager) reconcile() error {
 	// If a host is not in rebuild hostToPoolMap, add it to host cache.
 	for hostname, poolID := range m.hostToPoolMap {
 		if _, ok := newHostToPoolMap[hostname]; !ok {
-			err := m.updateCurrentPoolInHostInfo(hostname, poolID)
+			err := m.updatePoolInHostInfo(hostname, poolID)
 			if err != nil {
 				log.WithError(err).WithField("hostname", hostname).
 					Error(_updateHostPoolErrMsg)
@@ -583,7 +588,7 @@ func (m *hostPoolManager) reconcile() error {
 	// add it to default host pool.
 	for hostname := range registeredAgents {
 		if _, ok := newHostToPoolMap[hostname]; !ok {
-			err := m.updateCurrentPoolInHostInfo(hostname, common.DefaultHostPoolID)
+			err := m.updatePoolInHostInfo(hostname, common.DefaultHostPoolID)
 			if err != nil {
 				log.WithError(err).WithField("hostname", hostname).
 					Error(_updateHostPoolErrMsg)
