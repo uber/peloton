@@ -53,4 +53,4 @@ RUN ( echo "Built Peloton" && peloton-jobmgr --version ) >&2 && cp ./bin/* /usr/
 
 ENTRYPOINT ["/bin/entrypoint.sh"]
 
-EXPOSE 5290 5291 5292 5293 5297
+EXPOSE 5290 5291 5292 5293 5297 5090

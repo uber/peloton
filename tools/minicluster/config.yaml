@@ -107,6 +107,12 @@ peloton_apiserver_ports:
   - 5297
   - 5397
 
+peloton_mock_cqos_container: peloton-mock-cqos
+peloton_mock_cqos_instance_count: 1
+peloton_mock_cqos_ports:
+  - 5090
+  - 5190
+
 peloton_archiver_container: peloton-archiver
 peloton_archiver_ports:
   - 5295

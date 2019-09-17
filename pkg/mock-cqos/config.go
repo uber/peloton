@@ -18,4 +18,6 @@ package mock_cqos
 type Config struct {
 	// gRPC port which Cqos advisor Server is listening on
 	GRPCPort int `yaml:"grpc_port"`
+	// http port which Cqos advisor Server is listening on
+	HTTPPort int `yaml:"http_port"`
 }

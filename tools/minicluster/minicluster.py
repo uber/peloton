@@ -21,6 +21,7 @@ JOB_MANAGER = 4
 ARCHIVER = 5
 AURORABRIDGE = 6
 APISERVER = 7
+MOCK_CQOS = 8
 
 
 cli = Client(base_url="unix://var/run/docker.sock")
@@ -52,6 +53,7 @@ class Minicluster(object):
         # TODO: Start all apps at the same time.
         self.APP_START_ORDER = OrderedDict(
             [
+                (MOCK_CQOS, self.run_peloton_mockcqos),
                 (HOST_MANAGER, self.run_peloton_hostmgr),
                 (RESOURCE_MANAGER, self.run_peloton_resmgr),
                 (PLACEMENT_ENGINE, self.run_peloton_placement),
@@ -460,7 +462,13 @@ class Minicluster(object):
             name = config["peloton_apiserver_container"] + repr(i)
             func(name)
 
+        # 8 - Remove mock-cqos instances
+        for i in range(0, config["peloton_mock_cqos_instance_count"]):
+            name = config["peloton_mock_cqos_container"] + repr(i)
+            func(name)
+
     # Run peloton resmgr app
+
     def run_peloton_resmgr(self):
         env = {}
         if self.enable_k8s:
@@ -577,6 +585,17 @@ class Minicluster(object):
             name = config["peloton_apiserver_container"] + repr(i)
             utils.remove_existing_container(name)
             self.start_and_wait("apiserver", name, ports)
+
+    # Run peloton mock-cqos server
+    def run_peloton_mockcqos(self):
+        config = self.config
+        for i in range(0, config["peloton_mock_cqos_instance_count"]):
+            ports = [
+                port + i * 10 for port in config["peloton_mock_cqos_ports"]
+            ]
+            name = config["peloton_mock_cqos_container"] + repr(i)
+            utils.remove_existing_container(name)
+            self.start_and_wait("mock-cqos", name, ports)
 
     # Run peloton archiver app
     def run_peloton_archiver(self):

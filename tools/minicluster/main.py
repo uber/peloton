@@ -148,6 +148,13 @@ USAGE
         help="disable peloton api server app",
     )
     parser_setup.add_argument(
+        "--no-mockcqos",
+        dest="disable_peloton_mockcqos",
+        action="store_true",
+        default=False,
+        help="disable peloton mock cqos app",
+    )
+    parser_setup.add_argument(
         "--use-host-pool",
         dest="use_host_pool",
         action="store_true",
@@ -184,6 +191,7 @@ def main():
             minicluster.JOB_MANAGER: args.disable_peloton_jobmgr,
             minicluster.ARCHIVER: args.disable_peloton_archiver,
             minicluster.AURORABRIDGE: args.disable_peloton_aurorabridge,
+            minicluster.MOCK_CQOS: args.disable_peloton_mockcqos,
         }
 
         cluster = minicluster.Minicluster(

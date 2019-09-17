@@ -82,7 +82,7 @@ migratedb:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/migratedb cmd/migratedb/*.go
 
 mock-cqos:
-	go build $(GO_FLAGS) -o ./$(BIN_DIR)/mock-cqos cmd/mock-cqos/*.go
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-mock-cqos cmd/mock-cqos/*.go
 
 # Use the same version of mockgen in unit tests as in mock generation
 build-mockgen:
