@@ -508,7 +508,7 @@ func (h *serviceHandler) GetPodEvents(
 		return nil, err
 	}
 
-	taskEvents, err := h.podEventsOps.GetAll(
+	taskEvents, err := h.podStore.GetPodEvents(
 		ctx,
 		jobID,
 		instanceID,
@@ -767,7 +767,7 @@ func (h *serviceHandler) getHostInfo(
 	instanceID uint32,
 	podID string,
 ) (hostname, podid, agentID string, err error) {
-	taskEvents, err := h.podEventsOps.GetAll(ctx, jobID, instanceID, podID)
+	taskEvents, err := h.podStore.GetPodEvents(ctx, jobID, instanceID, podID)
 	if err != nil {
 		return "", "", "", errors.Wrap(err, "failed to get pod events")
 	}
@@ -861,7 +861,7 @@ func (h *serviceHandler) getPodInfoForAllPodRuns(
 
 	pID := podID.GetValue()
 	for {
-		taskEvents, err := h.podEventsOps.GetAll(ctx, jobID, instanceID, pID)
+		taskEvents, err := h.podStore.GetPodEvents(ctx, jobID, instanceID, pID)
 		if err != nil {
 			return nil, err
 		}
