@@ -16,9 +16,15 @@ package resizer
 
 import (
 	"testing"
+	"time"
 
+	cqos "github.com/uber/peloton/.gen/qos/v1alpha1"
 	cqosmocks "github.com/uber/peloton/.gen/qos/v1alpha1/mocks"
+	movermocks "github.com/uber/peloton/pkg/hostmgr/hostpool/hostmover/mocks"
 	poolmocks "github.com/uber/peloton/pkg/hostmgr/hostpool/manager/mocks"
+
+	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/hostmgr/hostpool"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
@@ -32,6 +38,7 @@ type ResizerTestSuite struct {
 	ctrl            *gomock.Controller
 	mockHostPoolMgr *poolmocks.MockHostPoolManager
 	mockCQosClient  *cqosmocks.MockQoSAdvisorServiceYARPCClient
+	mockHostMover   *movermocks.MockHostMover
 }
 
 // SetupTest is setup function for this suite.
@@ -42,6 +49,7 @@ func (suite *ResizerTestSuite) SetupSuite() {
 		suite.ctrl,
 	)
 	suite.mockHostPoolMgr = poolmocks.NewMockHostPoolManager(suite.ctrl)
+	suite.mockHostMover = movermocks.NewMockHostMover(suite.ctrl)
 }
 
 func (suite *ResizerTestSuite) TearDownTest() {
@@ -58,8 +66,27 @@ func (suite *ResizerTestSuite) TestResizerStartStop() {
 	r := NewResizer(
 		suite.mockHostPoolMgr,
 		suite.mockCQosClient,
+		suite.mockHostMover,
+		Config{
+			ResizeInterval: 1 * time.Millisecond,
+		},
 		tally.NoopScope,
 	)
+
+	suite.mockCQosClient.EXPECT().
+		GetHostMetrics(
+			gomock.Any(),
+			gomock.Any(),
+		).Return(&cqos.GetHostMetricsResponse{}, nil).AnyTimes()
+	suite.mockHostPoolMgr.EXPECT().
+		GetPool(
+			common.StatelessHostPoolID,
+		).Return(
+		hostpool.New(common.StatelessHostPoolID, tally.NoopScope),
+		nil,
+	).AnyTimes()
+
 	r.Start()
+
 	r.Stop()
 }

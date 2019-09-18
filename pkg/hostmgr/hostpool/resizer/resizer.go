@@ -15,69 +15,71 @@
 package resizer
 
 import (
+	"context"
 	"time"
 
 	cqos "github.com/uber/peloton/.gen/qos/v1alpha1"
 
+	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/lifecycle"
+	"github.com/uber/peloton/pkg/hostmgr/hostpool/hostmover"
 	"github.com/uber/peloton/pkg/hostmgr/hostpool/manager"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
-)
-
-// Constants
-const (
-	// default interval for resizing the partition.
-	_resizeInterval = 30 * time.Second
-
-	// default number of hosts to move between pools per resize operation.
-	_moveBatchSize = 10
-
-	// default threshold for cqos score per host after which the host is considered hot.
-	_cqosScoreThresholdPerHost = 60
-
-	// A pool is considered cold if the % of hot hosts in the pool is below this threshold.
-	_poolHotMinThreshold = 40
-
-	// A pool is considered hot if the % of hot hosts in the pool is above this threshold.
-	_poolHotMaxThreshold = 60
 )
 
 type PoolStatus int
 
 const (
-	Hot PoolStatus = iota + 1
-	Medium
-	Cold
+	NeedHosts PoolStatus = iota + 1
+	OptimumHosts
+	ExcessHosts
 )
 
 type resizer struct {
+	// resizer lifecycle manager.
 	lf lifecycle.LifeCycle
 
-	// HostPool hostPoolManager service
+	// host pool manager to get pool information.
 	hostPoolManager manager.HostPoolManager
 
+	// cqos client to get host metrics.
 	cqosClient cqos.QoSAdvisorServiceYARPCClient
 
-	// TODO: add metrics.
+	// host mover instance to move hosts across pools.
+	hostMover hostmover.HostMover
+
+	// resizer metrics.
+	metrics *Metrics
+
+	// resizer config.
+	config *Config
 }
 
 // NewResizer creates a new resizer instance.
 func NewResizer(
 	manager manager.HostPoolManager,
 	cqosClient cqos.QoSAdvisorServiceYARPCClient,
+	hostMover hostmover.HostMover,
+	config Config,
 	scope tally.Scope,
 ) resizer {
+
+	config.normalize()
 
 	return resizer{
 		lf:              lifecycle.NewLifeCycle(),
 		hostPoolManager: manager,
 		cqosClient:      cqosClient,
+		hostMover:       hostMover,
+		metrics:         NewMetrics(scope),
+		config:          &config,
 	}
 }
 
 func (r *resizer) run() {
-	ticker := time.NewTicker(_resizeInterval)
+	ticker := time.NewTicker(r.config.ResizeInterval)
 
 	for {
 		select {
@@ -93,12 +95,52 @@ func (r *resizer) run() {
 
 func (r *resizer) runOnce() {
 	// get host metrics map.
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	resp, err := r.cqosClient.GetHostMetrics(ctx, &cqos.GetHostMetricsRequest{})
+	if err != nil {
+		log.WithError(err).Error("error fetching host metrics")
+		r.metrics.GetMetricsFail.Inc(1)
+		return
+	}
+	r.metrics.GetMetrics.Inc(1)
 
+	hosts := resp.GetHosts()
 	// get the stateless pool to resize.
 
-	// get the batch pool to resize.
+	stateless, err := r.hostPoolManager.GetPool(common.StatelessHostPoolID)
+	if err != nil {
+		log.WithError(err).Error("error fetching stateless pool")
+		r.metrics.GetPoolFail.Inc(1)
+		return
+	}
+	r.metrics.GetPool.Inc(1)
 
-	// resize if needed based on stateless pool status.
+	var hotHosts uint32
+	hotHosts = 0
+	for hostname := range stateless.Hosts() {
+		if m, ok := hosts[hostname]; ok {
+			if uint32(m.Score) > r.config.CqosThresholdPerHost {
+				hotHosts += 1
+			}
+		}
+	}
+
+	s := r.metrics.RootScope.Tagged(map[string]string{
+		"pool": stateless.ID(),
+	})
+
+	if hotHosts > r.config.PoolResizeRange.Upper {
+		// TODO:
+		// pool is hot. try to resize.
+		s.Counter("need_hosts").Inc(1)
+	} else if hotHosts < r.config.PoolResizeRange.Lower {
+		// TODO:
+		// pool is cold. try to resize.
+		s.Counter("excess_hosts").Inc(1)
+	}
+	s.Counter("optimum_hosts").Inc(1)
+	// pool is within the range. No action needed.
 }
 
 // Start starts the resizer.
