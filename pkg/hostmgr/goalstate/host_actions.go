@@ -72,18 +72,14 @@ func HostDrain(ctx context.Context, entity goalstate.Entity) error {
 	// a new host to the schedule on top of the existing schedule
 	// and Mesos Master allows schedule overwrite, so concurrency control
 	// is required
-	defer func() {
-		gsDriver.maintenanceScheduleLock.Unlock()
-		log.WithField("hostname", hostname).
-			Debug("host releases lock for updating mesos master maintenance schedule")
-	}()
-
 	gsDriver.maintenanceScheduleLock.Lock()
+	defer gsDriver.maintenanceScheduleLock.Unlock()
 
-	log.WithField("hostname", hostname).
-		Debug("host takes lock for updating mesos master maintenance schedule")
-
-	if err := mesoshelper.AddHostToMaintenanceSchedule(gsDriver.mesosMasterClient, hostname, IP); err != nil {
+	if err := mesoshelper.AddHostToMaintenanceSchedule(
+		gsDriver.mesosMasterClient,
+		hostname,
+		IP,
+	); err != nil {
 		return err
 	}
 
@@ -156,20 +152,28 @@ func HostUp(ctx context.Context, entity goalstate.Entity) error {
 	if err != nil {
 		return err
 	}
-	IP := h.GetIp()
+	ip := h.GetIp()
 
 	// Register host as up
-	if err := mesoshelper.RegisterHostAsUp(gsDriver.mesosMasterClient, hostname, IP); err != nil {
+	if err := mesoshelper.RegisterHostAsUp(
+		gsDriver.mesosMasterClient,
+		hostname,
+		ip,
+	); err != nil {
 		return err
 	}
 
-	// Delete host from DB
-	if err := gsDriver.hostInfoOps.Delete(ctx, hostname); err != nil {
+	// Update host state in DB
+	if err := gsDriver.hostInfoOps.UpdateState(
+		ctx,
+		hostname,
+		hpb.HostState_HOST_STATE_UP,
+	); err != nil {
 		return err
 	}
 
-	// Since host deleted from DB, also delete it from goal state engine entity map
-	gsDriver.DeleteHost(hostname)
+	// Enqueue host to goalstate engine for evaluation
+	gsDriver.EnqueueHost(hostname, time.Now())
 
 	log.WithFields(log.Fields{
 		"hostname":    hostname,

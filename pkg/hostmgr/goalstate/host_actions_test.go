@@ -286,10 +286,13 @@ func (suite *actionTestSuite) TestHostUp() {
 		StopMaintenance(gomock.Any()).
 		Return(nil)
 	suite.mockHostInfoOps.EXPECT().
-		Delete(gomock.Any(), gomock.Any()).
-		Return(nil)
+		UpdateState(
+			gomock.Any(),
+			suite.hostname,
+			pbhost.HostState_HOST_STATE_UP,
+		).Return(nil)
 	suite.mockHostEngine.EXPECT().
-		Delete(gomock.Any())
+		Enqueue(gomock.Any(), gomock.Any())
 
 	suite.NoError(HostUp(suite.ctx, suite.hostEntity))
 }
@@ -331,8 +334,8 @@ func (suite *actionTestSuite) TestHostUpFailureDBWrite() {
 		StopMaintenance(gomock.Any()).
 		Return(nil)
 	suite.mockHostInfoOps.EXPECT().
-		Delete(gomock.Any(), gomock.Any()).
-		Return(errors.New("some error"))
+		UpdateState(gomock.Any(), suite.hostname, pbhost.HostState_HOST_STATE_UP).
+		Return(errors.New("test error"))
 
 	suite.Error(HostUp(suite.ctx, suite.hostEntity))
 }
