@@ -16,7 +16,6 @@ package impl
 
 import (
 	"context"
-	"time"
 
 	"github.com/gocql/gocql"
 
@@ -54,7 +53,7 @@ type CASExecutor struct {
 }
 
 func (b ExecutorBase) buildQuery(ctx context.Context, stmt api.Statement) (*gocql.Query, map[string]interface{}, error) {
-	start := time.Now()
+	// start := time.Now()
 	s := b.store()
 
 	uql, args, options, err := stmt.ToUql()
@@ -72,7 +71,7 @@ func (b ExecutorBase) buildQuery(ctx context.Context, stmt api.Statement) (*gocq
 		}
 	}
 
-	s.sendLatency(ctx, "build_latency", time.Since(start))
+	// s.sendLatency(ctx, "build_latency", time.Since(start))
 	return qu, options, nil
 }
 
@@ -100,7 +99,7 @@ func (r ReadExecutor) Execute(ctx context.Context, stmt api.Statement) (api.Resu
 		rawIter: qu.Iter(),
 		store:   s,
 	}
-	s.sendLatency(ctx, "execute_latency", time.Duration(qu.Latency()))
+	// s.sendLatency(ctx, "execute_latency", time.Duration(qu.Latency()))
 	return rs, nil
 }
 
@@ -117,7 +116,7 @@ func (w WriteExecutor) Execute(ctx context.Context, stmt api.Statement) (api.Res
 		return nil, err
 	}
 	err = qu.Exec()
-	w.store().sendLatency(ctx, "execute_latency", time.Duration(qu.Latency()))
+	// w.store().sendLatency(ctx, "execute_latency", time.Duration(qu.Latency()))
 	qu.Release()
 	if err != nil {
 		log.WithError(err).Debug("Exec failed")
@@ -160,7 +159,7 @@ func (w WriteExecutor) ExecuteBatch(ctx context.Context, stmts []api.Statement) 
 		}
 	}
 	err = s.cSession.ExecuteBatch(batch)
-	s.sendLatency(ctx, "execute_latency", time.Duration(batch.Latency()))
+	// s.sendLatency(ctx, "execute_latency", time.Duration(batch.Latency()))
 	if err != nil {
 		log.WithError(err).WithField("uql", uql).Error("ExecuteBatch failed")
 	}
@@ -183,7 +182,7 @@ func (c CASExecutor) Execute(ctx context.Context, stmt api.Statement) (api.Resul
 		applied:   applied,
 		dest:      dest,
 	}
-	s.sendLatency(ctx, "execute_latency", time.Duration(qu.Latency()))
+	// s.sendLatency(ctx, "execute_latency", time.Duration(qu.Latency()))
 	qu.Release()
 	if err != nil {
 		log.WithError(err).Error("MapScanCAS failed")
