@@ -7,9 +7,9 @@ import random
 import string
 import sys
 import time
-from docker import Client
 
 import client
+from docker_client import Client
 import print_utils
 import kind
 import utils
@@ -45,6 +45,8 @@ class Minicluster(object):
         self.k8s = kind.Kind(config["k8s_cluster_name"])
         self._peloton_client = None
         self._namespace = ""  # Used for isolating miniclusters from each other
+        self.cli = Client(base_url="unix://var/run/docker.sock",
+                          namespace=self._namespace)
         self._create_peloton_ports()
         self._create_mesos_ports()
 
@@ -120,6 +122,12 @@ class Minicluster(object):
                 port + i * 10 for port in config["peloton_placement_ports"]]
             self.placement_ports.append(portset)
 
+        self.mockcqos_ports = []
+        for i in range(0, config["peloton_mock_cqos_instance_count"]):
+            portset = [
+                port + i * 10 for port in config["peloton_mock_cqos_ports"]]
+            self.mockcqos_ports.append(portset)
+
     # Isolate changes the port numbers, container names, and other
     # config values that need to be unique on a single host.
     def isolate(self):
@@ -130,7 +138,9 @@ class Minicluster(object):
         # TODO: Use this namespace.
         letters = string.ascii_lowercase
         rand_str = ''.join(random.choice(letters) for i in range(3))
-        self._namespace = rand_str
+        self._namespace = rand_str + '-'
+        self.cli = Client(base_url="unix://var/run/docker.sock",
+                          namespace=self._namespace)
 
         # Now we need to randomize the ports.
         # TODO: Fix race condition between the find_free_port() and the process
@@ -150,6 +160,7 @@ class Minicluster(object):
         self.apiserver_ports = utils.randomize_ports(self.apiserver_ports)
         self.archiver_ports = utils.randomize_ports(self.archiver_ports)
         self.placement_ports = utils.randomize_ports(self.placement_ports)
+        self.mockcqos_ports = utils.randomize_ports(self.mockcqos_ports)
 
         # TODO: Save those to local disk, or print them to stdout.
         return self._namespace
@@ -184,12 +195,12 @@ class Minicluster(object):
             attributes += ";peloton/exclusive:" + exclusive_label_value
         agent = prefix + repr(index)
         ctn_port = config["agent_port"]
-        container = cli.create_container(
+        container = self.cli.create_container(
             name=agent,
             hostname=agent,
             volumes=["/files", "/var/run/docker.sock"],
             ports=[repr(ctn_port)],
-            host_config=cli.create_host_config(
+            host_config=self.cli.create_host_config(
                 port_bindings={ctn_port: local_port},
                 binds=[
                     work_dir + "/files:/files",
@@ -202,7 +213,7 @@ class Minicluster(object):
             environment=[
                 "MESOS_PORT=" + repr(ctn_port),
                 "MESOS_MASTER=zk://{0}:{1}/mesos".format(
-                    utils.get_container_ip(config["zk_container"]),
+                    self.cli.get_container_ip(config["zk_container"]),
                     config["default_zk_port"],
                 ),
                 "MESOS_SWITCH_USER=" + repr(config["switch_user"]),
@@ -230,7 +241,7 @@ class Minicluster(object):
             entrypoint="bash /files/run_mesos_slave.sh",
             detach=True,
         )
-        cli.start(container=container.get("Id"))
+        self.cli.start(container=container.get("Id"))
         utils.wait_for_up(agent, local_port, "state.json")
 
     def teardown_mesos_agent(self, index, is_exclusive=False):
@@ -238,7 +249,7 @@ class Minicluster(object):
         if is_exclusive:
             prefix += "-exclusive"
         agent = prefix + repr(index)
-        utils.remove_existing_container(agent)
+        self.cli.remove_existing_container(agent)
 
     def _setup_k8s(self):
         print_utils.okgreen("starting k8s cluster")
@@ -265,19 +276,20 @@ class Minicluster(object):
             self.teardown_mesos_agent(i, is_exclusive=True)
 
         # 2 - Remove Mesos Master
-        utils.remove_existing_container(self.config["mesos_master_container"])
+        self.cli.remove_existing_container(
+            self.config["mesos_master_container"])
 
         # 3- Remove orphaned mesos containers.
-        for c in cli.containers(filters={"name": "^/mesos-"}, all=True):
-            utils.remove_existing_container(c.get("Id"))
+        for c in self.cli.containers(filters={"name": "^/mesos-"}, all=True):
+            self.cli.remove_existing_container(c.get("Id"))
 
     def _setup_zk(self):
         config = self.config
-        cli.pull(config["zk_image"])
-        container = cli.create_container(
+        self.cli.pull(config["zk_image"])
+        container = self.cli.create_container(
             name=config["zk_container"],
             hostname=config["zk_container"],
-            host_config=cli.create_host_config(
+            host_config=self.cli.create_host_config(
                 port_bindings={
                     config["default_zk_port"]: config["local_zk_port"],
                 },
@@ -285,7 +297,7 @@ class Minicluster(object):
             image=config["zk_image"],
             detach=True,
         )
-        cli.start(container=container.get("Id"))
+        self.cli.start(container=container.get("Id"))
         print_utils.okgreen("started container %s" % config["zk_container"])
         print_utils.okgreen("waiting on %s to be rdy" % config["zk_container"])
 
@@ -304,16 +316,16 @@ class Minicluster(object):
                 self._peloton_client.discovery.stop()
             except Exception as e:
                 print_utils.fail("failed to stop discovery: {}".format(e))
-        utils.remove_existing_container(self.config["zk_container"])
+        self.cli.remove_existing_container(self.config["zk_container"])
 
     def _setup_cassandra(self):
         config = self.config
-        utils.remove_existing_container(config["cassandra_container"])
-        cli.pull(config["cassandra_image"])
-        container = cli.create_container(
+        self.cli.remove_existing_container(config["cassandra_container"])
+        self.cli.pull(config["cassandra_image"])
+        container = self.cli.create_container(
             name=config["cassandra_container"],
             hostname=config["cassandra_container"],
-            host_config=cli.create_host_config(
+            host_config=self.cli.create_host_config(
                 port_bindings={
                     config["cassandra_cql_port"]: config[
                         "local_cassandra_cql_port"
@@ -329,25 +341,25 @@ class Minicluster(object):
             detach=True,
             entrypoint="bash /files/run_cassandra_with_stratio_index.sh",
         )
-        cli.start(container=container.get("Id"))
+        self.cli.start(container=container.get("Id"))
         print_utils.okgreen("started container %s" %
                             config["cassandra_container"])
 
         self._create_cassandra_store()
 
     def _teardown_cassandra(self):
-        utils.remove_existing_container(self.config["cassandra_container"])
+        self.cli.remove_existing_container(self.config["cassandra_container"])
         print_utils.okgreen("teardown complete!")
 
     def _setup_mesos_master(self):
         config = self.config
-        cli.pull(config["mesos_master_image"])
-        container = cli.create_container(
+        self.cli.pull(config["mesos_master_image"])
+        container = self.cli.create_container(
             name=config["mesos_master_container"],
             hostname=config["mesos_master_container"],
             volumes=["/files"],
             ports=[repr(config["master_port"])],
-            host_config=cli.create_host_config(
+            host_config=self.cli.create_host_config(
                 port_bindings={config["master_port"]: config[
                     "local_master_port"
                 ]},
@@ -367,7 +379,7 @@ class Minicluster(object):
                 "MESOS_LOG_DIR=" + config["log_dir"],
                 "MESOS_PORT=" + repr(config["master_port"]),
                 "MESOS_ZK=zk://{0}:{1}/mesos".format(
-                    utils.get_container_ip(config["zk_container"]),
+                    self.cli.get_container_ip(config["zk_container"]),
                     config["default_zk_port"],
                 ),
                 "MESOS_QUORUM=" + repr(config["quorum"]),
@@ -378,13 +390,13 @@ class Minicluster(object):
             entrypoint="bash /files/run_mesos_master.sh",
             detach=True,
         )
-        cli.start(container=container.get("Id"))
+        self.cli.start(container=container.get("Id"))
         master_container = config["mesos_master_container"]
         print_utils.okgreen("started container %s" % master_container)
 
     def _setup_mesos_agents(self):
         config = self.config
-        cli.pull(config['mesos_slave_image'])
+        self.cli.pull(config['mesos_slave_image'])
         for i in range(0, config['num_agents']):
             port = self.mesos_agent_ports[i]
             self.setup_mesos_agent(i, port)
@@ -401,19 +413,19 @@ class Minicluster(object):
         retry_attempts = 0
         while retry_attempts < utils.max_retry_attempts:
             time.sleep(utils.sleep_time_secs)
-            setup_exe = cli.exec_create(
+            setup_exe = self.cli.exec_create(
                 container=config["cassandra_container"],
                 cmd="/files/setup_cassandra.sh",
             )
-            show_exe = cli.exec_create(
+            show_exe = self.cli.exec_create(
                 container=config["cassandra_container"],
                 cmd='cqlsh -e "describe %s"' % config["cassandra_test_db"],
             )
             # by api design, exec_start needs to be called after exec_create
             # to run 'docker exec'
-            resp = cli.exec_start(exec_id=setup_exe)
+            resp = self.cli.exec_start(exec_id=setup_exe)
             if resp == "":
-                resp = cli.exec_start(exec_id=show_exe)
+                resp = self.cli.exec_start(exec_id=show_exe)
                 if "CREATE KEYSPACE peloton_test WITH" in resp:
                     print_utils.okgreen("cassandra store is created")
                     return
@@ -444,10 +456,10 @@ class Minicluster(object):
         config = self.config
         if stop:
             # Stop existing container
-            func = utils.stop_container
+            func = self.cli.stop_container
         else:
             # Remove existing container
-            func = utils.remove_existing_container
+            func = self.cli.remove_existing_container
 
         # 1 - Remove jobmgr instances
         for i in range(0, config["peloton_jobmgr_instance_count"]):
@@ -502,7 +514,7 @@ class Minicluster(object):
         for i in range(0, config["peloton_resmgr_instance_count"]):
             ports = self.resmgr_ports[i]
             name = config["peloton_resmgr_container"] + repr(i)
-            utils.remove_existing_container(name)
+            self.cli.remove_existing_container(name)
             self.start_and_wait(
                 "resmgr",
                 name,
@@ -533,7 +545,7 @@ class Minicluster(object):
         for i in range(0, config["peloton_hostmgr_instance_count"]):
             ports = self.hostmgr_ports[i]
             name = config["peloton_hostmgr_container"] + repr(i)
-            utils.remove_existing_container(name)
+            self.cli.remove_existing_container(name)
             self.start_and_wait(
                 "hostmgr",
                 name,
@@ -555,7 +567,7 @@ class Minicluster(object):
         for i in range(0, config["peloton_jobmgr_instance_count"]):
             ports = self.jobmgr_ports[i]
             name = config["peloton_jobmgr_container"] + repr(i)
-            utils.remove_existing_container(name)
+            self.cli.remove_existing_container(name)
             self.start_and_wait(
                 "jobmgr",
                 name,
@@ -569,7 +581,7 @@ class Minicluster(object):
         for i in range(0, config["peloton_aurorabridge_instance_count"]):
             ports = self.aurorabridge_ports[i]
             name = config["peloton_aurorabridge_container"] + repr(i)
-            utils.remove_existing_container(name)
+            self.cli.remove_existing_container(name)
             self.start_and_wait("aurorabridge", name, ports)
 
     # Run peloton placement app
@@ -579,7 +591,7 @@ class Minicluster(object):
         for task_type in config["peloton_placement_instances"]:
             ports = self.placement_ports[i]
             name = config["peloton_placement_container"] + repr(i)
-            utils.remove_existing_container(name)
+            self.cli.remove_existing_container(name)
             if task_type == 'BATCH':
                 app_type = 'placement'
             else:
@@ -605,18 +617,16 @@ class Minicluster(object):
         for i in range(0, config["peloton_apiserver_instance_count"]):
             ports = self.apiserver_ports[i]
             name = config["peloton_apiserver_container"] + repr(i)
-            utils.remove_existing_container(name)
+            self.cli.remove_existing_container(name)
             self.start_and_wait("apiserver", name, ports)
 
     # Run peloton mock-cqos server
     def run_peloton_mockcqos(self):
         config = self.config
         for i in range(0, config["peloton_mock_cqos_instance_count"]):
-            ports = [
-                port + i * 10 for port in config["peloton_mock_cqos_ports"]
-            ]
+            ports = self.mockcqos_ports[i]
             name = config["peloton_mock_cqos_container"] + repr(i)
-            utils.remove_existing_container(name)
+            self.cli.remove_existing_container(name)
             self.start_and_wait("mock-cqos", name, ports)
 
     # Run peloton archiver app
@@ -625,7 +635,7 @@ class Minicluster(object):
         for i in range(0, config["peloton_archiver_instance_count"]):
             ports = self.archiver_ports[i]
             name = config["peloton_archiver_container"] + repr(i)
-            utils.remove_existing_container(name)
+            self.cli.remove_existing_container(name)
             self.start_and_wait(
                 "archiver",
                 name,
@@ -649,19 +659,19 @@ class Minicluster(object):
             mesos_zk_path = "zk://{0}/mesos".format(zk_url)
         else:
             election_zk_servers = "{0}:{1}".format(
-                utils.get_container_ip(config["zk_container"]),
+                self.cli.get_container_ip(config["zk_container"]),
                 config["default_zk_port"],
             )
             mesos_zk_path = "zk://{0}:{1}/mesos".format(
-                utils.get_container_ip(config["zk_container"]),
+                self.cli.get_container_ip(config["zk_container"]),
                 config["default_zk_port"],
             )
-        cass_hosts = utils.get_container_ip(config["cassandra_container"])
+        cass_hosts = self.cli.get_container_ip(config["cassandra_container"])
         env = {
             "CONFIG_DIR": "config",
             "APP": application_name,
             "HTTP_PORT": ports[0],
-            "DB_HOST": utils.get_container_ip(config["cassandra_container"]),
+            "DB_HOST": cass_hosts,
             "ELECTION_ZK_SERVERS": election_zk_servers,
             "MESOS_ZK_PATH": mesos_zk_path,
             "MESOS_SECRET_FILE": "/files/hostmgr_mesos_secret",
@@ -686,12 +696,12 @@ class Minicluster(object):
         # of items of the form <host-path>:<container-path>
         extra_mounts = os.environ.get("BIND_MOUNTS", "").split(",") or []
         mounts.extend(list(filter(None, extra_mounts)))
-        container = cli.create_container(
+        container = self.cli.create_container(
             name=container_name,
             hostname=container_name,
             ports=[repr(port) for port in ports],
             environment=environment,
-            host_config=cli.create_host_config(
+            host_config=self.cli.create_host_config(
                 port_bindings={port: port for port in ports},
                 binds=[work_dir + "/files:/files"] + mounts,
             ),
@@ -699,7 +709,7 @@ class Minicluster(object):
             image=config["peloton_image"],
             detach=True,
         )
-        cli.start(container=container.get("Id"))
+        self.cli.start(container=container.get("Id"))
         utils.wait_for_up(
             container_name, ports[0]
         )  # use the first port as primary

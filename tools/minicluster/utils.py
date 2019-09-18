@@ -18,17 +18,6 @@ sleep_time_secs = 1
 
 
 #
-# Get container local ip.
-# IP address returned is only reachable on the local machine and within
-# the container.
-#
-def get_container_ip(container_name):
-    cmd = "docker inspect "
-    cmd += '-f "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" %s'
-    return os.popen(cmd % container_name).read().strip()
-
-
-#
 # Returns whether the zk listening on the given port is ready.
 #
 def is_zk_ready(port):
@@ -62,32 +51,6 @@ def randomize_ports(array):
             raise Exception("randomize_ports must only be called on lists " +
                             "of lists or integers")
     return array
-
-
-#
-# Force remove container by name (best effort)
-#
-def remove_existing_container(name):
-    try:
-        cli.remove_container(name, force=True)
-        print_utils.okblue("removed container %s" % name)
-    except Exception as e:
-        if "No such container" in str(e):
-            return
-        raise e
-
-
-#
-# Stop container by name
-#
-def stop_container(name):
-    try:
-        cli.stop(name, timeout=5)
-        print_utils.okblue("stopped container %s" % name)
-    except Exception as e:
-        if "No such container" in str(e):
-            return
-        raise e
 
 
 #
