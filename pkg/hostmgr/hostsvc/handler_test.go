@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/uber/peloton/pkg/common/util"
+
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	mesosmaster "github.com/uber/peloton/.gen/mesos/v1/master"
 	hpb "github.com/uber/peloton/.gen/peloton/api/v0/host"
@@ -113,10 +115,7 @@ func (suite *hostSvcHandlerTestSuite) SetupTest() {
 		Scope:          tally.NewTestScope("", map[string]string{}),
 		HostInfoOps:    suite.mockHostInfoOps,
 	}
-	suite.mockMasterOperatorClient.EXPECT().Agents().Return(response, nil)
-	suite.mockHostInfoOps.EXPECT().
-		GetAll(gomock.Any()).
-		Return([]*hpb.HostInfo{}, nil).Times(1)
+	suite.setupLoaderMocks(response)
 	loader.Load(nil)
 }
 
@@ -146,6 +145,27 @@ func (suite *hostSvcHandlerTestSuite) makeAgentsResponse() *mesosmaster.Response
 	response.Agents = append(response.Agents, agentDraining)
 
 	return response
+}
+
+func (suite *hostSvcHandlerTestSuite) setupLoaderMocks(response *mesosmaster.Response_GetAgents) {
+	suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).Return(nil, nil)
+	suite.mockMasterOperatorClient.EXPECT().Agents().Return(response, nil)
+	suite.mockMasterOperatorClient.EXPECT().GetMaintenanceStatus().Return(nil, nil)
+	for _, a := range response.GetAgents() {
+		ip, _, err := util.ExtractIPAndPortFromMesosAgentPID(a.GetPid())
+		suite.NoError(err)
+
+		suite.mockHostInfoOps.EXPECT().Create(
+			gomock.Any(),
+			a.GetAgentInfo().GetHostname(),
+			ip,
+			hpb.HostState_HOST_STATE_UP,
+			hpb.HostState_HOST_STATE_UP,
+			map[string]string{},
+			"",
+			"",
+		).Return(nil)
+	}
 }
 
 func TestHostSvcHandler(t *testing.T) {
@@ -228,10 +248,7 @@ func (suite *hostSvcHandlerTestSuite) doTestQueryHosts() {
 		Scope:          tally.NewTestScope("", map[string]string{}),
 		HostInfoOps:    suite.mockHostInfoOps,
 	}
-	suite.mockMasterOperatorClient.EXPECT().Agents().Return(response, nil)
-	suite.mockHostInfoOps.EXPECT().
-		GetAll(gomock.Any()).
-		Return([]*hpb.HostInfo{}, nil)
+	suite.setupLoaderMocks(response)
 	loader.Load(nil)
 
 	for _, machine := range suite.downMachines {
@@ -394,10 +411,7 @@ func (suite *hostSvcHandlerTestSuite) TestQueryHostsError() {
 		Scope:          tally.NewTestScope("", map[string]string{}),
 		HostInfoOps:    suite.mockHostInfoOps,
 	}
-	suite.mockMasterOperatorClient.EXPECT().Agents().Return(response, nil)
-	suite.mockHostInfoOps.EXPECT().
-		GetAll(gomock.Any()).
-		Return([]*hpb.HostInfo{}, nil)
+	suite.setupLoaderMocks(response)
 	loader.Load(nil)
 
 	// Test ExtractIPFromMesosAgentPID error
@@ -429,10 +443,9 @@ func (suite *hostSvcHandlerTestSuite) TestQueryHostsError() {
 	suite.Nil(resp)
 
 	// Test 'No registered agents'
+	suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).Return(nil, nil)
 	suite.mockMasterOperatorClient.EXPECT().Agents().Return(nil, nil)
-	suite.mockHostInfoOps.EXPECT().
-		GetAll(gomock.Any()).
-		Return([]*hpb.HostInfo{}, nil)
+	suite.mockMasterOperatorClient.EXPECT().GetMaintenanceStatus().Return(nil, nil)
 	loader.Load(nil)
 
 	resp, err = suite.handler.QueryHosts(suite.ctx, &svcpb.QueryHostsRequest{

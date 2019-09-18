@@ -172,7 +172,7 @@ func (d *hostInfoOps) Create(
 		DesiredPool: desiredPool,
 		UpdateTime:  time.Now(),
 	}
-	if err := d.store.oClient.Create(ctx, hostInfoObject); err != nil {
+	if err := d.store.oClient.CreateIfNotExists(ctx, hostInfoObject); err != nil {
 		d.store.metrics.OrmHostInfoMetrics.HostInfoAddFail.Inc(1)
 		return err
 	}

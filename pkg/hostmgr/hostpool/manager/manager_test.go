@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/uber/peloton/pkg/common/util"
+
 	pbmesos "github.com/uber/peloton/.gen/mesos/v1"
 	pbmesosmaster "github.com/uber/peloton/.gen/mesos/v1/master"
 	pbhost "github.com/uber/peloton/.gen/peloton/api/v0/host"
@@ -915,10 +917,24 @@ func (suite *HostPoolManagerTestSuite) setupAgentMapLoader(
 	mockMasterOperatorClient := mpbmocks.NewMockMasterOperatorClient(suite.ctrl)
 
 	response := suite.makeAgentsResponse()
+	suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).Return(nil, nil)
 	mockMasterOperatorClient.EXPECT().Agents().Return(response, nil)
-	suite.mockHostInfoOps.EXPECT().
-		GetAll(gomock.Any()).
-		Return([]*pbhost.HostInfo{}, nil)
+	mockMasterOperatorClient.EXPECT().GetMaintenanceStatus().Return(nil, nil)
+	for _, a := range response.GetAgents() {
+		ip, _, err := util.ExtractIPAndPortFromMesosAgentPID(a.GetPid())
+		suite.NoError(err)
+
+		suite.mockHostInfoOps.EXPECT().Create(
+			gomock.Any(),
+			a.GetAgentInfo().GetHostname(),
+			ip,
+			pbhost.HostState_HOST_STATE_UP,
+			pbhost.HostState_HOST_STATE_UP,
+			map[string]string{},
+			"",
+			"",
+		).Return(nil)
+	}
 
 	loader := &host.Loader{
 		OperatorClient: mockMasterOperatorClient,

@@ -180,7 +180,7 @@ func (s *HostInfoObjectTestSuite) TestCreateGetGetAllDeleteHostInfoFail() {
 	mockStore := &Store{oClient: mockClient, metrics: testStore.metrics}
 	db := NewHostInfoOps(mockStore)
 
-	mockClient.EXPECT().Create(gomock.Any(), gomock.Any()).Return(errors.New("Create failed"))
+	mockClient.EXPECT().CreateIfNotExists(gomock.Any(), gomock.Any()).Return(errors.New("Create failed"))
 	mockClient.EXPECT().Get(gomock.Any(), gomock.Any()).
 		Return(nil, errors.New("Get failed"))
 	mockClient.EXPECT().GetAll(gomock.Any(), gomock.Any()).

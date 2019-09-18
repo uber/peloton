@@ -20,7 +20,8 @@ import (
 	"testing"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
-	mesos_master "github.com/uber/peloton/.gen/mesos/v1/master"
+	mesosmaintenance "github.com/uber/peloton/.gen/mesos/v1/maintenance"
+	mesosmaster "github.com/uber/peloton/.gen/mesos/v1/master"
 	pbhost "github.com/uber/peloton/.gen/peloton/api/v0/host"
 
 	"github.com/uber/peloton/pkg/common"
@@ -54,9 +55,9 @@ func (suite *hostMapTestSuite) SetupTest() {
 	suite.mockHostInfoOps = orm_mocks.NewMockHostInfoOps(suite.ctrl)
 }
 
-func makeAgentsResponse(numAgents int) *mesos_master.Response_GetAgents {
-	response := &mesos_master.Response_GetAgents{
-		Agents: []*mesos_master.Response_GetAgents_Agent{},
+func makeAgentsResponse(numAgents int) *mesosmaster.Response_GetAgents {
+	response := &mesosmaster.Response_GetAgents{
+		Agents: []*mesosmaster.Response_GetAgents_Agent{},
 	}
 	for i := 0; i < numAgents; i++ {
 		resVal := float64(_defaultResourceValue)
@@ -99,7 +100,7 @@ func makeAgentsResponse(numAgents int) *mesos_master.Response_GetAgents {
 		}
 
 		pid := fmt.Sprintf("slave(%d)@%d.%d.%d.%d:123", i, i, i, i, i)
-		getAgent := &mesos_master.Response_GetAgents_Agent{
+		getAgent := &mesosmaster.Response_GetAgents_Agent{
 			AgentInfo: &mesos.AgentInfo{
 				Hostname:  &tmpID,
 				Resources: resources,
@@ -111,6 +112,29 @@ func makeAgentsResponse(numAgents int) *mesos_master.Response_GetAgents {
 	}
 
 	return response
+}
+
+func (suite *hostMapTestSuite) setupMocks(response *mesosmaster.Response_GetAgents) {
+	suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).Return(nil, nil)
+
+	suite.operatorClient.EXPECT().Agents().Return(response, nil)
+	suite.operatorClient.EXPECT().GetMaintenanceStatus().Return(nil, nil)
+	for _, a := range response.GetAgents() {
+		ip, _, err := util.ExtractIPAndPortFromMesosAgentPID(a.GetPid())
+		suite.NoError(err)
+
+		suite.mockHostInfoOps.EXPECT().Create(
+			gomock.Any(),
+			a.GetAgentInfo().GetHostname(),
+			ip,
+			pbhost.HostState_HOST_STATE_UP,
+			pbhost.HostState_HOST_STATE_UP,
+			map[string]string{},
+			"",
+			"",
+		).Return(nil)
+	}
+
 }
 
 func (suite *hostMapTestSuite) TestRefresh() {
@@ -132,17 +156,39 @@ func (suite *hostMapTestSuite) TestRefresh() {
 	numAgents := 2000
 	response := makeAgentsResponse(numAgents)
 
-	gomock.InOrder(
-		suite.operatorClient.EXPECT().Agents().Return(response, nil),
-		suite.mockHostInfoOps.EXPECT().
-			GetAll(gomock.Any()).
-			Return([]*pbhost.HostInfo{
-				{
-					Hostname: *response.Agents[numAgents-1].AgentInfo.Hostname,
-					State:    pbhost.HostState_HOST_STATE_DRAINING,
+	suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).Return(nil, nil)
+	suite.operatorClient.EXPECT().Agents().Return(response, nil)
+	suite.operatorClient.EXPECT().
+		GetMaintenanceStatus().
+		Return(&mesosmaster.Response_GetMaintenanceStatus{
+			Status: &mesosmaintenance.ClusterStatus{
+				DrainingMachines: []*mesosmaintenance.ClusterStatus_DrainingMachine{
+					{
+						Id: &mesos.MachineID{
+							Hostname: response.
+								Agents[len(response.GetAgents())-1].
+								AgentInfo.Hostname,
+						},
+					},
 				},
-			}, nil),
-	)
+			},
+		}, nil)
+
+	for _, a := range response.GetAgents() {
+		ip, _, err := util.ExtractIPAndPortFromMesosAgentPID(a.GetPid())
+		suite.NoError(err)
+
+		suite.mockHostInfoOps.EXPECT().Create(
+			gomock.Any(),
+			a.GetAgentInfo().GetHostname(),
+			ip,
+			pbhost.HostState_HOST_STATE_UP,
+			pbhost.HostState_HOST_STATE_UP,
+			map[string]string{},
+			"",
+			"",
+		).Return(nil)
+	}
 	loader.Load(nil)
 
 	numRegisteredAgents := numAgents - 1
@@ -202,10 +248,8 @@ func (suite *hostMapTestSuite) TestIsRegisteredAsPelotonAgent() {
 	for _, r := range agentsResponse.Agents[0].GetAgentInfo().GetResources() {
 		r.Reservations[0].Role = &[]string{"*"}[0]
 	}
-	suite.operatorClient.EXPECT().Agents().Return(agentsResponse, nil)
-	suite.mockHostInfoOps.EXPECT().
-		GetAll(gomock.Any()).
-		Return([]*pbhost.HostInfo{}, nil)
+	suite.setupMocks(agentsResponse)
+
 	loader.Load(nil)
 	suite.False(IsRegisteredAsPelotonAgent("id-0", "peloton"))
 	suite.True(IsRegisteredAsPelotonAgent("id-1", "peloton"))
@@ -218,10 +262,14 @@ func (suite *hostMapTestSuite) TestIsHostRegistered() {
 		HostInfoOps:    suite.mockHostInfoOps,
 	}
 	agentsResponse := makeAgentsResponse(1)
-	suite.operatorClient.EXPECT().Agents().Return(agentsResponse, nil)
-	suite.mockHostInfoOps.EXPECT().
-		GetAll(gomock.Any()).
-		Return([]*pbhost.HostInfo{}, nil)
+
+	var hostInfos []*pbhost.HostInfo
+	for _, a := range agentsResponse.GetAgents() {
+		hostInfos = append(hostInfos, &pbhost.HostInfo{
+			Hostname: a.GetAgentInfo().GetHostname(),
+		})
+	}
+	suite.setupMocks(agentsResponse)
 	loader.Load(nil)
 	suite.True(IsHostRegistered("id-0"))
 	suite.False(IsHostRegistered("id-1"))
@@ -234,19 +282,16 @@ func (suite *hostMapTestSuite) TestBuildHostInfoForRegisteredAgents() {
 		HostInfoOps:    suite.mockHostInfoOps,
 	}
 	agentsResponse := makeAgentsResponse(2)
-	suite.operatorClient.EXPECT().Agents().Return(agentsResponse, nil)
-	suite.mockHostInfoOps.EXPECT().
-		GetAll(gomock.Any()).
-		Return([]*pbhost.HostInfo{}, nil)
+	suite.setupMocks(agentsResponse)
 	loader.Load(nil)
 
-	hostInfos := make(map[string]*pbhost.HostInfo)
-	hostInfos["id-0"] = &pbhost.HostInfo{
+	hostInfoMap := make(map[string]*pbhost.HostInfo)
+	hostInfoMap["id-0"] = &pbhost.HostInfo{
 		Hostname: "id-0",
 		Ip:       "0.0.0.0",
 		State:    pbhost.HostState_HOST_STATE_UP,
 	}
-	hostInfos["id-1"] = &pbhost.HostInfo{
+	hostInfoMap["id-1"] = &pbhost.HostInfo{
 		Hostname: "id-1",
 		Ip:       "1.1.1.1",
 		State:    pbhost.HostState_HOST_STATE_UP,
@@ -254,7 +299,7 @@ func (suite *hostMapTestSuite) TestBuildHostInfoForRegisteredAgents() {
 
 	hostInfosBuilt, err := BuildHostInfoForRegisteredAgents()
 	suite.NoError(err)
-	suite.Equal(hostInfos, hostInfosBuilt)
+	suite.Equal(hostInfoMap, hostInfosBuilt)
 }
 
 func (suite *hostMapTestSuite) TestGetUpHostIP() {
@@ -264,10 +309,7 @@ func (suite *hostMapTestSuite) TestGetUpHostIP() {
 		HostInfoOps:    suite.mockHostInfoOps,
 	}
 	agentsResponse := makeAgentsResponse(2)
-	suite.operatorClient.EXPECT().Agents().Return(agentsResponse, nil)
-	suite.mockHostInfoOps.EXPECT().
-		GetAll(gomock.Any()).
-		Return([]*pbhost.HostInfo{}, nil)
+	suite.setupMocks(agentsResponse)
 	loader.Load(nil)
 
 	IP, err := GetUpHostIP("id-0")

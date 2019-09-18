@@ -229,23 +229,12 @@ func (d *drainer) StartMaintenance(
 		return yarpcerrors.AbortedErrorf("host is not a Peloton agent")
 	}
 
-	// Get IP for UP agent
-	IP, err := host.GetUpHostIP(hostname)
-	if err != nil {
-		return err
-	}
-
-	// Persist request in DB
-	// host current state is UP, goal state is DOWN
-	if err := d.hostInfoOps.Create(
+	// Set goal state to DOWN
+	if err := d.hostInfoOps.UpdateGoalState(
 		ctx,
 		hostname,
-		IP,
-		pbhost.HostState_HOST_STATE_UP,
 		pbhost.HostState_HOST_STATE_DOWN,
-		map[string]string{},
-		"",
-		""); err != nil {
+	); err != nil {
 		return err
 	}
 
@@ -273,7 +262,7 @@ func (d *drainer) CompleteMaintenance(
 		return yarpcerrors.NotFoundErrorf("Host is not DOWN")
 	}
 
-	// Persist request in DB: host goal state is UP
+	// Set host goal state is UP
 	if err := d.hostInfoOps.UpdateGoalState(
 		ctx,
 		hostname,

@@ -27,6 +27,7 @@ import (
 	pbhost "github.com/uber/peloton/.gen/peloton/api/v0/host"
 
 	"github.com/uber/peloton/pkg/common/lifecycle"
+	"github.com/uber/peloton/pkg/common/util"
 	goalstate_mocks "github.com/uber/peloton/pkg/hostmgr/goalstate/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/host"
 	mpb_mocks "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
@@ -78,7 +79,7 @@ func (suite *drainerTestSuite) SetupTest() {
 	}
 }
 
-func (suite *drainerTestSuite) make1UpAgentResponse() *mesosmaster.Response_GetAgents {
+func (suite *drainerTestSuite) makeUpAgentResponse() *mesosmaster.Response_GetAgents {
 	response := &mesosmaster.Response_GetAgents{
 		Agents: []*mesosmaster.Response_GetAgents_Agent{},
 	}
@@ -107,6 +108,27 @@ func (suite *drainerTestSuite) TearDownTest() {
 	suite.mockCtrl.Finish()
 }
 
+func (suite *drainerTestSuite) setupLoaderMocks(agentsResponse *mesosmaster.Response_GetAgents) {
+	suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).Return(nil, nil)
+	suite.mockMasterOperatorClient.EXPECT().Agents().Return(agentsResponse, nil)
+	suite.mockMasterOperatorClient.EXPECT().GetMaintenanceStatus().Return(nil, nil)
+	for _, a := range agentsResponse.GetAgents() {
+		ip, _, err := util.ExtractIPAndPortFromMesosAgentPID(a.GetPid())
+		suite.NoError(err)
+
+		suite.mockHostInfoOps.EXPECT().Create(
+			gomock.Any(),
+			a.GetAgentInfo().GetHostname(),
+			ip,
+			pbhost.HostState_HOST_STATE_UP,
+			pbhost.HostState_HOST_STATE_UP,
+			map[string]string{},
+			"",
+			"",
+		).Return(nil)
+	}
+}
+
 func TestDrainer(t *testing.T) {
 	suite.Run(t, new(drainerTestSuite))
 }
@@ -130,23 +152,15 @@ func (suite *drainerTestSuite) TestStartMaintenance() {
 		Scope:          tally.NoopScope,
 		HostInfoOps:    suite.mockHostInfoOps,
 	}
-	agentsResponse := suite.make1UpAgentResponse()
-	suite.mockMasterOperatorClient.EXPECT().Agents().Return(agentsResponse, nil)
-	suite.mockHostInfoOps.EXPECT().
-		GetAll(gomock.Any()).
-		Return([]*pbhost.HostInfo{}, nil)
+	agentsResponse := suite.makeUpAgentResponse()
+	suite.setupLoaderMocks(agentsResponse)
 	loader.Load(nil)
 
 	gomock.InOrder(
-		suite.mockHostInfoOps.EXPECT().Create(
+		suite.mockHostInfoOps.EXPECT().UpdateGoalState(
 			suite.ctx,
 			suite.upHost,
-			suite.upIP,
-			pbhost.HostState_HOST_STATE_UP,
 			pbhost.HostState_HOST_STATE_DOWN,
-			map[string]string{},
-			"",
-			"",
 		).Return(nil),
 		suite.mockGoalStateDriver.EXPECT().EnqueueHost(suite.upHost, gomock.Any()),
 	)
@@ -161,22 +175,14 @@ func (suite *drainerTestSuite) TestStartMaintenanceCassandraError() {
 		Scope:          tally.NoopScope,
 		HostInfoOps:    suite.mockHostInfoOps,
 	}
-	agentsResponse := suite.make1UpAgentResponse()
-	suite.mockMasterOperatorClient.EXPECT().Agents().Return(agentsResponse, nil)
-	suite.mockHostInfoOps.EXPECT().
-		GetAll(gomock.Any()).
-		Return([]*pbhost.HostInfo{}, nil)
+	agentsResponse := suite.makeUpAgentResponse()
+	suite.setupLoaderMocks(agentsResponse)
 	loader.Load(nil)
 
-	suite.mockHostInfoOps.EXPECT().Create(
+	suite.mockHostInfoOps.EXPECT().UpdateGoalState(
 		suite.ctx,
 		suite.upHost,
-		suite.upIP,
-		pbhost.HostState_HOST_STATE_UP,
 		pbhost.HostState_HOST_STATE_DOWN,
-		map[string]string{},
-		"",
-		"",
 	).Return(errors.New("some error"))
 
 	suite.Error(suite.drainer.StartMaintenance(suite.ctx, suite.upHost))
@@ -190,8 +196,7 @@ func (suite *drainerTestSuite) TestStartMaintenanceNonPelotonAgentError() {
 		Scope:          tally.NewTestScope("", map[string]string{}),
 		HostInfoOps:    suite.mockHostInfoOps,
 	}
-
-	suite.mockMasterOperatorClient.EXPECT().Agents().Return(&mesosmaster.Response_GetAgents{
+	agentsResponse := &mesosmaster.Response_GetAgents{
 		Agents: []*mesosmaster.Response_GetAgents_Agent{
 			{
 				AgentInfo: &mesos.AgentInfo{
@@ -206,12 +211,11 @@ func (suite *drainerTestSuite) TestStartMaintenanceNonPelotonAgentError() {
 						},
 					},
 				},
+				Pid: &[]string{"slave1@1.2.3.4:1234"}[0],
 			},
 		},
-	}, nil)
-	suite.mockHostInfoOps.EXPECT().
-		GetAll(gomock.Any()).
-		Return([]*pbhost.HostInfo{}, nil)
+	}
+	suite.setupLoaderMocks(agentsResponse)
 	loader.Load(nil)
 
 	err := suite.drainer.StartMaintenance(suite.ctx, suite.upHost)
@@ -366,15 +370,14 @@ func (suite *drainerTestSuite) TestReconcileMaintenanceState() {
 			State:    pbhost.HostState_HOST_STATE_DOWN,
 		},
 	}
-	suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).Return(hostInfosInDB, nil).Times(2)
-
 	loader := &host.Loader{
 		OperatorClient: suite.mockMasterOperatorClient,
 		Scope:          tally.NoopScope,
 		HostInfoOps:    suite.mockHostInfoOps,
 	}
-	agentsResponse := suite.make1UpAgentResponse()
-	suite.mockMasterOperatorClient.EXPECT().Agents().Return(agentsResponse, nil)
+	agentsResponse := suite.makeUpAgentResponse()
+	suite.setupLoaderMocks(agentsResponse)
+
 	loader.Load(nil)
 
 	maintenanceStatus := mesosmaster.Response_GetMaintenanceStatus{
@@ -395,6 +398,8 @@ func (suite *drainerTestSuite) TestReconcileMaintenanceState() {
 			},
 		},
 	}
+	suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).Return(hostInfosInDB, nil)
+
 	suite.mockMasterOperatorClient.EXPECT().
 		GetMaintenanceStatus().
 		Return(&maintenanceStatus, nil)

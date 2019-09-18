@@ -75,11 +75,31 @@ func (suite *MatcherTestSuite) InitializeHosts() {
 	}
 	numAgents := 2
 	suite.response = makeAgentsResponse(numAgents)
-	suite.operatorClient.EXPECT().Agents().Return(suite.response, nil)
-	suite.mockHostInfoOps.EXPECT().
-		GetAll(gomock.Any()).
-		Return([]*pbhost.HostInfo{}, nil)
+	suite.setupLoaderMocks(suite.response)
 	loader.Load(nil)
+}
+
+func (suite *MatcherTestSuite) setupLoaderMocks(
+	response *mesos_master.Response_GetAgents,
+) {
+	suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).Return(nil, nil)
+	suite.operatorClient.EXPECT().Agents().Return(response, nil)
+	suite.operatorClient.EXPECT().GetMaintenanceStatus().Return(nil, nil)
+	for _, a := range response.GetAgents() {
+		ip, _, err := util.ExtractIPAndPortFromMesosAgentPID(a.GetPid())
+		suite.NoError(err)
+
+		suite.mockHostInfoOps.EXPECT().Create(
+			gomock.Any(),
+			a.GetAgentInfo().GetHostname(),
+			ip,
+			pbhost.HostState_HOST_STATE_UP,
+			pbhost.HostState_HOST_STATE_UP,
+			map[string]string{},
+			"",
+			"",
+		).Return(nil)
+	}
 }
 
 func getNewMatcher(
@@ -132,6 +152,7 @@ func getAgentResponse(hostname string, resval float64) *mesos_master.Response_Ge
 			Hostname:  &tmpID,
 			Resources: resources,
 		},
+		Pid:            &[]string{"slave0@1.2.3.4:1234"}[0],
 		TotalResources: resources,
 	}
 }
@@ -405,10 +426,7 @@ func (suite *MatcherTestSuite) TestMatchHostsFilterWithDifferentHosts() {
 	}
 	numAgents := 2
 	response := createAgentsResponse(numAgents, false)
-	suite.operatorClient.EXPECT().Agents().Return(response, nil)
-	suite.mockHostInfoOps.EXPECT().
-		GetAll(gomock.Any()).
-		Return([]*pbhost.HostInfo{}, nil)
+	suite.setupLoaderMocks(response)
 	loader.Load(nil)
 
 	filter := &hostsvc.HostFilter{
@@ -445,10 +463,7 @@ func (suite *MatcherTestSuite) TestMatchHostsFilterWithZeroResourceHosts() {
 	}
 	numAgents := 2
 	response := createAgentsResponse(numAgents, true)
-	suite.operatorClient.EXPECT().Agents().Return(response, nil)
-	suite.mockHostInfoOps.EXPECT().
-		GetAll(gomock.Any()).
-		Return([]*pbhost.HostInfo{}, nil)
+	suite.setupLoaderMocks(response)
 	loader.Load(nil)
 
 	filter := &hostsvc.HostFilter{
@@ -503,10 +518,7 @@ func (suite *MatcherTestSuite) TestMatchHostsFilterExclusiveHosts() {
 		},
 	}
 
-	suite.operatorClient.EXPECT().Agents().Return(response, nil)
-	suite.mockHostInfoOps.EXPECT().
-		GetAll(gomock.Any()).
-		Return([]*pbhost.HostInfo{}, nil)
+	suite.setupLoaderMocks(response)
 	loader.Load(nil)
 
 	testTable := []struct {

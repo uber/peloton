@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	mesos_master "github.com/uber/peloton/.gen/mesos/v1/master"
@@ -35,6 +36,8 @@ import (
 	uatomic "github.com/uber-go/atomic"
 	"github.com/uber-go/tally"
 )
+
+const _defaultCassandraTimeout = 10 * time.Second
 
 // ResourceCapacity contains total quantity of various kinds of host resources.
 type ResourceCapacity struct {
@@ -121,24 +124,67 @@ func (loader *Loader) Load(_ *uatomic.Bool) {
 
 	wg := &sync.WaitGroup{}
 
-	// Get all hosts in draining state to not include them in the agent map
-	// TODO: replace with a host cache read
-	hostInfosFromDB, err := loader.HostInfoOps.GetAll(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), _defaultCassandraTimeout)
+	defer cancel()
+
+	hostInfosFromDB, err := loader.HostInfoOps.GetAll(ctx)
 	if err != nil {
-		log.WithError(err).Warning("failed to fetch from DB to exclude draining hosts from agent map")
+		log.WithError(err).Error("failed to get host infos from DB")
 	}
-	hostsInDraining := make(map[string]bool)
+
+	hostsInDB := make(map[string]bool)
 	for _, hostInfo := range hostInfosFromDB {
-		if hostInfo.GetState() == pbhost.HostState_HOST_STATE_DRAINING {
-			hostsInDraining[hostInfo.GetHostname()] = true
-		}
+		hostsInDB[hostInfo.GetHostname()] = true
+	}
+
+	response, err := loader.OperatorClient.GetMaintenanceStatus()
+	if err != nil {
+		log.WithError(err).Error("failed to get mesos maintenance status")
+		return
+	}
+
+	hostsInDrainingState := make(map[string]bool)
+	for _, drainingMachine := range response.GetStatus().GetDrainingMachines() {
+		hostsInDrainingState[drainingMachine.GetId().GetHostname()] = true
 	}
 
 	for _, agent := range agents.GetAgents() {
+		ctx, cancel := context.WithTimeout(context.Background(), _defaultCassandraTimeout)
+		defer cancel()
+
 		hostname := agent.GetAgentInfo().GetHostname()
-		if _, ok := hostsInDraining[hostname]; ok {
+
+		// if the host is not present in DB, create an entry for the host in DB
+		if !hostsInDB[hostname] {
+			ip, _, err := util.ExtractIPAndPortFromMesosAgentPID(agent.GetPid())
+			if err != nil {
+				log.WithError(err).
+					WithField("host", hostname).
+					Error("failed to get ip for host")
+				continue
+			}
+
+			if err = loader.HostInfoOps.Create(
+				ctx,
+				hostname,
+				ip,
+				pbhost.HostState_HOST_STATE_UP,
+				pbhost.HostState_HOST_STATE_UP,
+				map[string]string{},
+				"",
+				"",
+			); err != nil {
+				log.WithField("host", hostname).
+					WithError(err).
+					Error("failed to create entry in DB")
+			}
+		}
+
+		// skip hosts in maintenance from cluster capacity calculation
+		if _, ok := hostsInDrainingState[hostname]; ok {
 			continue
 		}
+
 		m.RegisteredAgents[hostname] = agent
 		capacity := &ResourceCapacity{}
 		m.HostCapacities[hostname] = capacity

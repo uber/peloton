@@ -279,6 +279,29 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 		suite.pool)
 }
 
+func (suite *HostMgrHandlerTestSuite) setupLoaderMocks(
+	response *mesos_master.Response_GetAgents,
+) {
+	suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).Return(nil, nil)
+	suite.masterOperatorClient.EXPECT().Agents().Return(response, nil)
+	suite.masterOperatorClient.EXPECT().GetMaintenanceStatus().Return(nil, nil)
+	for _, a := range response.GetAgents() {
+		ip, _, err := util.ExtractIPAndPortFromMesosAgentPID(a.GetPid())
+		suite.NoError(err)
+
+		suite.mockHostInfoOps.EXPECT().Create(
+			gomock.Any(),
+			a.GetAgentInfo().GetHostname(),
+			ip,
+			pbhost.HostState_HOST_STATE_UP,
+			pbhost.HostState_HOST_STATE_UP,
+			map[string]string{},
+			"",
+			"",
+		).Return(nil)
+	}
+}
+
 func (suite *HostMgrHandlerTestSuite) TearDownTest() {
 	log.Debug("tearing down")
 }
@@ -1459,10 +1482,7 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacity() {
 	}
 	numAgents := 2
 	response := makeAgentsResponse(numAgents)
-	suite.masterOperatorClient.EXPECT().Agents().Return(response, nil)
-	suite.mockHostInfoOps.EXPECT().
-		GetAll(gomock.Any()).
-		Return([]*pbhost.HostInfo{}, nil)
+	suite.setupLoaderMocks(response)
 	loader.Load(nil)
 
 	tests := []struct {
@@ -1548,10 +1568,7 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacityWithoutAg
 		Scope:          suite.testScope,
 		HostInfoOps:    suite.mockHostInfoOps,
 	}
-	suite.masterOperatorClient.EXPECT().Agents().Return(response, nil)
-	suite.mockHostInfoOps.EXPECT().
-		GetAll(gomock.Any()).
-		Return([]*pbhost.HostInfo{}, nil)
+	suite.setupLoaderMocks(response)
 	loader.Load(nil)
 
 	suite.provider.EXPECT().GetFrameworkID(rootCtx).Return(suite.frameworkID)
@@ -1600,10 +1617,7 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacityWithQuota
 	}
 	numAgents := 2
 	response := makeAgentsResponse(numAgents)
-	suite.masterOperatorClient.EXPECT().Agents().Return(response, nil)
-	suite.mockHostInfoOps.EXPECT().
-		GetAll(gomock.Any()).
-		Return([]*pbhost.HostInfo{}, nil)
+	suite.setupLoaderMocks(response)
 	loader.Load(nil)
 
 	clusterCapacityReq := &hostsvc.ClusterCapacityRequest{}
@@ -1838,6 +1852,9 @@ func makeAgentsResponse(numAgents int) *mesos_master.Response_GetAgents {
 				Resources: resources,
 			},
 			TotalResources: resources,
+			Pid: &[]string{
+				fmt.Sprintf("slave%d@%d.%d.%d.%d:%d", i, i, i, i, i, i),
+			}[0],
 		}
 		response.Agents = append(response.Agents, getAgent)
 	}
@@ -2029,12 +2046,7 @@ func (suite *HostMgrHandlerTestSuite) InitializeHosts(numAgents int) {
 		HostInfoOps:        suite.mockHostInfoOps,
 	}
 	response := makeAgentsResponse(numAgents)
-	gomock.InOrder(
-		suite.masterOperatorClient.EXPECT().Agents().Return(response, nil),
-		suite.mockHostInfoOps.EXPECT().
-			GetAll(gomock.Any()).
-			Return([]*pbhost.HostInfo{}, nil),
-	)
+	suite.setupLoaderMocks(response)
 	loader.Load(nil)
 }
 
@@ -2344,15 +2356,12 @@ func (suite *HostMgrHandlerTestSuite) TestGetMesosAgentInfo() {
 	response := makeAgentsResponse(3)
 	agentInfo := AgentSlice(response.GetAgents())
 	sort.Sort(agentInfo)
-	suite.masterOperatorClient.EXPECT().Agents().Return(response, nil)
 	loader := &host.Loader{
 		OperatorClient: suite.masterOperatorClient,
 		Scope:          suite.testScope,
 		HostInfoOps:    suite.mockHostInfoOps,
 	}
-	suite.mockHostInfoOps.EXPECT().
-		GetAll(gomock.Any()).
-		Return([]*pbhost.HostInfo{}, nil)
+	suite.setupLoaderMocks(response)
 	loader.Load(nil)
 
 	testcases := []struct {

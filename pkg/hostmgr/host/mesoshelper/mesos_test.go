@@ -24,6 +24,7 @@ import (
 	mesos_master "github.com/uber/peloton/.gen/mesos/v1/master"
 	pbhost "github.com/uber/peloton/.gen/peloton/api/v0/host"
 
+	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/hostmgr/host"
 	mpb_mocks "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
 	orm_mocks "github.com/uber/peloton/pkg/storage/objects/mocks"
@@ -266,13 +267,30 @@ func (suite *mesosHelperTestSuite) TestRegisterHostAsUpNoop() {
 				AgentInfo: &mesos.AgentInfo{
 					Hostname: &suite.hostname,
 				},
+				Pid: &[]string{"slave1@1.2.3.4:1234"}[0],
 			},
 		},
 	}
+
+	suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).Return(nil, nil)
 	suite.mockMasterOperatorClient.EXPECT().Agents().Return(agentsResponse, nil)
-	suite.mockHostInfoOps.EXPECT().
-		GetAll(gomock.Any()).
-		Return([]*pbhost.HostInfo{}, nil)
+	suite.mockMasterOperatorClient.EXPECT().GetMaintenanceStatus().Return(nil, nil)
+	for _, a := range agentsResponse.GetAgents() {
+		ip, _, err := util.ExtractIPAndPortFromMesosAgentPID(a.GetPid())
+		suite.NoError(err)
+
+		suite.mockHostInfoOps.EXPECT().Create(
+			gomock.Any(),
+			a.GetAgentInfo().GetHostname(),
+			ip,
+			pbhost.HostState_HOST_STATE_UP,
+			pbhost.HostState_HOST_STATE_UP,
+			map[string]string{},
+			"",
+			"",
+		).Return(nil)
+	}
+
 	loader.Load(nil)
 
 	suite.NoError(RegisterHostAsUp(
