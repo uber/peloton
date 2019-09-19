@@ -35,6 +35,7 @@ import (
 	uat "github.com/uber-go/atomic"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 // Calculator is responsible for calculating the entitlements for all the
@@ -57,10 +58,14 @@ type Calculator struct {
 	clusterCapacity map[string]float64
 	// map of cluster slack capacity keyed by the resource type
 	clusterSlackCapacity map[string]float64
+	// map of hostpool capacity keyed by pool-ID
+	hostPoolCapacity map[string]*ResourceCapacity
 	// This atomic boolean helps to identify if previous run is
 	// complete or still not done
 	isRunning uat.Bool
 	metrics   *metrics
+	// whether to use host-pools
+	useHostPool bool
 }
 
 // NewCalculator initializes the entitlement Calculator
@@ -70,6 +75,7 @@ func NewCalculator(
 	dispatcher *yarpc.Dispatcher,
 	tree respool.Tree,
 	hmApiVersion api.Version,
+	useHostPool bool,
 ) *Calculator {
 	return &Calculator{
 		resPoolTree:          tree,
@@ -79,7 +85,9 @@ func NewCalculator(
 		capMgr:               getCapacityManager(hmApiVersion, dispatcher),
 		clusterCapacity:      make(map[string]float64),
 		clusterSlackCapacity: make(map[string]float64),
+		hostPoolCapacity:     make(map[string]*ResourceCapacity),
 		metrics:              newMetrics(parent.SubScope("Calculator")),
+		useHostPool:          useHostPool,
 	}
 }
 
@@ -206,6 +214,13 @@ func (c *Calculator) updateClusterCapacity(
 	c.clusterCapacity, c.clusterSlackCapacity, err = c.capMgr.GetCapacity(ctx)
 	if err != nil {
 		return err
+	}
+	if c.useHostPool {
+		hpCap, err := c.capMgr.GetHostPoolCapacity(ctx)
+		if err != nil && !yarpcerrors.IsUnimplemented(err) {
+			return err
+		}
+		c.hostPoolCapacity = hpCap
 	}
 
 	rootResourcePoolConfig := rootResPool.ResourcePoolConfig()

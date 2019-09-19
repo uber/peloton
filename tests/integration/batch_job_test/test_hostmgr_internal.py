@@ -8,6 +8,10 @@ from peloton_client.pbgen.peloton.private.hostmgr.hostsvc import hostsvc_pb2 as 
 from peloton_client.pbgen.mesos.v1 import mesos_pb2 as mesos
 from peloton_client.pbgen.peloton.api.v0 import peloton_pb2 as peloton
 from tests.integration.conf_util import MESOS_AGENTS
+from tests.integration.host import (
+    ensure_host_pool,
+    cleanup_other_host_pools,
+)
 
 # Mark test module so that we can run tests by tags
 pytestmark = [
@@ -176,3 +180,67 @@ def test__launch_kill(peloton_client):
         metadata=client.hostmgr_metadata,
         timeout=20)
     assert resp.HasField("error") is False
+
+
+# Test host-pool capacity API
+def test__hostpool_capacity(peloton_client):
+    client = with_private_stubs(peloton_client)
+
+    # Check capacity of default pool.
+    resp = client.hostmgr_svc.GetHostPoolCapacity(
+        request=v0hostmgr.GetHostPoolCapacityRequest(),
+        metadata=client.hostmgr_metadata,
+        timeout=20)
+    assert len(resp.pools) == 1
+    assert resp.pools[0].poolName == "default"
+    assert len(resp.pools[0].physicalCapacity) == 4
+    assert len(resp.pools[0].slackCapacity) == 4
+    for resource in resp.pools[0].physicalCapacity:
+        assert resource.kind in ['cpu', 'gpu', 'memory', 'disk']
+        if resource.kind == 'cpu':
+            assert resource.capacity == 12.0  # 4cpu * 3 agents
+        if resource.kind == 'memory':
+            assert resource.capacity == 6144.0  # 2048Mb * 3 agents
+    for resource in resp.pools[0].slackCapacity:
+        assert resource.kind in ['cpu', 'gpu', 'memory', 'disk']
+        if resource.kind == 'cpu':
+            assert resource.capacity == 12.0  # 4cpu * 3 agents
+
+    # Create a host-pool and move 1 host to it.
+    ensure_host_pool("capacity-test", 1, client=peloton_client)
+
+    resp = client.hostmgr_svc.GetHostPoolCapacity(
+        request=v0hostmgr.GetHostPoolCapacityRequest(),
+        metadata=client.hostmgr_metadata,
+        timeout=20)
+    assert len(resp.pools) == 2
+
+    for pool in resp.pools:
+        assert len(pool.physicalCapacity) == 4
+        assert len(pool.slackCapacity) == 4
+        if pool.poolName == "default":
+            for resource in pool.physicalCapacity:
+                assert resource.kind in ['cpu', 'gpu', 'memory', 'disk']
+                if resource.kind == 'cpu':
+                    assert resource.capacity == 8.0  # 4cpu * 2 agents
+                if resource.kind == 'memory':
+                    assert resource.capacity == 4096.0  # 2048Mb * 2 agents
+            for resource in pool.slackCapacity:
+                assert resource.kind in ['cpu', 'gpu', 'memory', 'disk']
+                if resource.kind == 'cpu':
+                    assert resource.capacity == 8.0  # 4cpu * 2 agents
+        elif pool.poolName == "capacity-test":
+            for resource in pool.physicalCapacity:
+                assert resource.kind in ['cpu', 'gpu', 'memory', 'disk']
+                if resource.kind == 'cpu':
+                    assert resource.capacity == 4.0  # 4cpu * 1 agent
+                if resource.kind == 'memory':
+                    assert resource.capacity == 2048.0  # 2048Mb * 1 agent
+            for resource in pool.slackCapacity:
+                assert resource.kind in ['cpu', 'gpu', 'memory', 'disk']
+                if resource.kind == 'cpu':
+                    assert resource.capacity == 4.0  # 4cpu * 1 agent
+        else:
+            assert False, "Unexpected pool %s" % pool.poolName
+
+    cleanup_other_host_pools([], client=peloton_client)

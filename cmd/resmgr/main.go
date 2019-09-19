@@ -170,6 +170,12 @@ var (
 		Default("").
 		Envar("HOSTMGR_API_VERSION").
 		String()
+
+	useHostPool = app.Flag(
+		"use_host_pool", "Using host pool").
+		Default("false").
+		Envar("USE_HOST_POOL").
+		Bool()
 )
 
 func getConfig(cfgFiles ...string) Config {
@@ -247,6 +253,9 @@ func getConfig(cfgFiles ...string) Config {
 	if len(*authType) != 0 {
 		cfg.Auth.AuthType = auth.Type(*authType)
 		cfg.Auth.Path = *authConfigFile
+	}
+	if *useHostPool {
+		cfg.ResManager.UseHostPool = *useHostPool
 	}
 
 	log.
@@ -420,6 +429,7 @@ func main() {
 		dispatcher,
 		tree,
 		cfg.ResManager.HostManagerAPIVersion,
+		cfg.ResManager.UseHostPool,
 	)
 
 	// Initializing the task reconciler

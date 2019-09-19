@@ -44,6 +44,7 @@ import (
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 type EntitlementCalculatorTestSuite struct {
@@ -64,6 +65,7 @@ func (s *EntitlementCalculatorTestSuite) SetupTest() {
 		stopChan:             make(chan struct{}, 1),
 		clusterCapacity:      make(map[string]float64),
 		clusterSlackCapacity: make(map[string]float64),
+		hostPoolCapacity:     make(map[string]*ResourceCapacity),
 		metrics:              newMetrics(tally.NoopScope),
 	}
 	s.initRespoolTree()
@@ -776,6 +778,72 @@ func (s *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
 	s.Equal(RootResPool.Resources()[common.DISK].Limit, float64(6000))
 }
 
+func (s *EntitlementCalculatorTestSuite) TestUpdateCapacityWithHostPool() {
+	// Mock LaunchTasks call.
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(s.mockCtrl)
+
+	mockHostMgr.EXPECT().ClusterCapacity(gomock.Any(), gomock.Any()).
+		Return(&hostsvc.ClusterCapacityResponse{
+			PhysicalResources: s.createClusterCapacity(),
+		}, nil).
+		AnyTimes()
+
+	s.calculator.capMgr = &v0CapacityManager{
+		hostManagerV0: mockHostMgr,
+	}
+	s.calculator.useHostPool = true
+
+	rootres, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "root"})
+	s.NoError(err)
+	rootres.SetResourcePoolConfig(s.getResPools()["root"])
+
+	testcases := map[string]struct {
+		err  error
+		resp *hostsvc.GetHostPoolCapacityResponse
+	}{
+		"unimplemented-error": {
+			err: yarpcerrors.UnimplementedErrorf(""),
+		},
+		"other-error": {
+			err: yarpcerrors.NotFoundErrorf(""),
+		},
+		"success": {
+			resp: &hostsvc.GetHostPoolCapacityResponse{
+				Pools: []*hostsvc.HostPoolResources{
+					{
+						PoolName:         "p1",
+						PhysicalCapacity: s.createClusterCapacity(),
+						SlackCapacity:    s.createSlackClusterCapacity(),
+					},
+					{
+						PoolName:         "p2",
+						PhysicalCapacity: s.createClusterCapacity(),
+					},
+				},
+			},
+		},
+	}
+	for tcName, tc := range testcases {
+		mockHostMgr.EXPECT().GetHostPoolCapacity(gomock.Any(), gomock.Any()).
+			Return(tc.resp, tc.err)
+
+		err := s.calculator.updateClusterCapacity(context.Background(), rootres)
+
+		if tc.err != nil {
+			if yarpcerrors.IsUnimplemented(err) {
+				s.NoError(err, tcName)
+				s.Equal(0, len(s.calculator.hostPoolCapacity), tcName)
+			} else {
+				s.Error(err, tcName)
+			}
+		} else {
+			s.NoError(err)
+			s.Contains(s.calculator.hostPoolCapacity, "p1", tcName)
+			s.Contains(s.calculator.hostPoolCapacity, "p2", tcName)
+		}
+	}
+}
+
 func (s *EntitlementCalculatorTestSuite) TestEntitlementWithMoreDemand() {
 	// Mock LaunchTasks call.
 	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(s.mockCtrl)
@@ -883,6 +951,7 @@ func (s *EntitlementCalculatorTestSuite) TestNewCalculator() {
 		dispatcher,
 		s.resTree,
 		api.V0,
+		false,
 	)
 	s.NotNil(calc)
 	calc = NewCalculator(
@@ -891,6 +960,7 @@ func (s *EntitlementCalculatorTestSuite) TestNewCalculator() {
 		dispatcher,
 		s.resTree,
 		api.V1Alpha,
+		false,
 	)
 	s.NotNil(calc)
 }

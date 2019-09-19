@@ -54,4 +54,7 @@ type Config struct {
 	// HostManagerAPIVersion is the API version that the Resource Manager
 	// should use to talk to Host Manager.
 	HostManagerAPIVersion api.Version `yaml:"hostmgr_api_version"`
+
+	// UseHostPool is the config switch to use host pool in Resource manager
+	UseHostPool bool `yaml:"use_host_pool"`
 }

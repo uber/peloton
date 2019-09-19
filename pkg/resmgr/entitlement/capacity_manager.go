@@ -26,9 +26,18 @@ import (
 
 	"github.com/pkg/errors"
 	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 const _defaultHostMgrTimeout = 10 * time.Second
+
+// ResourceCapacity contains total quantity of various kinds of host resources.
+type ResourceCapacity struct {
+	// Physical capacity.
+	Physical map[string]float64
+	// Revocable capacity.
+	Slack map[string]float64
+}
 
 type v0CapacityManager struct {
 	// v0 client to get the v0 cluster capacity.
@@ -50,6 +59,11 @@ type CapacityManager interface {
 		// slack capacity of the cluster
 		slack map[string]float64,
 		err error,
+	)
+	// Return capacity of each host-pool.
+	GetHostPoolCapacity(context.Context) (
+		map[string]*ResourceCapacity,
+		error,
 	)
 }
 
@@ -120,6 +134,15 @@ func (c *v1AlphaCapacityManager) GetCapacity(
 	return total, slack, nil
 }
 
+// GetHostPoolCapacity implements GetHostPoolCapacity method for
+// v1Alpha capacity manager.
+func (c *v1AlphaCapacityManager) GetHostPoolCapacity(context.Context) (
+	map[string]*ResourceCapacity,
+	error,
+) {
+	return nil, yarpcerrors.UnimplementedErrorf("")
+}
+
 // GetCapacity implements the GetCapacity method for v0 capacity manager.
 func (c *v0CapacityManager) GetCapacity(
 	ctx context.Context,
@@ -154,4 +177,36 @@ func (c *v0CapacityManager) GetCapacity(
 	}
 
 	return total, slack, nil
+}
+
+// GetHostPoolCapacity implements GetHostPoolCapacity method for
+// v0 capacity manager.
+func (c *v0CapacityManager) GetHostPoolCapacity(ctx context.Context) (
+	map[string]*ResourceCapacity,
+	error,
+) {
+	ctx, cancel := context.WithTimeout(ctx, _defaultHostMgrTimeout)
+	defer cancel()
+
+	request := &v0_hostsvc.GetHostPoolCapacityRequest{}
+	response, err := c.hostManagerV0.GetHostPoolCapacity(ctx, request)
+	if err != nil {
+		return nil, errors.Wrap(err, "v0 GetHostPoolCapacity failed: ")
+	}
+
+	result := make(map[string]*ResourceCapacity)
+	for _, pool := range response.GetPools() {
+		rc := &ResourceCapacity{
+			Physical: make(map[string]float64),
+			Slack:    make(map[string]float64),
+		}
+		for _, res := range pool.GetPhysicalCapacity() {
+			rc.Physical[res.GetKind()] = res.GetCapacity()
+		}
+		for _, res := range pool.GetSlackCapacity() {
+			rc.Slack[res.GetKind()] = res.GetCapacity()
+		}
+		result[pool.GetPoolName()] = rc
+	}
+	return result, nil
 }
