@@ -781,7 +781,6 @@ func (s *Store) addPodEvent(
 	instanceID uint32,
 	runtime *task.RuntimeInfo) error {
 	var runID, prevRunID, desiredRunID uint64
-	var podStatus []byte
 	var err, errMessage error
 
 	errLog := false
@@ -809,10 +808,7 @@ func (s *Store) addPodEvent(
 		errLog = true
 		errMessage = err
 	}
-	if podStatus, err = proto.Marshal(runtime); err != nil {
-		errLog = true
-		errMessage = err
-	}
+
 	if errLog {
 		s.metrics.TaskMetrics.PodEventsAddFail.Inc(1)
 		return errMessage
@@ -836,8 +832,7 @@ func (s *Store) addPodEvent(
 			"desired_config_version",
 			"volumeID",
 			"message",
-			"reason",
-			"pod_status").
+			"reason").
 		Values(
 			jobID.GetValue(),
 			instanceID,
@@ -854,8 +849,7 @@ func (s *Store) addPodEvent(
 			runtime.GetDesiredConfigVersion(),
 			runtime.GetVolumeID().GetValue(),
 			runtime.GetMessage(),
-			runtime.GetReason(),
-			podStatus).Into(podEventsTable)
+			runtime.GetReason()).Into(podEventsTable)
 
 	err = s.applyStatement(ctx, stmt, runtime.GetMesosTaskId().GetValue())
 	if err != nil {
