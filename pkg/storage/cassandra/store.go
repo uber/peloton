@@ -832,7 +832,8 @@ func (s *Store) addPodEvent(
 			"desired_config_version",
 			"volumeID",
 			"message",
-			"reason").
+			"reason",
+			"update_timestamp").
 		Values(
 			jobID.GetValue(),
 			instanceID,
@@ -849,7 +850,8 @@ func (s *Store) addPodEvent(
 			runtime.GetDesiredConfigVersion(),
 			runtime.GetVolumeID().GetValue(),
 			runtime.GetMessage(),
-			runtime.GetReason()).Into(podEventsTable)
+			runtime.GetReason(),
+			time.Now()).Into(podEventsTable)
 
 	err = s.applyStatement(ctx, stmt, runtime.GetMesosTaskId().GetValue())
 	if err != nil {
@@ -2321,13 +2323,15 @@ func (s *Store) AddWorkflowEvent(
 			"instance_id",
 			"type",
 			"state",
-			"create_time").
+			"create_time",
+			"update_timestamp").
 		Values(
 			updateID.GetValue(),
 			int(instanceID),
 			workflowType.String(),
 			workflowState.String(),
-			qb.UUID{UUID: gocql.UUIDFromTime(time.Now())})
+			qb.UUID{UUID: gocql.UUIDFromTime(time.Now())},
+			time.Now())
 	err := s.applyStatement(ctx, stmt, updateID.GetValue())
 	if err != nil {
 		s.metrics.WorkflowMetrics.WorkflowEventsAddFail.Inc(1)
