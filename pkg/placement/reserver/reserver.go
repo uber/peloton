@@ -33,7 +33,7 @@ import (
 	"github.com/uber/peloton/pkg/placement/hosts"
 	tally_metrics "github.com/uber/peloton/pkg/placement/metrics"
 	"github.com/uber/peloton/pkg/placement/models"
-	"github.com/uber/peloton/pkg/placement/models/v0"
+	models_v0 "github.com/uber/peloton/pkg/placement/models/v0"
 	"github.com/uber/peloton/pkg/placement/tasks"
 
 	log "github.com/sirupsen/logrus"
@@ -166,7 +166,7 @@ func (r *reserver) Run(ctx context.Context) error {
 		}
 		err = r.enqueueCompletedReservation(ctx)
 		if err != nil {
-			log.WithError(err).Error("error finding completed reservation")
+			log.WithError(err).Debug("error finding completed reservation")
 		}
 
 		// We need to process the completed reservations
