@@ -51,7 +51,7 @@ type HostMoverTestSuite struct {
 
 // batchMetricsProps defines the task properties used by scorer
 type batchMetricsProps struct {
-	poolId         string
+	poolID         string
 	taskType       resmgr.TaskType
 	nonpreemptible bool
 	controller     bool
@@ -147,7 +147,7 @@ func (s *HostMoverTestSuite) TestSortHostsByScoresWithErrors() {
 func (s *HostMoverTestSuite) TestSortHostsByScores() {
 	hostPools := []*pb_host.HostPoolInfo{
 		{
-			Name:  "BATCH",
+			Name:  "shared",
 			Hosts: []string{"host1", "host2"},
 		},
 	}
@@ -159,7 +159,7 @@ func (s *HostMoverTestSuite) TestSortHostsByScores() {
 	for _, state := range []string{"LAUNCHED", "RUNNING"} {
 		task := s.createRMTask(
 			batchMetricsProps{
-				poolId:         "respool1",
+				poolID:         "respool1",
 				nonpreemptible: false,
 				taskType:       resmgr.TaskType_BATCH,
 				state:          state})
@@ -189,20 +189,20 @@ func (s *HostMoverTestSuite) TestSortHostsByScores() {
 	}{
 		{
 			hostTasks: make(map[string][]*rmtask.RMTask),
-			hosts:     []string{},
+			hosts:     []string{"host1", "host2"},
 		},
 		{
 			hostTasks: map[string][]*rmtask.RMTask{
 				"host1": {
 					s.createRMTask(
 						batchMetricsProps{
-							poolId:         "respool1",
+							poolID:         "respool1",
 							nonpreemptible: true,
 							taskType:       resmgr.TaskType_BATCH}),
 				},
 				"host2": {
 					s.createRMTask(batchMetricsProps{
-						poolId:         "respool1",
+						poolID:         "respool1",
 						nonpreemptible: false,
 						taskType:       resmgr.TaskType_BATCH}),
 				},
@@ -213,13 +213,13 @@ func (s *HostMoverTestSuite) TestSortHostsByScores() {
 			hostTasks: map[string][]*rmtask.RMTask{
 				"host1": {
 					s.createRMTask(batchMetricsProps{
-						poolId:     "respool1",
+						poolID:     "respool1",
 						controller: true,
 						taskType:   resmgr.TaskType_BATCH}),
 				},
 				"host2": {
 					s.createRMTask(batchMetricsProps{
-						poolId:     "respool1",
+						poolID:     "respool1",
 						controller: false,
 						taskType:   resmgr.TaskType_BATCH}),
 				},
@@ -230,26 +230,26 @@ func (s *HostMoverTestSuite) TestSortHostsByScores() {
 			hostTasks: map[string][]*rmtask.RMTask{
 				"host1": {
 					s.createRMTask(batchMetricsProps{
-						poolId:   "respool1",
+						poolID:   "respool1",
 						taskType: resmgr.TaskType_BATCH}),
 				},
 				"host2": {
 					s.createRMTask(batchMetricsProps{
-						poolId:   "respool1",
+						poolID:   "respool1",
 						taskType: resmgr.TaskType_BATCH}),
 					s.createRMTask(batchMetricsProps{
-						poolId:   "respool1",
+						poolID:   "respool1",
 						taskType: resmgr.TaskType_BATCH}),
 					s.createRMTask(batchMetricsProps{
-						poolId:   "respool1",
+						poolID:   "respool1",
 						taskType: resmgr.TaskType_BATCH}),
 				},
 				"host3": {
 					s.createRMTask(batchMetricsProps{
-						poolId:   "respool1",
+						poolID:   "respool1",
 						taskType: resmgr.TaskType_BATCH}),
 					s.createRMTask(batchMetricsProps{
-						poolId:   "respool1",
+						poolID:   "respool1",
 						taskType: resmgr.TaskType_BATCH}),
 				},
 			},
@@ -259,53 +259,53 @@ func (s *HostMoverTestSuite) TestSortHostsByScores() {
 			hostTasks: map[string][]*rmtask.RMTask{
 				"host1": {
 					s.createRMTask(batchMetricsProps{
-						poolId:   "respool1",
+						poolID:   "respool1",
 						priority: 0,
 						taskType: resmgr.TaskType_BATCH}),
 					s.createRMTask(batchMetricsProps{
-						poolId:   "respool1",
+						poolID:   "respool1",
 						priority: 0,
 						taskType: resmgr.TaskType_BATCH}),
 					s.createRMTask(batchMetricsProps{
-						poolId:   "respool2",
+						poolID:   "respool2",
 						priority: 10,
 						taskType: resmgr.TaskType_BATCH}),
 					s.createRMTask(batchMetricsProps{
-						poolId:   "respool2",
+						poolID:   "respool2",
 						priority: 50,
 						taskType: resmgr.TaskType_BATCH}),
 					s.createRMTask(batchMetricsProps{
-						poolId:   "respool3",
+						poolID:   "respool3",
 						priority: 10,
 						taskType: resmgr.TaskType_BATCH}),
 					s.createRMTask(batchMetricsProps{
-						poolId:   "respool3",
+						poolID:   "respool3",
 						priority: 20,
 						taskType: resmgr.TaskType_BATCH}),
 				},
 				"host2": {
 					s.createRMTask(batchMetricsProps{
-						poolId:   "respool1",
+						poolID:   "respool1",
 						priority: 0,
 						taskType: resmgr.TaskType_BATCH}),
 					s.createRMTask(batchMetricsProps{
-						poolId:   "respool1",
+						poolID:   "respool1",
 						priority: 0,
 						taskType: resmgr.TaskType_BATCH}),
 					s.createRMTask(batchMetricsProps{
-						poolId:   "respool2",
+						poolID:   "respool2",
 						priority: 20,
 						taskType: resmgr.TaskType_BATCH}),
 					s.createRMTask(batchMetricsProps{
-						poolId:   "respool2",
+						poolID:   "respool2",
 						priority: 100,
 						taskType: resmgr.TaskType_BATCH}),
 					s.createRMTask(batchMetricsProps{
-						poolId:   "respool2",
+						poolID:   "respool2",
 						priority: 10,
 						taskType: resmgr.TaskType_BATCH}),
 					s.createRMTask(batchMetricsProps{
-						poolId:   "respool2",
+						poolID:   "respool2",
 						priority: 10,
 						taskType: resmgr.TaskType_BATCH}),
 				},
@@ -316,13 +316,13 @@ func (s *HostMoverTestSuite) TestSortHostsByScores() {
 			hostTasks: map[string][]*rmtask.RMTask{
 				"host1": {
 					s.createRMTask(batchMetricsProps{
-						poolId:    "respool1",
+						poolID:    "respool1",
 						taskType:  resmgr.TaskType_BATCH,
 						startTime: &startTime1}),
 				},
 				"host2": {
 					s.createRMTask(batchMetricsProps{
-						poolId:    "respool1",
+						poolID:    "respool1",
 						taskType:  resmgr.TaskType_BATCH,
 						startTime: &startTime2}),
 				},
@@ -404,7 +404,7 @@ func (s *HostMoverTestSuite) createRMTask(prop batchMetricsProps) *rmtask.RMTask
 		Type:        prop.taskType,
 	}
 
-	respool, err := s.resTree.Get(&peloton.ResourcePoolID{Value: prop.poolId})
+	respool, err := s.resTree.Get(&peloton.ResourcePoolID{Value: prop.poolID})
 	s.NoError(err)
 
 	rmTask, err := rmtask.CreateRMTask(
@@ -428,4 +428,55 @@ func (s *HostMoverTestSuite) createRMTask(prop batchMetricsProps) *rmtask.RMTask
 	}
 
 	return rmTask
+}
+
+func (s *HostMoverTestSuite) TestNoTasksHosts() {
+	hostPools := []*pb_host.HostPoolInfo{
+		{
+			Name:  "shared",
+			Hosts: []string{"host1", "host2", "host3"},
+		},
+	}
+	resp := &pb_hostsvc.ListHostPoolsResponse{
+		Pools: hostPools,
+	}
+
+	expectedItems := []struct {
+		hostTasks map[string][]*rmtask.RMTask
+		hosts     []string
+	}{
+		{
+			hostTasks: map[string][]*rmtask.RMTask{
+				"host1": {
+					s.createRMTask(
+						batchMetricsProps{
+							poolID:         "respool1",
+							nonpreemptible: false,
+							taskType:       resmgr.TaskType_BATCH}),
+				},
+				"host2": {
+					s.createRMTask(batchMetricsProps{
+						poolID:         "respool1",
+						nonpreemptible: false,
+						taskType:       resmgr.TaskType_BATCH}),
+					s.createRMTask(batchMetricsProps{
+						poolID:         "respool1",
+						nonpreemptible: false,
+						taskType:       resmgr.TaskType_BATCH}),
+				},
+			},
+			hosts: []string{"host3", "host1", "host2"},
+		},
+	}
+
+	for _, item := range expectedItems {
+		s.mockTracker.EXPECT().TasksByHosts(gomock.Any(), gomock.Any()).
+			Return(item.hostTasks)
+		s.mockHostMgr.
+			EXPECT().
+			ListHostPools(gomock.Any(), gomock.Any()).
+			Return(resp, nil)
+		s.scorer.sortOnce()
+		s.EqualValues(item.hosts, s.scorer.orderedHosts)
+	}
 }

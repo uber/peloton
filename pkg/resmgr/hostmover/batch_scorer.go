@@ -25,6 +25,7 @@ import (
 	hostsvc "github.com/uber/peloton/.gen/peloton/api/v0/host/svc"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
 	"github.com/uber/peloton/.gen/peloton/private/resmgr"
+	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/lifecycle"
 	rmtask "github.com/uber/peloton/pkg/resmgr/task"
 
@@ -34,9 +35,6 @@ import (
 const (
 	// hostScorerInterval is the interval to run host scorer.
 	hostScorerInterval = 5 * time.Second
-
-	// defaultBatchPool is the default batch host pool
-	defaultBatchHostPool = "BATCH"
 
 	// _timeout is the time out setting to make HostMgr call
 	_timeout = 5 * time.Second
@@ -188,17 +186,25 @@ func (s *batchScorer) sortOnce() error {
 
 	poolFound := false
 	for _, p := range resp.GetPools() {
-		if p.GetName() == defaultBatchHostPool {
-			batchHosts = p.GetHosts()
+		if p.GetName() == common.SharedHostPoolID {
+			batchHosts = append(batchHosts, p.GetHosts()...)
 			poolFound = true
 		}
 	}
 	if !poolFound {
-		return fmt.Errorf("pool %q not found", defaultBatchHostPool)
+		return fmt.Errorf("pool %q not "+
+			"found", common.SharedHostPoolID)
 	}
 
 	hostTasks := s.rmTracker.TasksByHosts(batchHosts, resmgr.TaskType_BATCH)
 	currentTime := time.Now()
+
+	var noTasksHosts []string
+	for _, batchHost := range batchHosts {
+		if _, ok := hostTasks[batchHost]; !ok {
+			noTasksHosts = append(noTasksHosts, batchHost)
+		}
+	}
 
 	hostMetrics := make([]*batchHostMetrics, len(hostTasks))
 	index := 0
@@ -236,7 +242,7 @@ func (s *batchScorer) sortOnce() error {
 			hostMetrics[index].tasksAvgRunTime /= float64(len(tasksPerHost))
 		}
 
-		index += 1
+		index++
 	}
 
 	// Normalize the task priorities
@@ -246,14 +252,14 @@ func (s *batchScorer) sortOnce() error {
 	clusterMaxPriority := 0.0
 
 	for _, metrics := range hostMetrics {
-		for poolId, priorities := range metrics.tasksPriority {
+		for poolID, priorities := range metrics.tasksPriority {
 			for _, priority := range priorities {
 				clusterMaxPriority = math.Max(clusterMaxPriority, float64(priority))
 
-				if _, ok := poolMaxPriorities[poolId]; !ok {
-					poolMaxPriorities[poolId] = float64(priority)
+				if _, ok := poolMaxPriorities[poolID]; !ok {
+					poolMaxPriorities[poolID] = float64(priority)
 				} else {
-					poolMaxPriorities[poolId] = math.Max(poolMaxPriorities[poolId], float64(priority))
+					poolMaxPriorities[poolID] = math.Max(poolMaxPriorities[poolID], float64(priority))
 				}
 			}
 		}
@@ -262,8 +268,8 @@ func (s *batchScorer) sortOnce() error {
 	// Aggregated normalized priority of all the tasks
 	aggrPriorities := make([]float64, len(hostMetrics))
 	for index, metrics := range hostMetrics {
-		for poolId, priorities := range metrics.tasksPriority {
-			poolMaxPriority := poolMaxPriorities[poolId]
+		for poolID, priorities := range metrics.tasksPriority {
+			poolMaxPriority := poolMaxPriorities[poolID]
 			ratio := 0.0
 			if poolMaxPriority != 0 {
 				ratio = clusterMaxPriority / poolMaxPriority
@@ -302,6 +308,8 @@ func (s *batchScorer) sortOnce() error {
 		}
 	}
 
+	// Append hosts with no task running on top of the list
+	hosts = append(noTasksHosts, hosts...)
 	// copy to target hosts array
 	s.hostsLock.Lock()
 	defer s.hostsLock.Unlock()
