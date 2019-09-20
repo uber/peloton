@@ -36,8 +36,13 @@ import (
 )
 
 const (
+	// Time interval between periodic reconciliation.
 	_defaultReconcileInterval = 10 * time.Second
 
+	// Timeout for calls to DB.
+	_defaultDBTimeout = 10 * time.Second
+
+	// Error message to log on failures to update host pool in DB.
 	_updateHostPoolErrMsg = "failed to update host pool in host_infos table"
 )
 
@@ -216,8 +221,11 @@ func (m *hostPoolManager) updatePoolInHostInfo(hostname, poolID string) error {
 		return errors.New("hostname is empty")
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), _defaultDBTimeout)
+	defer cancel()
+
 	err := m.hostInfoOps.UpdatePool(
-		context.Background(),
+		ctx,
 		hostname,
 		poolID,
 		poolID)
@@ -225,6 +233,10 @@ func (m *hostPoolManager) updatePoolInHostInfo(hostname, poolID string) error {
 		m.metrics.UpdateCurrentPoolErr.Inc(1)
 		return err
 	}
+	log.WithFields(log.Fields{
+		hostpool.HostnameKey: hostname,
+		hostpool.HostPoolKey: poolID}).
+		Info("Changed pool for host")
 	return nil
 }
 
@@ -341,7 +353,10 @@ func (m *hostPoolManager) GetDesiredPool(hostname string) (string, error) {
 		return "", errors.New("hostname is empty")
 	}
 
-	hostInfo, err := m.hostInfoOps.Get(context.Background(), hostname)
+	ctx, cancel := context.WithTimeout(context.Background(), _defaultDBTimeout)
+	defer cancel()
+
+	hostInfo, err := m.hostInfoOps.Get(ctx, hostname)
 	if err != nil {
 		m.metrics.GetDesirePoolErr.Inc(1)
 		return "", err
@@ -363,7 +378,10 @@ func (m *hostPoolManager) UpdateDesiredPool(hostname, poolID string) error {
 		return errors.New("poolID is empty")
 	}
 
-	err := m.hostInfoOps.UpdateDesiredPool(context.Background(), hostname, poolID)
+	ctx, cancel := context.WithTimeout(context.Background(), _defaultDBTimeout)
+	defer cancel()
+
+	err := m.hostInfoOps.UpdateDesiredPool(ctx, hostname, poolID)
 	if err != nil {
 		m.metrics.UpdateDesiredPoolErr.Inc(1)
 		return err
@@ -393,7 +411,10 @@ func (m *hostPoolManager) recover() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	hostInfo, err := m.hostInfoOps.GetAll(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), _defaultDBTimeout)
+	defer cancel()
+
+	hostInfo, err := m.hostInfoOps.GetAll(ctx)
 	if err != nil {
 		return err
 	}
@@ -471,11 +492,33 @@ func (m *hostPoolManager) Stop() {
 	log.Info("Host pool manager stopped")
 }
 
-// reconcile reconciles host pool cache.
-// It makes sure default host pool exists.
-// It reconciles host pool cache with host index in AgentMap cache.
-// It reconciles host pool cache with host pool data in database.
-// It makes sure every host belongs to, and only belongs to ONE host pool.
+// Update DB to move host to default pool.
+func (m *hostPoolManager) moveToDefault(hostname string) error {
+	const msg string = "reconcile: moving new host to default pool"
+	err := m.updatePoolInHostInfo(hostname, common.DefaultHostPoolID)
+	if err != nil {
+		log.WithError(err).
+			WithField(hostpool.HostnameKey, hostname).
+			Error(msg + ": " + _updateHostPoolErrMsg)
+		return err
+	}
+	log.WithField(hostpool.HostnameKey, hostname).Info(msg)
+	m.publishPoolEvent(hostname, common.DefaultHostPoolID)
+	return nil
+}
+
+// reconcile synchronizes hostToPoolMap and poolIndex with the pool information
+// from DB.
+// 1. Create default pool if required.
+// 2. For each host found in the DB:
+//   a. If current_pool is not set, update it to default pool
+//   b. Create a pool object if required
+//   c. Ensure that the pool's host-list contains the host
+//   d. Add the host->pool entry to a new hostToPoolMap
+// 3. Publish pool-change event if there are differences between
+//   old and new hostToPoolMap instances.
+// 4. For each pool, remove all hosts that are no longer in that
+//    pool as per the new hostToPoolMap.
 func (m *hostPoolManager) reconcile() error {
 	sw := m.metrics.ReconcileTime.Start()
 	m.mu.Lock()
@@ -490,119 +533,65 @@ func (m *hostPoolManager) reconcile() error {
 		m.poolIndex[common.DefaultHostPoolID] =
 			hostpool.New(common.DefaultHostPoolID, m.parentScope)
 		log.WithField(hostpool.HostPoolKey, common.DefaultHostPoolID).
-			Info("Registered new host pool during reconciliation")
+			Info("reconcile: created default pool")
 	}
 
-	// Load agent map AgentMap cache.
-	agentMap := host.GetAgentMap()
-	if agentMap == nil {
+	ctx, cancel := context.WithTimeout(context.Background(), _defaultDBTimeout)
+	defer cancel()
+
+	// Fetch all hosts from DB.
+	allHostInfo, err := m.hostInfoOps.GetAll(ctx)
+	if err != nil {
 		m.metrics.ReconcileErr.Inc(1)
-		return errors.New("failed to load agent map")
+		return errors.Wrap(err, "reconcile: failed to get hosts from DB: ")
 	}
-	registeredAgents := agentMap.RegisteredAgents
 
-	// Loop through all pools in poolIndex to rebuild hostToPoolMap.
-	// If a host is not in agent map, delete it from host cache.
-	// If a host is not in hostToPoolMap snapshot, delete it from poolIndex.
-	// If a host's host pool value in poolIndex is different from
-	// its value in hostToPoolMap, use the pool value in hostToPoolMap
-	// as its host pool.
-	// If a host is in multiple pools in poolIndex, use the pool value in
-	// hostToPoolMap as its host pool.
-	newHostToPoolMap := map[string]string{}
-	for poolID, pool := range m.poolIndex {
-		for hostname := range pool.Hosts() {
-			if _, ok := registeredAgents[hostname]; !ok {
-				err := m.updatePoolInHostInfo(hostname, "")
-				if err != nil {
-					log.WithError(err).WithField("hostname", hostname).
-						Error(_updateHostPoolErrMsg)
-					continue
-				}
-				delete(m.hostToPoolMap, hostname)
-				pool.Delete(hostname)
-				m.publishPoolEvent(hostname, "")
+	// Build a new hostToPoolMap based on current_pool of each host in DB.
+	// If current_pool is not set, set the value to default pool in DB.
+	// Check if a pool with that name exists. Create one if required.
+	// Ensure that the host is present in the host-list of the pool.
+	newHostToPoolMap := make(map[string]string)
+	for _, hi := range allHostInfo {
+		hostname := hi.GetHostname()
+		p := hi.GetCurrentPool()
+		if p == "" {
+			p = common.DefaultHostPoolID
+			if err := m.moveToDefault(hostname); err != nil {
 				continue
 			}
+		}
+		newHostToPoolMap[hi.GetHostname()] = p
+		oldpool, ok := m.poolIndex[p]
+		if !ok {
+			oldpool = hostpool.New(p, m.parentScope)
+			m.poolIndex[p] = oldpool
+			log.WithField(hostpool.HostPoolKey, p).
+				Info("reconcile: registered new host pool")
+		}
+		// ensure host is in the list of hosts for the pool
+		oldpool.Add(hostname)
+	}
 
-			prevPoolID, ok := m.hostToPoolMap[hostname]
-			if !ok {
-				err := m.updatePoolInHostInfo(hostname, "")
-				if err != nil {
-					log.WithError(err).WithField("hostname", hostname).
-						Error(_updateHostPoolErrMsg)
-					continue
-				}
-				pool.Delete(hostname)
-				m.publishPoolEvent(hostname, "")
-				continue
-			}
-
-			if prevPoolID == poolID {
-				newHostToPoolMap[hostname] = poolID
-				continue
-			}
-
-			err := m.updatePoolInHostInfo(hostname, prevPoolID)
-			if err != nil {
-				log.WithError(err).WithField("hostname", hostname).
-					Error(_updateHostPoolErrMsg)
-				continue
-			}
-			newHostToPoolMap[hostname] = prevPoolID
-			pool.Delete(hostname)
-			if _, ok = m.poolIndex[prevPoolID]; !ok {
-				m.poolIndex[prevPoolID] =
-					hostpool.New(prevPoolID, m.parentScope)
-				log.WithField(hostpool.HostPoolKey, prevPoolID).
-					Info("Registered new host pool " +
-						"during reconciliation")
-			}
-			m.poolIndex[prevPoolID].Add(hostname)
+	// Compare old & new pools for each host, and publish an event if they
+	// are different
+	for h, oldPool := range m.hostToPoolMap {
+		newPool, ok := newHostToPoolMap[h]
+		if !ok || oldPool != newPool {
+			m.publishPoolEvent(h, newPool)
 		}
 	}
-
-	// Loop through all hosts in hostToPoolMap snapshot.
-	// If a host is not in rebuild hostToPoolMap, add it to host cache.
-	for hostname, poolID := range m.hostToPoolMap {
-		if _, ok := newHostToPoolMap[hostname]; !ok {
-			err := m.updatePoolInHostInfo(hostname, poolID)
-			if err != nil {
-				log.WithError(err).WithField("hostname", hostname).
-					Error(_updateHostPoolErrMsg)
-				continue
-			}
-			newHostToPoolMap[hostname] = poolID
-			if _, ok = m.poolIndex[poolID]; !ok {
-				m.poolIndex[poolID] = hostpool.New(poolID, m.parentScope)
-				log.WithField(hostpool.HostPoolKey, poolID).
-					Info("Registered new host pool " +
-						"during reconciliation")
-			}
-			m.poolIndex[poolID].Add(hostname)
-		}
-	}
-
-	// Loop through all registered agents in agent map.
-	// If any registered agent not in host pool cache,
-	// add it to default host pool.
-	for hostname := range registeredAgents {
-		if _, ok := newHostToPoolMap[hostname]; !ok {
-			err := m.updatePoolInHostInfo(hostname, common.DefaultHostPoolID)
-			if err != nil {
-				log.WithError(err).WithField("hostname", hostname).
-					Error(_updateHostPoolErrMsg)
-				continue
-			}
-			newHostToPoolMap[hostname] = common.DefaultHostPoolID
-			// No need to check existence since reconciliation ensures
-			// default host pool always exists at the beginning of each loop.
-			m.poolIndex[common.DefaultHostPoolID].Add(hostname)
-			m.publishPoolEvent(hostname, common.DefaultHostPoolID)
-		}
-	}
-
 	m.hostToPoolMap = newHostToPoolMap
+
+	// Remove hosts from each pool which are not associated with the pool
+	// according to new hostToPoolMap.
+	for _, oldPool := range m.poolIndex {
+		for hostname := range oldPool.Hosts() {
+			newPool, ok := m.hostToPoolMap[hostname]
+			if !ok || newPool != oldPool.ID() {
+				oldPool.Delete(hostname)
+			}
+		}
+	}
 
 	m.refreshPoolCapacity()
 	m.refreshMetrics()

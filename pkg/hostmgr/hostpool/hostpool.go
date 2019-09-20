@@ -102,16 +102,11 @@ func (hp *hostPool) Add(host string) {
 	hp.mu.Lock()
 	defer hp.mu.Unlock()
 
-	// Log warning since it might indicates data inconsistency in callers
-	if _, ok := hp.hosts[host]; ok {
-		log.WithFields(log.Fields{HostnameKey: host, HostPoolKey: poolID}).
-			Warn("Host already in host pool")
+	if _, ok := hp.hosts[host]; !ok {
+		hp.hosts[host] = struct{}{}
+		log.WithField(HostnameKey, host).WithField(HostPoolKey, poolID).
+			Debug("Added host to host pool")
 	}
-
-	// Insert host into map regardless to ensure idempotency
-	hp.hosts[host] = struct{}{}
-	log.WithField(HostnameKey, host).WithField(HostPoolKey, poolID).
-		Debug("Added host to host pool")
 }
 
 // Delete deletes given host from the pool.
@@ -121,16 +116,11 @@ func (hp *hostPool) Delete(host string) {
 	hp.mu.Lock()
 	defer hp.mu.Unlock()
 
-	// Log warning since it might indicates data inconsistency in callers
-	if _, ok := hp.hosts[host]; !ok {
+	if _, ok := hp.hosts[host]; ok {
+		delete(hp.hosts, host)
 		log.WithFields(log.Fields{HostnameKey: host, HostPoolKey: poolID}).
-			Warn("Host not found in host pool")
+			Debug("Deleted host from host pool")
 	}
-
-	// Delete host from map regardless to ensure idempotency
-	delete(hp.hosts, host)
-	log.WithFields(log.Fields{HostnameKey: host, HostPoolKey: poolID}).
-		Debug("Deleted host from host pool")
 }
 
 // Cleanup deletes all hosts from the pool.
