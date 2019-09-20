@@ -135,13 +135,13 @@ func (r *runner) start() {
 			case <-initialTimer.C:
 				log.Debug("Initial delay passed")
 			}
-
-			r.work.Func(&r.running)
 		}
 
 		ticker := time.NewTicker(r.work.Period)
 		defer ticker.Stop()
 		for {
+			r.work.Func(&r.running)
+
 			select {
 			case <-r.stopChan:
 				log.WithField("name", r.work.Name).
@@ -151,7 +151,6 @@ func (r *runner) start() {
 				log.WithField("tick", t).
 					WithField("name", r.work.Name).
 					Debug("Background work triggered.")
-				r.work.Func(&r.running)
 			}
 		}
 	}()
