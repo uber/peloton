@@ -24,6 +24,7 @@ import (
 	"github.com/uber/peloton/pkg/common/stringset"
 	"github.com/uber/peloton/pkg/hostmgr/host"
 	"github.com/uber/peloton/pkg/hostmgr/host/drainer"
+	"github.com/uber/peloton/pkg/hostmgr/hostpool/hostmover"
 	hostpool_mgr "github.com/uber/peloton/pkg/hostmgr/hostpool/manager"
 
 	log "github.com/sirupsen/logrus"
@@ -38,6 +39,7 @@ type serviceHandler struct {
 	metrics         *Metrics
 	drainer         drainer.Drainer
 	hostPoolManager hostpool_mgr.HostPoolManager
+	hostMover       hostmover.HostMover
 }
 
 // InitServiceHandler initializes the HostService
@@ -45,11 +47,13 @@ func InitServiceHandler(
 	d *yarpc.Dispatcher,
 	parent tally.Scope,
 	drainer drainer.Drainer,
-	hostPoolManager hostpool_mgr.HostPoolManager) {
+	hostPoolManager hostpool_mgr.HostPoolManager,
+	hostMover hostmover.HostMover) {
 	handler := &serviceHandler{
 		metrics:         NewMetrics(parent.SubScope("hostsvc")),
 		drainer:         drainer,
 		hostPoolManager: hostPoolManager,
+		hostMover:       hostMover,
 	}
 	d.Register(host_svc.BuildHostServiceYARPCProcedures(handler))
 	log.Info("Hostsvc handler initialized")
@@ -340,7 +344,24 @@ func (m *serviceHandler) ChangeHostPool(
 	return
 }
 
-// NewTestServiceHandler returns an empty new serviceHandler ptr for testing.
-func NewTestServiceHandler() *serviceHandler {
-	return &serviceHandler{}
+// MoveHosts from source pool to destination
+func (m *serviceHandler) MoveHosts(
+	ctx context.Context,
+	request *host_svc.MoveHostsRequest,
+) (response *host_svc.MoveHostsResponse, err error) {
+	if m.hostPoolManager == nil {
+		err = yarpcerrors.UnimplementedErrorf("host pools not enabled")
+		return
+	}
+	err = m.hostMover.MoveHosts(
+		ctx,
+		request.GetSourcePool(),
+		request.GetSrcPoolDesiredHosts(),
+		request.GetDestinationPool(),
+		request.GetDestPoolDesiredHosts(),
+	)
+	if err == nil {
+		response = &host_svc.MoveHostsResponse{}
+	}
+	return
 }

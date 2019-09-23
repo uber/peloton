@@ -113,6 +113,25 @@ message ChangeHostPoolRequest {
 //                      destination pool doesn't exist
 message ChangeHostPoolResponse {}
 
+// Request message for HostService.MoveHostsRequest method.
+message MoveHostsRequest {
+    // Name of host pool from which hosts are to be moved.
+    string sourcePool = 1;
+
+    // desired number of hosts in source pool
+    int32 srcPoolDesiredHosts = 2;
+
+    // Name of host pool to which hosts are to be moved.
+    string destinationPool = 3;
+
+    // desired number of hosts in destination pool
+    int32 destPoolDesiredHosts = 4;
+}
+
+// Response message for HostService.MoveHosts method.
+// return Error if hosts can't be moved
+message MoveHostsResponse {}
+
 /**
  *  HostService defines the host related methods such as query hosts, start maintenance,
  *  complete maintenance etc.
@@ -144,4 +163,9 @@ service HostService
     // Change the pool to which a host belongs
     rpc ChangeHostPool(ChangeHostPoolRequest)
     returns (ChangeHostPoolResponse);
+
+    // Move specified number of hosts from source pool
+    // to destination pool
+    rpc MoveHosts(MoveHostsRequest)
+    returns (MoveHostsResponse);
 }

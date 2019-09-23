@@ -39,6 +39,7 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/goalstate"
 	"github.com/uber/peloton/pkg/hostmgr/host"
 	"github.com/uber/peloton/pkg/hostmgr/host/drainer"
+	"github.com/uber/peloton/pkg/hostmgr/hostpool/hostmover"
 	"github.com/uber/peloton/pkg/hostmgr/hostpool/manager"
 	"github.com/uber/peloton/pkg/hostmgr/hostsvc"
 	"github.com/uber/peloton/pkg/hostmgr/mesos"
@@ -733,6 +734,16 @@ func main() {
 		hostPoolManager,
 	)
 
+	// Create Host mover object
+	hostMover := hostmover.NewHostMover(
+		hostPoolManager,
+		ormobjects.NewHostInfoOps(ormStore),
+		goalStateDriver,
+		rootScope,
+		resmgrsvc.NewResourceManagerServiceYARPCClient(
+			dispatcher.ClientConfig(common.PelotonResourceManager)),
+	)
+
 	// Create new hostmgr internal service handler.
 	serviceHandler := hostmgr.NewServiceHandler(
 		dispatcher,
@@ -764,6 +775,7 @@ func main() {
 		rootScope,
 		drainer,
 		hostPoolManager,
+		hostMover,
 	)
 
 	recoveryHandler := hostmgr.NewRecoveryHandler(

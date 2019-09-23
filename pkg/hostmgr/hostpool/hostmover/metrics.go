@@ -20,16 +20,8 @@ import (
 
 // Metrics tracks various metrics at task state level.
 type Metrics struct {
-	startMaintenanceSuccess    tally.Counter
-	startMaintenanceFail       tally.Counter
-	completeMaintenanceSuccess tally.Counter
-	completeMaintenanceFail    tally.Counter
-	pendingMoveRequests        tally.Gauge
-	dequeueErrors              tally.Counter
-	enqueueErrors              tally.Counter
-	reconcileHostRequests      tally.Gauge
-	reconcileHostSuccess       tally.Counter
-	reconcileHostFailed        tally.Counter
+	hostMoveSuccess tally.Counter
+	hostMoveFailure tally.Counter
 
 	scope tally.Scope
 }
@@ -38,17 +30,8 @@ type Metrics struct {
 // and rooted at the given tally.Scope
 func NewMetrics(scope tally.Scope) *Metrics {
 	return &Metrics{
-		startMaintenanceSuccess:    scope.Counter("start_maintenance_success"),
-		startMaintenanceFail:       scope.Counter("start_maintenance_fail"),
-		completeMaintenanceSuccess: scope.Counter("complete_maintenance_success"),
-		completeMaintenanceFail:    scope.Counter("complete_maintenance_fail"),
-		dequeueErrors:              scope.Counter("dequeue_errors"),
-		enqueueErrors:              scope.Counter("enqueue_errors"),
-		pendingMoveRequests:        scope.Gauge("pending_move_requests"),
-		reconcileHostRequests:      scope.Gauge("reconcile_host_requests"),
-		reconcileHostSuccess:       scope.Counter("reconcile_host_success"),
-		reconcileHostFailed:        scope.Counter("reconcile_host_failed"),
-
-		scope: scope,
+		hostMoveSuccess: scope.Counter("host_move_success"),
+		hostMoveFailure: scope.Counter("host_move_fail"),
+		scope:           scope,
 	}
 }

@@ -15,6 +15,7 @@ package hostsvc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -29,6 +30,7 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/host"
 	dm "github.com/uber/peloton/pkg/hostmgr/host/drainer/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/hostpool"
+	hmmocks "github.com/uber/peloton/pkg/hostmgr/hostpool/hostmover/mocks"
 	hpm_mock "github.com/uber/peloton/pkg/hostmgr/hostpool/manager/mocks"
 	ym "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
 	orm_mocks "github.com/uber/peloton/pkg/storage/objects/mocks"
@@ -57,6 +59,7 @@ type hostSvcHandlerTestSuite struct {
 	mockMasterOperatorClient *ym.MockMasterOperatorClient
 	mockHostPoolManager      *hpm_mock.MockHostPoolManager
 	mockHostInfoOps          *orm_mocks.MockHostInfoOps
+	mockHostMover            *hmmocks.MockHostMover
 }
 
 func (suite *hostSvcHandlerTestSuite) SetupSuite() {
@@ -108,6 +111,8 @@ func (suite *hostSvcHandlerTestSuite) SetupTest() {
 	suite.handler.hostPoolManager = suite.mockHostPoolManager
 	suite.handler.drainer = suite.mockDrainer
 	suite.mockHostInfoOps = orm_mocks.NewMockHostInfoOps(suite.mockCtrl)
+	suite.mockHostMover = hmmocks.NewMockHostMover(suite.mockCtrl)
+	suite.handler.hostMover = suite.mockHostMover
 
 	response := suite.makeAgentsResponse()
 	loader := &host.Loader{
@@ -490,6 +495,11 @@ func (suite *hostSvcHandlerTestSuite) TestHostPoolsNotEnabled() {
 		&svcpb.ChangeHostPoolRequest{},
 	)
 	suite.Error(err)
+	_, err = suite.handler.MoveHosts(
+		suite.ctx,
+		&svcpb.MoveHostsRequest{},
+	)
+	suite.Error(err)
 }
 
 // TestListHostPools tests ListHostPools API method
@@ -620,6 +630,42 @@ func (suite *hostSvcHandlerTestSuite) TestChangeHostPool() {
 			Hostname:        "h1-does-not-exist",
 			SourcePool:      "p1",
 			DestinationPool: "p2",
+		},
+	)
+	suite.Error(err)
+}
+
+// TestMoveHosts tests MoveHosts API method
+func (suite *hostSvcHandlerTestSuite) TestMoveHosts() {
+	// success case
+	suite.mockHostMover.EXPECT().MoveHosts(gomock.Any(), gomock.Any(),
+		gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+
+	resp, err := suite.handler.MoveHosts(
+		suite.ctx,
+		&svcpb.MoveHostsRequest{
+			SourcePool:           "p1",
+			SrcPoolDesiredHosts:  1,
+			DestinationPool:      "p2",
+			DestPoolDesiredHosts: 1,
+		},
+	)
+	suite.NoError(err)
+	suite.NotNil(resp)
+}
+
+func (suite *hostSvcHandlerTestSuite) TestMoveHostError() {
+	/// bad request
+	suite.mockHostMover.EXPECT().MoveHosts(gomock.Any(), gomock.Any(),
+		gomock.Any(), gomock.Any(), gomock.Any()).Return(errors.New("error"))
+
+	_, err := suite.handler.MoveHosts(
+		suite.ctx,
+		&svcpb.MoveHostsRequest{
+			SourcePool:           "p1",
+			SrcPoolDesiredHosts:  1,
+			DestinationPool:      "p2",
+			DestPoolDesiredHosts: 1,
 		},
 	)
 	suite.Error(err)

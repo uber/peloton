@@ -17,42 +17,31 @@ package hostmover
 import (
 	"context"
 	"errors"
-	"fmt"
-	"reflect"
 	"testing"
-	"time"
 
-	host "github.com/uber/peloton/.gen/peloton/api/v0/host"
 	hpb "github.com/uber/peloton/.gen/peloton/api/v0/host"
-	hostsvc "github.com/uber/peloton/.gen/peloton/api/v0/host/svc"
-	hostmocks "github.com/uber/peloton/.gen/peloton/api/v0/host/svc/mocks"
+	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
+	resmocks "github.com/uber/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
-	"github.com/uber/peloton/pkg/common/async"
-	"github.com/uber/peloton/pkg/common/backoff"
-	"github.com/uber/peloton/pkg/common/queue"
-	"github.com/uber/peloton/pkg/common/queue/mocks"
-	"github.com/uber/peloton/pkg/hostmgr/hostpool"
+	goalmocks "github.com/uber/peloton/pkg/hostmgr/goalstate/mocks"
 	poolmocks "github.com/uber/peloton/pkg/hostmgr/hostpool/manager/mocks"
+	ormmocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
-)
-
-const (
-	SourcePool      = "srcPool"
-	DestPool        = "destPool"
-	_hostIdTemplate = "hostName%d"
+	"github.com/uber/peloton/pkg/common"
 )
 
 // HostPoolTestSuite is test suite for host pool.
 type hostMoverTestSuite struct {
 	suite.Suite
-	mover               *HostMover
+	mover               HostMover
 	mockCtrl            *gomock.Controller
-	mockHostMgr         *hostmocks.MockHostServiceYARPCClient
 	mockHostPoolManager *poolmocks.MockHostPoolManager
-	mockQueue           *mocks.MockQueue
+	mockresMgrClient    *resmocks.MockResourceManagerServiceYARPCClient
+	mockHostInfoOps     *ormmocks.MockHostInfoOps
+	mockGoalStateDriver *goalmocks.MockDriver
 }
 
 func (suite *hostMoverTestSuite) SetupSuite() {
@@ -60,9 +49,17 @@ func (suite *hostMoverTestSuite) SetupSuite() {
 
 func (suite *hostMoverTestSuite) SetupTest() {
 	suite.mockCtrl = gomock.NewController(suite.T())
-	suite.mockHostMgr = hostmocks.NewMockHostServiceYARPCClient(suite.mockCtrl)
 	suite.mockHostPoolManager = poolmocks.NewMockHostPoolManager(suite.mockCtrl)
-	suite.mockQueue = mocks.NewMockQueue(suite.mockCtrl)
+	suite.mockresMgrClient = resmocks.NewMockResourceManagerServiceYARPCClient(suite.mockCtrl)
+	suite.mockHostInfoOps = ormmocks.NewMockHostInfoOps(suite.mockCtrl)
+	suite.mockGoalStateDriver = goalmocks.NewMockDriver(suite.mockCtrl)
+	suite.mover = NewHostMover(
+		suite.mockHostPoolManager,
+		suite.mockHostInfoOps,
+		suite.mockGoalStateDriver,
+		tally.NoopScope,
+		suite.mockresMgrClient,
+	)
 }
 
 // TestHostMoverTestSuite runs HostMoverTestSuite.
@@ -70,588 +67,196 @@ func TestHostMoverTestSuite(t *testing.T) {
 	suite.Run(t, new(hostMoverTestSuite))
 }
 
-// TestMoveHostsAcrossPoolsSuccessPath tests host mover in success path
-func (suite *hostMoverTestSuite) TestMoveHostsAcrossPoolsSuccessPath() {
-	// Create custom host-mover object
-	moverObject := NewHostMover(suite.mockHostMgr,
-		suite.mockHostPoolManager,
-		tally.NewTestScope("", map[string]string{}))
+// TestMoveHosts tests the move hosts api from host mover interface
+// it tests the without error path.
+func (suite *hostMoverTestSuite) TestMoveHosts() {
 
-	suite.mover = &moverObject
-	moverObject.Start()
-	resp := &hostsvc.StartMaintenanceResponse{}
+	var hostInfos []*hpb.HostInfo
 
-	suite.mockHostMgr.EXPECT().
-		StartMaintenance(gomock.Any(), gomock.Any()).
-		Return(resp, nil).
-		AnyTimes()
-
-	hostInfoList := make([]*host.HostInfo, 2)
-
-	for i := 0; i < 2; i++ {
-		hostInfo := host.HostInfo{Hostname: fmt.Sprintf(_hostIdTemplate, i),
-			State: hpb.HostState_HOST_STATE_DOWN}
-		hostInfoList[i] = &hostInfo
+	hostInfo1 := &hpb.HostInfo{
+		Hostname:    "host1",
+		CurrentPool: "p2",
+		DesiredPool: "p2",
 	}
 
-	tt := struct {
-		resp *hostsvc.QueryHostsResponse
-		err  error
-	}{
-		&hostsvc.QueryHostsResponse{
-			HostInfos: hostInfoList,
-		},
-		nil,
+	hostInfo2 := &hpb.HostInfo{
+		Hostname:    "host1",
+		CurrentPool: common.SharedHostPoolID,
+		DesiredPool: common.SharedHostPoolID,
 	}
 
-	suite.mockHostMgr.EXPECT().
-		QueryHosts(gomock.Any(), gomock.Any()).
-		Return(tt.resp, tt.err).
-		AnyTimes()
+	hostInfo3 := &hpb.HostInfo{
+		Hostname:    "host1",
+		CurrentPool: common.SharedHostPoolID,
+		DesiredPool: common.SharedHostPoolID,
+	}
 
-	suite.mockHostMgr.EXPECT().
-		CompleteMaintenance(gomock.Any(), gomock.Any()).
-		Return(nil, nil).
-		AnyTimes()
+	hostInfo4 := &hpb.HostInfo{
+		Hostname:    "host1",
+		CurrentPool: common.SharedHostPoolID,
+		DesiredPool: common.SharedHostPoolID,
+	}
+
+	hostInfos = append(hostInfos, hostInfo1)
+	hostInfos = append(hostInfos, hostInfo2)
+	hostInfos = append(hostInfos, hostInfo3)
+	hostInfos = append(hostInfos, hostInfo4)
 
 	suite.mockHostPoolManager.EXPECT().
-		GetPool(SourcePool).
-		Return(nil, nil).AnyTimes()
+		GetPool(gomock.Any()).Return(nil, nil).Times(2)
 
-	suite.mockHostPoolManager.EXPECT().
-		GetPool(DestPool).
-		Return(nil, nil).AnyTimes()
+	suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).Return(
+		hostInfos, nil)
 
-	pool := hostpool.New(SourcePool, tally.NewTestScope("",
-		map[string]string{}))
+	suite.mockresMgrClient.EXPECT().GetHostsByScores(gomock.Any(),
+		gomock.Any()).Return(
+		&resmgrsvc.GetHostsByScoresResponse{
+			Hosts: []string{"host1"},
+		}, nil)
 
-	for i := 0; i < 2; i++ {
-		suite.mockHostPoolManager.EXPECT().
-			GetPoolByHostname(fmt.Sprintf(_hostIdTemplate, i)).
-			Return(pool, nil)
-	}
+	suite.mockHostPoolManager.EXPECT().UpdateDesiredPool(
+		"host1",
+		"p2").
+		Return(nil)
 
-	id, _ := moverObject.MoveHostsAcrossPools(context.Background(),
-		2,
-		SourcePool,
-		DestPool,
-	)
+	suite.mockGoalStateDriver.EXPECT().
+		EnqueueHost(gomock.Any(), gomock.Any())
 
-	time.Sleep(30 * time.Second)
-
-	// request doesn't exist
-	blob := moverObject.QueryRequestStatus(context.Background(), id+"_new")
-	// Both the hosts are in DOWN state. Request should succeed
-	suite.Equal(blob.requestStatus, requestNotFound)
-
-	// request exist
-	blob = moverObject.QueryRequestStatus(context.Background(), id)
-	// Both the hosts are in DOWN state. Request should succeed
-	suite.EqualValues(blob.numHostsMoved, 2)
-	suite.Equal(blob.requestStatus, requestSucceeded)
-	moverObject.Stop()
+	suite.NoError(suite.mover.MoveHosts(
+		context.Background(), common.SharedHostPoolID, 2, "p2", 2))
 }
 
-// TestMoveHostsAcrossPoolsSuccessPath tests host mover in the failure path
-func (suite *hostMoverTestSuite) TestMoveHostsAcrossPoolsFailurePath() {
-	// Create custom host-mover object
-	moverObject := &hostMover{
-		requestsIdToStatusMapping: make(map[RequestId]*MoveStatus),
-		queuedRequests: queue.NewQueue("move-request-queue",
-			reflect.TypeOf(InFlightRequest{}), 10),
-		reconcileQueue: queue.NewQueue("reconcile-request-queue",
-			reflect.TypeOf(""), 0),
-		hostPoolManager: suite.mockHostPoolManager,
-		hostClient:      suite.mockHostMgr,
-		numWorkers:      1,
-		retryPolicy:     backoff.NewRetryPolicy(MaxRetryAttempts, 1),
-		metrics:         NewMetrics(tally.NewTestScope("", map[string]string{})),
-		shutDown:        make(chan struct{}),
-	}
-
-	moverObject.daemon = async.NewDaemon("HostMover", moverObject)
-	moverObject.Start()
-
-	resp := &hostsvc.StartMaintenanceResponse{}
+// TestMoveHostsError tests the error scenario when get pool is a error
+func (suite *hostMoverTestSuite) TestMoveHostsError() {
+	suite.mockHostPoolManager.EXPECT().
+		GetPool(common.SharedHostPoolID).Return(nil, errSourcePoolNotExists)
+	suite.Error(suite.mover.MoveHosts(context.Background(),
+		common.SharedHostPoolID, 1, "p1", 1))
 
 	suite.mockHostPoolManager.EXPECT().
-		GetPool(SourcePool).
-		Return(nil, nil).
-		AnyTimes()
-
+		GetPool(gomock.Any()).Return(nil, nil)
 	suite.mockHostPoolManager.EXPECT().
-		GetPool(DestPool).
-		Return(nil, nil).
-		AnyTimes()
-
-	pool := hostpool.New(SourcePool, tally.NewTestScope("",
-		map[string]string{}))
-
-	for j := 0; j < 3; j++ {
-		for i := 0; i < 2; i++ {
-			suite.mockHostPoolManager.EXPECT().
-				GetPoolByHostname(fmt.Sprintf(_hostIdTemplate, i)).
-				Return(pool, nil)
-		}
-	}
-
-	// Start maintenance error
-	suite.mockHostMgr.EXPECT().
-		StartMaintenance(gomock.Any(), gomock.Any()).
-		Return(resp, errors.New("maintenance error")).
-		Times(6)
-
-	id, _ := moverObject.MoveHostsAcrossPools(context.Background(),
-		2,
-		SourcePool,
-		DestPool,
-	)
-
-	time.Sleep(30 * time.Second)
-
-	blob := moverObject.QueryRequestStatus(context.Background(), id)
-	suite.EqualValues(blob.numHostsMoved, 0)
-
-	// Complete maintenance error
-	hostInfoList := make([]*host.HostInfo, 2)
-	for i := 0; i < 2; i++ {
-		hostInfo := host.HostInfo{Hostname: fmt.Sprintf(_hostIdTemplate, i),
-			State: hpb.HostState_HOST_STATE_DOWN}
-		hostInfoList[i] = &hostInfo
-	}
-
-	tt := struct {
-		resp *hostsvc.QueryHostsResponse
-		err  error
-	}{
-		&hostsvc.QueryHostsResponse{
-			HostInfos: hostInfoList,
-		},
-		nil,
-	}
-
-	suite.mockHostMgr.EXPECT().
-		StartMaintenance(gomock.Any(), gomock.Any()).
-		Return(resp, nil).
-		Times(2)
-
-	suite.mockHostMgr.EXPECT().
-		QueryHosts(gomock.Any(), gomock.Any()).
-		Return(tt.resp, tt.err).
-		Times(2)
-
-	// Complete maintenance is error
-	suite.mockHostMgr.EXPECT().
-		CompleteMaintenance(gomock.Any(), gomock.Any()).
-		Return(nil, errors.New("maintenance error")).
-		Times(6)
-
-	id, _ = moverObject.MoveHostsAcrossPools(context.Background(),
-		2,
-		SourcePool,
-		DestPool,
-	)
-
-	time.Sleep(30 * time.Second)
-
-	blob = moverObject.QueryRequestStatus(context.Background(), id)
-	suite.EqualValues(blob.numHostsMoved, 0)
-
-	// Only one of the host is down
-	hostInfoList = make([]*host.HostInfo, 1)
-	for i := 0; i < 1; i++ {
-		hostInfo := host.HostInfo{Hostname: fmt.Sprintf(_hostIdTemplate, i),
-			State: hpb.HostState_HOST_STATE_DOWN}
-		hostInfoList[i] = &hostInfo
-	}
-
-	tt = struct {
-		resp *hostsvc.QueryHostsResponse
-		err  error
-	}{
-		&hostsvc.QueryHostsResponse{
-			HostInfos: hostInfoList,
-		},
-		nil,
-	}
-
-	resp = &hostsvc.StartMaintenanceResponse{}
-
-	suite.mockHostMgr.EXPECT().
-		StartMaintenance(gomock.Any(), gomock.Any()).
-		Return(resp, nil).
-		Times(6)
-
-	suite.mockHostMgr.EXPECT().
-		QueryHosts(gomock.Any(), gomock.Any()).
-		Return(tt.resp, tt.err).
-		AnyTimes()
-
-	suite.mockHostMgr.EXPECT().
-		CompleteMaintenance(gomock.Any(), gomock.Any()).
-		Return(nil, nil).
-		Times(6)
-
-	id, _ = moverObject.MoveHostsAcrossPools(context.Background(),
-		2,
-		SourcePool,
-		DestPool,
-	)
-
-	time.Sleep(30 * time.Second)
-
-	blob = moverObject.QueryRequestStatus(context.Background(), id)
-
-	// Host1 is still in draining mode.
-	suite.EqualValues(blob.numHostsMoved, 1)
-
-	moverObject.Stop()
+		GetPool("p1").Return(nil, errDestPoolNotExists)
+	suite.Error(suite.mover.MoveHosts(context.Background(),
+		common.SharedHostPoolID, 1, "p1", 1))
 }
 
-// TestReconcile tests reconciliation in the complete maintenance path.
-func (suite *hostMoverTestSuite) TestReconcileCompleteMaintenance() {
-	// Create custom host-mover object
-	moverObject := &hostMover{
-		requestsIdToStatusMapping: make(map[RequestId]*MoveStatus),
-		queuedRequests: queue.NewQueue("move-request-queue",
-			reflect.TypeOf(InFlightRequest{}), 10),
-		reconcileQueue: queue.NewQueue("reconcile-request-queue",
-			reflect.TypeOf(""), 1),
-		hostPoolManager:             suite.mockHostPoolManager,
-		hostClient:                  suite.mockHostMgr,
-		numWorkers:                  1,
-		totalWaitForSingleHostDrain: 1 * time.Second,
-		retryPolicy: backoff.NewRetryPolicy(MaxRetryAttempts,
-			1*time.Second),
-		metrics:  NewMetrics(tally.NewTestScope("", map[string]string{})),
-		shutDown: make(chan struct{}),
-	}
-
-	moverObject.daemon = async.NewDaemon("HostMover", moverObject)
-	hostInfoList := make([]*host.HostInfo, 1)
-	resp := &hostsvc.StartMaintenanceResponse{}
-
-	suite.mockHostMgr.EXPECT().
-		StartMaintenance(gomock.Any(), gomock.Any()).
-		Return(resp, nil).
-		AnyTimes()
-
-	for i := 0; i < 1; i++ {
-		hostInfo := host.HostInfo{Hostname: fmt.Sprintf(_hostIdTemplate, i),
-			State: hpb.HostState_HOST_STATE_DOWN}
-		hostInfoList[i] = &hostInfo
-	}
-
-	tt := struct {
-		resp *hostsvc.QueryHostsResponse
-		err  error
-	}{
-		&hostsvc.QueryHostsResponse{
-			HostInfos: hostInfoList,
-		},
-		nil,
-	}
-
+// TestMoveHostsDBError tests the error condition for DB
+func (suite *hostMoverTestSuite) TestMoveHostsDBError() {
 	suite.mockHostPoolManager.EXPECT().
-		GetPool(SourcePool).
-		Return(nil, nil).
-		AnyTimes()
+		GetPool(gomock.Any()).Return(nil, nil).Times(2)
 
-	suite.mockHostPoolManager.EXPECT().
-		GetPool(DestPool).
-		Return(nil, nil).
-		AnyTimes()
-
-	pool := hostpool.New(SourcePool, tally.NewTestScope("",
-		map[string]string{}))
-	for j := 0; j < 2; j++ {
-		for i := 0; i < 1; i++ {
-			suite.mockHostPoolManager.EXPECT().
-				GetPoolByHostname(fmt.Sprintf(_hostIdTemplate, i)).
-				Return(pool, nil)
-		}
-	}
-
-	suite.mockHostMgr.EXPECT().
-		QueryHosts(gomock.Any(), gomock.Any()).
-		Return(tt.resp, tt.err).
-		AnyTimes()
-
-	// Trigger moving hosts to the reconcile queue
-	suite.mockHostMgr.EXPECT().
-		CompleteMaintenance(gomock.Any(), gomock.Any()).
-		Return(nil, errors.New("error in maintenance")).
-		Times(3)
-
-	// Success in reconcile code path
-	suite.mockHostMgr.EXPECT().
-		CompleteMaintenance(gomock.Any(), gomock.Any()).
-		Return(nil, nil).
-		Times(1)
-
-	// Start the daemon
-	moverObject.Start()
-
-	// Host move request
-	_, _ = moverObject.MoveHostsAcrossPools(context.Background(),
-		1,
-		SourcePool,
-		DestPool,
-	)
-
-	time.Sleep(30 * time.Second)
-
-	// No pending host in the reconcile queue by now
-	suite.EqualValues(moverObject.reconcileQueue.Length(), 0)
-
-	// Trigger moving hosts to the reconcile queue
-	suite.mockHostMgr.EXPECT().
-		CompleteMaintenance(gomock.Any(), gomock.Any()).
-		Return(nil, errors.New("maintenance error")).
-		AnyTimes()
-
-	// Host move request
-	_, _ = moverObject.MoveHostsAcrossPools(context.Background(),
-		1,
-		SourcePool,
-		DestPool,
-	)
-
-	time.Sleep(30 * time.Second)
-
-	// Pending host in the reconcile queue due to error in complete maintenance
-	suite.EqualValues(moverObject.reconcileQueue.Length(), 1)
-
-	moverObject.Stop()
+	suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).Return(
+		nil, errors.New("error getting hosts"))
+	suite.Error(suite.mover.MoveHosts(context.Background(),
+		common.SharedHostPoolID, 1, "p1", 1))
 }
 
-// TestReconcile tests reconciliation in the enqueue/dequeue path.
-func (suite *hostMoverTestSuite) TestReconcileQueueTest() {
-	// Create custom host-mover object
-	moverObject := &hostMover{
-		requestsIdToStatusMapping: make(map[RequestId]*MoveStatus),
-		queuedRequests: queue.NewQueue("move-request-queue",
-			reflect.TypeOf(InFlightRequest{}), 10),
-		reconcileQueue:              suite.mockQueue,
-		hostPoolManager:             suite.mockHostPoolManager,
-		hostClient:                  suite.mockHostMgr,
-		numWorkers:                  1,
-		totalWaitForSingleHostDrain: 1 * time.Second,
-		retryPolicy:                 backoff.NewRetryPolicy(MaxRetryAttempts, 1),
-		metrics:                     NewMetrics(tally.NewTestScope("", map[string]string{})),
-		shutDown:                    make(chan struct{}),
+// TestNotEnoughHostsError tests when there is not enough hosts to move
+func (suite *hostMoverTestSuite) TestNotEnoughHostsError() {
+	var hostInfos []*hpb.HostInfo
+
+	hostInfo1 := &hpb.HostInfo{
+		Hostname:    "host1",
+		CurrentPool: common.SharedHostPoolID,
+		DesiredPool: "p2",
 	}
 
-	resp := &hostsvc.StartMaintenanceResponse{}
-
-	suite.mockHostMgr.EXPECT().
-		StartMaintenance(gomock.Any(), gomock.Any()).
-		Return(resp, nil).
-		AnyTimes()
-
-	hostInfoList := make([]*host.HostInfo, 1)
-	for i := 0; i < 1; i++ {
-		hostInfo := host.HostInfo{Hostname: fmt.Sprintf(_hostIdTemplate, i),
-			State: hpb.HostState_HOST_STATE_DOWN}
-		hostInfoList[i] = &hostInfo
+	hostInfo2 := &hpb.HostInfo{
+		Hostname:    "host1",
+		CurrentPool: common.SharedHostPoolID,
+		DesiredPool: "p2",
 	}
 
-	tt := struct {
-		resp *hostsvc.QueryHostsResponse
-		err  error
-	}{
-		&hostsvc.QueryHostsResponse{
-			HostInfos: hostInfoList,
-		},
-		nil,
-	}
+	hostInfos = append(hostInfos, hostInfo1)
+	hostInfos = append(hostInfos, hostInfo2)
 
 	suite.mockHostPoolManager.EXPECT().
-		GetPool(SourcePool).
-		Return(nil, nil).
-		AnyTimes()
+		GetPool(gomock.Any()).Return(nil, nil).AnyTimes()
 
-	suite.mockHostPoolManager.EXPECT().
-		GetPool(DestPool).
-		Return(nil, nil).
-		AnyTimes()
-
-	pool := hostpool.New(SourcePool, tally.NewTestScope("",
-		map[string]string{}))
-	suite.mockHostPoolManager.EXPECT().
-		GetPoolByHostname(fmt.Sprintf(_hostIdTemplate, 0)).
-		Return(pool, nil)
-
-	suite.mockHostMgr.EXPECT().
-		QueryHosts(gomock.Any(), gomock.Any()).
-		Return(tt.resp, tt.err).
-		AnyTimes()
-
-	// Trigger moving hosts to the reconcile queue
-	suite.mockHostMgr.EXPECT().
-		CompleteMaintenance(gomock.Any(), gomock.Any()).
-		Return(nil, errors.New("error in maintenance")).
-		Times(3)
-
-	// Success in reconcile path
-	suite.mockHostMgr.EXPECT().
-		CompleteMaintenance(gomock.Any(), gomock.Any()).
-		Return(nil, nil)
-
-	suite.mockQueue.EXPECT().
-		Enqueue(gomock.Any()).
-		Return(nil).
-		AnyTimes()
-
-	// Trigger error in dequeue
-	suite.mockQueue.EXPECT().
-		Dequeue(MaxRequestDequeueWaitTime).
-		Return(nil, errors.New("dequeue error")).
-		AnyTimes()
-
-	suite.mockQueue.EXPECT().
-		Length().
-		Return(1).
-		AnyTimes()
-
-	// New daemon and start
-	moverObject.daemon = async.NewDaemon("HostMover", moverObject)
-	moverObject.Start()
-
-	// Host move request
-	id, _ := moverObject.MoveHostsAcrossPools(context.Background(),
-		1,
-		SourcePool,
-		DestPool,
-	)
-
-	time.Sleep(30 * time.Second)
-
-	// Pending host in the reconcile queue due to error in dequeue path
-	blob := moverObject.QueryRequestStatus(context.Background(), id)
-
-	// Host1 is still in draining mode. Request should be in progress
-	suite.EqualValues(blob.numHostsMoved, 0)
-	moverObject.Stop()
+	suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).Return(
+		hostInfos, nil).AnyTimes()
+	suite.NoError(suite.mover.MoveHosts(context.Background(),
+		common.SharedHostPoolID, 1, "p2", 1))
+	suite.Error(suite.mover.MoveHosts(context.Background(),
+		"p2", 1, "p1", 3))
 }
 
-// TestValidations tests different validation paths.
-func (suite *hostMoverTestSuite) TestValidations() {
-	// Create custom host-mover object
-	moverObject := &hostMover{
-		requestsIdToStatusMapping: make(map[RequestId]*MoveStatus),
-		hostPoolManager:           suite.mockHostPoolManager,
-		queuedRequests: queue.NewQueue("move-request-queue",
-			reflect.TypeOf(InFlightRequest{}), MaxRequestQueueSize),
-		metrics: NewMetrics(tally.NewTestScope("",
-			map[string]string{})),
+// TestScorerError tests the error from resmgr scorer
+func (suite *hostMoverTestSuite) TestScorerError() {
+	var hostInfos []*hpb.HostInfo
+
+	hostInfo1 := &hpb.HostInfo{
+		Hostname:    "host1",
+		CurrentPool: "p1",
+		DesiredPool: common.SharedHostPoolID,
 	}
 
-	suite.mockHostPoolManager.EXPECT().
-		GetPool("NoPool").
-		Return(nil, errors.New("pool not exists")).
-		AnyTimes()
-
-	suite.mockHostPoolManager.EXPECT().
-		GetPool(SourcePool).
-		Return(nil, nil).
-		AnyTimes()
-
-	suite.mockHostPoolManager.EXPECT().
-		GetPool(DestPool).
-		Return(nil, nil).
-		AnyTimes()
-
-	_, err := moverObject.MoveHostsAcrossPools(context.Background(),
-		2,
-		"NoPool",
-		DestPool,
-	)
-
-	// "No source pool exists"
-	suite.EqualValues(err, errSourcePoolNotExists)
-
-	_, err = moverObject.MoveHostsAcrossPools(context.Background(),
-		2, SourcePool,
-		"NoPool",
-	)
-
-	// "No dest pool exists"
-	suite.EqualValues(err, errDestPoolNotExists)
-
-	pool := hostpool.New("DiffPool", tally.NewTestScope("",
-		map[string]string{}))
-	for i := 0; i < 2; i++ {
-		suite.mockHostPoolManager.EXPECT().
-			GetPoolByHostname(fmt.Sprintf(_hostIdTemplate, i)).
-			Return(pool, nil)
+	hostInfo2 := &hpb.HostInfo{
+		Hostname:    "host1",
+		CurrentPool: "p1",
+		DesiredPool: common.SharedHostPoolID,
 	}
 
-	id, _ := moverObject.MoveHostsAcrossPools(context.Background(),
-		2,
-		SourcePool,
-		DestPool,
-	)
+	hostInfos = append(hostInfos, hostInfo1)
+	hostInfos = append(hostInfos, hostInfo2)
 
-	time.Sleep(30 * time.Second)
+	suite.mockHostPoolManager.EXPECT().
+		GetPool(gomock.Any()).Return(nil, nil).AnyTimes()
 
-	blob := moverObject.QueryRequestStatus(context.Background(), id)
-	// No host will be moved as the actualPool of the host has been changed
-	suite.EqualValues(blob.numHostsMoved, 0)
+	suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).Return(
+		hostInfos, nil).AnyTimes()
 
-	pool = hostpool.New(SourcePool, tally.NewTestScope("",
-		map[string]string{}))
-	for i := 0; i < 2; i++ {
-		suite.mockHostPoolManager.EXPECT().
-			GetPoolByHostname(fmt.Sprintf(_hostIdTemplate, i)).
-			Return(nil, errors.New("random error"))
-	}
+	suite.mockresMgrClient.EXPECT().GetHostsByScores(
+		gomock.Any(), gomock.Any()).Return(
+		nil, errors.New("error in scorer"))
 
-	id, _ = moverObject.MoveHostsAcrossPools(context.Background(), 2,
-		SourcePool,
-		DestPool,
-	)
+	suite.Error(suite.mover.MoveHosts(context.Background(),
+		common.SharedHostPoolID, 1, "p1", 1))
 
-	time.Sleep(30 * time.Second)
-	blob = moverObject.QueryRequestStatus(context.Background(), id)
-	// No host will be moved as the GetPoolByHostname returned error
-	suite.EqualValues(blob.numHostsMoved, 0)
+	suite.mockresMgrClient.EXPECT().GetHostsByScores(
+		gomock.Any(), gomock.Any()).Return(
+		&resmgrsvc.GetHostsByScoresResponse{
+			Hosts: []string{"host1"},
+		}, nil)
+	suite.Error(suite.mover.MoveHosts(context.Background(),
+		common.SharedHostPoolID, 1, "p1", 2))
 }
 
-// TestQueueErrors tests enqueue errors
-func (suite *hostMoverTestSuite) TestQueueErrors() {
+// TestUpdatePoolError tests when updating the pool info from host pool manager
+func (suite *hostMoverTestSuite) TestUpdatePoolError() {
+	var hostInfos []*hpb.HostInfo
 
-	// Create custom host-mover object
-	moverObject := &hostMover{
-		requestsIdToStatusMapping: make(map[RequestId]*MoveStatus),
-		hostPoolManager:           suite.mockHostPoolManager,
-		queuedRequests:            suite.mockQueue,
-		metrics: NewMetrics(tally.NewTestScope("",
-			map[string]string{})),
-		retryPolicy: backoff.NewRetryPolicy(MaxRetryAttempts, 1),
-		numWorkers:  1,
+	hostInfo1 := &hpb.HostInfo{
+		Hostname:    "host1",
+		CurrentPool: "p1",
+		DesiredPool: common.SharedHostPoolID,
 	}
 
-	suite.mockHostPoolManager.EXPECT().
-		GetPool(SourcePool).
-		Return(nil, nil).
-		AnyTimes()
+	hostInfo2 := &hpb.HostInfo{
+		Hostname:    "host1",
+		CurrentPool: "p1",
+		DesiredPool: common.SharedHostPoolID,
+	}
+
+	hostInfos = append(hostInfos, hostInfo1)
+	hostInfos = append(hostInfos, hostInfo2)
 
 	suite.mockHostPoolManager.EXPECT().
-		GetPool(DestPool).
-		Return(nil, nil).
-		AnyTimes()
+		GetPool(gomock.Any()).Return(nil, nil).AnyTimes()
 
-	suite.mockQueue.EXPECT().
-		Enqueue(gomock.Any()).
-		Return(errors.New("mQueue error")).
-		AnyTimes()
+	suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).Return(
+		hostInfos, nil).AnyTimes()
 
-	_, err := moverObject.MoveHostsAcrossPools(context.Background(),
-		2,
-		SourcePool,
-		DestPool,
-	)
+	suite.mockresMgrClient.EXPECT().GetHostsByScores(
+		gomock.Any(), gomock.Any()).Return(
+		&resmgrsvc.GetHostsByScoresResponse{
+			Hosts: []string{"host1"},
+		}, nil)
 
-	suite.EqualValues(err, errEnqueuing)
+	suite.mockHostPoolManager.EXPECT().UpdateDesiredPool(
+		gomock.Any(), gomock.Any()).Return(errors.New("error"))
+
+	suite.Error(suite.mover.MoveHosts(context.Background(),
+		common.SharedHostPoolID, 1, "p1", 1))
 }
