@@ -131,6 +131,9 @@ message UpdateResourcePoolRequest{
 
   // The configuration of the resource pool to be updated.
   ResourcePoolConfig config = 2;
+
+  // Optional boolean which forces an update, even if the validation fails.
+  bool Force = 3;
 }
 
 

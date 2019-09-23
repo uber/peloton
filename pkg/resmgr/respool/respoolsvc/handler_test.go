@@ -32,6 +32,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
@@ -238,85 +239,77 @@ func (s *resPoolHandlerTestSuite) TestNewServiceHandler() {
 	s.NotNil(handler)
 }
 
-func (s *resPoolHandlerTestSuite) TestGetResourcePoolEmptyID() {
-	// form request
-	getReq := &pb_respool.GetRequest{}
-
-	getResp, err := s.handler.GetResourcePool(
-		s.context,
-		getReq,
-	)
-
-	s.NoError(err)
-	s.NotNil(getResp)
-	s.Equal(common.RootResPoolID, getResp.Poolinfo.Id.Value)
-	s.Nil(getResp.Poolinfo.Parent)
-}
-
-func (s *resPoolHandlerTestSuite) TestGetResourcePoolLeafNode() {
-	mockResourcePoolID := &peloton.ResourcePoolID{
-		Value: "respool21",
+func (s *resPoolHandlerTestSuite) TestGetResourcePools() {
+	tt := []struct {
+		msg          string
+		req          *pb_respool.GetRequest
+		wantId       string
+		wantChildren int
+		wantErr      string
+	}{
+		{
+			msg: "get leaf pool",
+			req: &pb_respool.GetRequest{
+				Id: &peloton.ResourcePoolID{
+					Value: "respool21",
+				},
+				IncludeChildPools: true,
+			},
+			wantId:       "respool21",
+			wantChildren: 0,
+		},
+		{
+			msg: "get root pool",
+			req: &pb_respool.GetRequest{
+				IncludeChildPools: true,
+			},
+			wantId:       common.RootResPoolID,
+			wantChildren: 3,
+		},
+		{
+			msg: "get non leaf pool",
+			req: &pb_respool.GetRequest{
+				Id: &peloton.ResourcePoolID{
+					Value: "respool2",
+				},
+				IncludeChildPools: true,
+			},
+			wantId:       "respool2",
+			wantChildren: 2,
+		},
+		{
+			msg: "get non existent pool",
+			req: &pb_respool.GetRequest{
+				Id: &peloton.ResourcePoolID{
+					Value: "/does/not/exist",
+				},
+				IncludeChildPools: true,
+			},
+			wantId:       "",
+			wantChildren: 0,
+			wantErr:      resPoolNotFoundErrString,
+		},
 	}
 
-	// form request
-	getReq := &pb_respool.GetRequest{
-		Id: mockResourcePoolID,
+	for _, t := range tt {
+		s.T().Run(t.msg, func(test *testing.T) {
+			resp, err := s.handler.GetResourcePool(
+				s.context,
+				t.req,
+			)
+			s.NoError(err)
+
+			if t.wantErr != "" {
+				s.Equal(t.wantErr, resp.Error.NotFound.Message)
+				return
+			}
+
+			s.NotNil(resp)
+			s.Equal(t.wantId, resp.Poolinfo.Id.Value)
+			s.Len(resp.Poolinfo.Children, t.wantChildren)
+			s.Len(resp.ChildPools, t.wantChildren)
+		})
 	}
-
-	getResp, err := s.handler.GetResourcePool(
-		s.context,
-		getReq,
-	)
-
-	s.NoError(err)
-	s.NotNil(getResp)
-	s.Equal(mockResourcePoolID.Value, getResp.Poolinfo.Id.Value)
-	s.Len(getResp.Poolinfo.Children, 0)
-}
-
-func (s *resPoolHandlerTestSuite) TestGetResourcePoolWithChildNodes() {
-	mockResourcePoolID := &peloton.ResourcePoolID{
-		Value: "respool2",
-	}
-
-	// form request
-	getReq := &pb_respool.GetRequest{
-		Id:                mockResourcePoolID,
-		IncludeChildPools: true,
-	}
-
-	getResp, err := s.handler.GetResourcePool(
-		s.context,
-		getReq,
-	)
-
-	s.NoError(err)
-	s.NotNil(getResp)
-	s.Equal(mockResourcePoolID.Value, getResp.Poolinfo.Id.Value)
-	s.Len(getResp.Poolinfo.Children, 2)
-	s.Len(getResp.ChildPools, 2)
-}
-
-func (s *resPoolHandlerTestSuite) TestGetResourcePoolError() {
-	mockResourcePoolID := &peloton.ResourcePoolID{
-		Value: "non_exist",
-	}
-
-	// form request
-	getReq := &pb_respool.GetRequest{
-		Id: mockResourcePoolID,
-	}
-
-	getResp, err := s.handler.GetResourcePool(
-		s.context,
-		getReq,
-	)
-
-	s.NoError(err)
-	s.NotNil(getResp)
-	s.NotNil(getResp.Error)
-
-	s.Equal(resPoolNotFoundErrString, getResp.Error.NotFound.Message)
 }
 
 func (s *resPoolHandlerTestSuite) TestCreateResourcePool() {
@@ -429,11 +422,11 @@ func (s *resPoolHandlerTestSuite) TestCreateStaticResourcePool() {
 			respoolConfig = respoolInfo.GetConfig()
 		}
 	}
+
 	s.NotNil(respoolConfig)
-	s.EqualValues(pb_respool.ReservationType_STATIC, respoolConfig.GetResources()[0].Type)
-	s.EqualValues(pb_respool.ReservationType_STATIC, respoolConfig.GetResources()[1].Type)
-	s.EqualValues(pb_respool.ReservationType_STATIC, respoolConfig.GetResources()[2].Type)
-	s.EqualValues(pb_respool.ReservationType_STATIC, respoolConfig.GetResources()[3].Type)
+	for _, r := range respoolConfig.GetResources() {
+		s.EqualValues(pb_respool.ReservationType_STATIC, r.Type)
+	}
 }
 
 func (s *resPoolHandlerTestSuite) TestCreateResourcePoolValidationError() {
@@ -536,14 +529,14 @@ func (s *resPoolHandlerTestSuite) TestUpdateError() {
 	resTree.EXPECT().Get(gomock.Any()).Return(respool, nil)
 	// set expectations
 	s.mockResPoolOps.EXPECT().Update(
-		gomock.Any(), gomock.Any(), gomock.Any()).Return(errors.New("Error"))
+		gomock.Any(), gomock.Any(), gomock.Any()).Return(assert.AnError)
 
 	updateResp, err := handler.UpdateResourcePool(
 		s.context,
 		updateReq)
 	s.NoError(err)
 	s.NotNil(updateResp)
-	s.Equal(updateResp.GetError().GetNotFound().Message, "Error")
+	s.Equal(updateResp.GetError().GetNotFound().Message, assert.AnError.Error())
 }
 
 func (s *resPoolHandlerTestSuite) TestUpsertError() {
@@ -554,17 +547,420 @@ func (s *resPoolHandlerTestSuite) TestUpsertError() {
 	// set expectations
 	s.mockResPoolOps.EXPECT().Update(
 		gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-	resTree.EXPECT().Upsert(gomock.Any(), gomock.Any()).Return(errors.New("error in upsert"))
+	resTree.EXPECT().Upsert(gomock.Any(), gomock.Any()).Return(assert.AnError)
 	respool.EXPECT().ResourcePoolConfig().Return(nil)
 
 	s.mockResPoolOps.EXPECT().Update(
-		gomock.Any(), gomock.Any(), gomock.Any()).Return(errors.New("Error"))
+		gomock.Any(), gomock.Any(), gomock.Any()).Return(assert.AnError)
 
 	_, err := handler.UpdateResourcePool(
 		s.context,
 		updateReq)
 	s.Error(err)
-	s.Equal(err.Error(), "Error")
+	s.Equal(err.Error(), assert.AnError.Error())
+}
+
+func (s *resPoolHandlerTestSuite) TestUpdateResourcePoolValidationError() {
+	mockResourcePoolName := "respool22"
+	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
+		Name:   mockResourcePoolName,
+		Parent: &peloton.ResourcePoolID{Value: "respool2"},
+		Resources: []*pb_respool.ResourceConfig{
+			{
+				// reservation exceed limit,  should fail
+				Reservation: 5,
+				Limit:       1,
+				Share:       1,
+				Kind:        "cpu",
+				Type:        pb_respool.ReservationType_ELASTIC,
+			},
+		},
+		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+	mockResourcePoolID := &peloton.ResourcePoolID{
+		Value: mockResourcePoolName,
+	}
+	mockResPoolOps := objectmocks.NewMockResPoolOps(s.mockCtrl)
+	mockResPoolOps.EXPECT().Update(s.context, mockResourcePoolID, mockResourcePoolConfig).Return(nil)
+	s.handler.resPoolOps = mockResPoolOps
+
+	tt := []struct {
+		msg     string
+		req     *pb_respool.UpdateRequest
+		wantErr string
+	}{
+		{
+			msg: "validation should fail",
+			req: &pb_respool.UpdateRequest{
+				Id:     mockResourcePoolID,
+				Config: mockResourcePoolConfig,
+			},
+			wantErr: "resource cpu, reservation 5 exceeds limit 1",
+		},
+		{
+			msg: "force should bypass validation",
+			req: &pb_respool.UpdateRequest{
+				Id:     mockResourcePoolID,
+				Config: mockResourcePoolConfig,
+				Force:  true,
+			},
+			wantErr: "",
+		},
+	}
+
+	for _, test := range tt {
+		s.T().Run(test.msg, func(t *testing.T) {
+			updateResp, err := s.handler.UpdateResourcePool(
+				s.context,
+				test.req)
+			s.NoError(err)
+			s.NotNil(updateResp)
+
+			if test.wantErr != "" {
+				s.NotNil(updateResp.Error)
+				s.Equal(test.wantErr, updateResp.Error.InvalidResourcePoolConfig.Message)
+			} else {
+				s.Nil(updateResp.Error)
+			}
+		})
+	}
+}
+
+func (s *resPoolHandlerTestSuite) TestUpdateResourcePoolNotExistsError() {
+	mockResourcePoolName := "respool105"
+	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
+		Name:   mockResourcePoolName,
+		Parent: &peloton.ResourcePoolID{Value: "respool23"},
+		Resources: []*pb_respool.ResourceConfig{
+			{
+				Kind:        "cpu",
+				Share:       1,
+				Limit:       1,
+				Reservation: 0,
+				Type:        pb_respool.ReservationType_ELASTIC,
+			},
+		},
+		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+	mockResourcePoolID := &peloton.ResourcePoolID{
+		Value: mockResourcePoolName,
+	}
+
+	// update request
+	updateReq := &pb_respool.UpdateRequest{
+		Id:     mockResourcePoolID,
+		Config: mockResourcePoolConfig,
+	}
+
+	expectedErrMsg := "resource pool (respool105) not found"
+
+	updateResp, err := s.handler.UpdateResourcePool(
+		s.context,
+		updateReq)
+
+	s.NotNil(updateResp)
+
+	actualErrResourcePoolID := updateResp.GetError().GetNotFound().GetId().GetValue()
+	s.Equal(mockResourcePoolID.Value, actualErrResourcePoolID)
+
+	s.NoError(err)
+	s.NotNil(updateResp)
+	s.NotNil(updateResp.Error)
+	s.Equal(expectedErrMsg, updateResp.Error.NotFound.Message)
+}
+
+func (s *resPoolHandlerTestSuite) TestQuery() {
+	// query request
+	queryReq := &pb_respool.QueryRequest{}
+	updateResp, err := s.handler.Query(
+		s.context,
+		queryReq,
+	)
+
+	s.NoError(err)
+	s.NotNil(updateResp)
+	s.NotNil(updateResp.ResourcePools)
+	s.Len(updateResp.ResourcePools, len(s.getResPools()))
+}
+
+func (s *resPoolHandlerTestSuite) TestLookupResourcePoolID() {
+	tt := []struct {
+		msg      string
+		path     string
+		wantResp *pb_respool.LookupResponse
+	}{
+		{
+			msg:  "lookup root",
+			path: "/",
+			wantResp: &pb_respool.LookupResponse{
+				Error: nil,
+				Id: &peloton.ResourcePoolID{
+					Value: "root",
+				},
+			},
+		},
+		{
+			msg:  "lookup leaf with trailing slash",
+			path: "/respool2/respool22/",
+			wantResp: &pb_respool.LookupResponse{
+				Error: nil,
+				Id: &peloton.ResourcePoolID{
+					Value: "respool22",
+				},
+			},
+		},
+		{
+			msg:  "lookup leaf without trailing slash",
+			path: "/respool1/respool11",
+			wantResp: &pb_respool.LookupResponse{
+				Error: nil,
+				Id: &peloton.ResourcePoolID{
+					Value: "respool11",
+				},
+			},
+		},
+		{
+			msg:  "path does not exist",
+			path: "/does/not/exist",
+			wantResp: &pb_respool.LookupResponse{
+				Error: &pb_respool.LookupResponse_Error{
+					NotFound: &pb_respool.ResourcePoolPathNotFound{
+						Path: &pb_respool.ResourcePoolPath{
+							Value: "/does/not/exist",
+						},
+						Message: "resource pool not found",
+					},
+				},
+			},
+		},
+		{
+			msg:  "invalid path",
+			path: "does/not/begin/with/slash",
+			wantResp: &pb_respool.LookupResponse{
+				Error: &pb_respool.LookupResponse_Error{
+					InvalidPath: &pb_respool.InvalidResourcePoolPath{
+						Path: &pb_respool.ResourcePoolPath{
+							Value: "does/not/begin/with/slash",
+						},
+						Message: "path should begin with /",
+					},
+				},
+			},
+		},
+	}
+
+	for _, t := range tt {
+		s.T().Run(t.msg, func(test *testing.T) {
+			lookupRequest := &pb_respool.LookupRequest{
+				Path: &pb_respool.ResourcePoolPath{
+					Value: t.path,
+				},
+			}
+			lookupResponse, err := s.handler.LookupResourcePoolID(s.context, lookupRequest)
+			s.NoError(err)
+			s.NotNil(lookupResponse)
+
+			if t.wantResp.Id != nil {
+				s.Equal(t.wantResp.Id.Value, lookupResponse.Id.Value)
+			} else {
+				s.Equal(t.wantResp.Error, lookupResponse.Error)
+			}
+		})
+	}
+}
+
+func (s *resPoolHandlerTestSuite) TestDeleteResourcePoolErrors() {
+	tt := []struct {
+		msg         string
+		expectation func(resTree *mocks.MockTree, respool *mocks.MockResPool)
+		wantErr     string
+	}{
+		{
+			msg:         "respool deleted",
+			expectation: s.deleteResourcePool,
+			wantErr:     "",
+		},
+		{
+			msg:         "respool not found",
+			expectation: s.deleteResourcePoolNilID,
+			wantErr:     resPoolNotFoundErrString,
+		},
+		{
+			msg:         "respool not found in tree",
+			expectation: s.deleteResourcePoolNotFoundInTree,
+			wantErr:     resPoolNotFoundErrString,
+		},
+		{
+			msg:         "respool is busy",
+			expectation: s.deleteResourceAllocationIsLess,
+			wantErr:     resPoolIsBusyErrString,
+		},
+		{
+			msg:         "respool not deleted",
+			expectation: s.deleteResourcePoolDeleteError,
+			wantErr:     resPoolDeleteErrString,
+		},
+		{
+			msg:         "respool not deleted",
+			expectation: s.deleteResourcePoolOpsError,
+			wantErr:     resPoolDeleteErrString,
+		},
+		{
+			msg:         "respool is non leaf",
+			expectation: s.deleteResourcePoolNonLeaf,
+			wantErr:     resPoolIsNotLeafErrString,
+		},
+	}
+
+	mockCtrl := gomock.NewController(s.T())
+	defer mockCtrl.Finish()
+
+	for _, t := range tt {
+		s.T().Run(t.msg, func(test *testing.T) {
+			resTree := mocks.NewMockTree(mockCtrl)
+			respool := mocks.NewMockResPool(mockCtrl)
+
+			handler := &ServiceHandler{
+				resPoolTree:            resTree,
+				metrics:                res.NewMetrics(tally.NoopScope),
+				resPoolOps:             s.mockResPoolOps,
+				resPoolConfigValidator: s.resourcePoolConfigValidator,
+			}
+			// set expectations
+			t.expectation(resTree, respool)
+
+			mockResPoolPath := &pb_respool.ResourcePoolPath{
+				Value: "/respool1",
+			}
+
+			// delete request
+			deleteReq := &pb_respool.DeleteRequest{
+				Path: mockResPoolPath,
+			}
+
+			deleteResp, err := handler.DeleteResourcePool(
+				s.context,
+				deleteReq)
+			s.NoError(err)
+
+			if t.wantErr == "" {
+				s.Nil(deleteResp.Error)
+				return
+			}
+
+			// error testing
+			s.NotNil(deleteResp)
+			s.NotNil(deleteResp.GetError())
+			switch t.wantErr {
+			case resPoolNotFoundErrString:
+				s.Contains(
+					deleteResp.GetError().GetNotFound().GetMessage(),
+					t.wantErr,
+				)
+			case resPoolIsBusyErrString:
+				s.Contains(
+					deleteResp.GetError().GetIsBusy().GetMessage(),
+					t.wantErr,
+				)
+			case resPoolDeleteErrString:
+				s.Contains(
+					deleteResp.GetError().GetNotDeleted().GetMessage(),
+					t.wantErr,
+				)
+			case resPoolIsNotLeafErrString:
+				s.Contains(
+					deleteResp.GetError().GetIsNotLeaf().GetMessage(),
+					t.wantErr,
+				)
+			}
+		})
+	}
+}
+
+func TestResPoolHandler(t *testing.T) {
+	suite.Run(t, new(resPoolHandlerTestSuite))
+}
+
+// Test Helpers
+// -------------
+
+func (s *resPoolHandlerTestSuite) deleteResourcePool(
+	resTree *mocks.MockTree,
+	respool *mocks.MockResPool) {
+	resTree.EXPECT().GetByPath(gomock.Any()).Return(respool, nil)
+	respool.EXPECT().ID().Return("")
+	resTree.EXPECT().Get(gomock.Any()).Return(respool, nil)
+	respool.EXPECT().IsLeaf().Return(true)
+	respool.EXPECT().GetTotalAllocatedResources().Return(scalar.ZeroResource)
+	respool.EXPECT().GetDemand().Return(scalar.ZeroResource)
+	resTree.EXPECT().Delete(gomock.Any()).Return(nil)
+	s.mockResPoolOps.EXPECT().Delete(gomock.Any(), gomock.Any()).Return(nil)
+}
+
+func (s *resPoolHandlerTestSuite) deleteResourcePoolNonLeaf(
+	resTree *mocks.MockTree,
+	respool *mocks.MockResPool) {
+	resTree.EXPECT().GetByPath(gomock.Any()).Return(respool, nil)
+	resTree.EXPECT().Get(gomock.Any()).Return(respool, nil)
+	respool.EXPECT().ID().Return("")
+	respool.EXPECT().IsLeaf().Return(false)
+}
+
+func (s *resPoolHandlerTestSuite) deleteResourcePoolNilID(
+	resTree *mocks.MockTree,
+	respool *mocks.MockResPool) {
+	resTree.EXPECT().GetByPath(gomock.Any()).Return(nil, nil)
+}
+
+func (s *resPoolHandlerTestSuite) deleteResourcePoolNotFoundInTree(
+	resTree *mocks.MockTree,
+	respool *mocks.MockResPool) {
+	resTree.EXPECT().GetByPath(gomock.Any()).Return(respool, nil)
+	respool.EXPECT().ID().Return("")
+	resTree.EXPECT().Get(gomock.Any()).Return(nil, assert.AnError)
+}
+
+func (s *resPoolHandlerTestSuite) deleteResourceAllocationIsLess(
+	resTree *mocks.MockTree,
+	respool *mocks.MockResPool) {
+	resTree.EXPECT().GetByPath(gomock.Any()).Return(respool, nil)
+	respool.EXPECT().ID().Return("")
+	resTree.EXPECT().Get(gomock.Any()).Return(respool, nil)
+	respool.EXPECT().IsLeaf().Return(true)
+	respool.EXPECT().GetTotalAllocatedResources().Return(&scalar.Resources{
+		CPU: 1,
+	})
+	respool.EXPECT().GetDemand().Return(scalar.ZeroResource)
+}
+
+func (s *resPoolHandlerTestSuite) deleteResourcePoolDeleteError(
+	resTree *mocks.MockTree,
+	respool *mocks.MockResPool) {
+	resTree.EXPECT().GetByPath(gomock.Any()).Return(respool, nil)
+
+	respool.EXPECT().ID().Return("")
+
+	resTree.EXPECT().Get(gomock.Any()).Return(respool, nil)
+	respool.EXPECT().IsLeaf().Return(true)
+	respool.EXPECT().GetTotalAllocatedResources().Return(scalar.ZeroResource)
+	respool.EXPECT().GetDemand().Return(scalar.ZeroResource)
+	resTree.EXPECT().Delete(gomock.Any()).Return(assert.AnError)
+}
+
+func (s *resPoolHandlerTestSuite) deleteResourcePoolOpsError(
+	resTree *mocks.MockTree,
+	respool *mocks.MockResPool,
+) {
+	resTree.EXPECT().GetByPath(gomock.Any()).Return(respool, nil)
+
+	respool.EXPECT().ID().Return("")
+
+	resTree.EXPECT().Get(gomock.Any()).Return(respool, nil)
+	respool.EXPECT().IsLeaf().Return(true)
+	respool.EXPECT().GetTotalAllocatedResources().Return(scalar.ZeroResource)
+	respool.EXPECT().GetDemand().Return(scalar.ZeroResource)
+	resTree.EXPECT().Delete(gomock.Any()).Return(nil)
+	s.mockResPoolOps.EXPECT().Delete(gomock.Any(), gomock.Any()).Return(assert.AnError)
 }
 
 func (s *resPoolHandlerTestSuite) getMockHandlerWithResTreeAndRespool() (*ServiceHandler, *mocks.MockTree, *mocks.MockResPool) {
@@ -602,360 +998,4 @@ func (s *resPoolHandlerTestSuite) getUpdateRequest() *pb_respool.UpdateRequest {
 		Id:     mockResourcePoolID,
 		Config: mockResourcePoolConfig,
 	}
-}
-
-func (s *resPoolHandlerTestSuite) TestUpdateResourcePoolValidationError() {
-	mockResourcePoolName := "respool22"
-	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
-		Name:   mockResourcePoolName,
-		Parent: &peloton.ResourcePoolID{Value: "respool2"},
-		Resources: []*pb_respool.ResourceConfig{
-			{
-				// reservation exceed limit,  should fail
-				Reservation: 5,
-				Limit:       1,
-				Share:       1,
-				Kind:        "cpu",
-				Type:        pb_respool.ReservationType_ELASTIC,
-			},
-		},
-		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
-	}
-	mockResourcePoolID := &peloton.ResourcePoolID{
-		Value: mockResourcePoolName,
-	}
-
-	// update request
-	updateReq := &pb_respool.UpdateRequest{
-		Id:     mockResourcePoolID,
-		Config: mockResourcePoolConfig,
-	}
-
-	updateResp, err := s.handler.UpdateResourcePool(
-		s.context,
-		updateReq)
-
-	s.NoError(err)
-	s.NotNil(updateResp)
-	s.NotNil(updateResp.Error)
-	expectedMsg := "resource cpu, reservation 5 exceeds limit 1"
-	s.Equal(expectedMsg, updateResp.Error.InvalidResourcePoolConfig.Message)
-}
-
-func (s *resPoolHandlerTestSuite) TestUpdateResourcePoolNotExistsError() {
-	mockResourcePoolName := "respool105"
-	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
-		Name:   mockResourcePoolName,
-		Parent: &peloton.ResourcePoolID{Value: "respool23"},
-		Resources: []*pb_respool.ResourceConfig{
-			{
-				Kind:        "cpu",
-				Share:       1,
-				Limit:       1,
-				Reservation: 0,
-				Type:        pb_respool.ReservationType_ELASTIC,
-			},
-		},
-		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
-	}
-	mockResourcePoolID := &peloton.ResourcePoolID{
-		Value: mockResourcePoolName,
-	}
-
-	// update request
-	updateReq := &pb_respool.UpdateRequest{
-		Id:     mockResourcePoolID,
-		Config: mockResourcePoolConfig,
-	}
-
-	expectedErrMsg := "resource pool (respool105) not found"
-
-	updateResp, err := s.handler.UpdateResourcePool(
-		s.context,
-		updateReq)
-
-	actualErrResourcePoolID := updateResp.Error.NotFound.Id.Value
-	s.NoError(err)
-	s.NotNil(updateResp)
-	s.NotNil(updateResp.Error)
-	s.Equal(expectedErrMsg, updateResp.Error.NotFound.Message)
-	s.Equal(mockResourcePoolID.Value, actualErrResourcePoolID)
-}
-
-func (s *resPoolHandlerTestSuite) TestQuery() {
-	// query request
-	queryReq := &pb_respool.QueryRequest{}
-	updateResp, err := s.handler.Query(
-		s.context,
-		queryReq,
-	)
-
-	s.NoError(err)
-	s.NotNil(updateResp)
-	s.NotNil(updateResp.ResourcePools)
-	s.Len(updateResp.ResourcePools, len(s.getResPools()))
-}
-
-func (s *resPoolHandlerTestSuite) TestLookupResourcePoolID() {
-	// root
-	lookupRequest := &pb_respool.LookupRequest{
-		Path: &pb_respool.ResourcePoolPath{
-			Value: "/",
-		},
-	}
-
-	lookupResponse, err := s.handler.LookupResourcePoolID(s.context, lookupRequest)
-	s.NoError(err)
-	s.NotNil(lookupResponse)
-	s.Equal("root", lookupResponse.Id.Value)
-
-	// /respool1/respool11
-	lookupRequest.Path.Value = "/respool1/respool11"
-	lookupResponse, err = s.handler.LookupResourcePoolID(s.context, lookupRequest)
-	s.NoError(err)
-	s.NotNil(lookupResponse)
-	s.Equal("respool11", lookupResponse.Id.Value)
-
-	// /respool2/respool22/
-	lookupRequest.Path.Value = "/respool2/respool22/"
-	lookupResponse, err = s.handler.LookupResourcePoolID(s.context, lookupRequest)
-	s.NoError(err)
-	s.NotNil(lookupResponse)
-	s.Equal("respool22", lookupResponse.Id.Value)
-}
-
-func (s *resPoolHandlerTestSuite) TestLookupResourcePoolPathDoesNotExist() {
-	// root
-	lookupRequest := &pb_respool.LookupRequest{
-		Path: &pb_respool.ResourcePoolPath{
-			Value: "/does/not/exist",
-		},
-	}
-
-	lookupResponse, err := s.handler.LookupResourcePoolID(s.context,
-		lookupRequest,
-	)
-
-	s.NoError(err)
-	s.NotNil(lookupResponse)
-	s.NotNil(lookupResponse.Error)
-	s.NotNil(lookupResponse.Error.NotFound)
-	s.Equal("/does/not/exist", lookupResponse.Error.NotFound.Path.Value)
-}
-
-func (s *resPoolHandlerTestSuite) TestLookupResourcePoolInvalidPath() {
-	// invalid path
-	lookupRequest := &pb_respool.LookupRequest{
-		Path: &pb_respool.ResourcePoolPath{
-			Value: "does/not/begin/with/slash",
-		},
-	}
-
-	lookupResponse, err := s.handler.LookupResourcePoolID(s.context, lookupRequest)
-
-	s.NoError(err)
-	s.NotNil(lookupResponse)
-	s.NotNil(lookupResponse.Error)
-	s.NotNil(lookupResponse.Error.InvalidPath)
-	s.Equal("does/not/begin/with/slash", lookupResponse.Error.InvalidPath.Path.Value)
-	s.Equal("path should begin with /", lookupResponse.Error.InvalidPath.Message)
-}
-
-func (s *resPoolHandlerTestSuite) TestDeleteResourcePool() {
-	mockResourcePoolName := "respool11"
-	mockResourcePoolID := &peloton.ResourcePoolID{
-		Value: mockResourcePoolName,
-	}
-	mockResPoolPath := &pb_respool.ResourcePoolPath{
-		Value: "/respool1/respool11",
-	}
-
-	// delete request
-	deleteReq := &pb_respool.DeleteRequest{
-		Path: mockResPoolPath,
-	}
-
-	// set expectations
-	s.mockResPoolOps.EXPECT().Delete(
-		context.Background(),
-		gomock.Eq(mockResourcePoolID)).Return(nil)
-
-	deleteResp, err := s.handler.DeleteResourcePool(
-		s.context,
-		deleteReq)
-
-	s.NoError(err)
-	s.NotNil(deleteResp)
-	s.Nil(deleteResp.Error)
-}
-
-func (s *resPoolHandlerTestSuite) TestDeleteResourcePoolIsNotLeaf() {
-	mockResPoolPath := &pb_respool.ResourcePoolPath{
-		Value: "/respool1",
-	}
-
-	// delete request
-	deleteReq := &pb_respool.DeleteRequest{
-		Path: mockResPoolPath,
-	}
-
-	deleteResp, err := s.handler.DeleteResourcePool(
-		s.context,
-		deleteReq)
-
-	s.NoError(err)
-	s.NotNil(deleteResp)
-	s.Equal(resPoolIsNotLeafErrString, deleteResp.Error.IsNotLeaf.Message)
-}
-
-func (s *resPoolHandlerTestSuite) TestDeleteResourcePoolNotExistant() {
-	mockResPoolPath := &pb_respool.ResourcePoolPath{
-		Value: "/respool1333",
-	}
-
-	// delete request
-	deleteReq := &pb_respool.DeleteRequest{
-		Path: mockResPoolPath,
-	}
-
-	deleteResp, err := s.handler.DeleteResourcePool(
-		s.context,
-		deleteReq)
-
-	s.NoError(err)
-	s.NotNil(deleteResp)
-	s.Equal(resPoolNotFoundErrString, deleteResp.GetError().GetNotFound().GetMessage())
-}
-
-func (s *resPoolHandlerTestSuite) TestDeleteblahblah() {
-	tt := []struct {
-		expectedFunctions func(resTree *mocks.MockTree, respool *mocks.MockResPool)
-		err               error
-		respError         string
-		msg               string
-	}{
-		{
-			msg:               "respool not found",
-			expectedFunctions: s.DeleteResourcePoolNilID,
-			err:               nil,
-			respError:         resPoolNotFoundErrString,
-		},
-		{
-			msg:               "respool not found",
-			expectedFunctions: s.DeleteResourcePoolNotFoundinTree,
-			err:               nil,
-			respError:         resPoolNotFoundErrString,
-		},
-		{
-			msg:               "respool is busy",
-			expectedFunctions: s.DeleteResourceAllocationIsLess,
-			err:               nil,
-			respError:         resPoolIsBusyErrString,
-		},
-		{
-			msg:               "respool not deleted",
-			expectedFunctions: s.DeleteResourcePoolDeleteError,
-			err:               nil,
-			respError:         resPoolDeleteErrString,
-		},
-		{
-			msg:               "respool not deleted",
-			expectedFunctions: s.DeleteResourcePoolOpsError,
-			err:               nil,
-			respError:         resPoolDeleteErrString,
-		},
-	}
-
-	for _, t := range tt {
-		resTree := mocks.NewMockTree(s.mockCtrl)
-		respool := mocks.NewMockResPool(s.mockCtrl)
-
-		handler := &ServiceHandler{
-			resPoolTree:            resTree,
-			metrics:                res.NewMetrics(tally.NoopScope),
-			resPoolOps:             s.mockResPoolOps,
-			resPoolConfigValidator: s.resourcePoolConfigValidator,
-		}
-		t.expectedFunctions(resTree, respool)
-
-		mockResPoolPath := &pb_respool.ResourcePoolPath{
-			Value: "/respool1",
-		}
-
-		// delete request
-		deleteReq := &pb_respool.DeleteRequest{
-			Path: mockResPoolPath,
-		}
-
-		deleteResp, err := handler.DeleteResourcePool(
-			s.context,
-			deleteReq)
-		if t.err == nil {
-			s.NoError(err, t.msg)
-		}
-		if t.respError != "" {
-			s.NotNil(deleteResp.GetError())
-			switch t.respError {
-			case resPoolNotFoundErrString:
-				s.Contains(deleteResp.GetError().GetNotFound().Message, t.respError, t.msg)
-			case resPoolIsBusyErrString:
-				s.Contains(deleteResp.GetError().GetIsBusy().GetMessage(), t.respError, t.msg)
-			case resPoolDeleteErrString:
-				s.Contains(deleteResp.GetError().GetNotDeleted().GetMessage(), t.respError, t.msg)
-			}
-		}
-	}
-}
-
-func (s *resPoolHandlerTestSuite) DeleteResourcePoolNilID(resTree *mocks.MockTree, respool *mocks.MockResPool) {
-	resTree.EXPECT().GetByPath(gomock.Any()).Return(nil, nil)
-}
-
-func (s *resPoolHandlerTestSuite) DeleteResourcePoolNotFoundinTree(resTree *mocks.MockTree, respool *mocks.MockResPool) {
-	resTree.EXPECT().GetByPath(gomock.Any()).Return(respool, nil)
-	respool.EXPECT().ID().Return("")
-	resTree.EXPECT().Get(gomock.Any()).Return(nil, errors.New("Error in geTree"))
-}
-
-func (s *resPoolHandlerTestSuite) DeleteResourceAllocationIsLess(resTree *mocks.MockTree, respool *mocks.MockResPool) {
-	resTree.EXPECT().GetByPath(gomock.Any()).Return(respool, nil)
-	respool.EXPECT().ID().Return("")
-	resTree.EXPECT().Get(gomock.Any()).Return(respool, nil)
-	respool.EXPECT().IsLeaf().Return(true)
-	respool.EXPECT().GetTotalAllocatedResources().Return(&scalar.Resources{
-		CPU: 1,
-	})
-	respool.EXPECT().GetDemand().Return(scalar.ZeroResource)
-}
-
-func (s *resPoolHandlerTestSuite) DeleteResourcePoolDeleteError(resTree *mocks.MockTree, respool *mocks.MockResPool) {
-	resTree.EXPECT().GetByPath(gomock.Any()).Return(respool, nil)
-
-	respool.EXPECT().ID().Return("")
-
-	resTree.EXPECT().Get(gomock.Any()).Return(respool, nil)
-	respool.EXPECT().IsLeaf().Return(true)
-	respool.EXPECT().GetTotalAllocatedResources().Return(scalar.ZeroResource)
-	respool.EXPECT().GetDemand().Return(scalar.ZeroResource)
-	resTree.EXPECT().Delete(gomock.Any()).Return(errors.New("Error in Delete"))
-}
-
-func (s *resPoolHandlerTestSuite) DeleteResourcePoolOpsError(
-	resTree *mocks.MockTree,
-	respool *mocks.MockResPool,
-) {
-	resTree.EXPECT().GetByPath(gomock.Any()).Return(respool, nil)
-
-	respool.EXPECT().ID().Return("")
-
-	resTree.EXPECT().Get(gomock.Any()).Return(respool, nil)
-	respool.EXPECT().IsLeaf().Return(true)
-	respool.EXPECT().GetTotalAllocatedResources().Return(scalar.ZeroResource)
-	respool.EXPECT().GetDemand().Return(scalar.ZeroResource)
-	resTree.EXPECT().Delete(gomock.Any()).Return(nil)
-	s.mockResPoolOps.EXPECT().Delete(gomock.Any(), gomock.Any()).Return(errors.New("Error in DB"))
-}
-
-func TestResPoolHandler(t *testing.T) {
-	suite.Run(t, new(resPoolHandlerTestSuite))
 }

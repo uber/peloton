@@ -25,12 +25,12 @@ import (
 	"github.com/uber/peloton/pkg/common"
 )
 
-// Validator performs validations on the resource config pool
+// Validator performs validations on the resource pool config
 type Validator interface {
 	// Validate validates the resource pool config
-	Validate(data interface{}) error
+	Validate(data ResourcePoolConfigData) error
 	// register a slice of Validator functions
-	Register(validatorFuncs interface{}) (Validator, error)
+	Register(validatorFuncs []ResourcePoolConfigValidatorFunc) (Validator, error)
 }
 
 // ResourcePoolConfigValidatorFunc Validator func for registering custom validator
@@ -68,30 +68,21 @@ func NewResourcePoolConfigValidator(rTree Tree) (Validator, error) {
 }
 
 // Validate validates the resource pool config
-func (rv *resourcePoolConfigValidator) Validate(data interface{}) error {
-
-	if resourcePoolConfigData, ok := data.(ResourcePoolConfigData); ok {
-		for _, validatorFunc := range rv.resourcePoolConfigValidatorFuncs {
-			err := validatorFunc(rv.resTree, resourcePoolConfigData)
-			if err != nil {
-				return errors.WithStack(err)
-			}
+func (rv *resourcePoolConfigValidator) Validate(data ResourcePoolConfigData) error {
+	for _, validatorFunc := range rv.resourcePoolConfigValidatorFuncs {
+		err := validatorFunc(rv.resTree, data)
+		if err != nil {
+			return errors.WithStack(err)
 		}
-	} else {
-		return errors.New("assertion failed, need type <ResourcePoolConfigData>")
 	}
-
 	return nil
 }
 
 // Register a slice of validator functions
-func (rv *resourcePoolConfigValidator) Register(validatorFuncs interface{}) (
+func (rv *resourcePoolConfigValidator) Register(validatorFuncs []ResourcePoolConfigValidatorFunc) (
 	Validator, error) {
-	if vFuncs, ok := validatorFuncs.([]ResourcePoolConfigValidatorFunc); ok {
-		rv.resourcePoolConfigValidatorFuncs = vFuncs
-		return rv, nil
-	}
-	return nil, errors.New("assertion failed, need type <ResourcePoolConfigValidatorFunc>")
+	rv.resourcePoolConfigValidatorFuncs = validatorFuncs
+	return rv, nil
 }
 
 // ValidateParent {current} resource pool against it's {parent}

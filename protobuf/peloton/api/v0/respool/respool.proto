@@ -338,6 +338,7 @@ message DeleteResponse {
 message UpdateRequest {
   peloton.ResourcePoolID id = 1;
   ResourcePoolConfig config = 2;
+  bool Force = 3;
 }
 
 // DEPRECATED by peloton.api.v0.respool.svc.UpdateResourcePoolResponse

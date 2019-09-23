@@ -22,7 +22,6 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/respool"
 
 	"github.com/uber/peloton/pkg/common"
-	rc "github.com/uber/peloton/pkg/resmgr/common"
 	res "github.com/uber/peloton/pkg/resmgr/respool"
 	"github.com/uber/peloton/pkg/resmgr/scalar"
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
@@ -44,14 +43,14 @@ const (
 type ServiceHandler struct {
 	sync.Mutex
 
-	cfg rc.PreemptionConfig
-
+	// respool store
 	resPoolOps ormobjects.ResPoolOps
-
-	metrics *res.Metrics
-
-	resPoolTree            res.Tree
+	// The in-memory resource pool tree
+	resPoolTree res.Tree
+	// validator to validate the mutations
 	resPoolConfigValidator res.Validator
+	// handler metrics
+	metrics *res.Metrics
 }
 
 // InitServiceHandler returns a new handler for ResourcePoolService.
@@ -411,28 +410,30 @@ func (h *ServiceHandler) UpdateResourcePool(
 	resPoolID := req.GetId()
 	resPoolConfig := req.GetConfig()
 
-	resourcePoolConfigData := res.ResourcePoolConfigData{
-		ID:                 resPoolID,
-		ResourcePoolConfig: resPoolConfig,
-	}
-
-	// perform validation on resource pool resPoolConfig.
-	if err := h.resPoolConfigValidator.Validate(resourcePoolConfigData); err != nil {
-		h.metrics.UpdateResourcePoolFail.Inc(1)
-		log.WithError(
-			err,
-		).Infof(
-			"Error validating respoolID: %s in store",
-			resPoolID.Value,
-		)
-		return &respool.UpdateResponse{
-			Error: &respool.UpdateResponse_Error{
-				InvalidResourcePoolConfig: &respool.InvalidResourcePoolConfig{
-					Id:      resPoolID,
-					Message: err.Error(),
+	if !req.GetForce() {
+		resourcePoolConfigData := res.ResourcePoolConfigData{
+			ID:                 resPoolID,
+			ResourcePoolConfig: resPoolConfig,
+		}
+		// perform validation on resource pool resPoolConfig.
+		err := h.resPoolConfigValidator.Validate(resourcePoolConfigData)
+		if err != nil {
+			h.metrics.UpdateResourcePoolFail.Inc(1)
+			log.WithError(
+				err,
+			).WithField(
+				"respool_id", resPoolID.GetValue()).
+				Info(
+					"Error validating resource pool:")
+			return &respool.UpdateResponse{
+				Error: &respool.UpdateResponse_Error{
+					InvalidResourcePoolConfig: &respool.InvalidResourcePoolConfig{
+						Id:      resPoolID,
+						Message: err.Error(),
+					},
 				},
-			},
-		}, nil
+			}, nil
+		}
 	}
 
 	// needed for rollback.
@@ -611,9 +612,4 @@ func (h *ServiceHandler) Query(
 	}
 	log.WithField("response", resp).Debug("Query returned")
 	return resp, nil
-}
-
-// NewTestServiceHandler returns an empty new ServiceHandler ptr for testing.
-func NewTestServiceHandler() *ServiceHandler {
-	return &ServiceHandler{}
 }

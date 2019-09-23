@@ -73,6 +73,9 @@ message UpdateResourcePoolRequest{
 
   // The configuration of the resource pool to be updated.
   ResourcePoolSpec spec = 2;
+
+  // Optional boolean which forces an update, even if the validation fails.
+  bool Force = 3;
 }
 
 // Response message for ResourcePoolService.UpdateResourcePool method.
