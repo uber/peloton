@@ -272,6 +272,12 @@ class App(object):
             env_vars["TASK_KILL_BURST_LIMIT"] = getattr(
                 self, "task_kill_burst_limit", 0
             )
+            env_vars["TASK_LAUNCH_TIMEOUT"] = getattr(
+                self, "task_launch_timeout", "0"
+            )
+            env_vars["TASK_START_TIMEOUT"] = getattr(
+                self, "task_start_timeout", "0"
+            )
             env_vars["EXECUTOR_SHUTDOWN_RATE_LIMIT"] = getattr(
                 self, "executor_shutdown_rate_limit", 0.0
             )

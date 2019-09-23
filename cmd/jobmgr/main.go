@@ -237,6 +237,23 @@ var (
 		Default("0").
 		Envar("EXECUTOR_SHUTDOWN_BURST_LIMIT").
 		Int()
+
+	taskLaunchTimeout = app.Flag(
+		"task-launch-timeout",
+		"Timeout after which a task in launched state will be restarted",
+	).
+		Default("0").
+		Envar("TASK_LAUNCH_TIMEOUT").
+		String()
+
+	taskStartTimeout = app.Flag(
+		"task-start-timeout",
+		"Timeout after which a task in started state will be restarted",
+	).
+		Default("0").
+		Envar("TASK_START_TIMEOUT").
+		String()
+
 	hostMgrAPIVersionStr = app.Flag(
 		"hostmgr-api-version",
 		"Define the API Version of host manager",
@@ -365,6 +382,26 @@ func main() {
 
 	if *executorShutdownRateLimit != 0 {
 		cfg.JobManager.GoalState.RateLimiterConfig.ExecutorShutdown.Rate = rate.Limit(*executorShutdownRateLimit)
+	}
+
+	if *taskLaunchTimeout != "0" {
+		var err error
+		cfg.JobManager.GoalState.LaunchTimeout, err = time.ParseDuration(*taskLaunchTimeout)
+		if err != nil {
+			log.WithError(err).
+				WithField("TASK_LAUNCH_TIMEOUT", *taskLaunchTimeout).
+				Fatal("Cannot parse launch timeout")
+		}
+	}
+
+	if *taskStartTimeout != "0" {
+		var err error
+		cfg.JobManager.GoalState.StartTimeout, err = time.ParseDuration(*taskStartTimeout)
+		if err != nil {
+			log.WithError(err).
+				WithField("TASK_START_TIMEOUT", *taskStartTimeout).
+				Fatal("Cannot parse start timeout")
+		}
 	}
 
 	if *executorShutdownBurstLimit != 0 {
