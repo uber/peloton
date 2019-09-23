@@ -56,12 +56,6 @@ const (
 	// Minimum task query depth when PodRunsDepth in the config is set to
 	// larger than and equals to 2 and bounded by PodRunsMax.
 	minPodRunsDepth = 2
-
-	// Task Config workers if instance count is more than 500
-	taskConfigWorkersMediumSize = 50
-
-	// Task Config workers if instance count is more than 1000
-	taskConfigWorkersLargeSize = 100
 )
 
 // jobCache is an internal struct used to capture job id and name
@@ -572,12 +566,7 @@ func (h *ServiceHandler) getScheduledTasks(
 		return t, nil
 	}
 
-	workers := h.config.GetTasksWithoutConfigsWorkers
-	if len(inputs) >= 1000 {
-		workers = taskConfigWorkersLargeSize
-	} else if len(inputs) >= 500 {
-		workers = taskConfigWorkersMediumSize
-	}
+	workers := h.config.getTasksWithoutConfigsWorkers(len(inputs))
 
 	outputs, err := concurrency.Map(
 		ctx,
@@ -2281,12 +2270,7 @@ func (h *ServiceHandler) queryPods(
 		inputs = append(inputs, fmt.Sprintf("%s-%d", jobID.GetValue(), i))
 	}
 
-	workers := h.config.GetTasksWithoutConfigsWorkers
-	if len(inputs) >= 1000 {
-		workers = taskConfigWorkersLargeSize
-	} else if len(inputs) >= 500 {
-		workers = taskConfigWorkersMediumSize
-	}
+	workers := h.config.getTasksWithoutConfigsWorkers(len(inputs))
 
 	f := func(ctx context.Context, input interface{}) (interface{}, error) {
 		podName := input.(string)
