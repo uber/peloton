@@ -912,18 +912,18 @@ func (s *Store) GetPodEvents(
 		podEvent := &task.PodEvent{}
 
 		mesosTaskID := fmt.Sprintf("%s-%d-%d",
-			value["job_id"].(qb.UUID),
-			value["instance_id"].(int),
+			jobID,
+			instanceID,
 			value["run_id"].(int64))
 
 		prevMesosTaskID := fmt.Sprintf("%s-%d-%d",
-			value["job_id"].(qb.UUID),
-			value["instance_id"].(int),
+			jobID,
+			instanceID,
 			value["previous_run_id"].(int64))
 
 		desiredMesosTaskID := fmt.Sprintf("%s-%d-%d",
-			value["job_id"].(qb.UUID),
-			value["instance_id"].(int),
+			jobID,
+			instanceID,
 			value["desired_run_id"].(int64))
 
 		// Set podEvent fields
