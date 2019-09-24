@@ -908,23 +908,31 @@ func (s *Store) GetPodEvents(
 	}
 
 	var podEvents []*task.PodEvent
+	b := bytes.Buffer{}
+	b.WriteString(jobID)
+	b.WriteString("-")
+	b.WriteString(strconv.FormatUint(uint64(instanceID), 10))
+	podName := b.String()
 	for _, value := range allResults {
 		podEvent := &task.PodEvent{}
 
-		mesosTaskID := fmt.Sprintf("%s-%d-%d",
-			jobID,
-			instanceID,
-			value["run_id"].(int64))
+		b.Reset()
+		b.WriteString(podName)
+		b.WriteString("-")
+		b.WriteString(strconv.FormatInt(value["run_id"].(int64), 10))
+		mesosTaskID := b.String()
 
-		prevMesosTaskID := fmt.Sprintf("%s-%d-%d",
-			jobID,
-			instanceID,
-			value["previous_run_id"].(int64))
+		b.Reset()
+		b.WriteString(podName)
+		b.WriteString("-")
+		b.WriteString(strconv.FormatInt(value["previous_run_id"].(int64), 10))
+		prevMesosTaskID := b.String()
 
-		desiredMesosTaskID := fmt.Sprintf("%s-%d-%d",
-			jobID,
-			instanceID,
-			value["desired_run_id"].(int64))
+		b.Reset()
+		b.WriteString(podName)
+		b.WriteString("-")
+		b.WriteString(strconv.FormatInt(value["desired_run_id"].(int64), 10))
+		desiredMesosTaskID := b.String()
 
 		// Set podEvent fields
 		podEvent.TaskId = &mesos_v1.TaskID{

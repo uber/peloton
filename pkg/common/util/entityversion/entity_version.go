@@ -15,6 +15,7 @@
 package entityversion
 
 import (
+	"bytes"
 	"fmt"
 	"strconv"
 	"strings"
@@ -64,8 +65,11 @@ func ParseJobEntityVersion(
 
 // GetPodEntityVersion builds the pod entity version from its components
 func GetPodEntityVersion(configVersion uint64) *v1alphapeloton.EntityVersion {
+	b := bytes.Buffer{}
+	b.WriteString(strconv.FormatUint(configVersion, 10))
+	b.WriteString("-0-0")
 	return &v1alphapeloton.EntityVersion{
-		Value: fmt.Sprintf("%d-0-0", configVersion),
+		Value: b.String(),
 	}
 }
 
