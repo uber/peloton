@@ -367,6 +367,9 @@ func (suite *HostPoolManagerTestSuite) TestStartStopRecover() {
 	// Disable reconciliation by setting the interval to a large value
 	manager.(*hostPoolManager).reconcileInternal = 5 * time.Minute
 
+	// Stop before Start should go through fine.
+	manager.Stop()
+
 	suite.NoError(manager.Start())
 	resultPoolIndex := manager.Pools()
 	for poolID, pool := range resultPoolIndex {
@@ -385,6 +388,11 @@ func (suite *HostPoolManagerTestSuite) TestStartStopRecover() {
 			suite.Fail("Unexpected pool %s", poolID)
 		}
 	}
+	// verify starting again is ok
+	suite.NoError(manager.Start())
+
+	manager.Stop()
+	// verify stopping again is ok
 	manager.Stop()
 }
 

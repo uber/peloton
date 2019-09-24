@@ -439,7 +439,6 @@ func (m *hostPoolManager) recover() error {
 // It returns error if failed to recover host pool data from db.
 func (m *hostPoolManager) Start() error {
 	if !m.lifecycle.Start() {
-		log.Warn("Host pool manager is already started")
 		return nil
 	}
 
@@ -476,7 +475,7 @@ func (m *hostPoolManager) Start() error {
 // It stops periodical reconciliation.
 func (m *hostPoolManager) Stop() {
 	if !m.lifecycle.Stop() {
-		log.Warn("Host pool manager is already stopped")
+		return
 	}
 
 	log.Info("Stopping host pool manager")

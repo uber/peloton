@@ -691,10 +691,6 @@ func main() {
 			hostInfoOps,
 			rootScope,
 		)
-		if err := hostPoolManager.Start(); err != nil {
-			log.WithError(err).Fatal("Failed to start host pool manager.")
-		}
-		defer hostPoolManager.Stop()
 
 		// Set host pool manager in offer pool event handler.
 		offer.GetEventHandler().SetHostPoolManager(hostPoolManager)
@@ -801,6 +797,7 @@ func main() {
 		plugin,
 		hostCache,
 		mesosPlugin,
+		hostPoolManager,
 	)
 	server.Start()
 

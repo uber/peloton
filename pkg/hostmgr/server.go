@@ -23,6 +23,7 @@ import (
 	"github.com/uber/peloton/pkg/common/background"
 	"github.com/uber/peloton/pkg/common/leader"
 	"github.com/uber/peloton/pkg/hostmgr/host/drainer"
+	hpm "github.com/uber/peloton/pkg/hostmgr/hostpool/manager"
 	"github.com/uber/peloton/pkg/hostmgr/mesos"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/transport/mhttp"
 	"github.com/uber/peloton/pkg/hostmgr/metrics"
@@ -96,6 +97,8 @@ type Server struct {
 
 	// temporary workaround to start mesos manager on server start
 	mesosManager plugins.Plugin
+
+	hostPoolManager hpm.HostPoolManager
 }
 
 // NewServer creates a host manager Server instance.
@@ -114,6 +117,7 @@ func NewServer(
 	plugin plugins.Plugin,
 	hostCache hostcache.HostCache,
 	mesosManager plugins.Plugin,
+	hostPoolManager hpm.HostPoolManager,
 ) *Server {
 
 	s := &Server{
@@ -135,6 +139,7 @@ func NewServer(
 		plugin:               plugin,
 		hostCache:            hostCache,
 		mesosManager:         mesosManager,
+		hostPoolManager:      hostPoolManager,
 	}
 	log.Info("Hostmgr server started.")
 	return s
@@ -292,6 +297,10 @@ func (s *Server) ensureRunning() {
 		log.Errorf("Failed to start mesosManager: %s", err)
 		return
 	}
+	if err := s.hostPoolManager.Start(); err != nil {
+		log.WithError(err).Error("Failed to start hostpool manager")
+		return
+	}
 
 	if !s.handlersRunning.Load() {
 		s.startHandlers()
@@ -312,6 +321,7 @@ func (s *Server) ensureStopped() {
 		s.stopHandlers()
 	}
 
+	s.hostPoolManager.Stop()
 	s.plugin.Stop()
 	s.mesosManager.Stop()
 	s.hostCache.Stop()

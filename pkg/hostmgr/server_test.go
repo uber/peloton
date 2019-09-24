@@ -22,6 +22,7 @@ import (
 
 	backgound_mocks "github.com/uber/peloton/pkg/common/background/mocks"
 	drainer_mocks "github.com/uber/peloton/pkg/hostmgr/host/drainer/mocks"
+	hpmmocks "github.com/uber/peloton/pkg/hostmgr/hostpool/manager/mocks"
 	hm_mocks "github.com/uber/peloton/pkg/hostmgr/mesos/mocks"
 	mhttp_mocks "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/transport/mhttp/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/metrics"
@@ -74,6 +75,8 @@ type ServerTestSuite struct {
 	hostCache   *hostcache_mocks.MockHostCache
 	mesosPlugin *plugins_mocks.MockPlugin
 
+	hostPoolManager *hpmmocks.MockHostPoolManager
+
 	server *Server
 }
 
@@ -92,6 +95,7 @@ func (suite *ServerTestSuite) SetupTest() {
 	suite.plugin = plugins_mocks.NewMockPlugin(suite.ctrl)
 	suite.hostCache = hostcache_mocks.NewMockHostCache(suite.ctrl)
 	suite.mesosPlugin = plugins_mocks.NewMockPlugin(suite.ctrl)
+	suite.hostPoolManager = hpmmocks.NewMockHostPoolManager(suite.ctrl)
 
 	suite.server = &Server{
 		ID:   _ID,
@@ -118,9 +122,10 @@ func (suite *ServerTestSuite) SetupTest() {
 		metrics:        metrics.NewMetrics(suite.testScope),
 		watchProcessor: suite.watchProcessor,
 
-		plugin:       suite.plugin,
-		mesosManager: suite.mesosPlugin,
-		hostCache:    suite.hostCache,
+		plugin:          suite.plugin,
+		mesosManager:    suite.mesosPlugin,
+		hostCache:       suite.hostCache,
+		hostPoolManager: suite.hostPoolManager,
 	}
 	suite.server.Start()
 }
@@ -148,6 +153,7 @@ func (suite *ServerTestSuite) TestNewServer() {
 		suite.plugin,
 		suite.hostCache,
 		suite.mesosPlugin,
+		suite.hostPoolManager,
 	)
 	suite.ctrl.Finish()
 	suite.NotNil(s)
@@ -177,6 +183,7 @@ func (suite *ServerTestSuite) TestUnelectedNoOp() {
 	suite.server.handlersRunning.Store(false)
 	gomock.InOrder(
 		suite.mInbound.EXPECT().IsRunning().Return(false).Times(2),
+		suite.hostPoolManager.EXPECT().Stop(),
 		suite.plugin.EXPECT().Stop(),
 		suite.mesosPlugin.EXPECT().Stop(),
 		suite.hostCache.EXPECT().Stop(),
@@ -197,6 +204,7 @@ func (suite *ServerTestSuite) TestUnelectedStopConnection() {
 		suite.mInbound.EXPECT().IsRunning().Return(true).AnyTimes(),
 		suite.mInbound.EXPECT().Stop(),
 		suite.mInbound.EXPECT().IsRunning().Return(false).AnyTimes(),
+		suite.hostPoolManager.EXPECT().Stop(),
 		suite.plugin.EXPECT().Stop(),
 		suite.mesosPlugin.EXPECT().Stop(),
 		suite.hostCache.EXPECT().Stop(),
@@ -229,6 +237,7 @@ func (suite *ServerTestSuite) TestUnelectedStopHandler() {
 		suite.eventHandler.EXPECT().Stop(),
 		suite.drainer.EXPECT().Stop(),
 		suite.reserver.EXPECT().Stop(),
+		suite.hostPoolManager.EXPECT().Stop(),
 		suite.plugin.EXPECT().Stop(),
 		suite.mesosPlugin.EXPECT().Stop(),
 		suite.hostCache.EXPECT().Stop(),
@@ -255,6 +264,7 @@ func (suite *ServerTestSuite) TestUnelectedStopConnectionAndHandler() {
 		suite.drainer.EXPECT().Stop(),
 		suite.reserver.EXPECT().Stop(),
 		suite.mInbound.EXPECT().IsRunning().Return(false).AnyTimes(),
+		suite.hostPoolManager.EXPECT().Stop(),
 		suite.plugin.EXPECT().Stop(),
 		suite.mesosPlugin.EXPECT().Stop(),
 		suite.hostCache.EXPECT().Stop(),
@@ -276,6 +286,7 @@ func (suite *ServerTestSuite) TestElectedNoOp() {
 		suite.hostCache.EXPECT().Start(),
 		suite.plugin.EXPECT().Start(),
 		suite.mesosPlugin.EXPECT().Start(),
+		suite.hostPoolManager.EXPECT().Start(),
 	)
 	suite.server.ensureStateRound()
 	suite.ctrl.Finish()
@@ -311,6 +322,7 @@ func (suite *ServerTestSuite) TestElectedRestartConnection() {
 		suite.hostCache.EXPECT().Start(),
 		suite.plugin.EXPECT().Start(),
 		suite.mesosPlugin.EXPECT().Start(),
+		suite.hostPoolManager.EXPECT().Start(),
 
 		// Triggers Explicit Reconciliation on Mesos Master re-election
 		suite.recoveryHandler.EXPECT().Start(),
@@ -337,6 +349,7 @@ func (suite *ServerTestSuite) TestElectedRestartHandlers() {
 		suite.hostCache.EXPECT().Start(),
 		suite.plugin.EXPECT().Start(),
 		suite.mesosPlugin.EXPECT().Start(),
+		suite.hostPoolManager.EXPECT().Start(),
 		suite.recoveryHandler.EXPECT().Start(),
 		suite.reconciler.EXPECT().SetExplicitReconcileTurn(true).Times(1),
 		suite.backgroundManager.EXPECT().Start(),
@@ -374,6 +387,7 @@ func (suite *ServerTestSuite) TestElectedRestartConnectionAndHandler() {
 		suite.hostCache.EXPECT().Start(),
 		suite.plugin.EXPECT().Start(),
 		suite.mesosPlugin.EXPECT().Start(),
+		suite.hostPoolManager.EXPECT().Start(),
 
 		// Triggers Explicit Reconciliation on re-election of host manager.
 		suite.recoveryHandler.EXPECT().Start(),
