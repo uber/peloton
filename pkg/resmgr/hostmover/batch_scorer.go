@@ -181,6 +181,7 @@ func (s *batchScorer) sortOnce() error {
 		&hostsvc.ListHostPoolsRequest{})
 
 	if err != nil {
+		log.WithError(err).Error("error in ListHostPools")
 		return err
 	}
 
@@ -191,6 +192,11 @@ func (s *batchScorer) sortOnce() error {
 			poolFound = true
 		}
 	}
+	log.WithFields(log.Fields{
+		"number of batch hosts": len(batchHosts),
+		"hosts":                 batchHosts,
+	}).Info("all batch hosts from host manager")
+
 	if !poolFound {
 		return fmt.Errorf("pool %q not "+
 			"found", common.SharedHostPoolID)
@@ -205,6 +211,11 @@ func (s *batchScorer) sortOnce() error {
 			noTasksHosts = append(noTasksHosts, batchHost)
 		}
 	}
+
+	log.WithFields(log.Fields{
+		"number of hosts": len(batchHosts),
+		"hosts":           batchHosts,
+	}).Info("all batch hosts which does not have tasks")
 
 	hostMetrics := make([]*batchHostMetrics, len(hostTasks))
 	index := 0
@@ -301,18 +312,32 @@ func (s *batchScorer) sortOnce() error {
 		return true
 	})
 
-	hosts := make([]string, 0, len(hostMetrics))
+	//hosts := make([]string, 0, len(hostMetrics))
+	var hosts []string
 	for _, metrics := range hostMetrics {
 		if metrics.numNonpreemptible == 0 {
 			hosts = append(hosts, metrics.host)
 		}
 	}
 
+	log.WithFields(log.Fields{
+		"no task hosts":      noTasksHosts,
+		"len no task hosts ": len(noTasksHosts),
+		"taks hosts":         hosts,
+		"len task hosts":     len(hosts),
+	}).Info("hosts breakdown before appending")
+
 	// Append hosts with no task running on top of the list
 	hosts = append(noTasksHosts, hosts...)
 	// copy to target hosts array
 	s.hostsLock.Lock()
 	defer s.hostsLock.Unlock()
+
+	log.WithFields(log.Fields{
+		"all hosts":          hosts,
+		"len no task hosts ": len(hosts),
+	}).Info("final hosts list")
+
 	s.orderedHosts = hosts
 
 	return nil
