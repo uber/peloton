@@ -2,7 +2,6 @@ import logging
 import os
 import pytest
 import time
-import grpc
 import requests
 import sys
 
@@ -12,18 +11,13 @@ import tools.minicluster.minicluster as minicluster
 from host import (
     start_maintenance,
     complete_maintenance,
-    query_hosts,
     wait_for_host_state,
-    list_host_pools,
-    create_host_pool,
-    change_host_pool,
 )
 from job import Job
 from job import query_jobs as batch_query_jobs
 from job import kill_jobs as batch_kill_jobs
 from stateless_job import StatelessJob
 from stateless_job import query_jobs as stateless_query_jobs
-from stateless_job import delete_jobs as stateless_delete_jobs
 from m3.client import M3
 from m3.emitter import BatchedEmitter
 from peloton_client.pbgen.peloton.api.v0.host import host_pb2
@@ -269,35 +263,6 @@ def cleanup_batch_jobs():
     batch_kill_jobs(jobs)
 
 
-def cleanup_stateless_jobs(timeout_secs=10):
-    """
-    delete all service jobs from minicluster
-    """
-    jobs = stateless_query_jobs()
-
-    # opportunistic delete for jobs, if not deleted within
-    # timeout period, it will get cleanup in next test run.
-    stateless_delete_jobs(jobs)
-
-    # Wait for job deletion to complete.
-    deadline = time.time() + timeout_secs
-    while time.time() < deadline:
-        try:
-            jobs = stateless_query_jobs()
-            if len(jobs) == 0:
-                return
-            time.sleep(2)
-        except grpc.RpcError as e:
-            # Catch "not-found" error here because QueryJobs endpoint does
-            # two db queries in sequence: "QueryJobs" and "GetUpdate".
-            # However, when we delete a job, updates are deleted first,
-            # there is a slight chance QueryJobs will fail to query the
-            # update, returning "not-found" error.
-            if e.code() == grpc.StatusCode.NOT_FOUND:
-                time.sleep(2)
-                continue
-
-
 @pytest.fixture()
 def mesos_master():
     return Container(MESOS_MASTER)
@@ -342,7 +307,9 @@ def aurorabridge():
 def stateless_job(request):
     job = StatelessJob()
     if util.minicluster_type() == "k8s":
-        job = StatelessJob(job_file="test_stateless_job_spec_k8s.yaml")
+        job = StatelessJob(
+            job_file="test_stateless_job_spec_k8s.yaml",
+        )
 
     # teardown
     def kill_stateless_job():
@@ -356,7 +323,9 @@ def stateless_job(request):
 
 @pytest.fixture
 def host_affinity_job(request):
-    job = Job(job_file="test_job_host_affinity_constraint.yaml")
+    job = Job(
+        job_file="test_job_host_affinity_constraint.yaml",
+    )
 
     # Kill job
     def kill_host_affinity_job():

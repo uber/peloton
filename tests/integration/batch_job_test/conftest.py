@@ -40,24 +40,25 @@ def setup_cluster(request):
     pass
 
 
-@pytest.fixture(autouse=True)
-def run_around_tests(minicluster):
-    minicluster.wait_for_all_agents_to_register()
-    use_host_pool = util.use_host_pool()
-    if use_host_pool:
-        ensure_host_pool(util.HOSTPOOL_BATCH_RESERVED, 2)
-        ensure_host_pool(util.HOSTPOOL_SHARED, 1)
-    yield
-
-    if use_host_pool:
-        cleanup_other_host_pools(
-            [util.HOSTPOOL_BATCH_RESERVED, util.HOSTPOOL_SHARED],
-        )
-
-
 @pytest.fixture
 def peloton_client(minicluster):
     yield minicluster.peloton_client()
+
+
+@pytest.fixture(autouse=True)
+def run_around_tests(minicluster, peloton_client):
+    minicluster.wait_for_all_agents_to_register()
+    if not util.use_host_pool():
+        yield
+        return
+
+    ensure_host_pool(util.HOSTPOOL_BATCH_RESERVED, 2, client=peloton_client)
+    ensure_host_pool(util.HOSTPOOL_SHARED, 1, client=peloton_client)
+    yield
+    cleanup_other_host_pools(
+        [util.HOSTPOOL_BATCH_RESERVED, util.HOSTPOOL_SHARED],
+        client=peloton_client,
+    )
 
 
 @pytest.fixture

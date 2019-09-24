@@ -721,7 +721,9 @@ class Minicluster(object):
         name = self.config.get("name", "standard-minicluster")
         zk_servers = "localhost:{}".format(self.config["local_zk_port"])
         self._peloton_client = client.PelotonClientWrapper(
-            name=name, zk_servers=zk_servers)
+            name=name,
+            zk_servers=zk_servers,
+        )
         return self._peloton_client
 
     def wait_for_mesos_master_leader(self, timeout_secs=20):
