@@ -46,15 +46,20 @@ func Map(
 	numWorkers int,
 ) (outputs []interface{}, err error) {
 
-	// Ensure all channel sends/recvs have a release valve if we encounter
-	// an early error.
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
 	inputc := make(chan interface{})
 	resultc := make(chan *mapResult)
 
 	var wg sync.WaitGroup
+
+	// Ensure all channel sends/recvs have a release valve if we encounter
+	// an early error.
+	ctx, cancel := context.WithCancel(ctx)
+	defer func() {
+		cancel()
+		// Make sure all workers have exited before return
+		wg.Wait()
+	}()
+
 	for w := 0; w < numWorkers; w++ {
 		wg.Add(1)
 		go func() {
