@@ -626,7 +626,11 @@ func getDesiredHostField(runtime *pbtask.RuntimeInfo) string {
 	// it is reset when the task is killed. For all the
 	// states in between, the task maybe running on the host
 	// already. Therefore, set the current host as desired host.
-	return runtime.GetHost()
+	if !util.IsPelotonStateTerminal(runtime.GetState()) {
+		return runtime.GetHost()
+	}
+
+	return ""
 }
 
 // removeInstancesInUpdate kills the instances being removed in the update
