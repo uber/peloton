@@ -274,6 +274,20 @@ def cleanup_other_host_pools(pool_names, client=None):
         if pool.name == HOSTPOOL_DEFAULT or pool.name in pool_names:
             continue
         log.info("Deleting pool {}".format(pool.name))
+
+        for i in range(len(pool.hosts)):
+            hostname = pool.hosts[i]
+            log.info("Moving host {} from {} to {}".format(
+                hostname, pool.name, HOSTPOOL_DEFAULT))
+            resp = change_host_pool(
+                hostname,
+                pool.name,
+                HOSTPOOL_DEFAULT,
+                client=client)
+            if not resp:
+                raise Exception(
+                    'Change host pool of {} failed: {}'.format(hostname, resp))
+
         resp = delete_host_pool(pool.name, client=client)
         if not resp:
             log.info("Failed to delete pool {}: {}".format(pool.name, resp))
