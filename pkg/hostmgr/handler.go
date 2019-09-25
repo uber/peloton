@@ -874,6 +874,22 @@ func (h *ServiceHandler) LaunchTasks(
 			"host_offer_id": req.GetId().GetValue(),
 		}).Warn("Tasks launch failure")
 
+		// Decline offers upon launch failure in a best effort manner,
+		// because peloton no longer holds the offers in host summary.
+		// If launch does not go through, mesos would send new offers with the
+		// resources.
+		// If launch does go through, this call should not affect launched task.
+		// It is still a best effort way to clean offers up, peloton still
+		// rely on offer expiration to clean up the offers left behind.
+		h.metrics.DeclineOffers.Inc(1)
+		if derr := h.offerPool.DeclineOffers(ctx, offerIds); derr != nil {
+			h.metrics.DeclineOffersFail.Inc(1)
+			log.WithError(err).WithFields(log.Fields{
+				"offers":   offerIds,
+				"hostname": req.GetHostname(),
+			}).Warn("cannot decline offers task upon launch error")
+		}
+
 		return &hostsvc.LaunchTasksResponse{
 			Error: &hostsvc.LaunchTasksResponse_Error{
 				LaunchFailure: &hostsvc.LaunchFailure{

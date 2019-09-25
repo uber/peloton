@@ -253,7 +253,7 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 		_offerHoldTime,
 		suite.schedulerClient,
 		offerpool.NewMetrics(suite.testScope.SubScope("offer")),
-		nil,        /* frameworkInfoProvider */
+		suite.provider,
 		[]string{}, /*scarce_resource_types*/
 		slacResourceTypes,
 		bin_packing.GetRankerByName("FIRST_FIT"),
@@ -2284,17 +2284,28 @@ func (suite *HostMgrHandlerTestSuite) TestLaunchTasksSchedulerError() {
 			gomock.Any(),
 			gomock.Any()).
 			Return(),
-		// Set expectations on provider
+		// Set expectations on provider for task launch
 		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
 			suite.frameworkID),
-		// Set expectations on provider
+		// Set expectations on provider for task launch
 		suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(_streamID),
-		// Set expectations on scheduler schedulerClient
+		// Set expectations on scheduler schedulerClient for task launch
 		suite.schedulerClient.EXPECT().
 			Call(
 				gomock.Eq(_streamID),
 				gomock.Any(),
 			).Return(fmt.Errorf(errString)),
+		// Set expectations on provider for offer decline
+		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
+			suite.frameworkID),
+		// Set expectations on provider for offer decline
+		suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(_streamID),
+		// Set expectations on scheduler schedulerClient for offer decline
+		suite.schedulerClient.EXPECT().
+			Call(
+				gomock.Eq(_streamID),
+				gomock.Any(),
+			).Return(nil),
 	)
 
 	launchResp, err := suite.handler.LaunchTasks(
