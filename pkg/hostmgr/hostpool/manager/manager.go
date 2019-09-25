@@ -284,6 +284,12 @@ func (m *hostPoolManager) DeregisterPool(poolID string) error {
 		delete(m.poolIndex, poolID)
 		log.WithField(hostpool.HostPoolKey, poolID).
 			Info("Deleted existing host pool")
+
+		if agentMap := host.GetAgentMap(); agentMap == nil {
+			log.Warn("Failed to get agent-map in DeregisterPool")
+		} else {
+			defaultPool.RefreshCapacity(agentMap.HostCapacities)
+		}
 	}
 
 	return nil
@@ -403,37 +409,6 @@ func (m *hostPoolManager) publishPoolEvent(hostname, poolID string) {
 	m.eventStreamHandler.AddEvent(poolEvent)
 }
 
-// recover recovers host pool data from db.
-// It returns error if failed to read host pool data from db.
-// It skips host with no current pool, since it indicates host is not registered
-// in cluster anymore.
-func (m *hostPoolManager) recover() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	ctx, cancel := context.WithTimeout(context.Background(), _defaultDBTimeout)
-	defer cancel()
-
-	hostInfo, err := m.hostInfoOps.GetAll(ctx)
-	if err != nil {
-		return err
-	}
-	for _, h := range hostInfo {
-		if h.CurrentPool == "" {
-			continue
-		}
-		m.hostToPoolMap[h.Hostname] = h.CurrentPool
-		if pool, ok := m.poolIndex[h.CurrentPool]; !ok {
-			newPool := hostpool.New(h.CurrentPool, m.parentScope)
-			newPool.Add(h.Hostname)
-			m.poolIndex[h.CurrentPool] = newPool
-		} else {
-			pool.Add(h.Hostname)
-		}
-	}
-	return nil
-}
-
 // Start starts the host pool cache go routine that reconciles host pools.
 // It runs periodical reconciliation.
 // It returns error if failed to recover host pool data from db.
@@ -445,7 +420,7 @@ func (m *hostPoolManager) Start() error {
 	log.Info("Starting host pool manager")
 
 	// Recover host pool data from db.
-	if err := m.recover(); err != nil {
+	if err := m.reconcile(); err != nil {
 		return err
 	}
 

@@ -240,6 +240,17 @@ func (suite *HostPoolManagerTestSuite) TestDeregisterPool() {
 
 // TestDeregisterPoolWithHosts tests removing a pool that has hosts associated
 func (suite *HostPoolManagerTestSuite) TestDeregisterPoolWithHosts() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	loader := suite.setupAgentMapLoader(ctrl)
+	loader.Load(nil)
+	host.GetAgentMap().HostCapacities = map[string]*host.ResourceCapacity{
+		"host0": suite.hostCapacity,
+		"host1": suite.hostCapacity,
+		"host2": suite.hostCapacity,
+	}
+
 	hostToPoolMap := map[string]string{
 		"host0": "pool0",
 		"host1": "pool0",
@@ -283,6 +294,10 @@ func (suite *HostPoolManagerTestSuite) TestDeregisterPoolWithHosts() {
 	events, err := suite.eventStreamHandler.GetEvents()
 	suite.NoError(err)
 	suite.Equal(3, len(events))
+
+	suite.checkPoolCapacity(
+		suite.manager.(*hostPoolManager),
+		"TestDeregisterPoolWithHosts")
 }
 
 // TestGetHostPoolLabelValuesGetHostPoolLabelValues tests creating a LabelValues
@@ -338,6 +353,15 @@ func (suite *HostPoolManagerTestSuite) TestStartStopRecover() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
+	loader := suite.setupAgentMapLoader(ctrl)
+	loader.Load(nil)
+	host.GetAgentMap().HostCapacities = map[string]*host.ResourceCapacity{
+		"host0": suite.hostCapacity,
+		"host1": suite.hostCapacity,
+		"host2": suite.hostCapacity,
+		"host3": suite.hostCapacity,
+	}
+
 	defaultHostInfo := []*pbhost.HostInfo{
 		{
 			Hostname:    "host0",
@@ -357,6 +381,12 @@ func (suite *HostPoolManagerTestSuite) TestStartStopRecover() {
 	}
 	suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).
 		Return(defaultHostInfo, nil)
+	suite.mockHostInfoOps.EXPECT().UpdatePool(
+		gomock.Any(),
+		"host3",
+		common.DefaultHostPoolID,
+		common.DefaultHostPoolID).
+		Return(nil)
 
 	manager := setupTestManager(
 		make(map[string][]string),
@@ -365,7 +395,8 @@ func (suite *HostPoolManagerTestSuite) TestStartStopRecover() {
 		suite.mockHostInfoOps,
 	)
 	// Disable reconciliation by setting the interval to a large value
-	manager.(*hostPoolManager).reconcileInternal = 5 * time.Minute
+	mgr := manager.(*hostPoolManager)
+	mgr.reconcileInternal = 5 * time.Minute
 
 	// Stop before Start should go through fine.
 	manager.Stop()
@@ -374,10 +405,9 @@ func (suite *HostPoolManagerTestSuite) TestStartStopRecover() {
 	resultPoolIndex := manager.Pools()
 	for poolID, pool := range resultPoolIndex {
 		if poolID == common.DefaultHostPoolID {
-			continue
-		}
-
-		if poolID == "pool1" {
+			suite.Equal(1, len(pool.Hosts()))
+			suite.Contains(pool.Hosts(), "host3")
+		} else if poolID == "pool1" {
 			suite.Equal(2, len(pool.Hosts()))
 			suite.Contains(pool.Hosts(), "host0")
 			suite.Contains(pool.Hosts(), "host1")
@@ -388,6 +418,8 @@ func (suite *HostPoolManagerTestSuite) TestStartStopRecover() {
 			suite.Fail("Unexpected pool %s", poolID)
 		}
 	}
+	suite.checkPoolCapacity(mgr, "recover")
+
 	// verify starting again is ok
 	suite.NoError(manager.Start())
 
