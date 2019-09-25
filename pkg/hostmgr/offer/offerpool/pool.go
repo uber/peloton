@@ -475,7 +475,9 @@ func (p *offerPool) AddOffers(
 		go func(hostname string, offers []*mesos.Offer) {
 			defer wg.Done()
 
+			p.RLock()
 			p.hostOfferIndex[hostname].AddMesosOffers(ctx, offers)
+			p.RUnlock()
 		}(hostname, offers)
 	}
 	wg.Wait()
