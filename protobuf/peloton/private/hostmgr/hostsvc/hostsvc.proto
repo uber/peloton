@@ -519,6 +519,11 @@ message GetHostsByQueryRequest {
 
   // Match the agent hostnames if provided.
   repeated string hostnames = 3;
+
+  // Set to true if the resource config provided includes
+  // revocable resources when applicable,
+  // default to false
+  bool includeRevocable = 4;
 }
 
 /**

@@ -173,7 +173,9 @@ func (c *Client) HostsGetAction(
 	mem float64,
 	disk float64,
 	cmpLess bool,
-	hosts string) error {
+	hosts string,
+	revocable bool,
+) error {
 	var hostnames []string
 	var err error
 
@@ -194,9 +196,10 @@ func (c *Client) HostsGetAction(
 	resp, _ := c.hostMgrClient.GetHostsByQuery(
 		c.ctx,
 		&hostsvc.GetHostsByQueryRequest{
-			Resource:  resourceConfig,
-			CmpLess:   cmpLess,
-			Hostnames: hostnames,
+			Resource:         resourceConfig,
+			CmpLess:          cmpLess,
+			Hostnames:        hostnames,
+			IncludeRevocable: revocable,
 		})
 
 	printGetHostsResponse(resp)

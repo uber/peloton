@@ -253,7 +253,7 @@ func (suite *hostmgrActionsInternalTestSuite) TestGetHostsByQuery() {
 	}
 
 	suite.mockHostMgr.EXPECT().GetHostsByQuery(gomock.Any(), req).Return(resp, nil)
-	err := c.HostsGetAction(1.0, 2.0, 1000.0, 10000.0, false, "host1,host3")
+	err := c.HostsGetAction(1.0, 2.0, 1000.0, 10000.0, false, "host1,host3", false)
 	suite.NoError(err)
 }
 
@@ -298,7 +298,7 @@ func (suite *hostmgrActionsInternalTestSuite) TestGetHostsByQueryLessThan() {
 	}
 
 	suite.mockHostMgr.EXPECT().GetHostsByQuery(gomock.Any(), req).Return(resp, nil)
-	err := c.HostsGetAction(4.0, 3.0, 1000.0, 10000.0, true, "")
+	err := c.HostsGetAction(4.0, 3.0, 1000.0, 10000.0, true, "", false)
 	suite.NoError(err)
 }
 
@@ -321,6 +321,6 @@ func (suite *hostmgrActionsInternalTestSuite) TestGetHostsByQueryNoHost() {
 	resp := &hostmgrsvc.GetHostsByQueryResponse{}
 
 	suite.mockHostMgr.EXPECT().GetHostsByQuery(gomock.Any(), req).Return(resp, nil)
-	err := c.HostsGetAction(1.0, 2.0, 0.0, 0.0, false, "")
+	err := c.HostsGetAction(1.0, 2.0, 0.0, 0.0, false, "", false)
 	suite.NoError(err)
 }

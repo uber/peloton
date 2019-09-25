@@ -247,13 +247,15 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 	}
 
 	suite.frameworkID = mockValidFrameWorkID
+
+	slacResourceTypes := []string{"cpus"}
 	suite.pool = offerpool.NewOfferPool(
 		_offerHoldTime,
 		suite.schedulerClient,
 		offerpool.NewMetrics(suite.testScope.SubScope("offer")),
 		nil,        /* frameworkInfoProvider */
 		[]string{}, /*scarce_resource_types*/
-		[]string{}, /*slack_resource_types*/
+		slacResourceTypes,
 		bin_packing.GetRankerByName("FIRST_FIT"),
 		time.Duration(30*time.Second),
 		suite.watchProcessor,
@@ -272,6 +274,7 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 		goalStateDriver:       suite.mockGoalStateDriver,
 		hostInfoOps:           suite.mockHostInfoOps,
 		hostCache:             suite.hostCache,
+		slackResourceTypes:    slacResourceTypes,
 	}
 	suite.handler.reserver = reserver.NewReserver(
 		metrics.NewMetrics(suite.testScope),
@@ -410,6 +413,24 @@ func (suite *HostMgrHandlerTestSuite) TestGetHostsByQueryAllHosts() {
 	suite.pool.AddOffers(context.Background(), generateOffers(numHosts))
 	resp, _ := suite.handler.GetHostsByQuery(rootCtx, req)
 	suite.Equal(numHosts, len(resp.Hosts))
+}
+
+func (suite *HostMgrHandlerTestSuite) TestGetHostsByQueryRevocableHosts() {
+	defer suite.ctrl.Finish()
+
+	req := &hostsvc.GetHostsByQueryRequest{
+		Resource: &task.ResourceConfig{
+			CpuLimit: 1.0,
+			GpuLimit: 0.0,
+		},
+		IncludeRevocable: true,
+	}
+	numHosts := 5
+	offers := generateOffers(numHosts)
+	offers[0].Resources[0].Revocable = &mesos.Resource_RevocableInfo{}
+	suite.pool.AddOffers(context.Background(), offers)
+	resp, _ := suite.handler.GetHostsByQuery(rootCtx, req)
+	suite.Equal(1, len(resp.Hosts))
 }
 
 func (suite *HostMgrHandlerTestSuite) TestGetHostsByQueryFilterHostnames() {

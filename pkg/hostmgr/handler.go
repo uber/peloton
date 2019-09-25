@@ -226,20 +226,42 @@ func (h *ServiceHandler) GetHostsByQuery(
 	hosts := make([]*hostsvc.GetHostsByQueryResponse_Host, 0, hostSummariesCount)
 	for hostname, hostSummary := range hostSummaries {
 		resources := scalar.FromOffersMapToMesosResources(hostSummary.GetOffers(summary.All))
-		_, nonRevocable := scalar.FilterRevocableMesosResources(resources)
-		nonRevocableResources := scalar.FromMesosResources(nonRevocable)
 
-		if !nonRevocableResources.Compare(resourcesLimit, cmpLess) {
-			continue
+		if !body.GetIncludeRevocable() {
+			_, nonRevocable := scalar.FilterRevocableMesosResources(resources)
+			nonRevocableResources := scalar.FromMesosResources(nonRevocable)
+			if !nonRevocableResources.Compare(resourcesLimit, cmpLess) {
+				continue
+			}
+			hosts = append(hosts, &hostsvc.GetHostsByQueryResponse_Host{
+				Hostname:  hostname,
+				Resources: nonRevocable,
+				Status:    toHostStatus(hostSummary.GetHostStatus()),
+				HeldTasks: hostSummary.GetHeldTask(),
+				Tasks:     hostSummary.GetTasks(),
+			})
+		} else {
+			combined, _ := scalar.FilterMesosResources(
+				resources,
+				func(r *mesos.Resource) bool {
+					if r.GetRevocable() != nil {
+						return true
+					}
+					return !hmutil.IsSlackResourceType(r.GetName(), h.slackResourceTypes)
+				})
+
+			combinedResources := scalar.FromMesosResources(combined)
+			if !combinedResources.Compare(resourcesLimit, cmpLess) {
+				continue
+			}
+			hosts = append(hosts, &hostsvc.GetHostsByQueryResponse_Host{
+				Hostname:  hostname,
+				Resources: combined,
+				Status:    toHostStatus(hostSummary.GetHostStatus()),
+				HeldTasks: hostSummary.GetHeldTask(),
+				Tasks:     hostSummary.GetTasks(),
+			})
 		}
-
-		hosts = append(hosts, &hostsvc.GetHostsByQueryResponse_Host{
-			Hostname:  hostname,
-			Resources: nonRevocable,
-			Status:    toHostStatus(hostSummary.GetHostStatus()),
-			HeldTasks: hostSummary.GetHeldTask(),
-			Tasks:     hostSummary.GetTasks(),
-		})
 	}
 
 	return &hostsvc.GetHostsByQueryResponse{

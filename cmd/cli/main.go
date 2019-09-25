@@ -686,6 +686,13 @@ var (
 		"hosts",
 		"filter the hosts based on the comma separated hostnames provided",
 	).String()
+	getHostsRevocable = getHosts.Flag(
+		"includeRevocable",
+		"when set to true, resources returned in host would include revocable resources when applicable, "+
+			"which are the same as those available to revocable pods",
+	).
+		Short('r').
+		Bool()
 
 	// command to watch mesos events update present in the event stream
 	watchEventMesosUpdate = hostmgr.Command("events-mesos-update", "watch mesos event update received from mesos")
@@ -1033,6 +1040,7 @@ func main() {
 			*getHostsDisk,
 			*getHostsCmpLess,
 			*getHostsHostnames,
+			*getHostsRevocable,
 		)
 	case disableKillTasks.FullCommand():
 		err = client.DisableKillTasksAction()
