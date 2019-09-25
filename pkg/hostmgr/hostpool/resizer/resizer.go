@@ -16,17 +16,20 @@ package resizer
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	cqos "github.com/uber/peloton/.gen/qos/v1alpha1"
 
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/lifecycle"
+	"github.com/uber/peloton/pkg/hostmgr/hostpool"
 	"github.com/uber/peloton/pkg/hostmgr/hostpool/hostmover"
 	"github.com/uber/peloton/pkg/hostmgr/hostpool/manager"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 type PoolStatus int
@@ -55,6 +58,9 @@ type resizer struct {
 
 	// resizer config.
 	config *Config
+
+	// map of <pool-id>:<last time stamp>.
+	poolResizeMap sync.Map
 }
 
 // NewResizer creates a new resizer instance.
@@ -64,11 +70,11 @@ func NewResizer(
 	hostMover hostmover.HostMover,
 	config Config,
 	scope tally.Scope,
-) resizer {
+) *resizer {
 
 	config.normalize()
 
-	return resizer{
+	return &resizer{
 		lf:              lifecycle.NewLifeCycle(),
 		hostPoolManager: manager,
 		cqosClient:      cqosClient,
@@ -94,10 +100,15 @@ func (r *resizer) run() {
 }
 
 func (r *resizer) runOnce() {
-	// get host metrics map.
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		_defaultCqosTimeout,
+	)
 	defer cancel()
-	resp, err := r.cqosClient.GetHostMetrics(ctx, &cqos.GetHostMetricsRequest{})
+	resp, err := r.cqosClient.GetHostMetrics(
+		ctx,
+		&cqos.GetHostMetricsRequest{},
+	)
 	if err != nil {
 		log.WithError(err).Error("error fetching host metrics")
 		r.metrics.GetMetricsFail.Inc(1)
@@ -114,33 +125,138 @@ func (r *resizer) runOnce() {
 		r.metrics.GetPoolFail.Inc(1)
 		return
 	}
+	shared, err := r.hostPoolManager.GetPool(common.SharedHostPoolID)
+	if err != nil {
+		log.WithError(err).Error("error fetching shared pool")
+		r.metrics.GetPoolFail.Inc(1)
+		return
+	}
+
 	r.metrics.GetPool.Inc(1)
 
-	var hotHosts uint32
-	hotHosts = 0
-	for hostname := range stateless.Hosts() {
+	statelessHosts := stateless.Hosts()
+	currentStatelessHosts := len(statelessHosts)
+
+	if currentStatelessHosts == 0 {
+		return
+	}
+
+	hotHostCount := 0
+	for hostname := range statelessHosts {
 		if m, ok := hosts[hostname]; ok {
 			if uint32(m.Score) > r.config.CqosThresholdPerHost {
-				hotHosts += 1
+				hotHostCount += 1
 			}
 		}
 	}
+
+	hotHostPercentage := uint32(100 * (hotHostCount / currentStatelessHosts))
 
 	s := r.metrics.RootScope.Tagged(map[string]string{
 		"pool": stateless.ID(),
 	})
 
-	if hotHosts > r.config.PoolResizeRange.Upper {
-		// TODO:
-		// pool is hot. try to resize.
+	// TODO: Get the appropriate source/dest pools to move hosts to/from.
+	// For now, we assume this:
+	// If stateless pool is hot, move hosts from shared to stateless.
+	// If stateless pool is cold (and has borrowed hosts), move hosts
+	// from stateless to shared pool.
+	if hotHostPercentage > r.config.PoolResizeRange.Upper {
+		// Stateless pool is hot.
 		s.Counter("need_hosts").Inc(1)
-	} else if hotHosts < r.config.PoolResizeRange.Lower {
-		// TODO:
-		// pool is cold. try to resize.
+		err := r.tryResize(shared, stateless)
+		if err != nil {
+			return
+		}
+
+	} else if hotHostPercentage < r.config.PoolResizeRange.Lower {
+		// Stateless pool is cold.
 		s.Counter("excess_hosts").Inc(1)
+		err := r.tryResize(stateless, shared)
+		if err != nil {
+			return
+		}
+	} else {
+		s.Counter("optimum_hosts").Inc(1)
+		// Since the pool doesn't need resizing, we just remove it from the
+		// resize tracker map.
+		r.poolResizeMap.Delete(stateless.ID())
 	}
-	s.Counter("optimum_hosts").Inc(1)
-	// pool is within the range. No action needed.
+}
+
+func (r *resizer) tryResize(srcPool, destPool hostpool.HostPool) error {
+	var timeSinceIntf interface{}
+	var ok bool
+
+	if timeSinceIntf, ok = r.poolResizeMap.Load(destPool.ID()); !ok {
+		// This is the first time the pool has been detected hot/cold.
+		r.poolResizeMap.Store(destPool.ID(), time.Now())
+		return nil
+	}
+
+	timeSince := timeSinceIntf.(time.Time)
+
+	// This pool has been hot/cold since some time. If the pool is in this
+	// state for more than a configured threshold duration, resize the pool.
+	if time.Since(timeSince) >= r.config.MinWaitBeforeResize {
+
+		// Get the current hosts.
+		numSrcHosts := uint32(len(srcPool.Hosts()))
+		numDestHosts := uint32(len(destPool.Hosts()))
+
+		if numSrcHosts == 0 {
+			s := r.metrics.RootScope.Tagged(map[string]string{
+				"pool": srcPool.ID(),
+			})
+			s.Counter("no_hosts").Inc(1)
+			return yarpcerrors.ResourceExhaustedErrorf(
+				"no hosts in pool %s", srcPool.ID())
+		}
+
+		// TODO: Get desired hosts.
+		// If there is a difference between current and desired, it means that
+		// a previous move is in progress. If so, we should return and wait for
+		// that move to complete.
+
+		srcPoolDesiredCount := int32(numSrcHosts - r.config.MoveBatchSize)
+		destPoolDesiredCount := int32(numDestHosts + r.config.MoveBatchSize)
+
+		// TODO: check for min pool size here once it is available as part
+		// of the host pool info. Do not reduce the src pool host count below
+		// the min pool size.
+		if srcPoolDesiredCount <= 0 {
+			srcPoolDesiredCount = 0
+			destPoolDesiredCount = int32(numDestHosts + numSrcHosts)
+		}
+
+		log.WithFields(log.Fields{
+			"src_pool":   srcPool.ID(),
+			"src_hosts":  srcPoolDesiredCount,
+			"dest_pool":  destPool.ID(),
+			"dest_hosts": destPoolDesiredCount,
+		}).Info("move hosts")
+
+		if err := r.hostMover.MoveHosts(
+			context.Background(),
+			srcPool.ID(),
+			srcPoolDesiredCount,
+			destPool.ID(),
+			destPoolDesiredCount,
+		); err != nil {
+			// TODO: handle error gracefully. We would need desired host
+			// count to be returned as part of the host pool. Once we have
+			// that, we error out here and rest assured that the next run
+			// of resizer will take the current and desired host count into
+			// account when trying to resize the pools.
+			r.metrics.MoveHostsFail.Inc(1)
+			return err
+		}
+		r.metrics.MoveHosts.Inc(1)
+
+		// Now we have resized once, so remove the pool from this map.
+		r.poolResizeMap.Delete(destPool.ID())
+	}
+	return nil
 }
 
 // Start starts the resizer.

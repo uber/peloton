@@ -32,6 +32,13 @@ const (
 
 	// A pool is considered hot if the % of hot hosts in the pool is above this threshold.
 	_poolHotMaxThreshold = 60
+
+	// default timeout for which a pool should be in hot/cold state. Pool should
+	// be resized only after it has been in the current state for this time.
+	_minWaitBeforeResize = 10 * time.Minute
+
+	// Default context timeout for Cqos Service API calls.
+	_defaultCqosTimeout = 20 * time.Second
 )
 
 // PoolResizeRange contains the range of number of hot hosts such that that
@@ -57,6 +64,11 @@ type Config struct {
 	// PoolResizeRange contains the range of number of hot hosts such that that
 	// helps the resizer decide when to lend or borrow hosts for this pool.
 	PoolResizeRange PoolResizeRange
+
+	// Minimum time for which a pool should stay in hot/cold state before it is
+	// resized. This will be used to avoid host moves if a pool fluctuates
+	// between hot/cold state frequently.
+	MinWaitBeforeResize time.Duration
 }
 
 func (c *Config) normalize() {
@@ -66,6 +78,10 @@ func (c *Config) normalize() {
 
 	if c.MoveBatchSize == 0 {
 		c.MoveBatchSize = _moveBatchSize
+	}
+
+	if c.MinWaitBeforeResize.Seconds() == 0 {
+		c.MinWaitBeforeResize = _minWaitBeforeResize
 	}
 
 	if (c.PoolResizeRange.Lower == 0 && c.PoolResizeRange.Upper == 0) ||
