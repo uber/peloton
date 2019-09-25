@@ -31,6 +31,7 @@ import (
 	goalstate_mocks "github.com/uber/peloton/pkg/hostmgr/goalstate/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/host"
 	mpb_mocks "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
+	queuemocks "github.com/uber/peloton/pkg/hostmgr/queue/mocks"
 	orm_mocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -52,6 +53,7 @@ type drainerTestSuite struct {
 	mockMasterOperatorClient *mpb_mocks.MockMasterOperatorClient
 	mockHostInfoOps          *orm_mocks.MockHostInfoOps
 	mockGoalStateDriver      *goalstate_mocks.MockDriver
+	mockTaskEvictionQueue    *queuemocks.MockTaskQueue
 	upHost                   string
 	upIP                     string
 }
@@ -67,9 +69,11 @@ func (suite *drainerTestSuite) SetupTest() {
 	suite.mockMasterOperatorClient = mpb_mocks.NewMockMasterOperatorClient(suite.mockCtrl)
 	suite.mockHostInfoOps = orm_mocks.NewMockHostInfoOps(suite.mockCtrl)
 	suite.mockGoalStateDriver = goalstate_mocks.NewMockDriver(suite.mockCtrl)
+	suite.mockTaskEvictionQueue = queuemocks.NewMockTaskQueue(suite.mockCtrl)
 
 	suite.drainer = &drainer{
 		drainerPeriod:        drainerPeriod,
+		taskEvictionQueue:    suite.mockTaskEvictionQueue,
 		pelotonAgentRole:     pelotonAgentRole,
 		masterOperatorClient: suite.mockMasterOperatorClient,
 		lifecycle:            lifecycle.NewLifeCycle(),
@@ -139,7 +143,9 @@ func (suite *drainerTestSuite) TestDrainerNewDrainer() {
 		pelotonAgentRole,
 		suite.mockMasterOperatorClient,
 		suite.mockGoalStateDriver,
-		orm_mocks.NewMockHostInfoOps(suite.mockCtrl))
+		orm_mocks.NewMockHostInfoOps(suite.mockCtrl),
+		suite.mockTaskEvictionQueue,
+	)
 	suite.NotNil(drainer)
 }
 

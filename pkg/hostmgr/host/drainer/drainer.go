@@ -24,6 +24,7 @@ import (
 	"github.com/uber/peloton/pkg/hostmgr/goalstate"
 	"github.com/uber/peloton/pkg/hostmgr/host"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
+	"github.com/uber/peloton/pkg/hostmgr/queue"
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 
 	log "github.com/sirupsen/logrus"
@@ -63,6 +64,7 @@ type drainer struct {
 	lifecycle            lifecycle.LifeCycle // lifecycle manager
 	goalStateDriver      goalstate.Driver
 	hostInfoOps          ormobjects.HostInfoOps // DB ops for host_info table
+	taskEvictionQueue    queue.TaskQueue
 }
 
 // NewDrainer creates a new host drainer
@@ -72,6 +74,7 @@ func NewDrainer(
 	masterOperatorClient mpb.MasterOperatorClient,
 	goalStateDriver goalstate.Driver,
 	hostInfoOps ormobjects.HostInfoOps,
+	taskEvictionQueue queue.TaskQueue,
 ) Drainer {
 	return &drainer{
 		drainerPeriod:        drainerPeriod,
@@ -80,6 +83,7 @@ func NewDrainer(
 		lifecycle:            lifecycle.NewLifeCycle(),
 		goalStateDriver:      goalStateDriver,
 		hostInfoOps:          hostInfoOps,
+		taskEvictionQueue:    taskEvictionQueue,
 	}
 }
 

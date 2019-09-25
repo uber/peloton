@@ -22,6 +22,7 @@ import (
 
 	"github.com/uber/peloton/.gen/peloton/private/resmgrsvc"
 	cqos "github.com/uber/peloton/.gen/qos/v1alpha1"
+
 	"github.com/uber/peloton/pkg/auth"
 	auth_impl "github.com/uber/peloton/pkg/auth/impl"
 	"github.com/uber/peloton/pkg/common"
@@ -54,6 +55,7 @@ import (
 	mesosplugins "github.com/uber/peloton/pkg/hostmgr/p2k/plugins/mesos"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/podeventmanager"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/scalar"
+	"github.com/uber/peloton/pkg/hostmgr/queue"
 	"github.com/uber/peloton/pkg/hostmgr/reconcile"
 	"github.com/uber/peloton/pkg/hostmgr/watchevent"
 	"github.com/uber/peloton/pkg/middleware/inbound"
@@ -232,6 +234,10 @@ var (
 		"Enable Host Pool Management").
 		Envar("ENABLE_HOST_POOL").
 		Bool()
+)
+
+const (
+	taskEvictionQueueName = "task-eviction-queue"
 )
 
 func main() {
@@ -740,6 +746,8 @@ func main() {
 			dispatcher.ClientConfig(common.PelotonResourceManager)),
 	)
 
+	taskEvictionQueue := queue.NewTaskQueue(taskEvictionQueueName)
+
 	// Create new hostmgr internal service handler.
 	serviceHandler := hostmgr.NewServiceHandler(
 		dispatcher,
@@ -758,18 +766,19 @@ func main() {
 		hostCache,
 	)
 
-	drainer := drainer.NewDrainer(
+	hostDrainer := drainer.NewDrainer(
 		cfg.HostManager.HostDrainerPeriod,
 		cfg.Mesos.Framework.Role,
 		masterOperatorClient,
 		goalStateDriver,
 		ormobjects.GetHostInfoOps(),
+		taskEvictionQueue,
 	)
 
 	hostsvc.InitServiceHandler(
 		dispatcher,
 		rootScope,
-		drainer,
+		hostDrainer,
 		hostPoolManager,
 		hostMover,
 	)
@@ -791,7 +800,7 @@ func main() {
 		mOutbound,
 		reconciler,
 		recoveryHandler,
-		drainer,
+		hostDrainer,
 		serviceHandler.GetReserver(),
 		watchProcessor,
 		plugin,
