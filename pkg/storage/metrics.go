@@ -339,6 +339,9 @@ type OrmHostInfoMetrics struct {
 
 	HostInfoDelete     tally.Counter
 	HostInfoDeleteFail tally.Counter
+
+	HostInfoCompareAndSet     tally.Counter
+	HostInfoCompareAndSetFail tally.Counter
 }
 
 // OrmJobUpdateEventsMetrics tracks counter of
@@ -745,6 +748,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		HostInfoDesiredPoolUpdateFail: hostInfoFailScope.Counter("desired_pool_update"),
 		HostInfoDelete:                hostInfoSuccessScope.Counter("delete"),
 		HostInfoDeleteFail:            hostInfoFailScope.Counter("delete"),
+		HostInfoCompareAndSet:         hostInfoSuccessScope.Counter("compare_and_set"),
+		HostInfoCompareAndSetFail:     hostInfoFailScope.Counter("compare_and_set"),
 	}
 
 	ormJobUpdateEventsMetrics := &OrmJobUpdateEventsMetrics{

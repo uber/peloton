@@ -25,7 +25,6 @@ import (
 	"github.com/uber/peloton/pkg/common/goalstate"
 	goalstatemocks "github.com/uber/peloton/pkg/common/goalstate/mocks"
 	mock_mpb "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
-	orm_storage "github.com/uber/peloton/pkg/storage/objects"
 	orm_mocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -69,7 +68,7 @@ func (suite *driverTestSuite) TearDownTest() {
 // TestNewDriver tests NewDriver
 func (suite *driverTestSuite) TestNewDriver() {
 	dr := NewDriver(
-		&orm_storage.Store{},
+		suite.mockHostInfoOps,
 		suite.mockMesosMasterClient,
 		tally.NoopScope,
 		Config{},

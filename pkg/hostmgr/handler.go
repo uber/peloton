@@ -114,7 +114,7 @@ func NewServiceHandler(
 	watchProcessor watchevent.WatchProcessor,
 	hostPoolManager manager.HostPoolManager,
 	goalStateDriver goalstate.Driver,
-	ormStore *ormobjects.Store,
+	hostInfoOps ormobjects.HostInfoOps,
 	hostCache hostcache.HostCache,
 ) *ServiceHandler {
 
@@ -130,7 +130,7 @@ func NewServiceHandler(
 		watchProcessor:        watchProcessor,
 		hostPoolManager:       hostPoolManager,
 		goalStateDriver:       goalStateDriver,
-		hostInfoOps:           ormobjects.NewHostInfoOps(ormStore),
+		hostInfoOps:           hostInfoOps,
 		hostCache:             hostCache,
 	}
 	// Creating Reserver object for handler

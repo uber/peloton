@@ -17,13 +17,16 @@ package objects
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"time"
 
 	hostpb "github.com/uber/peloton/.gen/peloton/api/v0/host"
 	pelotonpb "github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 
+	"github.com/uber/peloton/pkg/hostmgr/common"
 	"github.com/uber/peloton/pkg/storage/objects/base"
 
+	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
@@ -130,21 +133,57 @@ type HostInfoOps interface {
 	) error
 	// Delete removes an object from the table based on primary key.
 	Delete(ctx context.Context, hostname string) error
+
+	// CompareAndSet compares and sets the host info fields
+	CompareAndSet(
+		ctx context.Context,
+		hostname string,
+		hostInfoDiff common.HostInfoDiff,
+		compareFields common.HostInfoDiff,
+	) error
 }
 
 // hostInfoOps implements HostInfoOps using a particular Store.
-// TODO: Concurrent control on hostInfoOps should be done by callers, after merging
-//  with host cache, concurrent control should be achieved through locking in host cache.
+// TODO:  after merging with host cache, concurrency control should be achieved
+//  through locking in host cache.
 type hostInfoOps struct {
+	lock  sync.RWMutex
 	store *Store
 }
 
-// Ensure that default implementation hostInfoOps satisfies the interface.
-var _ HostInfoOps = (*hostInfoOps)(nil)
+var (
+	// HostInfoOps singleton object.
+	// Our approach to prevent concurrent writes to a HostInfo entry, is to
+	// serialize all HostInfo writes perform all writes to HostInfo table under
+	// a single lock in HostInfoOps. Hence HostInfoOps is a singleton.
+	// Do not do this for any other object in orm. This is a temporary fix.
+	// TODO: Remove singleton once we move to host cache for concurrency control
+	hInfoOps *hostInfoOps
 
-// NewHostInfoOps constructs a HostInfoOps object for a provided Store.
-func NewHostInfoOps(s *Store) HostInfoOps {
-	return &hostInfoOps{store: s}
+	once sync.Once
+
+	curVersion uint32
+)
+
+// InitHostInfoOps initializes HostInfoOps singleton
+func InitHostInfoOps(s *Store) {
+	if hInfoOps != nil {
+		log.Info("HostInfoOps already initialized")
+		return
+	}
+	once.Do(func() {
+		hInfoOps = &hostInfoOps{store: s}
+		curVersion = 0
+	})
+}
+
+// GetHostInfoOps returns the HostInfoOps singleton object.
+func GetHostInfoOps() HostInfoOps {
+	if hInfoOps == nil {
+		log.Fatal("HostInfoOps not initialized")
+		return nil
+	}
+	return hInfoOps
 }
 
 // Create creates a host info in db.
@@ -158,6 +197,9 @@ func (d *hostInfoOps) Create(
 	currentPool string,
 	desiredPool string,
 ) error {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
 	bytes, err := json.Marshal(&labels)
 	if err != nil {
 		return err
@@ -185,6 +227,9 @@ func (d *hostInfoOps) Get(
 	ctx context.Context,
 	hostname string,
 ) (*hostpb.HostInfo, error) {
+	d.lock.RLock()
+	defer d.lock.RUnlock()
+
 	var row map[string]interface{}
 	hostInfoObject := &HostInfoObject{
 		Hostname: base.NewOptionalString(hostname),
@@ -210,6 +255,9 @@ func (d *hostInfoOps) Get(
 
 // GetAll gets all host infos from db without any pk specified.
 func (d *hostInfoOps) GetAll(ctx context.Context) ([]*hostpb.HostInfo, error) {
+	d.lock.RLock()
+	defer d.lock.RUnlock()
+
 	rows, err := d.store.oClient.GetAll(ctx, &HostInfoObject{})
 	if err != nil {
 		d.store.metrics.OrmHostInfoMetrics.HostInfoGetAllFail.Inc(1)
@@ -237,6 +285,9 @@ func (d *hostInfoOps) UpdateState(
 	hostname string,
 	state hostpb.HostState,
 ) error {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
 	hostInfoObject := &HostInfoObject{
 		Hostname:   base.NewOptionalString(hostname),
 		State:      state.String(),
@@ -254,12 +305,109 @@ func (d *hostInfoOps) UpdateState(
 	return nil
 }
 
+// CompareAndSet updates the fields to the specified value only if the
+// version matches.
+// This is a very heavy handed operation and should not be called at scale.
+// The reason it is implemented this way is that this is a very infrequent call.
+func (d *hostInfoOps) CompareAndSet(
+	ctx context.Context,
+	hostname string,
+	hostInfoDiff common.HostInfoDiff,
+	compareFields common.HostInfoDiff,
+) error {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
+	hostInfoObject := &HostInfoObject{
+		Hostname: base.NewOptionalString(hostname),
+	}
+
+	row, err := d.store.oClient.Get(
+		ctx,
+		hostInfoObject,
+	)
+	if err != nil {
+		d.store.metrics.OrmHostInfoMetrics.HostInfoCompareAndSetFail.Inc(1)
+		return err
+	}
+
+	if len(row) == 0 {
+		return yarpcerrors.NotFoundErrorf("host info not found")
+	}
+
+	hostInfoObject.transform(row)
+	info, err := newHostInfoFromHostInfoObject(hostInfoObject)
+	if err != nil {
+		d.store.metrics.OrmHostInfoMetrics.HostInfoCompareAndSetFail.Inc(1)
+		return err
+	}
+
+	for key, value := range compareFields {
+		switch key {
+		case common.StateField:
+			if info.GetState() != value.(hostpb.HostState) {
+				d.store.metrics.OrmHostInfoMetrics.HostInfoCompareAndSetFail.Inc(1)
+				return yarpcerrors.AbortedErrorf("State field does not match")
+			}
+		case common.GoalStateField:
+			if info.GetGoalState() != value.(hostpb.HostState) {
+				d.store.metrics.OrmHostInfoMetrics.HostInfoCompareAndSetFail.Inc(1)
+				return yarpcerrors.AbortedErrorf("GoalState field does not match")
+			}
+		case common.CurrentPoolField:
+			if info.GetCurrentPool() != value.(string) {
+				d.store.metrics.OrmHostInfoMetrics.HostInfoCompareAndSetFail.Inc(1)
+				return yarpcerrors.AbortedErrorf("CurrentPool field does not match")
+			}
+		case common.DesiredPoolField:
+			if info.GetDesiredPool() != value.(string) {
+				d.store.metrics.OrmHostInfoMetrics.HostInfoCompareAndSetFail.Inc(1)
+				return yarpcerrors.AbortedErrorf("DesiredPool field does not match")
+			}
+		}
+	}
+
+	hostInfoObject = &HostInfoObject{
+		Hostname:   base.NewOptionalString(hostname),
+		UpdateTime: time.Now(),
+	}
+
+	fieldsToUpdate := []string{"UpdateTime"}
+	for field, value := range hostInfoDiff {
+		switch field {
+		case common.StateField:
+			hostInfoObject.State = value.(hostpb.HostState).String()
+		case common.GoalStateField:
+			hostInfoObject.GoalState = value.(hostpb.HostState).String()
+		case common.CurrentPoolField:
+			hostInfoObject.CurrentPool = value.(string)
+		case common.DesiredPoolField:
+			hostInfoObject.DesiredPool = value.(string)
+		}
+		fieldsToUpdate = append(fieldsToUpdate, field)
+	}
+
+	if err := d.store.oClient.Update(
+		ctx,
+		hostInfoObject,
+		fieldsToUpdate...); err != nil {
+		d.store.metrics.OrmHostInfoMetrics.HostInfoCompareAndSetFail.Inc(1)
+		return err
+	}
+
+	d.store.metrics.OrmHostInfoMetrics.HostInfoCompareAndSet.Inc(1)
+	return nil
+}
+
 // Update the host goal state of a host info by its hostname pk
 func (d *hostInfoOps) UpdateGoalState(
 	ctx context.Context,
 	hostname string,
 	goalState hostpb.HostState,
 ) error {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
 	hostInfoObject := &HostInfoObject{
 		Hostname:   base.NewOptionalString(hostname),
 		GoalState:  goalState.String(),
@@ -283,6 +431,9 @@ func (d *hostInfoOps) UpdateLabels(
 	hostname string,
 	labels map[string]string,
 ) error {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
 	bytes, err := json.Marshal(&labels)
 	if err != nil {
 		return err
@@ -306,6 +457,9 @@ func (d *hostInfoOps) UpdateLabels(
 
 // Delete deletes a host info from db by its hostname pk.
 func (d *hostInfoOps) Delete(ctx context.Context, hostname string) error {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
 	hostInfoObject := &HostInfoObject{
 		Hostname: base.NewOptionalString(hostname),
 	}
@@ -324,6 +478,9 @@ func (d *hostInfoOps) UpdatePool(
 	currentPool string,
 	desiredPool string,
 ) error {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
 	hostInfoObject := &HostInfoObject{
 		Hostname:    base.NewOptionalString(hostname),
 		CurrentPool: currentPool,
@@ -347,6 +504,9 @@ func (d *hostInfoOps) UpdateDesiredPool(
 	hostname string,
 	pool string,
 ) error {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
 	hostInfoObject := &HostInfoObject{
 		Hostname:    base.NewOptionalString(hostname),
 		DesiredPool: pool,

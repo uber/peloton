@@ -71,7 +71,7 @@ func NewDrainer(
 	pelotonAgentRole string,
 	masterOperatorClient mpb.MasterOperatorClient,
 	goalStateDriver goalstate.Driver,
-	ormStore *ormobjects.Store,
+	hostInfoOps ormobjects.HostInfoOps,
 ) Drainer {
 	return &drainer{
 		drainerPeriod:        drainerPeriod,
@@ -79,7 +79,7 @@ func NewDrainer(
 		masterOperatorClient: masterOperatorClient,
 		lifecycle:            lifecycle.NewLifeCycle(),
 		goalStateDriver:      goalStateDriver,
-		hostInfoOps:          ormobjects.NewHostInfoOps(ormStore),
+		hostInfoOps:          hostInfoOps,
 	}
 }
 

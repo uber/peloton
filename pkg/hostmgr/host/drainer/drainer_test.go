@@ -31,7 +31,6 @@ import (
 	goalstate_mocks "github.com/uber/peloton/pkg/hostmgr/goalstate/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/host"
 	mpb_mocks "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
-	orm_storage "github.com/uber/peloton/pkg/storage/objects"
 	orm_mocks "github.com/uber/peloton/pkg/storage/objects/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -140,7 +139,7 @@ func (suite *drainerTestSuite) TestDrainerNewDrainer() {
 		pelotonAgentRole,
 		suite.mockMasterOperatorClient,
 		suite.mockGoalStateDriver,
-		&orm_storage.Store{})
+		orm_mocks.NewMockHostInfoOps(suite.mockCtrl))
 	suite.NotNil(drainer)
 }
 

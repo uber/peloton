@@ -77,7 +77,7 @@ type driver struct {
 
 // NewDriver returns a new goal state driver object.
 func NewDriver(
-	ormStore *ormobjects.Store,
+	hostInfoOps ormobjects.HostInfoOps,
 	mesosMasterClient mpb.MasterOperatorClient,
 	parentScope tally.Scope,
 	cfg Config,
@@ -93,7 +93,7 @@ func NewDriver(
 			cfg.MaxRetryDelay,
 			hostScope),
 		mesosMasterClient: mesosMasterClient,
-		hostInfoOps:       ormobjects.NewHostInfoOps(ormStore),
+		hostInfoOps:       hostInfoOps,
 		cfg:               &cfg,
 		scope:             scope,
 		hostPoolMgr:       hostpoolManager,

@@ -562,11 +562,13 @@ func main() {
 		cfg.HostManager.TaskReconcilerConfig,
 	)
 
+	ormobjects.InitHostInfoOps(ormStore)
+
 	loader := host.Loader{
 		OperatorClient:     masterOperatorClient,
 		Scope:              rootScope.SubScope("hostmap"),
 		SlackResourceTypes: cfg.HostManager.SlackResourceTypes,
-		HostInfoOps:        ormobjects.NewHostInfoOps(ormStore),
+		HostInfoOps:        ormobjects.GetHostInfoOps(),
 	}
 
 	backgroundManager := background.NewManager()
@@ -680,15 +682,13 @@ func main() {
 		mesosPlugin,
 	)
 
-	hostInfoOps := ormobjects.NewHostInfoOps(ormStore)
-
 	// Construct host pool manager if it is enabled.
 	var hostPoolManager manager.HostPoolManager
 	if cfg.HostManager.EnableHostPool {
 		hostPoolManager = manager.New(
 			cfg.HostManager.HostPoolReconcileInterval,
 			offer.GetEventHandler().GetEventStreamHandler(),
-			hostInfoOps,
+			ormobjects.GetHostInfoOps(),
 			rootScope,
 		)
 
@@ -723,7 +723,7 @@ func main() {
 
 	// Create Goal State Engine driver
 	goalStateDriver := goalstate.NewDriver(
-		ormStore,
+		ormobjects.GetHostInfoOps(),
 		masterOperatorClient,
 		rootScope,
 		cfg.HostManager.GoalState,
@@ -733,7 +733,7 @@ func main() {
 	// Create Host mover object
 	hostMover := hostmover.NewHostMover(
 		hostPoolManager,
-		ormobjects.NewHostInfoOps(ormStore),
+		ormobjects.GetHostInfoOps(),
 		goalStateDriver,
 		rootScope,
 		resmgrsvc.NewResourceManagerServiceYARPCClient(
@@ -754,7 +754,7 @@ func main() {
 		watchProcessor,
 		hostPoolManager,
 		goalStateDriver,
-		ormStore,
+		ormobjects.GetHostInfoOps(),
 		hostCache,
 	)
 
@@ -763,7 +763,7 @@ func main() {
 		cfg.Mesos.Framework.Role,
 		masterOperatorClient,
 		goalStateDriver,
-		ormStore,
+		ormobjects.GetHostInfoOps(),
 	)
 
 	hostsvc.InitServiceHandler(
