@@ -75,7 +75,18 @@ func (c *Client) ResPoolCreateAction(respoolPath string, cfgFile string) error {
 }
 
 // ResPoolUpdateAction is the action for updating an existing resource pool
-func (c *Client) ResPoolUpdateAction(respoolPath string, cfgFile string) error {
+func (c *Client) ResPoolUpdateAction(
+	respoolPath string,
+	cfgFile string,
+	force bool) error {
+
+	if force {
+		confirm := c.AskConfirm("Are you sure you want to force a Resource Pool Update? ")
+		if !confirm {
+			return nil
+		}
+	}
+
 	if respoolPath == ResourcePoolPathDelim {
 		return errors.New("cannot update root resource pool")
 	}
@@ -117,6 +128,7 @@ func (c *Client) ResPoolUpdateAction(respoolPath string, cfgFile string) error {
 	var request = &respool.UpdateRequest{
 		Id:     respoolID,
 		Config: &respoolConfig,
+		Force:  force,
 	}
 	response, err := c.resClient.UpdateResourcePool(c.ctx, request)
 	if err != nil {

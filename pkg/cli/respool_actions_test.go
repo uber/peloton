@@ -603,7 +603,7 @@ func (suite *resPoolActions) TestClientResPoolUpdateAction() {
 		suite.withMockResourcePoolLookup(
 			t.resPoolLookupRequest, t.resPoolLookupResponse, nil)
 		withMockUpdateResponse(t.updateRequest, t.updateResponse, t.err)
-		err := c.ResPoolUpdateAction(path, _defaultResPoolConfig)
+		err := c.ResPoolUpdateAction(path, _defaultResPoolConfig, false)
 		if t.err != nil {
 			suite.EqualError(err, t.err.Error())
 		} else {
@@ -682,7 +682,7 @@ func (suite *resPoolActions) TestClientResPoolUpdateLookupErrors() {
 			t.parentLookupRequest, t.parentLookupResponse, nil)
 		suite.withMockResourcePoolLookup(
 			t.resPoolLookupRequest, t.resPoolLookupResponse, t.err)
-		err := c.ResPoolUpdateAction(path, _defaultResPoolConfig)
+		err := c.ResPoolUpdateAction(path, _defaultResPoolConfig, false)
 		if t.err != nil {
 			suite.EqualError(err, t.err.Error())
 		} else if t.resPoolLookupResponse.Id == nil {
@@ -749,7 +749,7 @@ func (suite *resPoolActions) TestClientResPoolUpdateParentErrors() {
 			suite.withMockResourcePoolLookup(
 				t.parentLookupRequest, t.parentLookupResponse, t.err)
 		}
-		suite.Error(c.ResPoolUpdateAction(t.path, _defaultResPoolConfig))
+		suite.Error(c.ResPoolUpdateAction(t.path, _defaultResPoolConfig, false))
 	}
 }
 

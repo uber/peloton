@@ -16,6 +16,8 @@ package cli
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"sort"
 	"strings"
 
@@ -47,14 +49,43 @@ func (c *Client) ExtractHostnames(hosts string, hostSeparator string) ([]string,
 		// removing leading and trailing white spaces
 		host = strings.TrimSpace(host)
 		if host == "" {
-			return nil, fmt.Errorf("Host cannot be empty")
+			return nil, fmt.Errorf("host cannot be empty")
 		}
 		if hostSet.Contains(host) {
-			return nil, fmt.Errorf("Invalid input. Duplicate entry for host %s found", host)
+			return nil, fmt.Errorf("invalid input. Duplicate entry for host %s found", host)
 		}
 		hostSet.Add(host)
 	}
 	hostSlice := hostSet.ToSlice()
 	sort.Strings(hostSlice)
 	return hostSlice, nil
+}
+
+// AskConfirm asks for a confirmation for the message.
+func (c *Client) AskConfirm(message string) bool {
+	return confirm(message, os.Stdin, os.Stdout)
+}
+
+const _confirmationTemplate = "%s (y/N): "
+
+func confirm(message string, r io.Reader, w io.Writer) bool {
+	var s string
+
+	_, err := fmt.Fprintf(w, _confirmationTemplate, message)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = fmt.Fscan(r, &s)
+	if err != nil {
+		panic(err)
+	}
+
+	s = strings.TrimSpace(s)
+	s = strings.ToLower(s)
+
+	if s == "y" || s == "yes" {
+		return true
+	}
+	return false
 }

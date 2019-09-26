@@ -17,7 +17,9 @@ package cli
 import (
 	"context"
 	"errors"
+	"io/ioutil"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -125,12 +127,12 @@ func (suite *commonTestSuite) TestClient_ExtractHostnames() {
 	// empty input
 	_, err = c.ExtractHostnames("", ",")
 	suite.Error(err)
-	suite.Equal(errors.New("Host cannot be empty"), err)
+	suite.Equal(errors.New("host cannot be empty"), err)
 
 	// duplicate input
 	_, err = c.ExtractHostnames("a,a", ",")
 	suite.Error(err)
-	suite.Equal(errors.New("Invalid input. Duplicate entry for host a found"), err)
+	suite.Equal(errors.New("invalid input. Duplicate entry for host a found"), err)
 
 	// input should be sorted
 	hosts, err = c.ExtractHostnames("b, c,a ", ",")
@@ -139,6 +141,43 @@ func (suite *commonTestSuite) TestClient_ExtractHostnames() {
 	suite.Equal("a", hosts[0])
 	suite.Equal("b", hosts[1])
 	suite.Equal("c", hosts[2])
+}
+
+func (suite *commonTestSuite) TestConfirm() {
+	tt := []struct {
+		input       string
+		wantConfirm bool
+	}{
+		{
+			input:       "y",
+			wantConfirm: true,
+		},
+		{
+			input:       "Y",
+			wantConfirm: true,
+		},
+		{
+			input:       "yes",
+			wantConfirm: true,
+		},
+		{
+			input:       "n",
+			wantConfirm: false,
+		},
+		{
+			input:       "No",
+			wantConfirm: false,
+		},
+		{
+			input:       "false",
+			wantConfirm: false,
+		},
+	}
+
+	for _, t := range tt {
+		resp := confirm("", strings.NewReader(t.input), ioutil.Discard)
+		suite.Equal(t.wantConfirm, resp)
+	}
 }
 
 func TestCommon(t *testing.T) {

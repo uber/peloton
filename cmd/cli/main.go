@@ -552,6 +552,7 @@ var (
 	respoolUpdatePath = respoolUpdate.Arg("respool", "complete path of the "+
 		"resource pool starting from the root").Required().String()
 	respoolUpdateConfig = respoolUpdate.Arg("config", "YAML Resource Pool configuration").Required().ExistingFile()
+	respoolUpdateForce  = respoolUpdate.Flag("force", "force an update even if the validation fails").Short('f').Bool()
 
 	resPoolDump = resPool.Command(
 		"dump",
@@ -994,7 +995,7 @@ func main() {
 	case resPoolCreate.FullCommand():
 		err = client.ResPoolCreateAction(*resPoolCreatePath, *resPoolCreateConfig)
 	case respoolUpdate.FullCommand():
-		err = client.ResPoolUpdateAction(*respoolUpdatePath, *respoolUpdateConfig)
+		err = client.ResPoolUpdateAction(*respoolUpdatePath, *respoolUpdateConfig, *respoolUpdateForce)
 	case resPoolDump.FullCommand():
 		err = client.ResPoolDumpAction(*resPoolDumpFormat)
 	case resPoolDelete.FullCommand():
