@@ -6,6 +6,8 @@ from docker import Client as DockerClient
 
 import print_utils
 
+default_client = DockerClient(base_url="unix://var/run/docker.sock")
+
 
 class Client(DockerClient):
 
@@ -13,6 +15,9 @@ class Client(DockerClient):
         self.namespace = kwargs.get('namespace', '')
         kwargs.pop('namespace', None)
         super(Client, self).__init__(*args, **kwargs)
+
+        global default_client
+        default_client = self
 
     def create_container(self, *args, **kwargs):
         name = kwargs.get('name', None)

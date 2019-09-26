@@ -2,11 +2,10 @@ import logging
 import os
 import pytest
 import time
-import requests
 import sys
 
-from docker import Client
-from tools.minicluster.main import load_config as mc_config
+import tools.minicluster.docker_client as docker_client
+from tools.minicluster.utils import default_config as mc_config
 import tools.minicluster.minicluster as minicluster
 from host import (
     start_maintenance,
@@ -100,36 +99,20 @@ def pytest_runtest_makereport(item, call):
             parent._previousfailed = item
 
 
-def pytest_sessionfinish(session, exitstatus):
-    emitter = BatchedEmitter()
-    m3 = M3(
-        application_identifier="peloton",
-        emitter=emitter,
-        environment="production",
-        default_tags={"result": "watchdog", "cluster": os.getenv("CLUSTER")},
-    )
-    if collect_metrics.failed > 0:
-        m3.gauge("watchdog_result", 1)
-    else:
-        m3.gauge("watchdog_result", 0)
-    m3.gauge("total_tests", collect_metrics.failed + collect_metrics.passed)
-    m3.gauge("failed_tests", collect_metrics.failed)
-    m3.gauge("passed_tests", collect_metrics.passed)
-    m3.gauge("duration_tests", collect_metrics.duration)
-
-
 class Container(object):
-    def __init__(self, names):
-        self._cli = Client(base_url="unix://var/run/docker.sock")
+    def __init__(self, names, is_mesos_master=False):
+        self._cluster = minicluster.default_cluster
+        self._cli = docker_client.default_client
         self._names = names
+        self._is_mesos_master = is_mesos_master
 
     def start(self):
         for name in self._names:
             self._cli.start(name)
             log.info("%s started", name)
 
-        if self._names[0] in MESOS_MASTER:
-            wait_for_mesos_master_leader()
+        if self._is_mesos_master:
+            self._cluster.wait_for_mesos_master_leader()
 
     def stop(self):
         for name in self._names:
@@ -141,60 +124,12 @@ class Container(object):
             self._cli.restart(name, timeout=0)
             log.info("%s restarted", name)
 
-        if self._names[0] in MESOS_MASTER:
-            wait_for_mesos_master_leader()
+        if self._is_mesos_master:
+            self._cluster.wait_for_mesos_master_leader()
 
 
 def get_container(container_name):
     return Container(container_name)
-
-
-def wait_for_mesos_master_leader(
-    url="http://127.0.0.1:5050/state.json", timeout_secs=20
-):
-    """
-    util method to wait for mesos master leader elected
-    """
-
-    deadline = time.time() + timeout_secs
-    while time.time() < deadline:
-        try:
-            resp = requests.get(url)
-            if resp.status_code != 200:
-                time.sleep(2)
-                continue
-            return
-        except Exception:
-            pass
-
-    assert False, "timed out waiting for mesos master leader"
-
-
-def wait_for_all_agents_to_register(
-    url="http://127.0.0.1:5050/state.json",
-    timeout_secs=300,
-):
-    """
-    util method to wait for all agents to register
-    """
-
-    deadline = time.time() + timeout_secs
-    while time.time() < deadline:
-        try:
-            resp = requests.get(url)
-            if resp.status_code == 200:
-                registered_agents = 0
-                for a in resp.json()['slaves']:
-                    if a['active']:
-                        registered_agents += 1
-
-                if registered_agents == 3:
-                    return
-            time.sleep(10)
-        except Exception:
-            pass
-
-    assert False, "timed out waiting for agents to register"
 
 
 def setup_minicluster(enable_k8s=False, use_host_pool=False,
@@ -237,15 +172,14 @@ def teardown_minicluster(cluster, dump_logs=False):
     log.info("tearing down")
 
     # dump logs only if tests have failed in the current module
-    if dump_logs:
+    if dump_logs and not os.getenv("NO_LOG_DUMPS"):
         # stop containers so that log stream will not block
         cluster.teardown(stop=True)
 
         try:
             # TODO (varung): enable PE and mesos-master logs if needed
-            cli = Client(base_url="unix://var/run/docker.sock")
-            for c in ("peloton-jobmgr0",
-                      "peloton-resmgr0"):
+            cli = cluster.cli
+            for c in ("peloton-jobmgr0", "peloton-resmgr0"):
                 for l in cli.logs(c, stream=True):
                     # remove newline character when logging
                     log.info(l.rstrip())
@@ -265,7 +199,7 @@ def cleanup_batch_jobs():
 
 @pytest.fixture()
 def mesos_master():
-    return Container(MESOS_MASTER)
+    return Container(MESOS_MASTER, is_mesos_master=True)
 
 
 @pytest.fixture()
@@ -508,20 +442,13 @@ the exact opposite.
 
 @pytest.fixture
 def exclusive_host(request):
-    cluster = minicluster.Minicluster(mc_config())
+    cluster = minicluster.default_cluster
 
     def clean_up():
-        cluster.teardown_mesos_agent(0, is_exclusive=True)
-        cluster.setup_mesos_agent(0, 5051)  # TODO: port isolation
-        time.sleep(5)
+        cluster.set_mesos_agent_nonexclusive(0)
+        cluster.wait_for_all_agents_to_register()
 
-    # Remove agent #0 and instead create exclusive agent #0
-    cluster.teardown_mesos_agent(0)
-    cluster.setup_mesos_agent(
-        0,
-        5054,
-        is_exclusive=True,
-        exclusive_label_value="exclusive-test-label",
-    )  # TODO: port isolation
-    time.sleep(5)
+    cluster.set_mesos_agent_exclusive(0, "exclusive-test-label")
+    cluster.wait_for_all_agents_to_register()
+
     request.addfinalizer(clean_up)

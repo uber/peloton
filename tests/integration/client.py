@@ -1,6 +1,7 @@
 import os
 from urlparse import urlparse
 
+import tools.minicluster.minicluster as minicluster
 from peloton_client.client import PelotonClient
 from peloton_client.pbgen.peloton.private.resmgrsvc import (
     resmgrsvc_pb2_grpc as resmgr_grpc,
@@ -11,7 +12,6 @@ from peloton_client.pbgen.peloton.private.hostmgr.hostsvc import (
 from peloton_client.pbgen.peloton.private.hostmgr.v1alpha.svc import (
     hostmgr_svc_pb2_grpc as v1hostmgr_grpc,
 )
-
 from util import load_config
 
 
@@ -19,36 +19,40 @@ class Client(object):
     _client = None
 
     def __new__(class_, *args, **kwargs):
+        if minicluster.default_cluster is not None:
+            return minicluster.default_cluster.peloton_client()
+
         global _client
-        if not class_._client:
-            config = load_config("config.yaml")["client"]
-            cluster = os.getenv("CLUSTER")
-            use_apiserver = False
-            if os.getenv("USE_APISERVER") == 'True':
-                use_apiserver = True
-            if cluster is not None and cluster != "local":
-                cluster = os.getenv("CLUSTER")
-                if os.getenv("ELECTION_ZK_SERVERS", ""):
-                    zk_servers = os.getenv("ELECTION_ZK_SERVERS").split(":")[0]
-                elif cluster in config["cluster_zk_servers"]:
-                    zk_servers = config["cluster_zk_servers"][cluster]
-                else:
-                    raise Exception("Unsupported cluster %s" % cluster)
-                _client = PelotonClient(
-                    name=config["name"],
-                    enable_apiserver=use_apiserver,
-                    zk_servers=zk_servers,
-                )
-            else:
-                # TODO: remove url overrides once T839783 is resolved
-                _client = PelotonClient(
-                    name=config["name"],
-                    enable_apiserver=use_apiserver,
-                    api_url=config["apiserver_url"],
-                    jm_url=config["jobmgr_url"],
-                    rm_url=config["resmgr_url"],
-                    hm_url=config["hostmgr_url"],
-                )
+        if class_._client:
+            return class_._client
+
+        config = load_config("config.yaml")["client"]
+        cluster = os.getenv("CLUSTER")
+        use_apiserver = os.getenv("USE_APISERVER") == 'True'
+        if cluster is None or cluster == "local":
+            # TODO: remove url overrides once T839783 is resolved
+            _client = PelotonClient(
+                name=config["name"],
+                enable_apiserver=use_apiserver,
+                api_url=config["apiserver_url"],
+                jm_url=config["jobmgr_url"],
+                rm_url=config["resmgr_url"],
+                hm_url=config["hostmgr_url"],
+            )
+            return _client
+
+        if os.getenv("ELECTION_ZK_SERVERS", ""):
+            zk_servers = os.getenv("ELECTION_ZK_SERVERS").split(":")[0]
+        elif cluster in config["cluster_zk_servers"]:
+            zk_servers = config["cluster_zk_servers"][cluster]
+        else:
+            raise Exception("Unsupported cluster %s" % cluster)
+
+        _client = PelotonClient(
+            name=config["name"],
+            enable_apiserver=use_apiserver,
+            zk_servers=zk_servers,
+        )
         return _client
 
 

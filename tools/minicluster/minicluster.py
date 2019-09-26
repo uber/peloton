@@ -24,7 +24,6 @@ APISERVER = 7
 MOCK_CQOS = 8
 
 
-cli = Client(base_url="unix://var/run/docker.sock")
 work_dir = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -49,6 +48,9 @@ class Minicluster(object):
                           namespace=self._namespace)
         self._create_peloton_ports()
         self._create_mesos_ports()
+
+        global default_cluster
+        default_cluster = self
 
         # Defines the order in which the apps are started
         # NB: HOST_MANAGER is tied to database migrations so should
@@ -185,6 +187,18 @@ class Minicluster(object):
         self._teardown_zk()
         print_utils.okgreen("teardown complete!")
 
+    def set_mesos_agent_exclusive(self, index, exclusive_label_value):
+        self.teardown_mesos_agent(index, is_exclusive=False)
+        port = self.mesos_agent_ports[index]
+        self.setup_mesos_agent(
+            index, port, is_exclusive=True,
+            exclusive_label_value=exclusive_label_value)
+
+    def set_mesos_agent_nonexclusive(self, index):
+        self.teardown_mesos_agent(index, is_exclusive=True)
+        port = self.mesos_agent_ports[index]
+        self.setup_mesos_agent(index, port)
+
     def setup_mesos_agent(self, index, local_port, is_exclusive=False,
                           exclusive_label_value=''):
         config = self.config
@@ -311,11 +325,6 @@ class Minicluster(object):
         raise Exception("zk failed to come up in time")
 
     def _teardown_zk(self):
-        if self._peloton_client is not None:
-            try:
-                self._peloton_client.discovery.stop()
-            except Exception as e:
-                print_utils.fail("failed to stop discovery: {}".format(e))
         self.cli.remove_existing_container(self.config["zk_container"])
 
     def _setup_cassandra(self):
@@ -349,7 +358,6 @@ class Minicluster(object):
 
     def _teardown_cassandra(self):
         self.cli.remove_existing_container(self.config["cassandra_container"])
-        print_utils.okgreen("teardown complete!")
 
     def _setup_mesos_master(self):
         config = self.config
@@ -720,9 +728,16 @@ class Minicluster(object):
 
         name = self.config.get("name", "standard-minicluster")
         zk_servers = "localhost:{}".format(self.config["local_zk_port"])
+        use_apiserver = os.getenv("USE_APISERVER") == 'True'
+        grpc = "grpc://localhost:{}"
         self._peloton_client = client.PelotonClientWrapper(
             name=name,
             zk_servers=zk_servers,
+            enable_apiserver=use_apiserver,
+            api_url=grpc.format(self.apiserver_ports[0][1]),
+            jm_url=grpc.format(self.jobmgr_ports[0][1]),
+            rm_url=grpc.format(self.resmgr_ports[0][1]),
+            hm_url=grpc.format(self.hostmgr_ports[0][1]),
         )
         return self._peloton_client
 
@@ -741,13 +756,14 @@ class Minicluster(object):
                 if resp.status_code != 200:
                     time.sleep(1)
                     continue
+                print_utils.okgreen("mesos master is ready")
                 return
             except Exception:
                 pass
 
         assert False, "timed out waiting for mesos master leader"
 
-    def wait_for_all_agents_to_register(self, timeout_secs=300):
+    def wait_for_all_agents_to_register(self, agent_count=3, timeout_secs=300):
         """
         util method to wait for all agents to register
         """
@@ -765,8 +781,12 @@ class Minicluster(object):
                         if a['active']:
                             registered_agents += 1
 
-                    if registered_agents == 3:
+                    if registered_agents == agent_count:
+                        print_utils.okgreen("all mesos agents are ready")
                         return
                 time.sleep(1)
             except Exception:
                 pass
+
+
+default_cluster = Minicluster(utils.default_config())

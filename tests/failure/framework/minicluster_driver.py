@@ -3,7 +3,7 @@ import logging
 
 import components
 import driver_base
-from tools.minicluster import minicluster, client
+from tools.minicluster import client
 
 log = logging.getLogger(__name__)
 
@@ -23,7 +23,8 @@ class MiniClusterDriver(driver_base.ClusterDriverABC):
     # ignored because the container was already started/stopped
     ERROR_NOT_MODIFIED = 304
 
-    def __init__(self):
+    def __init__(self, docker_client):
+        self.docker_client = docker_client
         self.component_name_map = {
             components.MesosMaster().name: "peloton-mesos-master",
             components.MesosAgent().name: "peloton-mesos-agent",
@@ -45,7 +46,7 @@ class MiniClusterDriver(driver_base.ClusterDriverABC):
 
     def find(self, component_name, running_only=True):
         cont_name = self._resolve_component_name(component_name)
-        containers = minicluster.cli.containers(all=not running_only)
+        containers = self.docker_client.containers(all=not running_only)
         ids = {}
         for c in containers:
             for n in c["Names"]:
@@ -55,23 +56,23 @@ class MiniClusterDriver(driver_base.ClusterDriverABC):
 
     def start(self, cid):
         try:
-            minicluster.cli.start(cid)
+            self.docker_client.start(cid)
         except docker_errors.APIError as e:
             if e.response.status_code != self.ERROR_NOT_MODIFIED:
                 raise
 
     def stop(self, cid):
         try:
-            minicluster.cli.stop(cid)
+            self.docker_client.stop(cid)
         except docker_errors.APIError as e:
             if e.response.status_code != self.ERROR_NOT_MODIFIED:
                 raise
 
     def execute(self, cid, *cmd_and_args):
-        ex = minicluster.cli.exec_create(
+        ex = self.docker_client.exec_create(
             cid, " ".join(cmd_and_args), stdout=True, stderr=True
         )
-        minicluster.cli.exec_start(ex, tty=True)
+        self.docker_client.exec_start(ex, tty=True)
 
     def match_zk_info(self, cid, cinfo, zk_node_info):
         return cinfo == "/" + zk_node_info["hostname"]

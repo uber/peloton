@@ -15,26 +15,13 @@ master or apps can be specified to run in containers as well.
 
 from argparse import ArgumentParser
 from argparse import RawDescriptionHelpFormatter
-import os
-import yaml
 
 import minicluster
 import print_utils
+import utils
 
 __date__ = "2016-12-08"
 __author__ = "wu"
-
-
-#
-# Load configs from file
-#
-def load_config(config='config.yaml', dir=""):
-    config_file = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)) + dir, config
-    )
-    with open(config_file, "r") as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
-    return config
 
 
 def parse_arguments():
@@ -178,7 +165,7 @@ def customize_config(config, num_peloton_instance):
 
 def main():
     args = parse_arguments()
-    config = load_config()
+    config = utils.default_config()
     config = customize_config(config, args.num_peloton_instance)
 
     command = args.command

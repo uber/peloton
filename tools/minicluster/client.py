@@ -2,6 +2,7 @@ import json
 import logging
 
 from peloton_client.client import PelotonClient
+import print_utils
 
 log = logging.getLogger(__name__)
 
@@ -43,3 +44,12 @@ class PelotonClientWrapper(PelotonClient):
             except Exception as e:
                 log.warn("Failed to patch leader data: %s", e)
         return data
+
+    def stop_discovery(self):
+        try:
+            print_utils.warn("stopping service discovery")
+            self.discovery.stop()
+        except Exception as e:
+            print_utils.fail("failed to stop discovery: {}".format(e))
+
+        print_utils.okgreen("stopped service discovery")

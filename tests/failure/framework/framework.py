@@ -4,6 +4,7 @@ import os
 import re
 
 from minicluster_driver import MiniClusterDriver
+import tools.minicluster as minicluster
 from vcluster_driver import VClusterDriver
 
 log = logging.getLogger(__name__)
@@ -42,7 +43,8 @@ class FailureFramework(object):
         kind = os.environ.get("DRIVER", "minicluster")
         kind = kwargs.get("driver", kind)
         if kind == "minicluster":
-            self.driver = MiniClusterDriver()
+            docker_client = minicluster.docker_client.default_client
+            self.driver = MiniClusterDriver(docker_client)
         elif kind == "vcluster":
             self.driver = VClusterDriver()
         else:

@@ -1,20 +1,31 @@
 #!/usr/bin/env python
 
-from docker import Client
 import os
 import requests
 from socket import socket
 import time
+import yaml
 
 import print_utils
 
 HTTP_LOCALHOST = "http://localhost"
 
-cli = Client(base_url="unix://var/run/docker.sock")
 max_retry_attempts = 100
 default_host = "localhost"
 healthcheck_path = "/health"
 sleep_time_secs = 1
+
+
+#
+# Load configs from file
+#
+def default_config(config='config.yaml', dir=""):
+    config_file = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)) + dir, config
+    )
+    with open(config_file, "r") as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
+    return config
 
 
 #
