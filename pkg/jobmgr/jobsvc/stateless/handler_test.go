@@ -157,8 +157,13 @@ func (suite *statelessHandlerTestSuite) SetupTest() {
 		respoolClient:      suite.respoolClient,
 		rootCtx:            context.Background(),
 		jobSvcCfg: jobsvc.Config{
-			EnableSecrets:  true,
-			MaxTasksPerJob: 100000,
+			EnableSecrets:                true,
+			MaxTasksPerJob:               100000,
+			MedInstanceCount:             500,
+			HighInstanceCount:            1000,
+			LowGetWorkflowEventsWorkers:  25,
+			MedGetWorkflowEventsWorkers:  50,
+			HighGetWorkflowEventsWorkers: 100,
 		},
 		activeRMTasks: suite.activeRMTasks,
 	}

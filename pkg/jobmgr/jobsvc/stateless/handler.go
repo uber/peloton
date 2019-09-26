@@ -89,11 +89,6 @@ var (
 	errNonLeafResourcePool  = yarpcerrors.InvalidArgumentErrorf("cannot submit jobs to a non leaf resource pool")
 )
 
-const (
-	// Represents number of goroutine workers to fetch instance workflow events
-	_defaultInstanceWorkflowEventsWorker = 25
-)
-
 // InitV1AlphaJobServiceHandler initializes the Job Manager V1Alpha Service Handler
 func InitV1AlphaJobServiceHandler(
 	d *yarpc.Dispatcher,
@@ -1585,11 +1580,18 @@ func (h *serviceHandler) getInstanceWorkflowEvents(
 		inputs = append(inputs, i)
 	}
 
+	workers := h.jobSvcCfg.LowGetWorkflowEventsWorkers
+	if len(inputs) >= h.jobSvcCfg.HighInstanceCount {
+		workers = h.jobSvcCfg.HighGetWorkflowEventsWorkers
+	} else if len(inputs) >= h.jobSvcCfg.MedInstanceCount {
+		workers = h.jobSvcCfg.MedGetWorkflowEventsWorkers
+	}
+
 	outputs, err := concurrency.Map(
 		ctx,
 		concurrency.MapperFunc(f),
 		inputs,
-		_defaultInstanceWorkflowEventsWorker)
+		workers)
 	if err != nil {
 		return nil, err
 	}
