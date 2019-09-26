@@ -513,6 +513,9 @@ message TerminationStatus {
 
      // Task was killed for restart
      TERMINATION_STATUS_REASON_KILLED_FOR_RESTART = 7;
+
+     // Task was killed for sla aware restart
+     TERMINATION_STATUS_REASON_KILLED_FOR_SLA_AWARE_RESTART = 8;
    }
 
   // Reason for termination.

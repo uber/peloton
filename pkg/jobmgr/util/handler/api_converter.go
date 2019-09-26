@@ -1433,6 +1433,8 @@ func convertTaskTerminationStatusToPodTerminationStatus(
 		podReason = pod.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_UPDATE
 	case task.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_RESTART:
 		podReason = pod.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_RESTART
+	case task.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_SLA_AWARE_RESTART:
+		podReason = pod.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_SLA_AWARE_RESTART
 	}
 	return &pod.TerminationStatus{
 		Reason:   podReason,

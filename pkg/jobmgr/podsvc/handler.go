@@ -386,7 +386,17 @@ func (h *serviceHandler) RestartPod(
 	runtimeDiff[instanceID] = jobmgrcommon.RuntimeDiff{
 		jobmgrcommon.DesiredMesosTaskIDField: newPodID,
 	}
-	_, instancesToRetry, err := cachedJob.PatchTasks(ctx, runtimeDiff, false)
+
+	if req.GetCheckSla() {
+		runtimeDiff[instanceID][jobmgrcommon.TerminationStatusField] =
+			pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_SLA_AWARE_RESTART
+	} else {
+		runtimeDiff[instanceID][jobmgrcommon.TerminationStatusField] =
+			pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_RESTART
+
+	}
+
+	instancesSucceeded, instancesToRetry, err := cachedJob.PatchTasks(ctx, runtimeDiff, false)
 
 	// We should enqueue the tasks even if PatchTasks fail,
 	// because some tasks may get updated successfully in db.
@@ -399,6 +409,11 @@ func (h *serviceHandler) RestartPod(
 
 	if err == nil && len(instancesToRetry) != 0 {
 		return nil, _errPodNotInCache
+	}
+
+	// the restart would violate SLA
+	if req.GetCheckSla() && len(instancesSucceeded) == 0 {
+		return nil, yarpcerrors.AbortedErrorf("pod restart would violate SLA")
 	}
 
 	return &svc.RestartPodResponse{}, err

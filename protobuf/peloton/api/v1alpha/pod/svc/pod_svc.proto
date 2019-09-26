@@ -36,11 +36,16 @@ message StopPodResponse {}
 message RestartPodRequest {
   // The pod name.
   peloton.PodName pod_name = 1;
+  // When set to true, restart would fail with error,
+  // if it is going to violate job SLA
+  bool check_sla = 2;
 }
 
 // Response message for PodService.RestartPod method
 // Return errors:
 //   NOT_FOUND:   if the pod is not found.
+//   ABORTED: if check_sla is set to true,
+//            and the pod restart would violate job SLA
 message RestartPodResponse {}
 
 // Request message for PodService.GetPod method

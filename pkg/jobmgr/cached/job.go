@@ -1636,7 +1636,8 @@ func (j *job) filterRuntimeDiffsBySLA(
 			switch reason {
 			// If restart/kill is due to host-maintenance,
 			// skip doing so if SLA is violated
-			case pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_HOST_MAINTENANCE:
+			case pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_HOST_MAINTENANCE,
+				pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_SLA_AWARE_RESTART:
 				if j.config.GetSLA().GetMaximumUnavailableInstances() != 0 {
 					// if SLA is defined (and MaximumUnavailableInstances
 					// is non zero), check for SLA violation

@@ -1671,14 +1671,15 @@ func (suite *apiConverterTestSuite) TestConvertTaskInfosToPodInfos() {
 // reason enums are converted correctly from v0 to v1alpha.
 func (suite *apiConverterTestSuite) TestConvertTerminationStatusReason() {
 	expmap := map[task.TerminationStatus_Reason]pod.TerminationStatus_Reason{
-		task.TerminationStatus_TERMINATION_STATUS_REASON_INVALID:                   pod.TerminationStatus_TERMINATION_STATUS_REASON_INVALID,
-		task.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST:         pod.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST,
-		task.TerminationStatus_TERMINATION_STATUS_REASON_FAILED:                    pod.TerminationStatus_TERMINATION_STATUS_REASON_FAILED,
-		task.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_HOST_MAINTENANCE:   pod.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_HOST_MAINTENANCE,
-		task.TerminationStatus_TERMINATION_STATUS_REASON_PREEMPTED_RESOURCES:       pod.TerminationStatus_TERMINATION_STATUS_REASON_PREEMPTED_RESOURCES,
-		task.TerminationStatus_TERMINATION_STATUS_REASON_DEADLINE_TIMEOUT_EXCEEDED: pod.TerminationStatus_TERMINATION_STATUS_REASON_DEADLINE_TIMEOUT_EXCEEDED,
-		task.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_RESTART:        pod.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_RESTART,
-		task.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_UPDATE:         pod.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_UPDATE,
+		task.TerminationStatus_TERMINATION_STATUS_REASON_INVALID:                      pod.TerminationStatus_TERMINATION_STATUS_REASON_INVALID,
+		task.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST:            pod.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_ON_REQUEST,
+		task.TerminationStatus_TERMINATION_STATUS_REASON_FAILED:                       pod.TerminationStatus_TERMINATION_STATUS_REASON_FAILED,
+		task.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_HOST_MAINTENANCE:      pod.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_HOST_MAINTENANCE,
+		task.TerminationStatus_TERMINATION_STATUS_REASON_PREEMPTED_RESOURCES:          pod.TerminationStatus_TERMINATION_STATUS_REASON_PREEMPTED_RESOURCES,
+		task.TerminationStatus_TERMINATION_STATUS_REASON_DEADLINE_TIMEOUT_EXCEEDED:    pod.TerminationStatus_TERMINATION_STATUS_REASON_DEADLINE_TIMEOUT_EXCEEDED,
+		task.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_RESTART:           pod.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_RESTART,
+		task.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_UPDATE:            pod.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_UPDATE,
+		task.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_SLA_AWARE_RESTART: pod.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_SLA_AWARE_RESTART,
 	}
 	// ensure that we have a test-case for every legal value of v0 reason
 	suite.Equal(len(task.TerminationStatus_Reason_name), len(expmap))

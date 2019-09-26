@@ -1106,6 +1106,7 @@ func (suite *podHandlerTestSuite) TestRestartPodSuccess() {
 	runtimeDiff[uint32(testInstanceID)] = jobmgrcommon.RuntimeDiff{
 		jobmgrcommon.DesiredMesosTaskIDField: util.CreateMesosTaskID(
 			jobID, uint32(testInstanceID), uint64(testRunID)+1),
+		jobmgrcommon.TerminationStatusField: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_RESTART,
 	}
 
 	suite.cachedJob.EXPECT().
@@ -1140,6 +1141,58 @@ func (suite *podHandlerTestSuite) TestRestartPodSuccess() {
 	response, err := suite.handler.RestartPod(context.Background(), request)
 	suite.NoError(err)
 	suite.NotNil(response)
+}
+
+// TestRestartPodViolatingSLA tests the case of restarting pod
+// in SLA aware pattern that would violate SLA
+func (suite *podHandlerTestSuite) TestRestartPodViolatingSLA() {
+	jobID := &peloton.JobID{Value: testJobID}
+	mesosTaskID := testPodID
+	taskRuntimeInfo := &pbtask.RuntimeInfo{
+		MesosTaskId: &mesos.TaskID{
+			Value: &mesosTaskID,
+		},
+	}
+	runtimeDiff := make(map[uint32]jobmgrcommon.RuntimeDiff)
+	runtimeDiff[uint32(testInstanceID)] = jobmgrcommon.RuntimeDiff{
+		jobmgrcommon.DesiredMesosTaskIDField: util.CreateMesosTaskID(
+			jobID, uint32(testInstanceID), uint64(testRunID)+1),
+		jobmgrcommon.TerminationStatusField: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_SLA_AWARE_RESTART,
+	}
+
+	suite.cachedJob.EXPECT().
+		ID().
+		Return(jobID).
+		AnyTimes()
+
+	gomock.InOrder(
+		suite.candidate.EXPECT().
+			IsLeader().
+			Return(true),
+
+		suite.jobFactory.EXPECT().
+			AddJob(&peloton.JobID{Value: testJobID}).
+			Return(suite.cachedJob),
+
+		suite.podStore.EXPECT().
+			GetTaskRuntime(gomock.Any(), jobID, uint32(testInstanceID)).
+			Return(taskRuntimeInfo, nil),
+
+		suite.cachedJob.EXPECT().
+			PatchTasks(gomock.Any(), runtimeDiff, false).
+			Return(nil, nil, nil),
+
+		suite.goalStateDriver.EXPECT().
+			EnqueueTask(jobID, uint32(testInstanceID), gomock.Any()),
+	)
+
+	request := &svc.RestartPodRequest{
+		PodName:  &v1alphapeloton.PodName{Value: testPodName},
+		CheckSla: true,
+	}
+	response, err := suite.handler.RestartPod(context.Background(), request)
+	suite.Error(err)
+	suite.Nil(response)
 }
 
 // TestRestartPodNonLeader tests calling restart pod
@@ -1224,6 +1277,7 @@ func (suite *podHandlerTestSuite) TestRestartPodPatchTasksFailure() {
 	runtimeDiff[uint32(testInstanceID)] = jobmgrcommon.RuntimeDiff{
 		jobmgrcommon.DesiredMesosTaskIDField: util.CreateMesosTaskID(
 			jobID, uint32(testInstanceID), 1),
+		jobmgrcommon.TerminationStatusField: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_RESTART,
 	}
 
 	suite.cachedJob.EXPECT().
