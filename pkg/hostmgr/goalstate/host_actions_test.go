@@ -26,6 +26,7 @@ import (
 
 	"github.com/uber/peloton/pkg/common/goalstate"
 	goalstatemocks "github.com/uber/peloton/pkg/common/goalstate/mocks"
+	"github.com/uber/peloton/pkg/hostmgr/common"
 	hpoolmocks "github.com/uber/peloton/pkg/hostmgr/hostpool/manager/mocks"
 	mpb_mocks "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
 	orm_mocks "github.com/uber/peloton/pkg/storage/objects/mocks"
@@ -100,12 +101,26 @@ func (suite *actionTestSuite) TestHostRequeue() {
 
 // TestHostDrain tests HostDrain
 func (suite *actionTestSuite) TestHostDrain() {
+	hostInfo := &pbhost.HostInfo{
+		Hostname:  suite.hostname,
+		Ip:        suite.IP,
+		State:     pbhost.HostState_HOST_STATE_UP,
+		GoalState: pbhost.HostState_HOST_STATE_DOWN,
+	}
+
+	hostInfoDiff := common.HostInfoDiff{
+		common.StateField: pbhost.HostState_HOST_STATE_DRAINING,
+	}
+
+	compareFields := map[string]interface{}{
+		common.StateField:     hostInfo.GetState(),
+		common.GoalStateField: hostInfo.GetGoalState(),
+	}
+
 	suite.mockHostInfoOps.EXPECT().
 		Get(gomock.Any(), gomock.Any()).
-		Return(&pbhost.HostInfo{
-			Hostname: suite.hostname,
-			Ip:       suite.IP,
-		}, nil)
+		Return(hostInfo, nil).
+		Times(3)
 	suite.mockMasterOperatorClient.EXPECT().
 		GetMaintenanceSchedule().
 		Return(&mesos_master.Response_GetMaintenanceSchedule{
@@ -115,8 +130,23 @@ func (suite *actionTestSuite) TestHostDrain() {
 		UpdateMaintenanceSchedule(gomock.Any()).
 		Return(nil)
 	suite.mockHostInfoOps.EXPECT().
-		UpdateState(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil)
+		CompareAndSet(gomock.Any(), hostInfo.GetHostname(), gomock.Any(), gomock.Any()).
+		Do(func(
+			_ context.Context,
+			_ string,
+			diff common.HostInfoDiff,
+			compare map[string]interface{},
+		) {
+			suite.Len(diff, len(hostInfoDiff))
+			for k, v := range diff {
+				suite.Equal(hostInfoDiff[k], v)
+			}
+
+			suite.Len(compare, len(compareFields))
+			for k, v := range compare {
+				suite.Equal(compareFields[k], v)
+			}
+		}).Return(nil)
 
 	suite.NoError(HostDrain(suite.ctx, suite.hostEntity))
 }
@@ -126,7 +156,8 @@ func (suite *actionTestSuite) TestHostDrainFailureDBRead() {
 	// Failure to read from DB
 	suite.mockHostInfoOps.EXPECT().
 		Get(gomock.Any(), gomock.Any()).
-		Return(nil, errors.New("some error"))
+		Return(nil, errors.New("some error")).
+		Times(3)
 
 	suite.Error(HostDrain(suite.ctx, suite.hostEntity))
 }
@@ -138,7 +169,8 @@ func (suite *actionTestSuite) TestHostDrainFailureWithMesosMaster() {
 		Return(&pbhost.HostInfo{
 			Hostname: suite.hostname,
 			Ip:       suite.IP,
-		}, nil)
+		}, nil).
+		Times(3)
 	suite.mockMasterOperatorClient.EXPECT().
 		GetMaintenanceSchedule().
 		Return(&mesos_master.Response_GetMaintenanceSchedule{
@@ -158,7 +190,8 @@ func (suite *actionTestSuite) TestHostDrainFailureDBWrite() {
 		Return(&pbhost.HostInfo{
 			Hostname: suite.hostname,
 			Ip:       suite.IP,
-		}, nil)
+		}, nil).
+		Times(3)
 	suite.mockMasterOperatorClient.EXPECT().
 		GetMaintenanceSchedule().
 		Return(&mesos_master.Response_GetMaintenanceSchedule{
@@ -168,7 +201,7 @@ func (suite *actionTestSuite) TestHostDrainFailureDBWrite() {
 		UpdateMaintenanceSchedule(gomock.Any()).
 		Return(nil)
 	suite.mockHostInfoOps.EXPECT().
-		UpdateState(gomock.Any(), gomock.Any(), gomock.Any()).
+		CompareAndSet(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(errors.New("some error"))
 
 	suite.Error(HostDrain(suite.ctx, suite.hostEntity))
@@ -176,6 +209,22 @@ func (suite *actionTestSuite) TestHostDrainFailureDBWrite() {
 
 // TestHostDown tests HostDown
 func (suite *actionTestSuite) TestHostDown() {
+	hostInfo := &pbhost.HostInfo{
+		Hostname:  suite.hostname,
+		Ip:        suite.IP,
+		State:     pbhost.HostState_HOST_STATE_DRAINED,
+		GoalState: pbhost.HostState_HOST_STATE_DOWN,
+	}
+
+	hostInfoDiff := common.HostInfoDiff{
+		common.StateField: pbhost.HostState_HOST_STATE_DOWN,
+	}
+
+	compareFields := map[string]interface{}{
+		common.StateField:     hostInfo.GetState(),
+		common.GoalStateField: hostInfo.GetGoalState(),
+	}
+
 	// Host is part of the draining machines in the cluster status
 	clusterStatusAsDraining := &mesos_maintenance.ClusterStatus{
 		DrainingMachines: []*mesos_maintenance.ClusterStatus_DrainingMachine{
@@ -189,6 +238,11 @@ func (suite *actionTestSuite) TestHostDown() {
 		DownMachines: []*mesos.MachineID{},
 	}
 
+	suite.mockHostInfoOps.EXPECT().
+		Get(gomock.Any(), gomock.Any()).
+		Return(hostInfo, nil).
+		Times(3)
+
 	suite.mockMasterOperatorClient.EXPECT().
 		GetMaintenanceStatus().
 		Return(&mesos_master.Response_GetMaintenanceStatus{
@@ -199,14 +253,23 @@ func (suite *actionTestSuite) TestHostDown() {
 		Return(nil)
 
 	suite.mockHostInfoOps.EXPECT().
-		Get(gomock.Any(), gomock.Any()).
-		Return(&pbhost.HostInfo{
-			Hostname: suite.hostname,
-			Ip:       suite.IP,
-		}, nil)
-	suite.mockHostInfoOps.EXPECT().
-		UpdateState(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil)
+		CompareAndSet(gomock.Any(), hostInfo.GetHostname(), gomock.Any(), gomock.Any()).
+		Do(func(
+			_ context.Context,
+			_ string,
+			diff common.HostInfoDiff,
+			compare map[string]interface{},
+		) {
+			suite.Len(diff, len(hostInfoDiff))
+			for k, v := range diff {
+				suite.Equal(hostInfoDiff[k], v)
+			}
+
+			suite.Len(compare, len(compareFields))
+			for k, v := range compare {
+				suite.Equal(compareFields[k], v)
+			}
+		}).Return(nil)
 
 	suite.mockHostEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any())
@@ -218,7 +281,8 @@ func (suite *actionTestSuite) TestHostDown() {
 func (suite *actionTestSuite) TestHostDownFailureDBRead() {
 	suite.mockHostInfoOps.EXPECT().
 		Get(gomock.Any(), gomock.Any()).
-		Return(nil, errors.New("some error"))
+		Return(nil, errors.New("some error")).
+		Times(3)
 
 	suite.Error(HostDown(suite.ctx, suite.hostEntity))
 }
@@ -230,7 +294,8 @@ func (suite *actionTestSuite) TestHostDownFailureMesosMasterRead() {
 		Return(&pbhost.HostInfo{
 			Hostname: suite.hostname,
 			Ip:       suite.IP,
-		}, nil)
+		}, nil).
+		Times(3)
 	suite.mockMasterOperatorClient.EXPECT().
 		GetMaintenanceStatus().
 		Return(nil, errors.New("some error"))
@@ -258,7 +323,8 @@ func (suite *actionTestSuite) TestHostDownFailureDBWrite() {
 		Return(&pbhost.HostInfo{
 			Hostname: suite.hostname,
 			Ip:       suite.IP,
-		}, nil)
+		}, nil).
+		Times(3)
 	suite.mockMasterOperatorClient.EXPECT().
 		GetMaintenanceStatus().
 		Return(&mesos_master.Response_GetMaintenanceStatus{
@@ -268,7 +334,7 @@ func (suite *actionTestSuite) TestHostDownFailureDBWrite() {
 		StartMaintenance(gomock.Any()).
 		Return(nil)
 	suite.mockHostInfoOps.EXPECT().
-		UpdateState(gomock.Any(), gomock.Any(), gomock.Any()).
+		CompareAndSet(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(errors.New("some error"))
 
 	suite.Error(HostDown(suite.ctx, suite.hostEntity))
@@ -276,21 +342,51 @@ func (suite *actionTestSuite) TestHostDownFailureDBWrite() {
 
 // TestHostUp tests HostUp
 func (suite *actionTestSuite) TestHostUp() {
+	hostInfo := &pbhost.HostInfo{
+		Hostname:  suite.hostname,
+		Ip:        suite.IP,
+		State:     pbhost.HostState_HOST_STATE_DOWN,
+		GoalState: pbhost.HostState_HOST_STATE_UP,
+	}
+
+	hostInfoDiff := common.HostInfoDiff{
+		common.StateField: pbhost.HostState_HOST_STATE_UP,
+	}
+
+	compareFields := map[string]interface{}{
+		common.StateField:     hostInfo.GetState(),
+		common.GoalStateField: hostInfo.GetGoalState(),
+	}
+
 	suite.mockHostInfoOps.EXPECT().
 		Get(gomock.Any(), gomock.Any()).
-		Return(&pbhost.HostInfo{
-			Hostname: suite.hostname,
-			Ip:       suite.IP,
-		}, nil)
+		Return(hostInfo, nil).
+		Times(3)
 	suite.mockMasterOperatorClient.EXPECT().
 		StopMaintenance(gomock.Any()).
 		Return(nil)
 	suite.mockHostInfoOps.EXPECT().
-		UpdateState(
+		CompareAndSet(
 			gomock.Any(),
 			suite.hostname,
-			pbhost.HostState_HOST_STATE_UP,
-		).Return(nil)
+			gomock.Any(),
+			gomock.Any(),
+		).Do(func(
+		_ context.Context,
+		_ string,
+		diff common.HostInfoDiff,
+		compare map[string]interface{},
+	) {
+		suite.Len(diff, len(hostInfoDiff))
+		for k, v := range diff {
+			suite.Equal(hostInfoDiff[k], v)
+		}
+
+		suite.Len(compare, len(compareFields))
+		for k, v := range compare {
+			suite.Equal(compareFields[k], v)
+		}
+	}).Return(nil)
 	suite.mockHostEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any())
 
@@ -301,7 +397,8 @@ func (suite *actionTestSuite) TestHostUp() {
 func (suite *actionTestSuite) TestHostUpFailureDBRead() {
 	suite.mockHostInfoOps.EXPECT().
 		Get(gomock.Any(), gomock.Any()).
-		Return(nil, errors.New("some error"))
+		Return(nil, errors.New("some error")).
+		Times(3)
 
 	suite.Error(HostUp(suite.ctx, suite.hostEntity))
 }
@@ -313,7 +410,8 @@ func (suite *actionTestSuite) TestHostUpFailureMesosMasterRead() {
 		Return(&pbhost.HostInfo{
 			Hostname: suite.hostname,
 			Ip:       suite.IP,
-		}, nil)
+		}, nil).
+		Times(3)
 	suite.mockMasterOperatorClient.EXPECT().
 		StopMaintenance(gomock.Any()).
 		Return(errors.New("some error"))
@@ -329,12 +427,13 @@ func (suite *actionTestSuite) TestHostUpFailureDBWrite() {
 		Return(&pbhost.HostInfo{
 			Hostname: suite.hostname,
 			Ip:       suite.IP,
-		}, nil)
+		}, nil).
+		Times(3)
 	suite.mockMasterOperatorClient.EXPECT().
 		StopMaintenance(gomock.Any()).
 		Return(nil)
 	suite.mockHostInfoOps.EXPECT().
-		UpdateState(gomock.Any(), suite.hostname, pbhost.HostState_HOST_STATE_UP).
+		CompareAndSet(gomock.Any(), suite.hostname, gomock.Any(), gomock.Any()).
 		Return(errors.New("test error"))
 
 	suite.Error(HostUp(suite.ctx, suite.hostEntity))
@@ -343,11 +442,55 @@ func (suite *actionTestSuite) TestHostUpFailureDBWrite() {
 // TestHostTriggerMaintenanceAction will test the TriggerMaintainance Action
 // In the host actions. It will mock DB call with update goal state
 func (suite *actionTestSuite) TestHostTriggerMaintenanceAction() {
+	hostInfo := &pbhost.HostInfo{
+		Hostname:    suite.hostname,
+		Ip:          suite.IP,
+		State:       pbhost.HostState_HOST_STATE_UP,
+		GoalState:   pbhost.HostState_HOST_STATE_UP,
+		CurrentPool: "pool1",
+		DesiredPool: "pool2",
+	}
+
+	hostInfoDiff := common.HostInfoDiff{
+		common.GoalStateField: pbhost.HostState_HOST_STATE_DOWN,
+	}
+
+	compareFields := map[string]interface{}{
+		common.StateField:       hostInfo.GetState(),
+		common.GoalStateField:   hostInfo.GetGoalState(),
+		common.CurrentPoolField: hostInfo.GetCurrentPool(),
+		common.DesiredPoolField: hostInfo.GetDesiredPool(),
+	}
+
 	suite.mockHostInfoOps.EXPECT().
-		UpdateGoalState(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil)
+		Get(gomock.Any(), gomock.Any()).
+		Return(hostInfo, nil).
+		Times(2)
+	suite.mockHostInfoOps.EXPECT().
+		CompareAndSet(
+			gomock.Any(),
+			hostInfo.GetHostname(),
+			gomock.Any(),
+			gomock.Any(),
+		).Do(func(
+		_ context.Context,
+		_ string,
+		diff common.HostInfoDiff,
+		compare map[string]interface{},
+	) {
+		suite.Len(diff, len(hostInfoDiff))
+		for k, v := range diff {
+			suite.Equal(hostInfoDiff[k], v)
+		}
+
+		suite.Len(compare, len(compareFields))
+		for k, v := range compare {
+			suite.Equal(compareFields[k], v)
+		}
+	}).Return(nil)
 	suite.mockHostEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any())
+
 	suite.NoError(HostTriggerMaintenance(suite.ctx, suite.hostEntity))
 }
 
@@ -355,7 +498,14 @@ func (suite *actionTestSuite) TestHostTriggerMaintenanceAction() {
 // error in TriggerMaintainance Action
 func (suite *actionTestSuite) TestHostTriggerMaintenanceActionError() {
 	suite.mockHostInfoOps.EXPECT().
-		UpdateGoalState(gomock.Any(), gomock.Any(), gomock.Any()).
+		Get(gomock.Any(), gomock.Any()).
+		Return(&pbhost.HostInfo{
+			Hostname: suite.hostname,
+			Ip:       suite.IP,
+		}, nil).
+		Times(2)
+	suite.mockHostInfoOps.EXPECT().
+		CompareAndSet(gomock.Any(), suite.hostname, gomock.Any(), gomock.Any()).
 		Return(errors.New("error"))
 	suite.Error(HostTriggerMaintenance(suite.ctx, suite.hostEntity))
 }
@@ -367,50 +517,99 @@ func (suite *actionTestSuite) TestHostChangePool() {
 	hostInfo := &pbhost.HostInfo{
 		Hostname:    suite.hostname,
 		Ip:          suite.IP,
+		State:       pbhost.HostState_HOST_STATE_DOWN,
+		GoalState:   pbhost.HostState_HOST_STATE_DOWN,
 		DesiredPool: "p1",
 		CurrentPool: "p2",
 	}
 
+	hostInfoDiff := common.HostInfoDiff{
+		common.GoalStateField: pbhost.HostState_HOST_STATE_UP,
+	}
+
+	compareFields := map[string]interface{}{
+		common.StateField:       hostInfo.GetState(),
+		common.GoalStateField:   hostInfo.GetGoalState(),
+		common.CurrentPoolField: hostInfo.GetCurrentPool(),
+		common.DesiredPoolField: hostInfo.GetDesiredPool(),
+	}
+
 	suite.mockHostInfoOps.EXPECT().
 		Get(gomock.Any(), gomock.Any()).
-		Return(hostInfo, nil)
+		Return(hostInfo, nil).
+		Times(2)
 
 	suite.mockHostPoolmgr.EXPECT().ChangeHostPool(hostInfo.Hostname,
 		hostInfo.CurrentPool, hostInfo.DesiredPool).Return(nil)
 	suite.mockHostInfoOps.EXPECT().
-		UpdateGoalState(gomock.Any(), suite.hostname, pbhost.HostState_HOST_STATE_UP).
-		Return(nil)
+		CompareAndSet(
+			gomock.Any(),
+			hostInfo.GetHostname(),
+			gomock.Any(),
+			gomock.Any(),
+		).Do(func(
+		_ context.Context,
+		_ string,
+		diff common.HostInfoDiff,
+		compare map[string]interface{},
+	) {
+		suite.Len(diff, len(hostInfoDiff))
+		for k, v := range diff {
+			suite.Equal(hostInfoDiff[k], v)
+		}
+
+		suite.Len(compare, len(compareFields))
+		for k, v := range compare {
+			suite.Equal(compareFields[k], v)
+		}
+	}).Return(nil)
 	suite.mockHostEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any())
 	suite.NoError(HostChangePool(suite.ctx, suite.hostEntity))
 }
 
-// TestHostChangePoolError will test the ChangePool Action
-// error conditions
-func (suite *actionTestSuite) TestHostChangePoolError() {
+// TestHostChangePoolHostPoolManagerError tests the failure case of
+// ChangePool Action due to error while setting current pool to desired pool
+func (suite *actionTestSuite) TestHostChangePoolHostPoolManagerError() {
 	hostInfo := &pbhost.HostInfo{
 		Hostname:    suite.hostname,
 		Ip:          suite.IP,
+		State:       pbhost.HostState_HOST_STATE_DOWN,
+		GoalState:   pbhost.HostState_HOST_STATE_DOWN,
 		DesiredPool: "p1",
 		CurrentPool: "p2",
 	}
 
 	suite.mockHostInfoOps.EXPECT().
 		Get(gomock.Any(), gomock.Any()).
-		Return(hostInfo, errors.New("error"))
+		Return(hostInfo, nil).
+		Times(2)
+	suite.mockHostPoolmgr.EXPECT().ChangeHostPool(hostInfo.Hostname,
+		hostInfo.CurrentPool, hostInfo.DesiredPool).
+		Return(errors.New("error"))
 	suite.Error(HostChangePool(suite.ctx, suite.hostEntity))
+}
+
+// TestHostChangePoolDBWriteError tests the failure case of
+// ChangePool Action due to error while writing to DB
+func (suite *actionTestSuite) TestHostChangePoolDBWriteError() {
+	hostInfo := &pbhost.HostInfo{
+		Hostname:    suite.hostname,
+		Ip:          suite.IP,
+		State:       pbhost.HostState_HOST_STATE_DOWN,
+		GoalState:   pbhost.HostState_HOST_STATE_DOWN,
+		DesiredPool: "p1",
+		CurrentPool: "p2",
+	}
 
 	suite.mockHostInfoOps.EXPECT().
 		Get(gomock.Any(), gomock.Any()).
-		Return(hostInfo, nil).Times(2)
-	suite.mockHostPoolmgr.EXPECT().ChangeHostPool(hostInfo.Hostname,
-		hostInfo.CurrentPool, hostInfo.DesiredPool).Return(errors.New("error"))
-	suite.Error(HostChangePool(suite.ctx, suite.hostEntity))
-
+		Return(hostInfo, nil).
+		Times(2)
 	suite.mockHostPoolmgr.EXPECT().ChangeHostPool(hostInfo.Hostname,
 		hostInfo.CurrentPool, hostInfo.DesiredPool).Return(nil)
 	suite.mockHostInfoOps.EXPECT().
-		UpdateGoalState(gomock.Any(), gomock.Any(), gomock.Any()).
+		CompareAndSet(gomock.Any(), hostInfo.GetHostname(), gomock.Any(), gomock.Any()).
 		Return(errors.New("error"))
 
 	suite.Error(HostChangePool(suite.ctx, suite.hostEntity))

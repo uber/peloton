@@ -18,11 +18,13 @@ import (
 	"context"
 	"time"
 
-	log "github.com/sirupsen/logrus"
 	hpb "github.com/uber/peloton/.gen/peloton/api/v0/host"
 
 	"github.com/uber/peloton/pkg/common/goalstate"
+	"github.com/uber/peloton/pkg/hostmgr/common"
 	"github.com/uber/peloton/pkg/hostmgr/host/mesoshelper"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // HostUntrack untracks the host by removing it
@@ -59,6 +61,8 @@ func HostDrain(ctx context.Context, entity goalstate.Entity) error {
 	hostEntity := entity.(*hostEntity)
 	hostname := hostEntity.hostname
 	gsDriver := hostEntity.driver
+	currentState := hostEntity.GetState().(*hostEntityState)
+	desiredState := hostEntity.GetGoalState().(*hostEntityState)
 
 	// Get IP from host record in DB
 	h, err := gsDriver.hostInfoOps.Get(ctx, hostname)
@@ -83,11 +87,22 @@ func HostDrain(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	// Update host state to DRAINING in DB
-	if err := gsDriver.hostInfoOps.UpdateState(
+	hostInfoDiff := common.HostInfoDiff{
+		common.StateField: hpb.HostState_HOST_STATE_DRAINING,
+	}
+
+	compareFields := map[string]interface{}{
+		common.StateField:     currentState.hostState,
+		common.GoalStateField: desiredState.hostState,
+	}
+
+	// Set host state to DRAINING in DB
+	if err := gsDriver.hostInfoOps.CompareAndSet(
 		ctx,
 		hostname,
-		hpb.HostState_HOST_STATE_DRAINING); err != nil {
+		hostInfoDiff,
+		compareFields,
+	); err != nil {
 		return err
 	}
 
@@ -108,6 +123,8 @@ func HostDown(ctx context.Context, entity goalstate.Entity) error {
 	hostEntity := entity.(*hostEntity)
 	hostname := hostEntity.hostname
 	gsDriver := hostEntity.driver
+	currentState := hostEntity.GetState().(*hostEntityState)
+	desiredState := hostEntity.GetGoalState().(*hostEntityState)
 
 	// Get IP from host record in DB
 	h, err := gsDriver.hostInfoOps.Get(ctx, hostname)
@@ -121,11 +138,22 @@ func HostDown(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	// Update host current state to DOWN in DB
-	if err = gsDriver.hostInfoOps.UpdateState(
+	hostInfoDiff := common.HostInfoDiff{
+		common.StateField: hpb.HostState_HOST_STATE_DOWN,
+	}
+
+	compareFields := map[string]interface{}{
+		common.StateField:     currentState.hostState,
+		common.GoalStateField: desiredState.hostState,
+	}
+
+	// Set host current state to DOWN in DB
+	if err = gsDriver.hostInfoOps.CompareAndSet(
 		ctx,
 		hostname,
-		hpb.HostState_HOST_STATE_DOWN); err != nil {
+		hostInfoDiff,
+		compareFields,
+	); err != nil {
 		return err
 	}
 
@@ -146,6 +174,8 @@ func HostUp(ctx context.Context, entity goalstate.Entity) error {
 	hostEntity := entity.(*hostEntity)
 	hostname := hostEntity.hostname
 	gsDriver := hostEntity.driver
+	currentState := hostEntity.GetState().(*hostEntityState)
+	desiredState := hostEntity.GetGoalState().(*hostEntityState)
 
 	// Get IP from host record in DB
 	h, err := gsDriver.hostInfoOps.Get(ctx, hostname)
@@ -163,11 +193,21 @@ func HostUp(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	// Update host state in DB
-	if err := gsDriver.hostInfoOps.UpdateState(
+	hostInfoDiff := common.HostInfoDiff{
+		common.StateField: hpb.HostState_HOST_STATE_UP,
+	}
+
+	compareFields := map[string]interface{}{
+		common.StateField:     currentState.hostState,
+		common.GoalStateField: desiredState.hostState,
+	}
+
+	// Set host state to UP in DB
+	if err := gsDriver.hostInfoOps.CompareAndSet(
 		ctx,
 		hostname,
-		hpb.HostState_HOST_STATE_UP,
+		hostInfoDiff,
+		compareFields,
 	); err != nil {
 		return err
 	}
@@ -188,12 +228,27 @@ func HostTriggerMaintenance(ctx context.Context, entity goalstate.Entity) error 
 	hostEntity := entity.(*hostEntity)
 	hostname := hostEntity.hostname
 	gsDriver := hostEntity.driver
+	currentState := hostEntity.GetState().(*hostEntityState)
+	desiredState := hostEntity.GetGoalState().(*hostEntityState)
 
-	// Update host state to DOWN in DB
-	if err := gsDriver.hostInfoOps.UpdateGoalState(
+	hostInfoDiff := common.HostInfoDiff{
+		common.GoalStateField: hpb.HostState_HOST_STATE_DOWN,
+	}
+
+	compareFields := map[string]interface{}{
+		common.StateField:       currentState.hostState,
+		common.GoalStateField:   desiredState.hostState,
+		common.CurrentPoolField: currentState.hostPool,
+		common.DesiredPoolField: desiredState.hostPool,
+	}
+
+	// Set host goal state to DOWN in DB
+	if err := gsDriver.hostInfoOps.CompareAndSet(
 		ctx,
 		hostname,
-		hpb.HostState_HOST_STATE_DOWN); err != nil {
+		hostInfoDiff,
+		compareFields,
+	); err != nil {
 		return err
 	}
 
@@ -210,25 +265,34 @@ func HostChangePool(ctx context.Context, entity goalstate.Entity) error {
 	hostEntity := entity.(*hostEntity)
 	hostname := hostEntity.hostname
 	gsDriver := hostEntity.driver
-
-	// Get host info from host table in DB
-	h, err := gsDriver.hostInfoOps.Get(ctx, hostname)
-	if err != nil {
-		return err
-	}
+	currentState := hostEntity.GetState().(*hostEntityState)
+	desiredState := hostEntity.GetGoalState().(*hostEntityState)
 
 	// Changing the host pool
 	if err := gsDriver.hostPoolMgr.ChangeHostPool(hostname,
-		h.GetCurrentPool(),
-		h.GetDesiredPool()); err != nil {
+		currentState.hostPool,
+		desiredState.hostPool); err != nil {
 		return err
 	}
 
-	// Update host state to UP
-	if err := gsDriver.hostInfoOps.UpdateGoalState(
+	hostInfoDiff := common.HostInfoDiff{
+		common.GoalStateField: hpb.HostState_HOST_STATE_UP,
+	}
+
+	compareFields := map[string]interface{}{
+		common.StateField:       currentState.hostState,
+		common.GoalStateField:   desiredState.hostState,
+		common.CurrentPoolField: currentState.hostPool,
+		common.DesiredPoolField: desiredState.hostPool,
+	}
+
+	// Set host goal state to UP in DB
+	if err := gsDriver.hostInfoOps.CompareAndSet(
 		ctx,
 		hostname,
-		hpb.HostState_HOST_STATE_UP); err != nil {
+		hostInfoDiff,
+		compareFields,
+	); err != nil {
 		return err
 	}
 
