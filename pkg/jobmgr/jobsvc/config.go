@@ -57,10 +57,10 @@ func (c *Config) normalize() {
 		c.MaxTasksPerJob = _defaultMaxTasksPerJob
 	}
 	if c.MedInstanceCount == 0 {
-		c.MedGetWorkflowEventsWorkers = _defaultMedInstanceCount
+		c.MedInstanceCount = _defaultMedInstanceCount
 	}
 	if c.HighInstanceCount == 0 {
-		c.HighGetWorkflowEventsWorkers = _defaultHighInstanceCount
+		c.HighInstanceCount = _defaultHighInstanceCount
 	}
 	if c.LowGetWorkflowEventsWorkers == 0 {
 		c.LowGetWorkflowEventsWorkers = _defaultLowInstanceWorkflowEventsWorker

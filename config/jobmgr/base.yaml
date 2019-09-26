@@ -36,6 +36,11 @@ job_manager:
     # TODO (adityacb): Adjust this limit once we fix T1689063 and T1689077
     # and have a better data model
     max_tasks_per_job: 100000
+    med_instance_count: 500
+    high_instance_count: 1000
+    low_get_workflow_events_workers: 25
+    med_get_workflow_events_workers: 50
+    high_get_workflow_events_workers: 100
     enable_secrets: false
     thermos_executor:
       path: "/usr/share/aurora/bin/thermos_executor.pex"
