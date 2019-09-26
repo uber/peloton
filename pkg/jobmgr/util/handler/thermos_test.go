@@ -35,6 +35,23 @@ import (
 	"go.uber.org/thriftrw/ptr"
 )
 
+func TestPortSpecByName(t *testing.T) {
+	ports := []*pod.PortSpec{
+		{Name: "b"},
+		{Name: "c"},
+		{Name: "b"},
+		{Name: "a"},
+	}
+
+	sort.Stable(portSpecByName(ports))
+	assert.Equal(t, []*pod.PortSpec{
+		{Name: "a"},
+		{Name: "b"},
+		{Name: "b"},
+		{Name: "c"},
+	}, ports)
+}
+
 func TestRequiresThermosConvert(t *testing.T) {
 	testCases := []struct {
 		name        string

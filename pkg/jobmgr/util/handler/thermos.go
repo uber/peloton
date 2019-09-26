@@ -17,6 +17,7 @@ package handler
 import (
 	"encoding/json"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -45,6 +46,21 @@ const (
 
 	MbInBytes = 1024 * 1024
 )
+
+// portSpecByName sorts a list of port spec by name
+type portSpecByName []*pod.PortSpec
+
+func (p portSpecByName) Len() int {
+	return len(p)
+}
+
+func (p portSpecByName) Swap(i, j int) {
+	p[i], p[j] = p[j], p[i]
+}
+
+func (p portSpecByName) Less(i, j int) bool {
+	return strings.Compare(p[i].GetName(), p[j].GetName()) < 0
+}
 
 // ConvertForThermosExecutor takes JobSpec as an input, generates and attaches
 // thermos executor data if conversion could happen, and returns a mutated
@@ -290,6 +306,10 @@ func collectResources(podSpec *pod.PodSpec) (*pod.ResourceSpec, []*pod.PortSpec)
 	for _, p := range portsMap {
 		resultPorts = append(resultPorts, p)
 	}
+
+	// Make sure the order of the ports are consistent to avoid
+	// unnecessary job restarts.
+	sort.Stable(portSpecByName(resultPorts))
 
 	return resultRes, resultPorts
 }
