@@ -1468,46 +1468,6 @@ func ConvertTaskInfosToPodInfos(taskInfos []*task.TaskInfo) []*pod.PodInfo {
 	return podInfos
 }
 
-// ConvertTaskEventsToPodEvents converts v0 task.PodEvents to v1alpha pod.PodEvents
-func ConvertTaskEventsToPodEvents(taskEvents []*task.PodEvent) []*pod.PodEvent {
-	var result []*pod.PodEvent
-	for _, e := range taskEvents {
-		podID := e.GetTaskId().GetValue()
-		prevPodID := e.GetPrevTaskId().GetValue()
-		desiredPodID := e.GetDesriedTaskId().GetValue()
-		entityVersion := versionutil.GetPodEntityVersion(e.GetConfigVersion())
-
-		desiredEntityVersion := versionutil.GetPodEntityVersion(e.GetDesiredConfigVersion())
-
-		result = append(result, &pod.PodEvent{
-			PodId: &v1alphapeloton.PodID{
-				Value: podID,
-			},
-			ActualState: ConvertTaskStateToPodState(
-				task.TaskState(task.TaskState_value[e.GetActualState()]),
-			).String(),
-			DesiredState: ConvertTaskStateToPodState(
-				task.TaskState(task.TaskState_value[e.GetGoalState()]),
-			).String(),
-			Timestamp:      e.GetTimestamp(),
-			Version:        entityVersion,
-			DesiredVersion: desiredEntityVersion,
-			AgentId:        e.GetAgentID(),
-			Hostname:       e.GetHostname(),
-			Message:        e.GetMessage(),
-			Reason:         e.GetReason(),
-			PrevPodId: &v1alphapeloton.PodID{
-				Value: prevPodID,
-			},
-			Healthy: pod.HealthState(task.HealthState_value[e.GetHealthy()]).String(),
-			DesiredPodId: &v1alphapeloton.PodID{
-				Value: desiredPodID,
-			},
-		})
-	}
-	return result
-}
-
 // ConvertTaskStatsToPodStats converts v0 task stats to v1alpha pod stats
 func ConvertTaskStatsToPodStats(taskStats map[string]uint32) map[string]uint32 {
 	result := make(map[string]uint32)

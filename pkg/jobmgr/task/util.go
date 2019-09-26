@@ -24,6 +24,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/taskconfig"
@@ -65,6 +66,17 @@ func GetDefaultTaskGoalState(jobType job.JobType) task.TaskState {
 
 	default:
 		return task.TaskState_SUCCEEDED
+	}
+}
+
+// GetDefaultPodGoalState from the job type.
+func GetDefaultPodGoalState(jobType job.JobType) pod.PodState {
+	switch jobType {
+	case job.JobType_SERVICE:
+		return pod.PodState_POD_STATE_RUNNING
+
+	default:
+		return pod.PodState_POD_STATE_SUCCEEDED
 	}
 }
 

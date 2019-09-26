@@ -28,7 +28,6 @@ import (
 	"strings"
 	"time"
 
-	mesos_v1 "github.com/uber/peloton/.gen/mesos/v1"
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/query"
@@ -36,9 +35,13 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/update"
 	pb_volume "github.com/uber/peloton/.gen/peloton/api/v0/volume"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/job/stateless"
+	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
+	"github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
 	"github.com/uber/peloton/.gen/peloton/private/models"
+	versionutil "github.com/uber/peloton/pkg/common/util/entityversion"
 
 	"github.com/uber/peloton/pkg/common"
+	apiconvertor "github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/common/backoff"
 	"github.com/uber/peloton/pkg/common/util"
 	"github.com/uber/peloton/pkg/storage"
@@ -869,7 +872,7 @@ func (s *Store) GetPodEvents(
 	ctx context.Context,
 	jobID string,
 	instanceID uint32,
-	podID ...string) ([]*task.PodEvent, error) {
+	podID ...string) ([]*pod.PodEvent, error) {
 	var stmt qb.SelectBuilder
 	queryBuilder := s.DataStore.NewQuery()
 
@@ -907,14 +910,14 @@ func (s *Store) GetPodEvents(
 		return nil, err
 	}
 
-	var podEvents []*task.PodEvent
+	var podEvents []*pod.PodEvent
 	b := bytes.Buffer{}
 	b.WriteString(jobID)
 	b.WriteString("-")
 	b.WriteString(strconv.FormatUint(uint64(instanceID), 10))
 	podName := b.String()
 	for _, value := range allResults {
-		podEvent := &task.PodEvent{}
+		podEvent := &pod.PodEvent{}
 
 		b.Reset()
 		b.WriteString(podName)
@@ -935,26 +938,36 @@ func (s *Store) GetPodEvents(
 		desiredMesosTaskID := b.String()
 
 		// Set podEvent fields
-		podEvent.TaskId = &mesos_v1.TaskID{
-			Value: &mesosTaskID,
+		podEvent.PodId = &v1alphapeloton.PodID{
+			Value: mesosTaskID,
 		}
-		podEvent.PrevTaskId = &mesos_v1.TaskID{
-			Value: &prevMesosTaskID,
+		podEvent.PrevPodId = &v1alphapeloton.PodID{
+			Value: prevMesosTaskID,
 		}
-		podEvent.DesriedTaskId = &mesos_v1.TaskID{
-			Value: &desiredMesosTaskID,
+		podEvent.DesiredPodId = &v1alphapeloton.PodID{
+			Value: desiredMesosTaskID,
 		}
+
 		podEvent.Timestamp =
 			value["update_time"].(qb.UUID).Time().Format(time.RFC3339)
-		podEvent.ConfigVersion = uint64(value["config_version"].(int64))
-		podEvent.DesiredConfigVersion = uint64(value["desired_config_version"].(int64))
-		podEvent.ActualState = value["actual_state"].(string)
-		podEvent.GoalState = value["goal_state"].(string)
+
+		podEvent.Version = versionutil.GetPodEntityVersion(
+			uint64(value["config_version"].(int64)))
+		podEvent.DesiredVersion = versionutil.GetPodEntityVersion(
+			uint64(value["desired_config_version"].(int64)))
+
+		podEvent.ActualState = apiconvertor.ConvertTaskStateToPodState(
+			task.TaskState(task.TaskState_value[value["actual_state"].(string)])).String()
+		podEvent.DesiredState = apiconvertor.ConvertTaskStateToPodState(
+			task.TaskState(task.TaskState_value[value["goal_state"].(string)])).String()
+
+		podEvent.Healthy = pod.HealthState(
+			task.HealthState_value[value["healthy"].(string)]).String()
+
 		podEvent.Message = value["message"].(string)
 		podEvent.Reason = value["reason"].(string)
-		podEvent.AgentID = value["agent_id"].(string)
+		podEvent.AgentId = value["agent_id"].(string)
 		podEvent.Hostname = value["hostname"].(string)
-		podEvent.Healthy = value["healthy"].(string)
 
 		podEvents = append(podEvents, podEvent)
 	}

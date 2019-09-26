@@ -32,7 +32,6 @@ import (
 	hostmocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"github.com/uber/peloton/.gen/peloton/private/models"
 
-	"github.com/uber/peloton/pkg/common/api"
 	leadermocks "github.com/uber/peloton/pkg/common/leader/mocks"
 	"github.com/uber/peloton/pkg/common/util"
 	cachedmocks "github.com/uber/peloton/pkg/jobmgr/cached/mocks"
@@ -1295,17 +1294,23 @@ func (suite *podHandlerTestSuite) TestGetPodSuccess() {
 	}
 	mesosTaskID := testPodID
 	prevMesosTaskID := testPrevPodID
-	events := []*pbtask.PodEvent{
+
+	events := []*pod.PodEvent{
 		{
-			TaskId: &mesos.TaskID{
-				Value: &mesosTaskID,
+			PodId: &v1alphapeloton.PodID{
+				Value: mesosTaskID,
 			},
-			ActualState: "RUNNING",
-			GoalState:   "RUNNING",
-			PrevTaskId: &mesos.TaskID{
-				Value: &prevMesosTaskID,
+			PrevPodId: &v1alphapeloton.PodID{
+				Value: prevMesosTaskID,
 			},
-			ConfigVersion: configVersion,
+			Timestamp:    "2019-01-03T22:14:58Z",
+			Message:      "",
+			ActualState:  pod.PodState_POD_STATE_RUNNING.String(),
+			DesiredState: pod.PodState_POD_STATE_RUNNING.String(),
+			Hostname:     "peloton-host-0",
+			Version: &v1alphapeloton.EntityVersion{
+				Value: "1-0-0",
+			},
 		},
 	}
 
@@ -1467,28 +1472,41 @@ func (suite *podHandlerTestSuite) TestGetPodSuccessLimit() {
 	}
 	mesosTaskID := testPodID
 	prevMesosTaskID := testPrevPodID
-	events := []*pbtask.PodEvent{
+	events := []*pod.PodEvent{
 		{
-			TaskId: &mesos.TaskID{
-				Value: &mesosTaskID,
+			PodId: &v1alphapeloton.PodID{
+				Value: mesosTaskID,
 			},
-			ActualState: "RUNNING",
-			GoalState:   "RUNNING",
-			PrevTaskId: &mesos.TaskID{
-				Value: &prevMesosTaskID,
+			PrevPodId: &v1alphapeloton.PodID{
+				Value: prevMesosTaskID,
 			},
-			ConfigVersion: configVersion,
+			Timestamp:    "2019-01-03T22:14:58Z",
+			Message:      "",
+			ActualState:  pod.PodState_POD_STATE_RUNNING.String(),
+			DesiredState: pod.PodState_POD_STATE_RUNNING.String(),
+			Hostname:     "peloton-host-0",
+			Version: &v1alphapeloton.EntityVersion{
+				Value: "1-0-0",
+			},
 		},
 	}
 
-	prevEvents := []*pbtask.PodEvent{
+	prevEvents := []*pod.PodEvent{
 		{
-			TaskId: &mesos.TaskID{
-				Value: &prevMesosTaskID,
+			PodId: &v1alphapeloton.PodID{
+				Value: mesosTaskID,
 			},
-			ActualState:   "RUNNING",
-			GoalState:     "RUNNING",
-			ConfigVersion: configVersion,
+			PrevPodId: &v1alphapeloton.PodID{
+				Value: prevMesosTaskID,
+			},
+			Timestamp:    "2019-01-03T22:14:58Z",
+			Message:      "",
+			ActualState:  pod.PodState_POD_STATE_RUNNING.String(),
+			DesiredState: pod.PodState_POD_STATE_RUNNING.String(),
+			Hostname:     "peloton-host-0",
+			Version: &v1alphapeloton.EntityVersion{
+				Value: "1-0-0",
+			},
 		},
 	}
 
@@ -1676,17 +1694,16 @@ func (suite *podHandlerTestSuite) TestGetPodEvents() {
 	}
 
 	mesosTaskID := testPodID
-	prevMesosTaskID := "0"
-	events := []*pbtask.PodEvent{
+	events := []*pod.PodEvent{
 		{
-			TaskId: &mesos.TaskID{
-				Value: &mesosTaskID,
+			PodId: &v1alphapeloton.PodID{
+				Value: mesosTaskID,
 			},
-			ActualState: "STARTING",
-			GoalState:   "RUNNING",
-			PrevTaskId: &mesos.TaskID{
-				Value: &prevMesosTaskID,
-			},
+			Timestamp:    "2019-01-03T22:14:58Z",
+			Message:      "",
+			ActualState:  pod.PodState_POD_STATE_RUNNING.String(),
+			DesiredState: pod.PodState_POD_STATE_RUNNING.String(),
+			Hostname:     "peloton-host-0",
 		},
 	}
 
@@ -1695,7 +1712,7 @@ func (suite *podHandlerTestSuite) TestGetPodEvents() {
 		Return(events, nil)
 	response, err := suite.handler.GetPodEvents(context.Background(), request)
 	suite.NoError(err)
-	suite.Equal(api.ConvertTaskEventsToPodEvents(events), response.GetEvents())
+	suite.Equal(events, response.GetEvents())
 }
 
 // TestGetPodEventsPodNameParseError tests PodName parse error
@@ -1744,16 +1761,18 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxSuccess() {
 		},
 	}
 	mesosTaskID := testPodID
-	events := []*pbtask.PodEvent{
+	events := []*pod.PodEvent{
 		{
-			TaskId: &mesos.TaskID{
-				Value: &mesosTaskID,
+			PodId: &v1alphapeloton.PodID{
+				Value: mesosTaskID,
 			},
-			ActualState: pbtask.TaskState_RUNNING.String(),
-			Hostname:    hostname,
-			AgentID:     agentID,
+			ActualState:  pod.PodState_POD_STATE_RUNNING.String(),
+			DesiredState: pod.PodState_POD_STATE_RUNNING.String(),
+			Hostname:     hostname,
+			AgentId:      agentID,
 		},
 	}
+
 	logPaths := []string{}
 
 	gomock.InOrder(
@@ -1850,14 +1869,15 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxGetFrameworkIDFailure() {
 	}
 
 	mesosTaskID := testPodID
-	events := []*pbtask.PodEvent{
+	events := []*pod.PodEvent{
 		{
-			TaskId: &mesos.TaskID{
-				Value: &mesosTaskID,
+			PodId: &v1alphapeloton.PodID{
+				Value: mesosTaskID,
 			},
-			ActualState: pbtask.TaskState_RUNNING.String(),
-			Hostname:    "hostname",
-			AgentID:     "agentID",
+			ActualState:  pod.PodState_POD_STATE_RUNNING.String(),
+			DesiredState: pod.PodState_POD_STATE_RUNNING.String(),
+			Hostname:     "hostname",
+			AgentId:      "agentId",
 		},
 	}
 
@@ -1906,14 +1926,16 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxListSandboxFilesPathsFailu
 	agentID := "agentID"
 	agents := []*mesosmaster.Response_GetAgents_Agent{}
 	mesosTaskID := testPodID
-	events := []*pbtask.PodEvent{
+
+	events := []*pod.PodEvent{
 		{
-			TaskId: &mesos.TaskID{
-				Value: &mesosTaskID,
+			PodId: &v1alphapeloton.PodID{
+				Value: mesosTaskID,
 			},
-			ActualState: pbtask.TaskState_RUNNING.String(),
-			Hostname:    hostname,
-			AgentID:     agentID,
+			ActualState:  pod.PodState_POD_STATE_RUNNING.String(),
+			DesiredState: pod.PodState_POD_STATE_RUNNING.String(),
+			Hostname:     hostname,
+			AgentId:      agentID,
 		},
 	}
 
@@ -1971,14 +1993,16 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxGetMesosMasterHostPortFail
 		},
 	}
 	mesosTaskID := testPodID
-	events := []*pbtask.PodEvent{
+
+	events := []*pod.PodEvent{
 		{
-			TaskId: &mesos.TaskID{
-				Value: &mesosTaskID,
+			PodId: &v1alphapeloton.PodID{
+				Value: mesosTaskID,
 			},
-			ActualState: pbtask.TaskState_RUNNING.String(),
-			Hostname:    hostname,
-			AgentID:     agentID,
+			ActualState:  pod.PodState_POD_STATE_RUNNING.String(),
+			DesiredState: pod.PodState_POD_STATE_RUNNING.String(),
+			Hostname:     hostname,
+			AgentId:      agentID,
 		},
 	}
 	logPaths := []string{}
