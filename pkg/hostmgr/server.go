@@ -297,9 +297,11 @@ func (s *Server) ensureRunning() {
 		log.Errorf("Failed to start mesosManager: %s", err)
 		return
 	}
-	if err := s.hostPoolManager.Start(); err != nil {
-		log.WithError(err).Error("Failed to start hostpool manager")
-		return
+	if s.hostPoolManager != nil {
+		if err := s.hostPoolManager.Start(); err != nil {
+			log.WithError(err).Error("Failed to start hostpool manager")
+			return
+		}
 	}
 
 	if !s.handlersRunning.Load() {
@@ -321,7 +323,9 @@ func (s *Server) ensureStopped() {
 		s.stopHandlers()
 	}
 
-	s.hostPoolManager.Stop()
+	if s.hostPoolManager != nil {
+		s.hostPoolManager.Stop()
+	}
 	s.plugin.Stop()
 	s.mesosManager.Stop()
 	s.hostCache.Stop()
