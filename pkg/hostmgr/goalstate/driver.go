@@ -39,8 +39,10 @@ const (
 type driverState int32
 
 const (
-	notRunning driverState = iota + 1 // not running
-	running                           // running
+	stopped driverState = iota + 1
+	stopping
+	starting
+	started
 )
 
 // Driver is the interface to enqueue hosts into the goal state engine
@@ -120,23 +122,18 @@ func (d *driver) syncHostsFromDB(ctx context.Context) error {
 	return nil
 }
 
-func (d *driver) setState(state driverState) {
-	atomic.StoreInt32(&d.running, int32(state))
-}
-
 // Start the goal state engine
 func (d *driver) Start() {
-	defer func() {
-		atomic.StoreInt32(&d.running, int32(running))
-		log.Info("goalstate driver started")
-	}()
-
-	// Ensure that driver is not already running
 	for {
-		if d.runningState() != int32(running) {
+		state := d.getState()
+		if state == starting || state == started {
+			return
+		}
+
+		// make sure state did not change in-between
+		if d.compareAndSwapState(state, starting) {
 			break
 		}
-		time.Sleep(_sleepRetryCheckRunningState)
 	}
 
 	if err := d.syncHostsFromDB(context.Background()); err != nil {
@@ -147,33 +144,27 @@ func (d *driver) Start() {
 	d.hostEngine.Start()
 	d.Unlock()
 
+	d.setState(started)
 	log.Info("goalstate driver started")
-}
-
-// runningState returns the running state of the driver
-// (1 is not running, 2 if runing and 0 is invalid).
-func (d *driver) runningState() int32 {
-	return atomic.LoadInt32(&d.running)
 }
 
 // Started returns whether the goal state engine is started
 func (d *driver) Started() bool {
-	return driverState(d.runningState()) == running
+	return d.getState() == started
 }
 
 // Stop stops the goal state engine
 func (d *driver) Stop() {
-	defer func() {
-		atomic.StoreInt32(&d.running, int32(notRunning))
-		log.Info("goalstate driver stopped")
-	}()
-
-	// Ensure that driver is running
 	for {
-		if d.runningState() != int32(notRunning) {
+		state := d.getState()
+		if state == stopping || state == stopped {
+			return
+		}
+
+		// make sure state did not change in-between
+		if d.compareAndSwapState(state, stopping) {
 			break
 		}
-		time.Sleep(_sleepRetryCheckRunningState)
 	}
 
 	d.Lock()
@@ -190,6 +181,9 @@ func (d *driver) Stop() {
 	for _, h := range hostInfos {
 		d.DeleteHost(h.GetHostname())
 	}
+
+	d.setState(stopped)
+	log.Info("goalstate driver stopped")
 }
 
 // EnqueueHost is used to enqueue a host into the goal state.
@@ -210,4 +204,23 @@ func (d *driver) DeleteHost(hostname string) {
 	defer d.RUnlock()
 
 	d.hostEngine.Delete(hostEntity)
+}
+
+// getState returns the running state of the driver
+func (d *driver) getState() driverState {
+	return driverState(atomic.LoadInt32(&d.running))
+}
+
+func (d *driver) compareAndSwapState(oldState driverState, newState driverState) bool {
+	return atomic.CompareAndSwapInt32(&d.running, int32(oldState), int32(newState))
+}
+
+func (d *driver) setState(state driverState) {
+	atomic.StoreInt32(&d.running, int32(state))
+}
+
+// runningState returns the running state of the driver
+// (1 is not running, 2 if runing and 0 is invalid).
+func (d *driver) runningState() int32 {
+	return atomic.LoadInt32(&d.running)
 }

@@ -58,7 +58,7 @@ func (suite *driverTestSuite) SetupTest() {
 		cfg:               &Config{},
 	}
 	suite.goalStateDriver.cfg.normalize()
-	suite.goalStateDriver.setState(notRunning)
+	suite.goalStateDriver.setState(stopped)
 }
 
 func (suite *driverTestSuite) TearDownTest() {
@@ -89,6 +89,10 @@ func (suite *driverTestSuite) TestStartStop() {
 	suite.goalStateDriver.Start()
 	suite.True(suite.goalStateDriver.Started())
 
+	//Starting the driver again should be a noop
+	suite.goalStateDriver.Start()
+	suite.True(suite.goalStateDriver.Started())
+
 	// Test Stop
 	// 1 host to delete from goal state engine
 	suite.mockHostInfoOps.EXPECT().
@@ -106,6 +110,10 @@ func (suite *driverTestSuite) TestStartStop() {
 
 	suite.mockHostEngine.EXPECT().Stop()
 
+	suite.goalStateDriver.Stop()
+	suite.False(suite.goalStateDriver.Started())
+
+	// Stopping the driver again should be a noop
 	suite.goalStateDriver.Stop()
 	suite.False(suite.goalStateDriver.Started())
 }

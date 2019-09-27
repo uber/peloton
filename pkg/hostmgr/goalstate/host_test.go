@@ -58,7 +58,7 @@ func (suite *HostTestSuite) SetupTest() {
 		cfg:               &Config{},
 	}
 	suite.goalStateDriver.cfg.normalize()
-	suite.goalStateDriver.setState(notRunning)
+	suite.goalStateDriver.setState(stopped)
 	suite.hostname = "hostname"
 	suite.hostEntity = &hostEntity{
 		hostname: suite.hostname,
