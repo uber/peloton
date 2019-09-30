@@ -199,6 +199,8 @@ func (h *hostEntity) GetActionList(
 	state,
 	goalState interface{},
 ) (context.Context, context.CancelFunc, []goalstate.Action) {
+	var actions []goalstate.Action
+
 	// Retrieve action based on goal state and current state
 	hostState := state.(*hostEntityState)
 	hostGoalState := goalState.(*hostEntityState)
@@ -206,26 +208,26 @@ func (h *hostEntity) GetActionList(
 	if hostState.hostPool != hostGoalState.hostPool {
 		_actionRules = _hostRulesDifferentPool
 	}
+
 	if tr, ok := _actionRules[hostGoalState.hostState]; ok {
 		if a, ok := tr[hostState.hostState]; ok {
 			action := goalstate.Action{
 				Name:    string(a),
 				Execute: _hostActionsMap[a],
 			}
+
 			log.WithFields(log.Fields{
 				"hostname":     h.hostname,
 				"state":        hostState.hostState.String(),
 				"pool":         hostState.hostPool,
 				"goal_state":   hostGoalState.hostState.String(),
 				"desired_pool": hostGoalState.hostPool,
+				"action":       action.Name,
 			}).Info("running host action")
-			return context.Background(), nil, []goalstate.Action{action}
+
+			actions = append(actions, action)
 		}
 	}
-	// If no matching action found, use by default the noop action
-	action := goalstate.Action{
-		Name:    string(NoAction),
-		Execute: _hostActionsMap[NoAction],
-	}
-	return context.Background(), nil, []goalstate.Action{action}
+
+	return context.Background(), nil, actions
 }

@@ -360,6 +360,32 @@ func (suite *HostTestSuite) TestGetActionList() {
 		RequeueAction,
 		actions[0].Name,
 	)
+
+	// Validate UP -> UNKNOWN
+	_, _, actions = suite.hostEntity.GetActionList(
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_UP,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_UNKNOWN,
+			hostPool:  "p1",
+		},
+	)
+	suite.Len(actions, 0)
+
+	// Validate DOWN -> UNKNOWN
+	_, _, actions = suite.hostEntity.GetActionList(
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DOWN,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_UNKNOWN,
+			hostPool:  "p1",
+		},
+	)
+	suite.Len(actions, 0)
 }
 
 func (suite *HostTestSuite) TestGetActionListDifferentPool() {
@@ -603,4 +629,30 @@ func (suite *HostTestSuite) TestGetActionListDifferentPool() {
 		ChangePoolAction,
 		actions[0].Name,
 	)
+
+	// Validate UP -> UNKNOWN
+	_, _, actions = suite.hostEntity.GetActionList(
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_UP,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_UNKNOWN,
+			hostPool:  "p2",
+		},
+	)
+	suite.Len(actions, 0)
+
+	// Validate DOWN -> UNKNOWN
+	_, _, actions = suite.hostEntity.GetActionList(
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_DOWN,
+			hostPool:  "p1",
+		},
+		&hostEntityState{
+			hostState: pbhost.HostState_HOST_STATE_UNKNOWN,
+			hostPool:  "p2",
+		},
+	)
+	suite.Len(actions, 0)
 }
