@@ -1106,7 +1106,9 @@ func (suite *podHandlerTestSuite) TestRestartPodSuccess() {
 	runtimeDiff[uint32(testInstanceID)] = jobmgrcommon.RuntimeDiff{
 		jobmgrcommon.DesiredMesosTaskIDField: util.CreateMesosTaskID(
 			jobID, uint32(testInstanceID), uint64(testRunID)+1),
-		jobmgrcommon.TerminationStatusField: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_RESTART,
+		jobmgrcommon.TerminationStatusField: &pbtask.TerminationStatus{
+			Reason: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_RESTART,
+		},
 	}
 
 	suite.cachedJob.EXPECT().
@@ -1157,7 +1159,9 @@ func (suite *podHandlerTestSuite) TestRestartPodViolatingSLA() {
 	runtimeDiff[uint32(testInstanceID)] = jobmgrcommon.RuntimeDiff{
 		jobmgrcommon.DesiredMesosTaskIDField: util.CreateMesosTaskID(
 			jobID, uint32(testInstanceID), uint64(testRunID)+1),
-		jobmgrcommon.TerminationStatusField: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_SLA_AWARE_RESTART,
+		jobmgrcommon.TerminationStatusField: &pbtask.TerminationStatus{
+			Reason: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_SLA_AWARE_RESTART,
+		},
 	}
 
 	suite.cachedJob.EXPECT().
@@ -1277,7 +1281,9 @@ func (suite *podHandlerTestSuite) TestRestartPodPatchTasksFailure() {
 	runtimeDiff[uint32(testInstanceID)] = jobmgrcommon.RuntimeDiff{
 		jobmgrcommon.DesiredMesosTaskIDField: util.CreateMesosTaskID(
 			jobID, uint32(testInstanceID), 1),
-		jobmgrcommon.TerminationStatusField: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_RESTART,
+		jobmgrcommon.TerminationStatusField: &pbtask.TerminationStatus{
+			Reason: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_RESTART,
+		},
 	}
 
 	suite.cachedJob.EXPECT().

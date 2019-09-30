@@ -388,12 +388,13 @@ func (h *serviceHandler) RestartPod(
 	}
 
 	if req.GetCheckSla() {
-		runtimeDiff[instanceID][jobmgrcommon.TerminationStatusField] =
-			pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_SLA_AWARE_RESTART
+		runtimeDiff[instanceID][jobmgrcommon.TerminationStatusField] = &pbtask.TerminationStatus{
+			Reason: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_SLA_AWARE_RESTART,
+		}
 	} else {
-		runtimeDiff[instanceID][jobmgrcommon.TerminationStatusField] =
-			pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_RESTART
-
+		runtimeDiff[instanceID][jobmgrcommon.TerminationStatusField] = &pbtask.TerminationStatus{
+			Reason: pbtask.TerminationStatus_TERMINATION_STATUS_REASON_KILLED_FOR_RESTART,
+		}
 	}
 
 	instancesSucceeded, instancesToRetry, err := cachedJob.PatchTasks(ctx, runtimeDiff, false)
