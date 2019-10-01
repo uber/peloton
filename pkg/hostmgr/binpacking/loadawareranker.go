@@ -136,10 +136,12 @@ func (l *loadAwareRanker) getRankedHostList(
 			continue
 		}
 		for _, perHostLoad := range loadHostMap[i] {
-			hsummary := offerIndex[perHostLoad.HostName]
-			summaryList = append(summaryList, hsummary)
-			delete(offerIndexCopy, perHostLoad.HostName)
-			hostLoadOrderedList = append(hostLoadOrderedList, perHostLoad)
+			// ignore hosts returned in cqos while not in offerindex
+			if hsummary, ok := offerIndex[perHostLoad.HostName]; ok {
+				summaryList = append(summaryList, hsummary)
+				delete(offerIndexCopy, perHostLoad.HostName)
+				hostLoadOrderedList = append(hostLoadOrderedList, perHostLoad)
+			}
 		}
 	}
 

@@ -116,6 +116,42 @@ func (suite *LoadAwareRankerTestSuite) TestGetRankedHostListCqosNoHost() {
 		"hostname5")
 }
 
+// TestHostExistCqosNotOfferIndex tests cQos return Load value for
+// hostname5 but hostname5 is not present in offerIndex
+// hostname5 will be ignored
+func (suite *LoadAwareRankerTestSuite) TestHostExistCqosNotOfferIndex() {
+	suite.mockedCQosClient.EXPECT().
+		GetHostMetrics(
+			gomock.Any(),
+			gomock.Any()).Return(
+		&cqos.GetHostMetricsResponse{
+			Hosts: map[string]*cqos.Metrics{
+				"hostname0": {Score: 0},
+				"hostname1": {Score: 10},
+				"hostname2": {Score: 80},
+				"hostname3": {Score: 20},
+				"hostname4": {Score: 100},
+				"hostname5": {Score: 10},
+			}}, nil)
+	// Cqos provides 6 hosts from hostname0 to hostname5
+	// offer index only provided 5 hosts from hostname0 to hostname4
+	sortedList := suite.loadAwareRanker.GetRankedHostList(
+		suite.ctx,
+		suite.offerIndex,
+	)
+	suite.Equal(len(sortedList), 5)
+	suite.Equal(sortedList[0].(summary.HostSummary).GetHostname(),
+		"hostname0")
+	suite.Equal(sortedList[1].(summary.HostSummary).GetHostname(),
+		"hostname1")
+	suite.Equal(sortedList[2].(summary.HostSummary).GetHostname(),
+		"hostname3")
+	suite.Equal(sortedList[3].(summary.HostSummary).GetHostname(),
+		"hostname2")
+	suite.Equal(sortedList[4].(summary.HostSummary).GetHostname(),
+		"hostname4")
+}
+
 // TestGetCachedRankedHostListCqosDown tests verify if Cqos advisor is down
 // we will use the sortedhostsummarylist from cache
 func (suite *LoadAwareRankerTestSuite) TestGetCachedRankedHostListCqosDown() {

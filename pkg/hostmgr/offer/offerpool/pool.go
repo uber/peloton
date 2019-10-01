@@ -309,9 +309,12 @@ func (p *offerPool) ClaimForPlace(
 	}
 
 	for _, s := range sortedSummaryList {
-		matcher.tryMatch(s.(summary.HostSummary))
-		if matcher.HasEnoughHosts() {
-			break
+		// if case the ordered list contains nil val
+		if s != nil {
+			matcher.tryMatch(s.(summary.HostSummary))
+			if matcher.HasEnoughHosts() {
+				break
+			}
 		}
 	}
 
