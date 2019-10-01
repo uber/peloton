@@ -30,20 +30,22 @@ import (
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"github.com/uber/peloton/pkg/common"
+	"github.com/uber/peloton/pkg/common/api"
 	"github.com/uber/peloton/pkg/common/constraints"
 	"github.com/uber/peloton/pkg/common/util"
 	yarpcutil "github.com/uber/peloton/pkg/common/util/yarpc"
 	"github.com/uber/peloton/pkg/hostmgr/config"
-	"github.com/uber/peloton/pkg/hostmgr/factory/task"
 	"github.com/uber/peloton/pkg/hostmgr/goalstate"
 	"github.com/uber/peloton/pkg/hostmgr/host"
 	"github.com/uber/peloton/pkg/hostmgr/hostpool/manager"
 	hostmgr_mesos "github.com/uber/peloton/pkg/hostmgr/mesos"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
 	"github.com/uber/peloton/pkg/hostmgr/metrics"
+	"github.com/uber/peloton/pkg/hostmgr/models"
 	"github.com/uber/peloton/pkg/hostmgr/offer"
 	"github.com/uber/peloton/pkg/hostmgr/offer/offerpool"
 	"github.com/uber/peloton/pkg/hostmgr/p2k/hostcache"
+	"github.com/uber/peloton/pkg/hostmgr/p2k/plugins"
 	"github.com/uber/peloton/pkg/hostmgr/reserver"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
 	"github.com/uber/peloton/pkg/hostmgr/summary"
@@ -98,6 +100,7 @@ type ServiceHandler struct {
 	goalStateDriver       goalstate.Driver
 	hostInfoOps           ormobjects.HostInfoOps // DB ops for host_info table
 	hostCache             hostcache.HostCache
+	plugin                plugins.Plugin
 }
 
 // NewServiceHandler creates a new ServiceHandler.
@@ -116,6 +119,7 @@ func NewServiceHandler(
 	goalStateDriver goalstate.Driver,
 	hostInfoOps ormobjects.HostInfoOps,
 	hostCache hostcache.HostCache,
+	plugin plugins.Plugin,
 ) *ServiceHandler {
 
 	handler := &ServiceHandler{
@@ -132,6 +136,7 @@ func NewServiceHandler(
 		goalStateDriver:       goalStateDriver,
 		hostInfoOps:           hostInfoOps,
 		hostCache:             hostCache,
+		plugin:                plugin,
 	}
 	// Creating Reserver object for handler
 	handler.reserver = reserver.NewReserver(
@@ -753,7 +758,7 @@ func (h *ServiceHandler) LaunchTasks(
 		}
 	}
 
-	offers, err := h.offerPool.ClaimForLaunch(
+	_, err = h.offerPool.ClaimForLaunch(
 		req.GetHostname(),
 		req.GetId().GetValue(),
 		req.GetTasks(),
@@ -761,10 +766,9 @@ func (h *ServiceHandler) LaunchTasks(
 	)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"hostname":        req.GetHostname(),
-			"host_offer_id":   req.GetId(),
-			"mesos_agent_id":  req.GetAgentId(),
-			"offer_resources": scalar.FromOfferMap(offers),
+			"hostname":       req.GetHostname(),
+			"host_offer_id":  req.GetId(),
+			"mesos_agent_id": req.GetAgentId(),
 		}).WithError(err).Error("claim for launch failed")
 		h.metrics.LaunchTasksInvalidOffers.Inc(1)
 
@@ -781,114 +785,32 @@ func (h *ServiceHandler) LaunchTasks(
 	// was part of ClaimForLaunch
 	h.hostCache.AddPodsToHost(req.GetTasks(), req.GetHostname())
 
-	var offerIds []*mesos.OfferID
-	var mesosResources []*mesos.Resource
-	for _, o := range offers {
-		offerIds = append(offerIds, o.GetId())
-		mesosResources = append(mesosResources, o.GetResources()...)
-	}
-
-	// TODO: Use `offers` so we can support reservation, port picking, etc.
-	log.WithField("offers", offers).Debug("Offers found for launch")
-
-	var mesosTasks []*mesos.TaskInfo
-	var mesosTaskIds []string
-
-	builder := task.NewBuilder(mesosResources)
-	for _, t := range req.GetTasks() {
-		mesosTask, err := builder.Build(t)
+	var launchablePods []*models.LaunchablePod
+	for _, task := range req.GetTasks() {
+		jobID, instanceID, err := util.ParseJobAndInstanceID(task.GetTaskId().GetValue())
 		if err != nil {
-			log.WithFields(log.Fields{
-				"tasks_total":    len(req.GetTasks()),
-				"task_id":        t.GetTaskId().GetValue(),
-				"host_resources": scalar.FromOfferMap(offers),
-				"hostname":       req.GetHostname(),
-				"host_offer_id":  req.GetId().GetValue(),
-			}).WithError(err).Warn("fail to get correct mesos taskinfo")
-			h.metrics.LaunchTasksInvalid.Inc(1)
-
-			// For now, decline all offers to Mesos in the hope that next
-			// call to pool will select some different host.
-			// An alternative is to mark offers on the host as ready.
-			if derr := h.offerPool.DeclineOffers(ctx, offerIds); derr != nil {
-				log.WithError(err).WithFields(log.Fields{
-					"offers":   offerIds,
-					"hostname": req.GetHostname(),
-				}).Warn("cannot decline offers task building error")
-			}
-
-			if err == task.ErrNotEnoughResource {
-				return &hostsvc.LaunchTasksResponse{
-					Error: &hostsvc.LaunchTasksResponse_Error{
-						InvalidOffers: &hostsvc.InvalidOffers{
-							Message: "not enough resource to run task: " + err.Error(),
-						},
-					},
-				}, errors.Wrap(err, "not enough resource to run task")
-			}
-
-			return &hostsvc.LaunchTasksResponse{
-				Error: &hostsvc.LaunchTasksResponse_Error{
-					InvalidArgument: &hostsvc.InvalidArgument{
-						Message: "cannot get Mesos task info: " + err.Error(),
-						InvalidTasks: []*hostsvc.LaunchableTask{
-							t,
-						},
-					},
-				},
-			}, errors.New("cannot get mesos task info")
+			log.WithFields(
+				log.Fields{
+					"mesos_id": task.GetTaskId().GetValue(),
+				}).WithError(err).
+				Error("fail to parse ID when constructing launchable pods in LaunchTask")
+			continue
 		}
 
-		mesosTask.AgentId = req.GetAgentId()
-		mesosTasks = append(mesosTasks, mesosTask)
-		mesosTaskIds = append(mesosTaskIds, mesosTask.GetTaskId().GetValue())
+		launchablePods = append(launchablePods, &models.LaunchablePod{
+			PodId: util.CreatePodIDFromMesosTaskID(task.GetTaskId()),
+			Spec:  api.ConvertTaskConfigToPodSpec(task.GetConfig(), jobID, instanceID),
+			Ports: task.Ports,
+		})
 	}
 
-	callType := sched.Call_ACCEPT
-	opType := mesos.Offer_Operation_LAUNCH
-	msg := &sched.Call{
-		FrameworkId: h.frameworkInfoProvider.GetFrameworkID(ctx),
-		Type:        &callType,
-		Accept: &sched.Call_Accept{
-			OfferIds: offerIds,
-			Operations: []*mesos.Offer_Operation{
-				{
-					Type: &opType,
-					Launch: &mesos.Offer_Operation_Launch{
-						TaskInfos: mesosTasks,
-					},
-				},
-			},
-		},
-	}
-
-	// TODO: add retry / put back offer and tasks in failure scenarios
-	msid := h.frameworkInfoProvider.GetMesosStreamID(ctx)
-	err = h.schedulerClient.Call(msid, msg)
+	launchedPods, err := h.plugin.LaunchPods(ctx, launchablePods, req.GetHostname())
 	if err != nil {
-		h.metrics.LaunchTasksFail.Inc(int64(len(mesosTasks)))
+		h.metrics.LaunchTasksFail.Inc(int64(len(req.GetTasks())))
 		log.WithFields(log.Fields{
-			"tasks":         mesosTasks,
-			"offers":        offerIds,
 			"error":         err,
 			"host_offer_id": req.GetId().GetValue(),
 		}).Warn("Tasks launch failure")
-
-		// Decline offers upon launch failure in a best effort manner,
-		// because peloton no longer holds the offers in host summary.
-		// If launch does not go through, mesos would send new offers with the
-		// resources.
-		// If launch does go through, this call should not affect launched task.
-		// It is still a best effort way to clean offers up, peloton still
-		// rely on offer expiration to clean up the offers left behind.
-		h.metrics.DeclineOffers.Inc(1)
-		if derr := h.offerPool.DeclineOffers(ctx, offerIds); derr != nil {
-			h.metrics.DeclineOffersFail.Inc(1)
-			log.WithError(err).WithFields(log.Fields{
-				"offers":   offerIds,
-				"hostname": req.GetHostname(),
-			}).Warn("cannot decline offers task upon launch error")
-		}
 
 		return &hostsvc.LaunchTasksResponse{
 			Error: &hostsvc.LaunchTasksResponse_Error{
@@ -899,21 +821,15 @@ func (h *ServiceHandler) LaunchTasks(
 		}, errors.Wrap(err, "task launch failed")
 	}
 
-	h.metrics.LaunchTasks.Inc(int64(len(mesosTasks)))
+	h.metrics.LaunchTasks.Inc(int64(len(launchedPods)))
 
 	var taskIDs []string
-	for _, task := range mesosTasks {
-		taskIDs = append(taskIDs, task.GetTaskId().GetValue())
-	}
-
-	var offerIDs []string
-	for _, offer := range offerIds {
-		offerIDs = append(offerIDs, offer.GetValue())
+	for _, pod := range launchedPods {
+		taskIDs = append(taskIDs, pod.PodId.GetValue())
 	}
 
 	log.WithFields(log.Fields{
 		"task_ids":      taskIDs,
-		"offer_ids":     offerIDs,
 		"hostname":      req.GetHostname(),
 		"host_offer_id": req.GetId().GetValue(),
 	}).Info("LaunchTasks")
@@ -1170,47 +1086,17 @@ func (h *ServiceHandler) killTasks(
 		return nil, &hostsvc.KillFailure{Message: "Kill tasks request is disabled"}
 	}
 
-	var wg sync.WaitGroup
-	failedMutex := &sync.Mutex{}
 	var failedTaskIds []*mesos.TaskID
 	var errs []string
 	for _, taskID := range taskIds {
-		wg.Add(1)
-
-		go func(taskID *mesos.TaskID) {
-			defer wg.Done()
-
-			callType := sched.Call_KILL
-			msg := &sched.Call{
-				FrameworkId: h.frameworkInfoProvider.GetFrameworkID(ctx),
-				Type:        &callType,
-				Kill: &sched.Call_Kill{
-					TaskId: taskID,
-				},
-			}
-
-			msid := h.frameworkInfoProvider.GetMesosStreamID(ctx)
-			err := h.schedulerClient.Call(msid, msg)
-			if err != nil {
-				h.metrics.KillTasksFail.Inc(1)
-				log.WithFields(log.Fields{
-					"task_id": taskID,
-					"error":   err,
-				}).Error("Kill task failure")
-
-				failedMutex.Lock()
-				defer failedMutex.Unlock()
-				failedTaskIds = append(failedTaskIds, taskID)
-				errs = append(errs, err.Error())
-				return
-			}
-
+		if err := h.plugin.KillPod(ctx, taskID.GetValue()); err != nil {
+			errs = append(errs, err.Error())
+			failedTaskIds = append(failedTaskIds, taskID)
+			h.metrics.KillTasksFail.Inc(1)
+		} else {
 			h.metrics.KillTasks.Inc(1)
-			log.WithField("task", taskID).Info("Task kill request sent")
-		}(taskID)
+		}
 	}
-
-	wg.Wait()
 
 	if len(failedTaskIds) > 0 {
 		return nil, &hostsvc.KillFailure{

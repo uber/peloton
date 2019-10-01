@@ -28,9 +28,6 @@ type Metrics struct {
 	LaunchTasksInvalid       tally.Counter
 	LaunchTasksInvalidOffers tally.Counter
 
-	DeclineOffers     tally.Counter
-	DeclineOffersFail tally.Counter
-
 	AcquireHostOffers        tally.Counter
 	AcquireHostOffersFail    tally.Counter
 	AcquireHostOffersInvalid tally.Counter
@@ -93,9 +90,6 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		LaunchTasksFail:          scope.Counter("launch_tasks_fail"),
 		LaunchTasksInvalid:       scope.Counter("launch_tasks_invalid"),
 		LaunchTasksInvalidOffers: scope.Counter("launch_tasks_invalid_offers"),
-
-		DeclineOffers:     scope.Counter("decline_offers"),
-		DeclineOffersFail: scope.Counter("decline_offers_fail"),
 
 		AcquireHostOffers:        scope.Counter("acquire_host_offers"),
 		AcquireHostOffersFail:    scope.Counter("acquire_host_offers_fail"),

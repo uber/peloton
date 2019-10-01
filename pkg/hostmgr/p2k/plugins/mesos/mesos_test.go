@@ -599,17 +599,34 @@ func (suite *MesosManagerTestSuite) TestMesosManagerStatusUpdatesWithoutAgentIDM
 // TestNewMesosManagerStartProcessingAgentInfo tests that startProcessAgentInfo can
 // process agent info sent via agentCh correctly
 func (suite *MesosManagerTestSuite) TestNewMesosManagerStartProcessingAgentInfo() {
+	cpuName := "cpus"
+
 	hostname1 := "hostname1"
 	agentID1 := uuid.New()
+	cpu1 := 4.0
+
 	hostname2 := "hostname2"
 	agentID2 := uuid.New()
+	cpu2 := 8.0
 
 	suite.mesosManager.lf.Start()
 
 	agentCh := make(chan []*mesosmaster.Response_GetAgents_Agent, 2)
 	agentCh <- []*mesosmaster.Response_GetAgents_Agent{
-		{AgentInfo: &mesos.AgentInfo{Hostname: &hostname1, Id: &mesos.AgentID{Value: &agentID1}}},
-		{AgentInfo: &mesos.AgentInfo{Hostname: &hostname2, Id: &mesos.AgentID{Value: &agentID2}}},
+		{
+			AgentInfo: &mesos.AgentInfo{
+				Hostname: &hostname1,
+				Id:       &mesos.AgentID{Value: &agentID1},
+			},
+			TotalResources: []*mesos.Resource{{
+				Name:   &cpuName,
+				Scalar: &mesos.Value_Scalar{Value: &cpu1},
+			}},
+		},
+		{
+			AgentInfo:      &mesos.AgentInfo{Hostname: &hostname2, Id: &mesos.AgentID{Value: &agentID2}},
+			TotalResources: []*mesos.Resource{{Name: &cpuName, Scalar: &mesos.Value_Scalar{Value: &cpu2}}},
+		},
 	}
 	suite.mesosManager.startProcessAgentInfo(agentCh)
 
@@ -622,6 +639,11 @@ func (suite *MesosManagerTestSuite) TestNewMesosManagerStartProcessingAgentInfo(
 	hs2, ok := suite.mesosManager.agentIDToHostname.Load(agentID2)
 	suite.True(ok)
 	suite.Equal(hostname2, hs2)
+
+	he1 := <-suite.hostEventCh
+	suite.Equal(he1.GetHostInfo().GetCapacity().NonSlack.CPU, cpu1)
+	he2 := <-suite.hostEventCh
+	suite.Equal(he2.GetHostInfo().GetCapacity().NonSlack.CPU, cpu2)
 }
 
 func newTestPelotonPodSpec(podName string) *pbpod.PodSpec {

@@ -31,6 +31,7 @@ import (
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
 	halphapb "github.com/uber/peloton/.gen/peloton/api/v1alpha/host"
+	v1alphapeloton "github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	pb_eventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
 	"github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	hostsvcmocks "github.com/uber/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
@@ -47,8 +48,10 @@ import (
 	hostmgr_mesos_mocks "github.com/uber/peloton/pkg/hostmgr/mesos/mocks"
 	mpb_mocks "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/metrics"
+	"github.com/uber/peloton/pkg/hostmgr/models"
 	"github.com/uber/peloton/pkg/hostmgr/offer/offerpool"
 	hostcache_mocks "github.com/uber/peloton/pkg/hostmgr/p2k/hostcache/mocks"
+	plugins_mocks "github.com/uber/peloton/pkg/hostmgr/p2k/plugins/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/reserver"
 	reserver_mocks "github.com/uber/peloton/pkg/hostmgr/reserver/mocks"
 	"github.com/uber/peloton/pkg/hostmgr/scalar"
@@ -214,6 +217,7 @@ type HostMgrHandlerTestSuite struct {
 	hostCache              *hostcache_mocks.MockHostCache
 	mockHostInfoOps        *orm_mocks.MockHostInfoOps
 	mockGoalStateDriver    *goalstate_mocks.MockDriver
+	mockPlugin             *plugins_mocks.MockPlugin
 }
 
 func (suite *HostMgrHandlerTestSuite) SetupSuite() {
@@ -239,6 +243,7 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 	suite.hostCache = hostcache_mocks.NewMockHostCache(suite.ctrl)
 	suite.mockHostInfoOps = orm_mocks.NewMockHostInfoOps(suite.ctrl)
 	suite.mockGoalStateDriver = goalstate_mocks.NewMockDriver(suite.ctrl)
+	suite.mockPlugin = plugins_mocks.NewMockPlugin(suite.ctrl)
 
 	mockValidValue := new(string)
 	*mockValidValue = _frameworkID
@@ -274,6 +279,7 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 		goalStateDriver:       suite.mockGoalStateDriver,
 		hostInfoOps:           suite.mockHostInfoOps,
 		hostCache:             suite.hostCache,
+		plugin:                suite.mockPlugin,
 		slackResourceTypes:    slacResourceTypes,
 	}
 	suite.handler.reserver = reserver.NewReserver(
@@ -788,40 +794,13 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 			gomock.Any(),
 			gomock.Any()).
 			Return(),
-		// Set expectations on provider
-		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
-			suite.frameworkID),
-		// Set expectations on provider
-		suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(_streamID),
-		// Set expectations on scheduler schedulerClient
-		suite.schedulerClient.EXPECT().
-			Call(
-				gomock.Eq(_streamID),
-				gomock.Any(),
-			).
-			Do(func(_ string, msg proto.Message) {
-				// Verify clientCall message.
-				call := msg.(*sched.Call)
-				suite.Equal(sched.Call_ACCEPT, call.GetType())
-				suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
-
-				accept := call.GetAccept()
-				suite.NotNil(accept)
-				suite.Equal(1, len(accept.GetOfferIds()))
-				suite.Equal("offer-0", accept.GetOfferIds()[0].GetValue())
-				suite.Equal(1, len(accept.GetOperations()))
-				operation := accept.GetOperations()[0]
-				suite.Equal(
-					mesos.Offer_Operation_LAUNCH,
-					operation.GetType())
-				launch := operation.GetLaunch()
-				suite.NotNil(launch)
-				suite.Equal(1, len(launch.GetTaskInfos()))
-				suite.Equal(
-					fmt.Sprintf(_taskIDFmt, 0),
-					launch.GetTaskInfos()[0].GetTaskId().GetValue())
-			}).
-			Return(nil),
+		suite.mockPlugin.EXPECT().
+			LaunchPods(gomock.Any(), gomock.Any(), launchReq.GetHostname()).
+			Return([]*models.LaunchablePod{{
+				PodId: &v1alphapeloton.PodID{
+					Value: launchReq.GetTasks()[0].GetTaskId().GetValue(),
+				},
+			}}, nil),
 	)
 
 	launchResp, err = suite.handler.LaunchTasks(
@@ -890,40 +869,13 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunchOnNonHeldTask() {
 			gomock.Any(),
 			gomock.Any()).
 			Return(),
-		// Set expectations on provider
-		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
-			suite.frameworkID),
-		// Set expectations on provider
-		suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(_streamID),
-		// Set expectations on scheduler schedulerClient
-		suite.schedulerClient.EXPECT().
-			Call(
-				gomock.Eq(_streamID),
-				gomock.Any(),
-			).
-			Do(func(_ string, msg proto.Message) {
-				// Verify clientCall message.
-				call := msg.(*sched.Call)
-				suite.Equal(sched.Call_ACCEPT, call.GetType())
-				suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
-
-				accept := call.GetAccept()
-				suite.NotNil(accept)
-				suite.Equal(1, len(accept.GetOfferIds()))
-				suite.Equal("offer-0", accept.GetOfferIds()[0].GetValue())
-				suite.Equal(1, len(accept.GetOperations()))
-				operation := accept.GetOperations()[0]
-				suite.Equal(
-					mesos.Offer_Operation_LAUNCH,
-					operation.GetType())
-				launch := operation.GetLaunch()
-				suite.NotNil(launch)
-				suite.Equal(1, len(launch.GetTaskInfos()))
-				suite.Equal(
-					fmt.Sprintf(_taskIDFmt, 0),
-					launch.GetTaskInfos()[0].GetTaskId().GetValue())
-			}).
-			Return(nil),
+		suite.mockPlugin.EXPECT().
+			LaunchPods(gomock.Any(), gomock.Any(), launchReq.GetHostname()).
+			Return([]*models.LaunchablePod{{
+				PodId: &v1alphapeloton.PodID{
+					Value: launchReq.GetTasks()[0].GetTaskId().GetValue(),
+				},
+			}}, nil),
 	)
 
 	launchResp, err := suite.handler.LaunchTasks(
@@ -1140,44 +1092,20 @@ func (suite *HostMgrHandlerTestSuite) TestKillAndReserveTaskWithoutHostSummary()
 	killAndReserveReq := &hostsvc.KillAndReserveTasksRequest{
 		Entries: entries,
 	}
-	killedTaskIds := make(map[string]bool)
-	mockMutex := &sync.Mutex{}
 
-	// Set expectations on provider
-	suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
-		suite.frameworkID,
-	).Times(2)
-	suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(
-		_streamID,
-	).Times(2)
+	suite.mockPlugin.
+		EXPECT().
+		KillPod(gomock.Any(), t1).
+		Return(nil)
 
-	// Set expectations on scheduler schedulerClient
-	suite.schedulerClient.EXPECT().
-		Call(
-			gomock.Eq(_streamID),
-			gomock.Any(),
-		).
-		Do(func(_ string, msg proto.Message) {
-			// Verify clientCall message.
-			call := msg.(*sched.Call)
-			suite.Equal(sched.Call_KILL, call.GetType())
-			suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
-
-			tid := call.GetKill().GetTaskId()
-			suite.NotNil(tid)
-			mockMutex.Lock()
-			defer mockMutex.Unlock()
-			killedTaskIds[tid.GetValue()] = true
-		}).
-		Return(nil).
-		Times(2)
+	suite.mockPlugin.
+		EXPECT().
+		KillPod(gomock.Any(), t2).
+		Return(nil)
 
 	resp, err := suite.handler.KillAndReserveTasks(rootCtx, killAndReserveReq)
 	suite.NoError(err)
 	suite.Nil(resp.GetError())
-	suite.Equal(
-		map[string]bool{"t1": true, "t2": true},
-		killedTaskIds)
 
 	suite.Equal(
 		int64(2),
@@ -1203,47 +1131,23 @@ func (suite *HostMgrHandlerTestSuite) TestKillAndReserveTaskKillFailure() {
 	killAndReserveReq := &hostsvc.KillAndReserveTasksRequest{
 		Entries: entries,
 	}
-	killedTaskIds := make(map[string]bool)
-	mockMutex := &sync.Mutex{}
 	// set expectation on watch processor
 	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
 	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any())
 
-	// Set expectations on provider
-	suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
-		suite.frameworkID,
-	).Times(2)
-	suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(
-		_streamID,
-	).Times(2)
+	suite.mockPlugin.
+		EXPECT().
+		KillPod(gomock.Any(), t1).
+		Return(errors.New("test error"))
 
-	// Set expectations on scheduler schedulerClient
-	suite.schedulerClient.EXPECT().
-		Call(
-			gomock.Eq(_streamID),
-			gomock.Any(),
-		).
-		Do(func(_ string, msg proto.Message) {
-			// Verify clientCall message.
-			call := msg.(*sched.Call)
-			suite.Equal(sched.Call_KILL, call.GetType())
-			suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
-
-			tid := call.GetKill().GetTaskId()
-			suite.NotNil(tid)
-			mockMutex.Lock()
-			defer mockMutex.Unlock()
-			killedTaskIds[tid.GetValue()] = true
-		}).
-		Return(fmt.Errorf("test error")).
-		Times(2)
+	suite.mockPlugin.
+		EXPECT().
+		KillPod(gomock.Any(), t2).
+		Return(errors.New("test error"))
 
 	resp, err := suite.handler.KillAndReserveTasks(rootCtx, killAndReserveReq)
 	suite.NoError(err)
 	suite.NotNil(resp.GetError())
-	suite.Equal(
-		map[string]bool{"t1": true, "t2": true},
-		killedTaskIds)
 
 	suite.Equal(
 		int64(0),
@@ -1277,44 +1181,18 @@ func (suite *HostMgrHandlerTestSuite) TestKillAndReserveTask() {
 	killAndReserveReq := &hostsvc.KillAndReserveTasksRequest{
 		Entries: entries,
 	}
-	killedTaskIds := make(map[string]bool)
-	mockMutex := &sync.Mutex{}
 
-	// Set expectations on provider
-	suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
-		suite.frameworkID,
-	).Times(2)
-	suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(
-		_streamID,
-	).Times(2)
+	suite.mockPlugin.EXPECT().
+		KillPod(gomock.Any(), t1).
+		Return(nil)
 
-	// Set expectations on scheduler schedulerClient
-	suite.schedulerClient.EXPECT().
-		Call(
-			gomock.Eq(_streamID),
-			gomock.Any(),
-		).
-		Do(func(_ string, msg proto.Message) {
-			// Verify clientCall message.
-			call := msg.(*sched.Call)
-			suite.Equal(sched.Call_KILL, call.GetType())
-			suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
-
-			tid := call.GetKill().GetTaskId()
-			suite.NotNil(tid)
-			mockMutex.Lock()
-			defer mockMutex.Unlock()
-			killedTaskIds[tid.GetValue()] = true
-		}).
-		Return(nil).
-		Times(2)
+	suite.mockPlugin.EXPECT().
+		KillPod(gomock.Any(), t2).
+		Return(nil)
 
 	resp, err := suite.handler.KillAndReserveTasks(rootCtx, killAndReserveReq)
 	suite.NoError(err)
 	suite.Nil(resp.GetError())
-	suite.Equal(
-		map[string]bool{"t1": true, "t2": true},
-		killedTaskIds)
 
 	suite.Equal(
 		int64(2),
@@ -1344,8 +1222,6 @@ func (suite *HostMgrHandlerTestSuite) TestKillTask() {
 	killReq := &hostsvc.KillTasksRequest{
 		TaskIds: taskIDs,
 	}
-	killedTaskIds := make(map[string]bool)
-	mockMutex := &sync.Mutex{}
 	suite.watchProcessor.EXPECT().NotifyEventChange(gomock.Any()).AnyTimes()
 	suite.pool.AddOffers(context.Background(), generateOffers(1))
 	// simulate hold for mesosT1 on h1
@@ -1354,34 +1230,15 @@ func (suite *HostMgrHandlerTestSuite) TestKillTask() {
 			HoldForTasks(h1, []*peloton.TaskID{{Value: pelotonT1}}),
 	)
 
-	// Set expectations on provider
-	suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
-		suite.frameworkID,
-	).Times(2)
-	suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(
-		_streamID,
-	).Times(2)
+	suite.mockPlugin.
+		EXPECT().
+		KillPod(gomock.Any(), mesosT1).
+		Return(nil)
 
-	// Set expectations on scheduler schedulerClient
-	suite.schedulerClient.EXPECT().
-		Call(
-			gomock.Eq(_streamID),
-			gomock.Any(),
-		).
-		Do(func(_ string, msg proto.Message) {
-			// Verify clientCall message.
-			call := msg.(*sched.Call)
-			suite.Equal(sched.Call_KILL, call.GetType())
-			suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
-
-			tid := call.GetKill().GetTaskId()
-			suite.NotNil(tid)
-			mockMutex.Lock()
-			defer mockMutex.Unlock()
-			killedTaskIds[tid.GetValue()] = true
-		}).
-		Return(nil).
-		Times(2)
+	suite.mockPlugin.
+		EXPECT().
+		KillPod(gomock.Any(), mesosT2).
+		Return(nil)
 
 	// host held before kill
 	suite.Equal(
@@ -1391,9 +1248,6 @@ func (suite *HostMgrHandlerTestSuite) TestKillTask() {
 	resp, err := suite.handler.KillTasks(rootCtx, killReq)
 	suite.NoError(err)
 	suite.Nil(resp.GetError())
-	suite.Equal(
-		map[string]bool{mesosT1: true, mesosT2: true},
-		killedTaskIds)
 
 	suite.Equal(
 		int64(2),
@@ -1453,24 +1307,15 @@ func (suite *HostMgrHandlerTestSuite) TestKillTaskFailure() {
 				err = errors.New(tt.errMsg)
 			}
 
-			suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(suite.frameworkID).Times(2)
-			suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(_streamID).Times(2)
+			suite.mockPlugin.
+				EXPECT().
+				KillPod(gomock.Any(), t1).
+				Return(err)
 
-			suite.schedulerClient.EXPECT().
-				Call(
-					gomock.Eq(_streamID),
-					gomock.Any()).
-				Do(func(_ string, msg proto.Message) {
-					// Verify call message while process the kill task id into `killedTaskIds`
-					call := msg.(*sched.Call)
-					suite.Equal(sched.Call_KILL, call.GetType())
-					suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
-
-					tid := call.GetKill().GetTaskId()
-					suite.NotNil(tid)
-				}).
-				Return(err).
-				Times(2)
+			suite.mockPlugin.
+				EXPECT().
+				KillPod(gomock.Any(), t2).
+				Return(err)
 		}
 
 		resp, _ := suite.handler.KillTasks(rootCtx, killReq)
@@ -2284,17 +2129,9 @@ func (suite *HostMgrHandlerTestSuite) TestLaunchTasksSchedulerError() {
 			gomock.Any(),
 			gomock.Any()).
 			Return(),
-		// Set expectations on provider for task launch
-		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
-			suite.frameworkID),
-		// Set expectations on provider for task launch
-		suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(_streamID),
-		// Set expectations on scheduler schedulerClient for task launch
-		suite.schedulerClient.EXPECT().
-			Call(
-				gomock.Eq(_streamID),
-				gomock.Any(),
-			).Return(fmt.Errorf(errString)),
+		suite.mockPlugin.EXPECT().
+			LaunchPods(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil, errors.New(errString)),
 		// Set expectations on provider for offer decline
 		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
 			suite.frameworkID),

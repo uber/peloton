@@ -25,6 +25,9 @@ type metrics struct {
 	LaunchPod     tally.Counter
 	LaunchPodFail tally.Counter
 
+	DeclineOffers     tally.Counter
+	DeclineOffersFail tally.Counter
+
 	// Task Status update metrics.
 	TaskUpdateCounter   tally.Counter
 	TaskUpdateAck       tally.Counter
@@ -46,6 +49,8 @@ func newMetrics(scope tally.Scope) *metrics {
 		LaunchPodFail:            failScope.Counter("launch_pod"),
 		TaskUpdateAck:            successScope.Counter("task_update_ack"),
 		TaskUpdateAckDeDupe:      successScope.Counter("task_update_ack_dedupe"),
+		DeclineOffers:            successScope.Counter("decline_offers"),
+		DeclineOffersFail:        failScope.Counter("decline_offers"),
 		TaskUpdateCounter:        scope.Counter("task_update"),
 		AgentIDToHostnameMissing: scope.Counter("agent_id_to_hostname_missing"),
 	}

@@ -764,6 +764,7 @@ func main() {
 		goalStateDriver,
 		ormobjects.GetHostInfoOps(),
 		hostCache,
+		mesosPlugin,
 	)
 
 	hostDrainer := drainer.NewDrainer(

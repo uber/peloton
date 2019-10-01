@@ -185,7 +185,7 @@ func (m *MesosManager) LaunchPods(
 	agentID := offers[offerIds[0].GetValue()].GetAgentId()
 
 	for _, pod := range pods {
-		launchableTask, err := convertPodSpecToLaunchableTask(pod.PodId, pod.Spec)
+		launchableTask, err := convertPodSpecToLaunchableTask(pod.PodId, pod.Spec, pod.Ports)
 		if err != nil {
 			return nil, err
 		}
@@ -221,6 +221,16 @@ func (m *MesosManager) LaunchPods(
 	err := m.schedulerClient.Call(msid, msg)
 
 	if err != nil {
+		// Decline offers upon launch failure in a best effort manner,
+		// because peloton no longer holds the offers in host summary.
+		// When declining offer is called,
+		// if launch does not go through, mesos would send new offers with the
+		// resources.
+		// If launch does go through, this call should not affect launched task.
+		// It is still a best effort way to clean offers up, peloton still
+		// rely on offer expiration to clean up the offers left behind.
+		m.offerManager.RemoveOfferForHost(hostname)
+		m.declineOffers(ctx, offerIds)
 		m.metrics.LaunchPodFail.Inc(1)
 		return nil, err
 	}
@@ -229,6 +239,37 @@ func (m *MesosManager) LaunchPods(
 	m.offerManager.RemoveOfferForHost(hostname)
 	m.metrics.LaunchPod.Inc(1)
 	return pods, nil
+}
+
+// declineOffers calls mesos master to decline list of offers
+func (m *MesosManager) declineOffers(
+	ctx context.Context,
+	offerIDs []*mesos.OfferID) error {
+
+	callType := sched.Call_DECLINE
+	msg := &sched.Call{
+		FrameworkId: m.frameworkInfoProvider.GetFrameworkID(ctx),
+		Type:        &callType,
+		Decline: &sched.Call_Decline{
+			OfferIds: offerIDs,
+		},
+	}
+	msid := m.frameworkInfoProvider.GetMesosStreamID(ctx)
+	err := m.schedulerClient.Call(msid, msg)
+	if err != nil {
+		// Ideally, we assume that Mesos has offer_timeout configured,
+		// so in the event that offer declining call fails, offers
+		// should eventually be invalidated by Mesos.
+		log.WithError(err).
+			WithField("call", msg).
+			Warn("Failed to decline offers.")
+		m.metrics.DeclineOffersFail.Inc(1)
+		return err
+	}
+
+	m.metrics.DeclineOffers.Inc(int64(len(offerIDs)))
+
+	return nil
 }
 
 // KillPod kills a pod on a host.
@@ -364,8 +405,8 @@ func (m *MesosManager) processAgentHostMap(
 			}
 			m.hostEventCh <- scalar.BuildHostEventFromResource(
 				hostname,
-				capacity,
 				models.HostResources{},
+				capacity,
 				scalar.UpdateAgent,
 			)
 		}
@@ -452,7 +493,11 @@ func (m *MesosManager) Update(ctx context.Context, body *sched.Event) error {
 	return nil
 }
 
-func convertPodSpecToLaunchableTask(id *peloton.PodID, spec *pbpod.PodSpec) (*hostsvc.LaunchableTask, error) {
+func convertPodSpecToLaunchableTask(
+	id *peloton.PodID,
+	spec *pbpod.PodSpec,
+	ports map[string]uint32,
+) (*hostsvc.LaunchableTask, error) {
 	config, err := api.ConvertPodSpecToTaskConfig(spec)
 	if err != nil {
 		return nil, err
@@ -460,10 +505,10 @@ func convertPodSpecToLaunchableTask(id *peloton.PodID, spec *pbpod.PodSpec) (*ho
 
 	taskId := id.GetValue()
 	return &hostsvc.LaunchableTask{
-		// TODO: handle dynamic ports
 		TaskId: &mesos.TaskID{Value: &taskId},
 		Config: config,
 		Id:     &v0peloton.TaskID{Value: spec.GetPodName().GetValue()},
+		Ports:  ports,
 	}, nil
 }
 

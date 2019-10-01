@@ -26,6 +26,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+var _slackResources = []string{"cpus"}
+
 type offerManager struct {
 	sync.RWMutex
 
@@ -83,7 +85,7 @@ func (m *offerManager) AddOffers(offers []*mesos.Offer) map[string]struct{} {
 				if r.GetRevocable() == nil {
 					return true
 				}
-				return hmutil.IsSlackResourceType(r.GetName(), nil)
+				return hmutil.IsSlackResourceType(r.GetName(), _slackResources)
 			})
 
 		mesosOffers.unreservedOffers[offerID] = offer

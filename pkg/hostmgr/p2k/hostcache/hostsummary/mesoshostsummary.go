@@ -67,8 +67,9 @@ func (a *mesosHostSummary) SetAvailable(r models.HostResources) {
 			log.Fields{
 				"allocated": r,
 				"capacity":  a.capacity,
+				"hostname":  a.hostname,
 			},
-		).Error("mesosHostSummary: Allocated more resources than capacity")
+		).Error("mesosHostSummary: More available resources than capacity")
 	}
 }
 

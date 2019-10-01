@@ -330,7 +330,8 @@ func (h *eventHandler) Offers(ctx context.Context, body *sched.Event) error {
 		}).Info("offers received")
 	}
 	h.offerPool.AddOffers(ctx, event.Offers)
-
+	// temporary measure to hook mesos plugins
+	h.mesosPlugin.Offers(ctx, body)
 	return nil
 }
 
@@ -351,7 +352,8 @@ func (h *eventHandler) Rescind(ctx context.Context, body *sched.Event) error {
 	event := body.GetRescind()
 	log.WithField("event", event).Debug("OfferManager: processing Rescind event")
 	h.offerPool.RescindOffer(event.OfferId)
-
+	// temporary measure to hook mesos plugins
+	h.mesosPlugin.Rescind(ctx, body)
 	return nil
 }
 
