@@ -15,6 +15,7 @@
 package stringset
 
 import (
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -95,5 +96,58 @@ func TestStringSet_ToSlice(t *testing.T) {
 	assert.Len(t, items, len(testItems))
 	for _, item := range items {
 		assert.True(t, testSet.Contains(item))
+	}
+}
+
+var flagtests = []struct {
+	name      string
+	testdata1 []string
+	testdata2 []string
+	out       []string
+}{
+	{"both sets void", []string{}, []string{}, []string{}},
+	{"first set void", []string{}, []string{"testitem1", "testitem2"}, []string{}},
+	{"second set void", []string{"testitem2", "testitem1"}, []string{}, []string{}},
+	{"intersect all first set", []string{"testitem1"}, []string{"testitem1", "testitem2"}, []string{"testitem1"}},
+	{"intersect all second set", []string{"testitem1", "testitem2"}, []string{"testitem1"}, []string{"testitem1"}},
+	{"interscet subset of first set", []string{"testitem1", "testitem2", "testitem3"}, []string{"testitem1", "testitem2"}, []string{"testitem1", "testitem2"}},
+	{"interscet subset of second set", []string{"testitem1", "testitem2"}, []string{"testitem1", "testitem2", "testitem3"}, []string{"testitem1", "testitem2"}},
+}
+
+func TestStringSet_Intersect(t *testing.T) {
+
+	for _, tt := range flagtests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			// Creates first testSet
+			testSet1 := &stringSet{
+				m: make(map[string]bool),
+			}
+
+			// Add testItems to testSet1
+			for _, item := range tt.testdata1 {
+				testSet1.m[item] = true
+			}
+
+			// Creates second testSet
+			testSet2 := &stringSet{
+				m: make(map[string]bool),
+			}
+
+			// Add testItems to testSet2
+			for _, item := range tt.testdata2 {
+				testSet2.m[item] = true
+			}
+			s := testSet1.Intersect(testSet2)
+			slice := s.ToSlice()
+			sort.Strings(slice)
+			sort.Strings(tt.out)
+
+			for i := range slice {
+				if slice[i] != tt.out[i] {
+					t.Errorf("got %q, want %q", slice[i], tt.out[i])
+				}
+			}
+		})
 	}
 }

@@ -93,3 +93,60 @@ func (s *stringSet) ToSlice() []string {
 	}
 	return keys
 }
+
+// Intersect returns the intersection between two StringSet
+func (s *stringSet) Intersect(other *stringSet) (intersection *stringSet) {
+	var ret *stringSet
+	var wg sync.WaitGroup
+
+	var slen, otherlen int
+
+	createIntersect := func(smallerlen int, smaller, greater *stringSet) (ret *stringSet) {
+		ret = &stringSet{
+			m: make(map[string]bool, smallerlen),
+		}
+		// Copy smaller set in ret
+		smaller.Lock()
+		for str := range smaller.m {
+			ret.m[str] = true
+		}
+		smaller.Unlock()
+
+		greater.Lock()
+		defer greater.Unlock()
+		for element := range ret.m {
+			// If element in smaller exists also in greater moves along
+			if _, exists := greater.m[element]; exists {
+				continue
+			}
+			// otherwise deletes it also from ret
+			ret.Lock()
+			delete(ret.m, element)
+			ret.Unlock()
+		}
+		return ret
+	}
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		s.Lock()
+		slen = len(s.m)
+		s.Unlock()
+	}()
+	go func() {
+		defer wg.Done()
+		other.Lock()
+		otherlen = len(other.m)
+		other.Unlock()
+	}()
+	wg.Wait()
+	switch {
+	case slen >= otherlen:
+		ret = createIntersect(otherlen, other, s)
+
+	case slen < otherlen:
+		ret = createIntersect(slen, s, other)
+	}
+	return ret
+}
