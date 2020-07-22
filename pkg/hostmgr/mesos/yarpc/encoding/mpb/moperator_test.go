@@ -23,7 +23,7 @@ import (
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	mesos_maintenance "github.com/uber/peloton/.gen/mesos/v1/maintenance"
-	mesos_master "github.com/uber/peloton/.gen/mesos/v1/master"
+	mesos_main "github.com/uber/peloton/.gen/mesos/v1/master"
 	"github.com/uber/peloton/pkg/common"
 	"github.com/uber/peloton/pkg/common/util"
 
@@ -44,27 +44,27 @@ const (
 	mockSvc    = "testSvc"
 )
 
-type masterOperatorClientTestSuite struct {
+type mainOperatorClientTestSuite struct {
 	suite.Suite
 
 	ctrl                 *gomock.Controller
-	masterOperatorClient MasterOperatorClient
+	mainOperatorClient MainOperatorClient
 	mockUnaryOutbound    *transport_mocks.MockUnaryOutbound
 	mockClientCfg        *transport_mocks.MockClientConfig
 	defaultEncoding      string
 }
 
-func (suite *masterOperatorClientTestSuite) SetupTest() {
+func (suite *mainOperatorClientTestSuite) SetupTest() {
 	log.Debug("setup")
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.mockUnaryOutbound = transport_mocks.NewMockUnaryOutbound(suite.ctrl)
 	mockClientCfg := transport_mocks.NewMockClientConfig(suite.ctrl)
 	suite.mockClientCfg = mockClientCfg
 	suite.defaultEncoding = ContentTypeProtobuf
-	suite.masterOperatorClient = NewMasterOperatorClient(suite.mockClientCfg, suite.defaultEncoding)
+	suite.mainOperatorClient = NewMainOperatorClient(suite.mockClientCfg, suite.defaultEncoding)
 }
 
-func (suite *masterOperatorClientTestSuite) TearDownTest() {
+func (suite *mainOperatorClientTestSuite) TearDownTest() {
 	log.Debug("tear down")
 	suite.ctrl.Finish()
 }
@@ -95,7 +95,7 @@ func mesosRole(
 	}
 }
 
-func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_AllocatedResources() {
+func (suite *mainOperatorClientTestSuite) TestMainOperatorClient_AllocatedResources() {
 	mockValidValue := new(string)
 	*mockValidValue = uuid.NIL.String()
 	mockNotExistValue := new(string)
@@ -122,7 +122,7 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_AllocatedRe
 			call:        false,
 			frameworkID: *mockValidValue,
 			encoding:    "unknown",
-			errMsg:      "failed to marshal Call_MasterOperator call: Unsupported contentType unknown",
+			errMsg:      "failed to marshal Call_MainOperator call: Unsupported contentType unknown",
 		},
 		{
 			call:        false,
@@ -134,15 +134,15 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_AllocatedRe
 			call:        true,
 			frameworkID: *mockValidValue,
 			encoding:    suite.defaultEncoding,
-			errMsg:      "error making call Call_MasterOperator: connection error",
+			errMsg:      "error making call Call_MainOperator: connection error",
 			callErr:     true,
 		},
 		{
 			call:        true,
 			frameworkID: *mockValidValue,
 			encoding:    suite.defaultEncoding,
-			callResp: &mesos_master.Response{
-				GetRoles: &mesos_master.Response_GetRoles{
+			callResp: &mesos_main.Response{
+				GetRoles: &mesos_main.Response_GetRoles{
 					Roles: []*mesos.Role{
 						mesosRole(
 							"peloton",
@@ -168,8 +168,8 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_AllocatedRe
 			call:        true,
 			frameworkID: *mockValidValue,
 			encoding:    suite.defaultEncoding,
-			callResp: &mesos_master.Response{
-				GetRoles: &mesos_master.Response_GetRoles{
+			callResp: &mesos_main.Response{
+				GetRoles: &mesos_main.Response_GetRoles{
 					Roles: []*mesos.Role{
 						mesosRole(
 							"peloton",
@@ -195,7 +195,7 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_AllocatedRe
 			call:        true,
 			frameworkID: *mockValidValue,
 			encoding:    suite.defaultEncoding,
-			callResp: &mesos_master.Response{
+			callResp: &mesos_main.Response{
 				GetRoles: nil,
 			},
 			headers: transport.NewHeaders().With("a", "b"),
@@ -244,7 +244,7 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_AllocatedRe
 			)
 		}
 
-		mOClient := NewMasterOperatorClient(suite.mockClientCfg, tt.encoding)
+		mOClient := NewMainOperatorClient(suite.mockClientCfg, tt.encoding)
 		resources, err := mOClient.AllocatedResources(tt.frameworkID)
 
 		if tt.errMsg != "" {
@@ -257,7 +257,7 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_AllocatedRe
 	}
 }
 
-func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_TaskAllocation() {
+func (suite *mainOperatorClientTestSuite) TestMainOperatorClient_TaskAllocation() {
 
 	var response *transport.Response
 	frameworkName := "peloton"
@@ -311,9 +311,9 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_TaskAllocat
 			Build(),
 	}
 
-	resp := &mesos_master.Response{
-		GetFrameworks: &mesos_master.Response_GetFrameworks{
-			Frameworks: []*mesos_master.Response_GetFrameworks_Framework{
+	resp := &mesos_main.Response{
+		GetFrameworks: &mesos_main.Response_GetFrameworks{
+			Frameworks: []*mesos_main.Response_GetFrameworks_Framework{
 				{
 					FrameworkInfo: &mesos.FrameworkInfo{
 						User: &frameworkName,
@@ -358,14 +358,14 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_TaskAllocat
 		),
 	)
 
-	mOClient := NewMasterOperatorClient(suite.mockClientCfg, suite.defaultEncoding)
+	mOClient := NewMainOperatorClient(suite.mockClientCfg, suite.defaultEncoding)
 	allocated, offered, err := mOClient.GetTasksAllocation("peloton")
 	suite.Equal(len(allocatedResources), len(allocated))
 	suite.Equal(len(offeredResources), len(offered))
 	suite.NoError(err)
 }
 
-func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_GetMaintenanceSchedule() {
+func (suite *mainOperatorClientTestSuite) TestMainOperatorClient_GetMaintenanceSchedule() {
 	testHost := "hostname"
 	testIP := "0.0.0.0"
 	testMachines := []*mesos.MachineID{
@@ -392,8 +392,8 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_GetMaintena
 		Windows: windows,
 	}
 
-	callResp := &mesos_master.Response{
-		GetMaintenanceSchedule: &mesos_master.Response_GetMaintenanceSchedule{
+	callResp := &mesos_main.Response{
+		GetMaintenanceSchedule: &mesos_main.Response_GetMaintenanceSchedule{
 			Schedule: schedule,
 		},
 	}
@@ -421,7 +421,7 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_GetMaintena
 			nil,
 		),
 	)
-	responseGetMaintenanceSchedule, err := suite.masterOperatorClient.GetMaintenanceSchedule()
+	responseGetMaintenanceSchedule, err := suite.mainOperatorClient.GetMaintenanceSchedule()
 	suite.NoError(err)
 	suite.NotNil(responseGetMaintenanceSchedule)
 	responseSchedule := responseGetMaintenanceSchedule.GetSchedule()
@@ -443,12 +443,12 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_GetMaintena
 			fmt.Errorf("fake Call error"),
 		),
 	)
-	responseGetMaintenanceSchedule, err = suite.masterOperatorClient.GetMaintenanceSchedule()
+	responseGetMaintenanceSchedule, err = suite.mainOperatorClient.GetMaintenanceSchedule()
 	suite.Error(err)
 	suite.Nil(responseGetMaintenanceSchedule)
 }
 
-func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_GetMaintenanceStatus() {
+func (suite *mainOperatorClientTestSuite) TestMainOperatorClient_GetMaintenanceStatus() {
 	testHost1 := "hostname"
 	testIP1 := "0.0.0.0"
 	drainingMachines := []*mesos_maintenance.ClusterStatus_DrainingMachine{
@@ -474,8 +474,8 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_GetMaintena
 		DownMachines:     downMachines,
 	}
 
-	callResp := &mesos_master.Response{
-		GetMaintenanceStatus: &mesos_master.Response_GetMaintenanceStatus{
+	callResp := &mesos_main.Response{
+		GetMaintenanceStatus: &mesos_main.Response_GetMaintenanceStatus{
 			Status: clusterStatus,
 		},
 	}
@@ -503,7 +503,7 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_GetMaintena
 			nil,
 		),
 	)
-	responseGetMaintenanceStatus, err := suite.masterOperatorClient.GetMaintenanceStatus()
+	responseGetMaintenanceStatus, err := suite.mainOperatorClient.GetMaintenanceStatus()
 	suite.NoError(err)
 	suite.NotNil(responseGetMaintenanceStatus)
 	responseMaintenanceStatus := responseGetMaintenanceStatus.GetStatus()
@@ -525,12 +525,12 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_GetMaintena
 			fmt.Errorf("fake Call error"),
 		),
 	)
-	responseGetMaintenanceStatus, err = suite.masterOperatorClient.GetMaintenanceStatus()
+	responseGetMaintenanceStatus, err = suite.mainOperatorClient.GetMaintenanceStatus()
 	suite.Error(err)
 	suite.Nil(responseGetMaintenanceStatus)
 }
 
-func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_StartMaintenance() {
+func (suite *mainOperatorClientTestSuite) TestMainOperatorClient_StartMaintenance() {
 	testMachines := []struct {
 		host string
 		ip   string
@@ -572,7 +572,7 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_StartMainte
 			nil,
 		),
 	)
-	err := suite.masterOperatorClient.StartMaintenance(testMachineIDs)
+	err := suite.mainOperatorClient.StartMaintenance(testMachineIDs)
 	suite.NoError(err)
 
 	// Test error
@@ -591,11 +591,11 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_StartMainte
 			fmt.Errorf("fake Call error"),
 		),
 	)
-	err = suite.masterOperatorClient.StartMaintenance(testMachineIDs)
+	err = suite.mainOperatorClient.StartMaintenance(testMachineIDs)
 	suite.Error(err)
 }
 
-func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_StopMaintenance() {
+func (suite *mainOperatorClientTestSuite) TestMainOperatorClient_StopMaintenance() {
 	testMachines := []struct {
 		host string
 		ip   string
@@ -637,7 +637,7 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_StopMainten
 			nil,
 		),
 	)
-	err := suite.masterOperatorClient.StopMaintenance(testMachineIDs)
+	err := suite.mainOperatorClient.StopMaintenance(testMachineIDs)
 	suite.NoError(err)
 
 	// Test error
@@ -656,11 +656,11 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_StopMainten
 			fmt.Errorf("fake Call error"),
 		),
 	)
-	err = suite.masterOperatorClient.StopMaintenance(testMachineIDs)
+	err = suite.mainOperatorClient.StopMaintenance(testMachineIDs)
 	suite.Error(err)
 }
 
-func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_UpdateMaintenanceSchedule() {
+func (suite *mainOperatorClientTestSuite) TestMainOperatorClient_UpdateMaintenanceSchedule() {
 	testMachines := []struct {
 		host string
 		ip   string
@@ -715,7 +715,7 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_UpdateMaint
 			nil,
 		),
 	)
-	err := suite.masterOperatorClient.UpdateMaintenanceSchedule(schedule)
+	err := suite.mainOperatorClient.UpdateMaintenanceSchedule(schedule)
 	suite.NoError(err)
 
 	// Test error
@@ -734,14 +734,14 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_UpdateMaint
 			fmt.Errorf("fake Call error"),
 		),
 	)
-	err = suite.masterOperatorClient.UpdateMaintenanceSchedule(schedule)
+	err = suite.mainOperatorClient.UpdateMaintenanceSchedule(schedule)
 	suite.Error(err)
 }
 
-func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_GetQuota() {
+func (suite *mainOperatorClientTestSuite) TestMainOperatorClient_GetQuota() {
 	testRole := "testrole"
-	callResp := &mesos_master.Response{
-		GetQuota: &mesos_master.Response_GetQuota{
+	callResp := &mesos_main.Response{
+		GetQuota: &mesos_main.Response_GetQuota{
 			Status: &mesos_v1_quota.QuotaStatus{
 				Infos: []*mesos_v1_quota.QuotaInfo{
 					{
@@ -776,11 +776,11 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_GetQuota() 
 			nil,
 		),
 	)
-	resources, err := suite.masterOperatorClient.GetQuota(testRole)
+	resources, err := suite.mainOperatorClient.GetQuota(testRole)
 	suite.NoError(err)
 	suite.Nil(resources)
 }
 
-func TestMasterOperatorClientTestSuite(t *testing.T) {
-	suite.Run(t, new(masterOperatorClientTestSuite))
+func TestMainOperatorClientTestSuite(t *testing.T) {
+	suite.Run(t, new(mainOperatorClientTestSuite))
 }

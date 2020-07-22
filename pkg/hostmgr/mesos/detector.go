@@ -34,19 +34,19 @@ const (
 	zkPathPrefix = "zk://"
 )
 
-// MasterDetector is the interface for finding where is an active Mesos master.
-type MasterDetector interface {
+// MainDetector is the interface for finding where is an active Mesos main.
+type MainDetector interface {
 	mhttp.LeaderDetector
 }
 
 type zkDetector struct {
 	sync.RWMutex
 
-	masterIP   string
-	masterPort int
+	mainIP   string
+	mainPort int
 
 	// Keep actual detector implementation wrapped so we can cancel it.
-	m detector.Master
+	m detector.Main
 }
 
 // HostPort implements mhttp.LeaderDetector and returns cached host port
@@ -54,49 +54,49 @@ type zkDetector struct {
 func (d *zkDetector) HostPort() string {
 	d.RLock()
 	defer d.RUnlock()
-	if d.masterIP == "" || d.masterPort == 0 {
+	if d.mainIP == "" || d.mainPort == 0 {
 		return ""
 	}
-	return fmt.Sprintf("%v:%v", d.masterIP, d.masterPort)
+	return fmt.Sprintf("%v:%v", d.mainIP, d.mainPort)
 }
 
-// OnMasterChanged implements `detector.MasterChanged.OnMasterChanged`.
+// OnMainChanged implements `detector.MainChanged.OnMainChanged`.
 // This is called whenever underlying detector detected leader change.
-func (d *zkDetector) OnMasterChanged(masterInfo *mesos.MasterInfo) {
+func (d *zkDetector) OnMainChanged(mainInfo *mesos.MainInfo) {
 	d.Lock()
 	defer d.Unlock()
 
-	if masterInfo == nil || masterInfo.GetAddress() == nil {
-		d.masterIP, d.masterPort = "", 0
+	if mainInfo == nil || mainInfo.GetAddress() == nil {
+		d.mainIP, d.mainPort = "", 0
 	} else {
-		d.masterIP, d.masterPort =
-			masterInfo.GetAddress().GetIp(),
-			int(masterInfo.GetAddress().GetPort())
+		d.mainIP, d.mainPort =
+			mainInfo.GetAddress().GetIp(),
+			int(mainInfo.GetAddress().GetPort())
 	}
 }
 
-// NewZKDetector creates a new MasterDetector which caches last detected leader.
-func NewZKDetector(zkPath string) (MasterDetector, error) {
+// NewZKDetector creates a new MainDetector which caches last detected leader.
+func NewZKDetector(zkPath string) (MainDetector, error) {
 	if !strings.HasPrefix(zkPath, zkPathPrefix) {
 		return nil, fmt.Errorf(
 			"zkPath must start with %s",
 			zkPathPrefix)
 	}
 
-	master, err := detector.New(zkPath)
+	main, err := detector.New(zkPath)
 	if err != nil {
 		return nil, err
 	}
 
 	d := &zkDetector{
-		m: master,
+		m: main,
 	}
 
-	if err = master.Detect(d); err != nil {
+	if err = main.Detect(d); err != nil {
 		return nil, err
 	}
 
-	// TODO: handle `Done()` from `master` so we know that underlying
+	// TODO: handle `Done()` from `main` so we know that underlying
 	// detector accidentally finished.
 	// TODO: consider whether we need to Cancel (aka stop) this detector.
 	return d, nil

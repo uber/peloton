@@ -68,9 +68,9 @@ type Driver interface {
 type driver struct {
 	sync.RWMutex
 	hostEngine              goalstate.Engine         // goal state engine for processing hosts
-	mesosMasterClient       mpb.MasterOperatorClient // mesos master client
+	mesosMainClient       mpb.MainOperatorClient // mesos main client
 	hostInfoOps             ormobjects.HostInfoOps   // DB ops for host_info table
-	maintenanceScheduleLock sync.Mutex               // Lock for updating Mesos Master maintenance schedule
+	maintenanceScheduleLock sync.Mutex               // Lock for updating Mesos Main maintenance schedule
 	cfg                     *Config                  // goal state engine configuration
 	scope                   tally.Scope              // scope for overall goal state
 	running                 int32                    // whether driver is running or not
@@ -80,7 +80,7 @@ type driver struct {
 // NewDriver returns a new goal state driver object.
 func NewDriver(
 	hostInfoOps ormobjects.HostInfoOps,
-	mesosMasterClient mpb.MasterOperatorClient,
+	mesosMainClient mpb.MainOperatorClient,
 	parentScope tally.Scope,
 	cfg Config,
 	hostpoolManager manager.HostPoolManager,
@@ -94,7 +94,7 @@ func NewDriver(
 			cfg.FailureRetryDelay,
 			cfg.MaxRetryDelay,
 			hostScope),
-		mesosMasterClient: mesosMasterClient,
+		mesosMainClient: mesosMainClient,
 		hostInfoOps:       hostInfoOps,
 		cfg:               &cfg,
 		scope:             scope,

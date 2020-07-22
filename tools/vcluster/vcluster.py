@@ -5,7 +5,7 @@ import time
 
 from peloton_helper import PelotonClientHelper, create_respool_for_new_peloton
 from color_print import print_okblue, print_okgreen
-from modules import Zookeeper, MesosMaster, MesosSlave, Cassandra, Peloton
+from modules import Zookeeper, MesosMain, MesosSubordinate, Cassandra, Peloton
 
 DEFAULT_PELOTON_NUM_LOG_FILES = 10
 
@@ -51,10 +51,10 @@ class VCluster(object):
         self.zookeeper = Zookeeper(
             self.label_name, self.config, self.peloton_helper
         )
-        self.mesos_master = MesosMaster(
+        self.mesos_main = MesosMain(
             self.label_name, self.config, self.peloton_helper
         )
-        self.mesos_slave = MesosSlave(
+        self.mesos_subordinate = MesosSubordinate(
             self.label_name, self.config, self.peloton_helper
         )
 
@@ -113,16 +113,16 @@ class VCluster(object):
         zk_address = "zk://%s/mesos" % self.virtual_zookeeper
         print_okgreen("Zookeeper created successfully: %s" % zk_address)
 
-        # create mesos master
-        self.start_mesos_master(self.virtual_zookeeper)
+        # create mesos main
+        self.start_mesos_main(self.virtual_zookeeper)
 
-        # create mesos slaves
-        self.start_mesos_slave(self.virtual_zookeeper, agent_num)
+        # create mesos subordinates
+        self.start_mesos_subordinate(self.virtual_zookeeper, agent_num)
 
         self.vcluster_config.update(
             {
                 "Zookeeper": "%s:%s" % (host, port),
-                "Mesos Slave Number": agent_num,
+                "Mesos Subordinate Number": agent_num,
             }
         )
         return host, port
@@ -192,7 +192,7 @@ class VCluster(object):
         for app in self.APP_ORDER:
             print_okblue("Creating peloton application: %s" % app)
 
-            dynamic_env_master = {
+            dynamic_env_main = {
                 "PRODUCTION_CONFIG": self._get_base64_prod_config(
                     app, peloton_apps_config
                 ),
@@ -206,45 +206,45 @@ class VCluster(object):
                 "CONTAINER_LOGGER_LOGROTATE_STDERR_OPTIONS": "rotate %s"
                 % num_logs,
             }
-            mesos_slave_config = self.config.get("mesos-slave", {})
+            mesos_subordinate_config = self.config.get("mesos-subordinate", {})
             mesos_work_dir = [
                 kv["value"]
-                for kv in mesos_slave_config.get("static_env", [])
+                for kv in mesos_subordinate_config.get("static_env", [])
                 if kv.get("name") == "MESOS_WORK_DIR"
             ]
             if mesos_work_dir:
-                dynamic_env_master["MESOS_AGENT_WORK_DIR"] = mesos_work_dir[0]
+                dynamic_env_main["MESOS_AGENT_WORK_DIR"] = mesos_work_dir[0]
 
             if app == "hostmgr":
-                dynamic_env_master["SCARCE_RESOURCE_TYPES"] = ",".join(
+                dynamic_env_main["SCARCE_RESOURCE_TYPES"] = ",".join(
                     self.config.get("peloton")
                     .get(app)
                     .get("scarce_resource_types")
                 )
-                dynamic_env_master["SLACK_RESOURCE_TYPES"] = ",".join(
+                dynamic_env_main["SLACK_RESOURCE_TYPES"] = ",".join(
                     self.config.get("peloton")
                     .get(app)
                     .get("slack_resource_types")
                 )
-                dynamic_env_master["ENABLE_REVOCABLE_RESOURCES"] = str(
+                dynamic_env_main["ENABLE_REVOCABLE_RESOURCES"] = str(
                     self.config.get("peloton")
                     .get(app)
                     .get("enable_revocable_resources")
                 )
 
             if app == "aurorabridge":
-                dynamic_env_master["RESPOOL_PATH"] = '/DefaultResPool'
+                dynamic_env_main["RESPOOL_PATH"] = '/DefaultResPool'
 
             if app == "placement_stateless":
-                dynamic_env_master["APP"] = "placement"
-                dynamic_env_master["APP_TYPE"] = "placement_stateless"
-                dynamic_env_master["TASK_TYPE"] = "STATELESS"
+                dynamic_env_main["APP"] = "placement"
+                dynamic_env_main["APP_TYPE"] = "placement_stateless"
+                dynamic_env_main["TASK_TYPE"] = "STATELESS"
 
             peloton_app_count = int(
                 self.config.get("peloton").get(app).get("instance_count")
             )
             self.vcluster_config["job_info"][app] = self.peloton.setup(
-                dynamic_env_master,
+                dynamic_env_main,
                 peloton_app_count,
                 self.label_name + "_" + "peloton-" + app,
                 version,
@@ -318,36 +318,36 @@ class VCluster(object):
             self.teardown()
             raise
 
-    def start_mesos_master(self, virtual_zookeeper):
+    def start_mesos_main(self, virtual_zookeeper):
         zk_address = "zk://%s/mesos" % virtual_zookeeper
-        print_okgreen("Step: creating virtual Mesos-master with 3 instance")
-        dynamic_env_master = {
-            self.config.get("mesos-master").get("dynamic_env"): zk_address
+        print_okgreen("Step: creating virtual Mesos-main with 3 instance")
+        dynamic_env_main = {
+            self.config.get("mesos-main").get("dynamic_env"): zk_address
         }
         mesos_count = int(
-            self.config.get("mesos-master").get("instance_count")
+            self.config.get("mesos-main").get("instance_count")
         )
         self.vcluster_config["job_info"][
-            "mesos-master"
-        ] = self.mesos_master.setup(dynamic_env_master, mesos_count)
-        print_okgreen("Mesos-master created successfully.")
+            "mesos-main"
+        ] = self.mesos_main.setup(dynamic_env_main, mesos_count)
+        print_okgreen("Mesos-main created successfully.")
 
-    def start_mesos_slave(self, virtual_zookeeper, agent_num):
-        # create mesos slaves
+    def start_mesos_subordinate(self, virtual_zookeeper, agent_num):
+        # create mesos subordinates
         zk_address = "zk://%s/mesos" % virtual_zookeeper
         print_okgreen(
-            "Step: creating virtual Mesos-slave with %s instance" % agent_num
+            "Step: creating virtual Mesos-subordinate with %s instance" % agent_num
         )
-        dynamic_env_slave = {
-            self.config.get("mesos-slave").get("dynamic_env"): zk_address
+        dynamic_env_subordinate = {
+            self.config.get("mesos-subordinate").get("dynamic_env"): zk_address
         }
         self.vcluster_config["job_info"][
-            "mesos-slave"
-        ] = self.mesos_slave.setup(dynamic_env_slave, agent_num)
-        print_okgreen("Mesos-slave created successfully.")
+            "mesos-subordinate"
+        ] = self.mesos_subordinate.setup(dynamic_env_subordinate, agent_num)
+        print_okgreen("Mesos-subordinate created successfully.")
 
-    def teardown_slave(self, remove=False):
-        self.mesos_slave.teardown(remove=remove)
+    def teardown_subordinate(self, remove=False):
+        self.mesos_subordinate.teardown(remove=remove)
 
     def teardown_peloton(self, remove=False):
         print_okgreen("Step: stopping all peloton applications")
@@ -368,11 +368,11 @@ class VCluster(object):
     def teardown(self, remove=False):
         self.teardown_peloton(remove=remove)
 
-        print_okgreen("Step: stopping all virtual Mesos-slaves")
-        self.teardown_slave(remove=remove)
+        print_okgreen("Step: stopping all virtual Mesos-subordinates")
+        self.teardown_subordinate(remove=remove)
 
-        print_okgreen("Step: stopping all virtual Mesos-master")
-        self.mesos_master.teardown(remove=remove)
+        print_okgreen("Step: stopping all virtual Mesos-main")
+        self.mesos_main.teardown(remove=remove)
 
         print_okgreen("Step: stopping all virtual Zookeeper")
         self.zookeeper.teardown(remove=remove)
@@ -384,9 +384,9 @@ class VCluster(object):
 
         return "%s:%s" % (host, port)
 
-    def get_mesos_master(self):
+    def get_mesos_main(self):
         zk_server = self.get_vitual_zookeeper()
-        host, port = self.mesos_master.find_leader(zk_server)
+        host, port = self.mesos_main.find_leader(zk_server)
         return "%s:%s" % (host, port)
 
 

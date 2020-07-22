@@ -59,7 +59,7 @@ type Server struct {
 	backgroundManager    background.Manager
 
 	// TODO: move Mesos related fields into hostmgr.ServiceHandler
-	mesosDetector mesos.MasterDetector
+	mesosDetector mesos.MainDetector
 	mesosInbound  mhttp.Inbound
 	mesosOutbound transport.Outbounds
 
@@ -106,7 +106,7 @@ func NewServer(
 	parent tally.Scope,
 	backgroundManager background.Manager,
 	httpPort, grpcPort int,
-	mesosDetector mesos.MasterDetector,
+	mesosDetector mesos.MainDetector,
 	mesosInbound mhttp.Inbound,
 	mesosOutbound transport.Outbounds,
 	reconciler reconcile.TaskReconciler,
@@ -207,7 +207,7 @@ func (s *Server) ShutDownCallback() error {
 	return nil
 }
 
-// GetID function returns the peloton master address.
+// GetID function returns the peloton main address.
 // This implements leader.Nomination.
 func (s *Server) GetID() string {
 	return s.ID
@@ -370,7 +370,7 @@ func (s *Server) startHandlers() {
 	if !s.handlersRunning.Swap(true) {
 		s.recoveryHandler.Start()
 		// Set Explicit Reconcile Turn to true, to make sure Explicit Reconciliation runs
-		// on Host Manager or Mesos Master re-election.
+		// on Host Manager or Mesos Main re-election.
 		s.reconciler.SetExplicitReconcileTurn(true)
 		s.backgroundManager.Start()
 		s.getOfferEventHandler().Start()

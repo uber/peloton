@@ -9,7 +9,7 @@ from peloton_client.service.discovery import (
 class Component(object):
     """
     Base class for the different entities that make up a Peloton
-    cluster such as Mesos master, Job Manager, Host Manager etc.
+    cluster such as Mesos main, Job Manager, Host Manager etc.
     Derived classes are defined for each kind of component.
     Each component has a user-friendly name and optionally the
     path of the Zookeeper node that stores the leader information
@@ -23,20 +23,20 @@ class Component(object):
 
 class MesosAgent(Component):
     """
-    Mesos slave component.
+    Mesos subordinate component.
     """
 
     def __init__(self):
         super(MesosAgent, self).__init__("mesos-agent")
 
 
-class MesosMaster(Component):
+class MesosMain(Component):
     """
-    Mesos master component.
+    Mesos main component.
     """
 
     def __init__(self):
-        super(MesosMaster, self).__init__("mesos-master")
+        super(MesosMain, self).__init__("mesos-main")
 
 
 class Zookeeper(Component):

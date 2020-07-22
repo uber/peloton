@@ -16,7 +16,7 @@ from util import load_test_config
 #########################################
 # general configs.
 CONFIG_FILES = ["test_job.yaml", "test_task.yaml"]
-MESOS_MASTER = ["peloton-mesos-master"]
+MESOS_MASTER = ["peloton-mesos-main"]
 MESOS_AGENTS = [
     "peloton-mesos-agent0",
     "peloton-mesos-agent1",

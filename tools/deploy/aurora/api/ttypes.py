@@ -424,14 +424,14 @@ class HostAttributes(object):
    - host
    - attributes
    - mode
-   - slaveId
+   - subordinateId
   """
 
   __slots__ = [ 
     'host',
     'attributes',
     'mode',
-    'slaveId',
+    'subordinateId',
    ]
 
   thrift_spec = (
@@ -439,14 +439,14 @@ class HostAttributes(object):
     (1, TType.STRING, 'host', None, None, ), # 1
     (2, TType.SET, 'attributes', (TType.STRUCT,(Attribute, Attribute.thrift_spec)), None, ), # 2
     (3, TType.I32, 'mode', None, None, ), # 3
-    (4, TType.STRING, 'slaveId', None, None, ), # 4
+    (4, TType.STRING, 'subordinateId', None, None, ), # 4
   )
 
-  def __init__(self, host=None, attributes=None, mode=None, slaveId=None,):
+  def __init__(self, host=None, attributes=None, mode=None, subordinateId=None,):
     self.host = host
     self.attributes = attributes
     self.mode = mode
-    self.slaveId = slaveId
+    self.subordinateId = subordinateId
 
   def read(self, iprot):
     if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
@@ -480,7 +480,7 @@ class HostAttributes(object):
           iprot.skip(ftype)
       elif fid == 4:
         if ftype == TType.STRING:
-          self.slaveId = iprot.readString().decode('utf-8')
+          self.subordinateId = iprot.readString().decode('utf-8')
         else:
           iprot.skip(ftype)
       else:
@@ -508,9 +508,9 @@ class HostAttributes(object):
       oprot.writeFieldBegin('mode', TType.I32, 3)
       oprot.writeI32(self.mode)
       oprot.writeFieldEnd()
-    if self.slaveId is not None:
-      oprot.writeFieldBegin('slaveId', TType.STRING, 4)
-      oprot.writeString(self.slaveId.encode('utf-8'))
+    if self.subordinateId is not None:
+      oprot.writeFieldBegin('subordinateId', TType.STRING, 4)
+      oprot.writeString(self.subordinateId.encode('utf-8'))
       oprot.writeFieldEnd()
     oprot.writeFieldStop()
     oprot.writeStructEnd()
@@ -807,7 +807,7 @@ class Constraint(object):
   A constraint that defines whether a task may be scheduled on a host.
 
   Attributes:
-   - name: Mesos slave attribute that the constraint is matched against.
+   - name: Mesos subordinate attribute that the constraint is matched against.
    - constraint
   """
 
@@ -4005,9 +4005,9 @@ class AssignedTask(object):
 
   Attributes:
    - taskId: The mesos task ID for this task.  Guaranteed to be globally unique
-   - slaveId: The mesos slave ID that this task has been assigned to.
+   - subordinateId: The mesos subordinate ID that this task has been assigned to.
   This will not be populated for a PENDING task.
-   - slaveHost: The name of the machine that this task has been assigned to.
+   - subordinateHost: The name of the machine that this task has been assigned to.
   This will not be populated for a PENDING task.
    - task: Information about how to run this task.
    - assignedPorts: Ports reserved on the machine while this task is running.
@@ -4017,8 +4017,8 @@ class AssignedTask(object):
 
   __slots__ = [ 
     'taskId',
-    'slaveId',
-    'slaveHost',
+    'subordinateId',
+    'subordinateHost',
     'task',
     'assignedPorts',
     'instanceId',
@@ -4027,17 +4027,17 @@ class AssignedTask(object):
   thrift_spec = (
     None, # 0
     (1, TType.STRING, 'taskId', None, None, ), # 1
-    (2, TType.STRING, 'slaveId', None, None, ), # 2
-    (3, TType.STRING, 'slaveHost', None, None, ), # 3
+    (2, TType.STRING, 'subordinateId', None, None, ), # 2
+    (3, TType.STRING, 'subordinateHost', None, None, ), # 3
     (4, TType.STRUCT, 'task', (TaskConfig, TaskConfig.thrift_spec), None, ), # 4
     (5, TType.MAP, 'assignedPorts', (TType.STRING,None,TType.I32,None), None, ), # 5
     (6, TType.I32, 'instanceId', None, None, ), # 6
   )
 
-  def __init__(self, taskId=None, slaveId=None, slaveHost=None, task=None, assignedPorts=None, instanceId=None,):
+  def __init__(self, taskId=None, subordinateId=None, subordinateHost=None, task=None, assignedPorts=None, instanceId=None,):
     self.taskId = taskId
-    self.slaveId = slaveId
-    self.slaveHost = slaveHost
+    self.subordinateId = subordinateId
+    self.subordinateHost = subordinateHost
     self.task = task
     self.assignedPorts = assignedPorts
     self.instanceId = instanceId
@@ -4058,12 +4058,12 @@ class AssignedTask(object):
           iprot.skip(ftype)
       elif fid == 2:
         if ftype == TType.STRING:
-          self.slaveId = iprot.readString().decode('utf-8')
+          self.subordinateId = iprot.readString().decode('utf-8')
         else:
           iprot.skip(ftype)
       elif fid == 3:
         if ftype == TType.STRING:
-          self.slaveHost = iprot.readString().decode('utf-8')
+          self.subordinateHost = iprot.readString().decode('utf-8')
         else:
           iprot.skip(ftype)
       elif fid == 4:
@@ -4102,13 +4102,13 @@ class AssignedTask(object):
       oprot.writeFieldBegin('taskId', TType.STRING, 1)
       oprot.writeString(self.taskId.encode('utf-8'))
       oprot.writeFieldEnd()
-    if self.slaveId is not None:
-      oprot.writeFieldBegin('slaveId', TType.STRING, 2)
-      oprot.writeString(self.slaveId.encode('utf-8'))
+    if self.subordinateId is not None:
+      oprot.writeFieldBegin('subordinateId', TType.STRING, 2)
+      oprot.writeString(self.subordinateId.encode('utf-8'))
       oprot.writeFieldEnd()
-    if self.slaveHost is not None:
-      oprot.writeFieldBegin('slaveHost', TType.STRING, 3)
-      oprot.writeString(self.slaveHost.encode('utf-8'))
+    if self.subordinateHost is not None:
+      oprot.writeFieldBegin('subordinateHost', TType.STRING, 3)
+      oprot.writeString(self.subordinateHost.encode('utf-8'))
       oprot.writeFieldEnd()
     if self.task is not None:
       oprot.writeFieldBegin('task', TType.STRUCT, 4)
@@ -4468,7 +4468,7 @@ class TaskQuery(object):
    - taskIds
    - statuses
    - instanceIds
-   - slaveHosts
+   - subordinateHosts
    - jobKeys
    - offset
    - limit
@@ -4480,7 +4480,7 @@ class TaskQuery(object):
     'statuses',
     'instanceIds',
     'environment',
-    'slaveHosts',
+    'subordinateHosts',
     'jobKeys',
     'offset',
     'limit',
@@ -4498,21 +4498,21 @@ class TaskQuery(object):
     (7, TType.SET, 'instanceIds', (TType.I32,None), None, ), # 7
     None, # 8
     (9, TType.STRING, 'environment', None, None, ), # 9
-    (10, TType.SET, 'slaveHosts', (TType.STRING,None), None, ), # 10
+    (10, TType.SET, 'subordinateHosts', (TType.STRING,None), None, ), # 10
     (11, TType.SET, 'jobKeys', (TType.STRUCT,(JobKey, JobKey.thrift_spec)), None, ), # 11
     (12, TType.I32, 'offset', None, None, ), # 12
     (13, TType.I32, 'limit', None, None, ), # 13
     (14, TType.STRING, 'role', None, None, ), # 14
   )
 
-  def __init__(self, role=None, environment=None, jobName=None, taskIds=None, statuses=None, instanceIds=None, slaveHosts=None, jobKeys=None, offset=None, limit=None,):
+  def __init__(self, role=None, environment=None, jobName=None, taskIds=None, statuses=None, instanceIds=None, subordinateHosts=None, jobKeys=None, offset=None, limit=None,):
     self.role = role
     self.environment = environment
     self.jobName = jobName
     self.taskIds = taskIds
     self.statuses = statuses
     self.instanceIds = instanceIds
-    self.slaveHosts = slaveHosts
+    self.subordinateHosts = subordinateHosts
     self.jobKeys = jobKeys
     self.offset = offset
     self.limit = limit
@@ -4573,11 +4573,11 @@ class TaskQuery(object):
           iprot.skip(ftype)
       elif fid == 10:
         if ftype == TType.SET:
-          self.slaveHosts = set()
+          self.subordinateHosts = set()
           (_etype151, _size148) = iprot.readSetBegin()
           for _i152 in xrange(_size148):
             _elem153 = iprot.readString().decode('utf-8')
-            self.slaveHosts.add(_elem153)
+            self.subordinateHosts.add(_elem153)
           iprot.readSetEnd()
         else:
           iprot.skip(ftype)
@@ -4641,10 +4641,10 @@ class TaskQuery(object):
       oprot.writeFieldBegin('environment', TType.STRING, 9)
       oprot.writeString(self.environment.encode('utf-8'))
       oprot.writeFieldEnd()
-    if self.slaveHosts is not None:
-      oprot.writeFieldBegin('slaveHosts', TType.SET, 10)
-      oprot.writeSetBegin(TType.STRING, len(self.slaveHosts))
-      for iter163 in self.slaveHosts:
+    if self.subordinateHosts is not None:
+      oprot.writeFieldBegin('subordinateHosts', TType.SET, 10)
+      oprot.writeSetBegin(TType.STRING, len(self.subordinateHosts))
+      for iter163 in self.subordinateHosts:
         oprot.writeString(iter163.encode('utf-8'))
       oprot.writeSetEnd()
       oprot.writeFieldEnd()

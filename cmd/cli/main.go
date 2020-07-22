@@ -699,8 +699,8 @@ var (
 	watchEventMesosUpdate = hostmgr.Command("events-mesos-update", "watch mesos event update received from mesos")
 	watchEventHostSummary = hostmgr.Command("events-host-summary", "watch mesos event update received from mesos")
 
-	// command to disable the kill tasks request to mesos master
-	disableKillTasks = hostmgr.Command("disable-kill-tasks", "disable the kill task request to mesos master")
+	// command to disable the kill tasks request to mesos main
+	disableKillTasks = hostmgr.Command("disable-kill-tasks", "disable the kill task request to mesos main")
 
 	// Top level admin command
 	admin = app.Command("admin", "administrative APIs")

@@ -21,7 +21,7 @@ import (
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	mesos_maintenance "github.com/uber/peloton/.gen/mesos/v1/maintenance"
-	mesos_master "github.com/uber/peloton/.gen/mesos/v1/master"
+	mesos_main "github.com/uber/peloton/.gen/mesos/v1/master"
 	pbhost "github.com/uber/peloton/.gen/peloton/api/v0/host"
 
 	"github.com/uber/peloton/pkg/common/goalstate"
@@ -40,7 +40,7 @@ type actionTestSuite struct {
 	suite.Suite
 	mockCtrl                 *gomock.Controller
 	mockHostEngine           *goalstatemocks.MockEngine
-	mockMasterOperatorClient *mpb_mocks.MockMasterOperatorClient
+	mockMainOperatorClient *mpb_mocks.MockMainOperatorClient
 	mockHostInfoOps          *orm_mocks.MockHostInfoOps
 	mockHostPoolmgr          *hpoolmocks.MockHostPoolManager
 	hostname                 string
@@ -53,7 +53,7 @@ type actionTestSuite struct {
 func (suite *actionTestSuite) SetupTest() {
 	suite.mockCtrl = gomock.NewController(suite.T())
 	suite.mockHostEngine = goalstatemocks.NewMockEngine(suite.mockCtrl)
-	suite.mockMasterOperatorClient = mpb_mocks.NewMockMasterOperatorClient(suite.mockCtrl)
+	suite.mockMainOperatorClient = mpb_mocks.NewMockMainOperatorClient(suite.mockCtrl)
 	suite.mockHostInfoOps = orm_mocks.NewMockHostInfoOps(suite.mockCtrl)
 	suite.mockHostPoolmgr = hpoolmocks.NewMockHostPoolManager(suite.mockCtrl)
 	suite.hostname = "hostname"
@@ -61,7 +61,7 @@ func (suite *actionTestSuite) SetupTest() {
 	suite.ctx = context.Background()
 	suite.goalStateDriver = &driver{
 		hostEngine:        suite.mockHostEngine,
-		mesosMasterClient: suite.mockMasterOperatorClient,
+		mesosMainClient: suite.mockMainOperatorClient,
 		hostInfoOps:       suite.mockHostInfoOps,
 		scope:             tally.NoopScope,
 		cfg:               &Config{},
@@ -121,12 +121,12 @@ func (suite *actionTestSuite) TestHostDrain() {
 		Get(gomock.Any(), gomock.Any()).
 		Return(hostInfo, nil).
 		Times(3)
-	suite.mockMasterOperatorClient.EXPECT().
+	suite.mockMainOperatorClient.EXPECT().
 		GetMaintenanceSchedule().
-		Return(&mesos_master.Response_GetMaintenanceSchedule{
+		Return(&mesos_main.Response_GetMaintenanceSchedule{
 			Schedule: &mesos_maintenance.Schedule{},
 		}, nil)
-	suite.mockMasterOperatorClient.EXPECT().
+	suite.mockMainOperatorClient.EXPECT().
 		UpdateMaintenanceSchedule(gomock.Any()).
 		Return(nil)
 	suite.mockHostInfoOps.EXPECT().
@@ -162,8 +162,8 @@ func (suite *actionTestSuite) TestHostDrainFailureDBRead() {
 	suite.Error(HostDrain(suite.ctx, suite.hostEntity))
 }
 
-// TestHostDrainFailure tests HostDrain with failures to update Mesos Master
-func (suite *actionTestSuite) TestHostDrainFailureWithMesosMaster() {
+// TestHostDrainFailure tests HostDrain with failures to update Mesos Main
+func (suite *actionTestSuite) TestHostDrainFailureWithMesosMain() {
 	suite.mockHostInfoOps.EXPECT().
 		Get(gomock.Any(), gomock.Any()).
 		Return(&pbhost.HostInfo{
@@ -171,12 +171,12 @@ func (suite *actionTestSuite) TestHostDrainFailureWithMesosMaster() {
 			Ip:       suite.IP,
 		}, nil).
 		Times(3)
-	suite.mockMasterOperatorClient.EXPECT().
+	suite.mockMainOperatorClient.EXPECT().
 		GetMaintenanceSchedule().
-		Return(&mesos_master.Response_GetMaintenanceSchedule{
+		Return(&mesos_main.Response_GetMaintenanceSchedule{
 			Schedule: &mesos_maintenance.Schedule{},
 		}, nil)
-	suite.mockMasterOperatorClient.EXPECT().
+	suite.mockMainOperatorClient.EXPECT().
 		UpdateMaintenanceSchedule(gomock.Any()).
 		Return(errors.New("some error"))
 
@@ -192,12 +192,12 @@ func (suite *actionTestSuite) TestHostDrainFailureDBWrite() {
 			Ip:       suite.IP,
 		}, nil).
 		Times(3)
-	suite.mockMasterOperatorClient.EXPECT().
+	suite.mockMainOperatorClient.EXPECT().
 		GetMaintenanceSchedule().
-		Return(&mesos_master.Response_GetMaintenanceSchedule{
+		Return(&mesos_main.Response_GetMaintenanceSchedule{
 			Schedule: &mesos_maintenance.Schedule{},
 		}, nil)
-	suite.mockMasterOperatorClient.EXPECT().
+	suite.mockMainOperatorClient.EXPECT().
 		UpdateMaintenanceSchedule(gomock.Any()).
 		Return(nil)
 	suite.mockHostInfoOps.EXPECT().
@@ -243,12 +243,12 @@ func (suite *actionTestSuite) TestHostDown() {
 		Return(hostInfo, nil).
 		Times(3)
 
-	suite.mockMasterOperatorClient.EXPECT().
+	suite.mockMainOperatorClient.EXPECT().
 		GetMaintenanceStatus().
-		Return(&mesos_master.Response_GetMaintenanceStatus{
+		Return(&mesos_main.Response_GetMaintenanceStatus{
 			Status: clusterStatusAsDraining,
 		}, nil)
-	suite.mockMasterOperatorClient.EXPECT().
+	suite.mockMainOperatorClient.EXPECT().
 		StartMaintenance(gomock.Any()).
 		Return(nil)
 
@@ -287,8 +287,8 @@ func (suite *actionTestSuite) TestHostDownFailureDBRead() {
 	suite.Error(HostDown(suite.ctx, suite.hostEntity))
 }
 
-// TestHostDownFailure tests HostDown with failure to read from Mesos Master
-func (suite *actionTestSuite) TestHostDownFailureMesosMasterRead() {
+// TestHostDownFailure tests HostDown with failure to read from Mesos Main
+func (suite *actionTestSuite) TestHostDownFailureMesosMainRead() {
 	suite.mockHostInfoOps.EXPECT().
 		Get(gomock.Any(), gomock.Any()).
 		Return(&pbhost.HostInfo{
@@ -296,7 +296,7 @@ func (suite *actionTestSuite) TestHostDownFailureMesosMasterRead() {
 			Ip:       suite.IP,
 		}, nil).
 		Times(3)
-	suite.mockMasterOperatorClient.EXPECT().
+	suite.mockMainOperatorClient.EXPECT().
 		GetMaintenanceStatus().
 		Return(nil, errors.New("some error"))
 
@@ -325,12 +325,12 @@ func (suite *actionTestSuite) TestHostDownFailureDBWrite() {
 			Ip:       suite.IP,
 		}, nil).
 		Times(3)
-	suite.mockMasterOperatorClient.EXPECT().
+	suite.mockMainOperatorClient.EXPECT().
 		GetMaintenanceStatus().
-		Return(&mesos_master.Response_GetMaintenanceStatus{
+		Return(&mesos_main.Response_GetMaintenanceStatus{
 			Status: clusterStatusAsDraining,
 		}, nil)
-	suite.mockMasterOperatorClient.EXPECT().
+	suite.mockMainOperatorClient.EXPECT().
 		StartMaintenance(gomock.Any()).
 		Return(nil)
 	suite.mockHostInfoOps.EXPECT().
@@ -362,7 +362,7 @@ func (suite *actionTestSuite) TestHostUp() {
 		Get(gomock.Any(), gomock.Any()).
 		Return(hostInfo, nil).
 		Times(3)
-	suite.mockMasterOperatorClient.EXPECT().
+	suite.mockMainOperatorClient.EXPECT().
 		StopMaintenance(gomock.Any()).
 		Return(nil)
 	suite.mockHostInfoOps.EXPECT().
@@ -403,8 +403,8 @@ func (suite *actionTestSuite) TestHostUpFailureDBRead() {
 	suite.Error(HostUp(suite.ctx, suite.hostEntity))
 }
 
-// TestHostUpFailure tests HostUp with failure to read from Mesos Master
-func (suite *actionTestSuite) TestHostUpFailureMesosMasterRead() {
+// TestHostUpFailure tests HostUp with failure to read from Mesos Main
+func (suite *actionTestSuite) TestHostUpFailureMesosMainRead() {
 	suite.mockHostInfoOps.EXPECT().
 		Get(gomock.Any(), gomock.Any()).
 		Return(&pbhost.HostInfo{
@@ -412,7 +412,7 @@ func (suite *actionTestSuite) TestHostUpFailureMesosMasterRead() {
 			Ip:       suite.IP,
 		}, nil).
 		Times(3)
-	suite.mockMasterOperatorClient.EXPECT().
+	suite.mockMainOperatorClient.EXPECT().
 		StopMaintenance(gomock.Any()).
 		Return(errors.New("some error"))
 
@@ -429,7 +429,7 @@ func (suite *actionTestSuite) TestHostUpFailureDBWrite() {
 			Ip:       suite.IP,
 		}, nil).
 		Times(3)
-	suite.mockMasterOperatorClient.EXPECT().
+	suite.mockMainOperatorClient.EXPECT().
 		StopMaintenance(gomock.Any()).
 		Return(nil)
 	suite.mockHostInfoOps.EXPECT().

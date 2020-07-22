@@ -20,27 +20,27 @@ import (
 var (
 	pluginLock sync.Mutex
 	plugins    = map[string]PluginFactory{}
-	// ErrEmptySpec is the error for when no master is provided
-	ErrEmptySpec = errors.New("empty master specification")
+	// ErrEmptySpec is the error for when no main is provided
+	ErrEmptySpec = errors.New("empty main specification")
 
-	defaultFactory = PluginFactory(func(spec string, _ ...Option) (Master, error) {
+	defaultFactory = PluginFactory(func(spec string, _ ...Option) (Main, error) {
 		if len(spec) == 0 {
 			return nil, ErrEmptySpec
 		}
 		if strings.Index(spec, "@") < 0 {
-			spec = "master@" + spec
+			spec = "main@" + spec
 		}
 		if pid, err := upid.Parse(spec); err == nil {
-			return NewStandalone(CreateMasterInfo(pid)), nil
+			return NewStandalone(CreateMainInfo(pid)), nil
 		} else {
 			return nil, err
 		}
 	})
 )
 
-type PluginFactory func(string, ...Option) (Master, error)
+type PluginFactory func(string, ...Option) (Main, error)
 
-// associates a plugin implementation with a Master specification prefix.
+// associates a plugin implementation with a Main specification prefix.
 // packages that provide plugins are expected to invoke this func within
 // their init() implementation. schedulers that wish to support plugins may
 // anonymously import ("_") a package the auto-registers said plugins.
@@ -66,18 +66,18 @@ func Register(prefix string, f PluginFactory) error {
 //
 //   - file://{path_to_local_file}
 //   - {ipaddress}:{port}
-//   - master@{ip_address}:{port}
-//   - master({id})@{ip_address}:{port}
+//   - main@{ip_address}:{port}
+//   - main({id})@{ip_address}:{port}
 //
 // Support for the file:// prefix is intentionally hardcoded so that it may
 // not be inadvertently overridden by a custom plugin implementation. Custom
 // plugins are supported via the Register and MatchingPlugin funcs.
 //
-// Furthermore it is expected that master detectors returned from this func
+// Furthermore it is expected that main detectors returned from this func
 // are not yet running and will only begin to spawn requisite background
 // processing upon, or some time after, the first invocation of their Detect.
 //
-func New(spec string, options ...Option) (m Master, err error) {
+func New(spec string, options ...Option) (m Main, err error) {
 	if strings.HasPrefix(spec, "file://") {
 		var body []byte
 		path := spec[7:]
@@ -108,15 +108,15 @@ func MatchingPlugin(spec string) (PluginFactory, bool) {
 	return nil, false
 }
 
-// Super-useful utility func that attempts to build a mesos.MasterInfo from a
+// Super-useful utility func that attempts to build a mesos.MainInfo from a
 // upid.UPID specification. An attempt is made to determine the IP address of
 // the UPID's Host and any errors during such resolution will result in a nil
 // returned result. A nil result is also returned upon errors parsing the Port
 // specification of the UPID.
 //
-// TODO(jdef) make this a func of upid.UPID so that callers can invoke somePid.MasterInfo()?
+// TODO(jdef) make this a func of upid.UPID so that callers can invoke somePid.MainInfo()?
 //
-func CreateMasterInfo(pid *upid.UPID) *mesos.MasterInfo {
+func CreateMainInfo(pid *upid.UPID) *mesos.MainInfo {
 	if pid == nil {
 		return nil
 	}
@@ -147,7 +147,7 @@ func CreateMasterInfo(pid *upid.UPID) *mesos.MasterInfo {
 		return nil
 	}
 	packedip := binary.BigEndian.Uint32(ipv4) // network byte order is big-endian
-	mi := util.NewMasterInfo(pid.ID, packedip, uint32(port))
+	mi := util.NewMainInfo(pid.ID, packedip, uint32(port))
 	mi.Pid = proto.String(pid.String())
 	if pid.Host != "" {
 		mi.Hostname = proto.String(pid.Host)

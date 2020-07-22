@@ -22,18 +22,18 @@ import (
 	"testing"
 )
 
-func TestNewMasterInfo(t *testing.T) {
-	master := NewMasterInfo("master-1", 1234, 5678)
-	if master == nil {
-		t.Fatal("Not creating protobuf object MasterInfo")
+func TestNewMainInfo(t *testing.T) {
+	main := NewMainInfo("main-1", 1234, 5678)
+	if main == nil {
+		t.Fatal("Not creating protobuf object MainInfo")
 	}
-	if master.GetId() != "master-1" {
-		t.Fatal("Protobuf object MasterInfo.Id missing.")
+	if main.GetId() != "main-1" {
+		t.Fatal("Protobuf object MainInfo.Id missing.")
 	}
-	if master.GetIp() != 1234 {
-		t.Fatal("Protobuf object MasterInfo.Ip missing.")
+	if main.GetIp() != 1234 {
+		t.Fatal("Protobuf object MainInfo.Ip missing.")
 	}
-	if master.GetPort() != 5678 {
-		t.Fatal("Protobuf object MasterInfo.Port missing.")
+	if main.GetPort() != 5678 {
+		t.Fatal("Protobuf object MainInfo.Port missing.")
 	}
 }

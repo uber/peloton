@@ -60,7 +60,7 @@ type Drainer interface {
 type drainer struct {
 	drainerPeriod        time.Duration
 	pelotonAgentRole     string
-	masterOperatorClient mpb.MasterOperatorClient
+	mainOperatorClient mpb.MainOperatorClient
 	lifecycle            lifecycle.LifeCycle // lifecycle manager
 	goalStateDriver      goalstate.Driver
 	hostInfoOps          ormobjects.HostInfoOps // DB ops for host_info table
@@ -71,7 +71,7 @@ type drainer struct {
 func NewDrainer(
 	drainerPeriod time.Duration,
 	pelotonAgentRole string,
-	masterOperatorClient mpb.MasterOperatorClient,
+	mainOperatorClient mpb.MainOperatorClient,
 	goalStateDriver goalstate.Driver,
 	hostInfoOps ormobjects.HostInfoOps,
 	taskEvictionQueue queue.TaskQueue,
@@ -79,7 +79,7 @@ func NewDrainer(
 	return &drainer{
 		drainerPeriod:        drainerPeriod,
 		pelotonAgentRole:     pelotonAgentRole,
-		masterOperatorClient: masterOperatorClient,
+		mainOperatorClient: mainOperatorClient,
 		lifecycle:            lifecycle.NewLifeCycle(),
 		goalStateDriver:      goalStateDriver,
 		hostInfoOps:          hostInfoOps,
@@ -136,8 +136,8 @@ func (d *drainer) Stop() {
 	log.Info("drainer stopped")
 }
 
-// reconcileMaintenanceState reconciles host maintenance states between DB and Mesos Master.
-// If the 2 states differ, the state read from Mesos Master is persisted in DB
+// reconcileMaintenanceState reconciles host maintenance states between DB and Mesos Main.
+// If the 2 states differ, the state read from Mesos Main is persisted in DB
 // and the host is enqueued into the host goal state engine to converge
 // towards the goal state already defined by the user for that host
 func (d *drainer) reconcileMaintenanceState() error {
@@ -149,19 +149,19 @@ func (d *drainer) reconcileMaintenanceState() error {
 		return err
 	}
 
-	hostInfosFromMesosMaster := make(map[string]*pbhost.HostInfo)
+	hostInfosFromMesosMain := make(map[string]*pbhost.HostInfo)
 
-	// Get all hosts in registered state (UP + DRAINING) from Mesos Master
+	// Get all hosts in registered state (UP + DRAINING) from Mesos Main
 	registeredAgents, err := host.BuildHostInfoForRegisteredAgents()
 	if err != nil {
 		return err
 	}
 	for hostname, hostInfo := range registeredAgents {
-		hostInfosFromMesosMaster[hostname] = hostInfo
+		hostInfosFromMesosMain[hostname] = hostInfo
 	}
 
-	// Get all hosts in maintenance state from Mesos Master
-	response, err := d.masterOperatorClient.GetMaintenanceStatus()
+	// Get all hosts in maintenance state from Mesos Main
+	response, err := d.mainOperatorClient.GetMaintenanceStatus()
 	if err != nil {
 		return err
 	}
@@ -170,7 +170,7 @@ func (d *drainer) reconcileMaintenanceState() error {
 		machineID := drainingMachine.GetId()
 		// Overwrite the hostInfo if a host was temporary registered as UP
 		// while it is actually DRAINING
-		hostInfosFromMesosMaster[machineID.GetHostname()] = &pbhost.HostInfo{
+		hostInfosFromMesosMain[machineID.GetHostname()] = &pbhost.HostInfo{
 			Hostname: machineID.GetHostname(),
 			Ip:       machineID.GetIp(),
 			State:    pbhost.HostState_HOST_STATE_DRAINING,
@@ -178,7 +178,7 @@ func (d *drainer) reconcileMaintenanceState() error {
 	}
 
 	for _, downMachine := range response.GetStatus().GetDownMachines() {
-		hostInfosFromMesosMaster[downMachine.GetHostname()] = &pbhost.HostInfo{
+		hostInfosFromMesosMain[downMachine.GetHostname()] = &pbhost.HostInfo{
 			Hostname: downMachine.GetHostname(),
 			Ip:       downMachine.GetIp(),
 			State:    pbhost.HostState_HOST_STATE_DOWN,
@@ -186,23 +186,23 @@ func (d *drainer) reconcileMaintenanceState() error {
 	}
 
 	// For each host in maintenance from DB, its current state should match
-	// the current state read from Mesos Master
+	// the current state read from Mesos Main
 	// If not, update the host state in DB and enqueue into the goal state
 	for _, hFromDB := range hostInfosFromDB {
 		hostname := hFromDB.GetHostname()
-		hFromMesos, ok := hostInfosFromMesosMaster[hostname]
+		hFromMesos, ok := hostInfosFromMesosMain[hostname]
 
-		// Current state from DB matching current maintenance state in Mesos Master
+		// Current state from DB matching current maintenance state in Mesos Main
 		if ok && hFromDB.GetState() == hFromMesos.State {
 			continue
 		}
 
-		// Current state from DB not matching current maintenance state in Mesos Master
+		// Current state from DB not matching current maintenance state in Mesos Main
 		if ok && hFromDB.GetState() != hFromMesos.State {
 			log.WithFields(log.Fields{
 				"hostname":                hostname,
 				"state_from_db":           hFromDB.GetState().String(),
-				"state_from_mesos_master": hFromMesos.State.String(),
+				"state_from_mesos_main": hFromMesos.State.String(),
 			}).Info("reconcilation of host maintenance state")
 			// Update host state in DB
 			// No lock possible so potential race between reconcile and goal state engine
@@ -223,7 +223,7 @@ func (d *drainer) reconcileMaintenanceState() error {
 }
 
 // StartMaintenance puts the host(s) into DRAINING state by posting a maintenance
-// schedule to Mesos Master.
+// schedule to Mesos Main.
 func (d *drainer) StartMaintenance(
 	ctx context.Context,
 	hostname string,

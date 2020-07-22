@@ -33,7 +33,7 @@ class FailureFixture(object):
         )
         self.log.addHandler(sh)
 
-        self.mesos_master = components.MesosMaster()
+        self.mesos_main = components.MesosMain()
         self.mesos_agent = components.MesosAgent()
         self.zookeeper = components.Zookeeper()
         self.cassandra = components.Cassandra()

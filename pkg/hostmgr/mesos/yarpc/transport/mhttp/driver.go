@@ -22,7 +22,7 @@ import (
 )
 
 // MesosDriver is an interface used by Inbound to subscribe to a Mesos
-// service endpoint such as scheduler, executor, master etc.
+// service endpoint such as scheduler, executor, main etc.
 type MesosDriver interface {
 	// Returns the name of Mesos driver such as scheduler or executor
 	Name() string
@@ -36,7 +36,7 @@ type MesosDriver interface {
 
 	// Returns a subscribe Call message to be sent to Mesos for
 	// setting up an event stream connection
-	PrepareSubscribeRequest(ctx context.Context, mesosMasterHostPort string) (*http.Request, error)
+	PrepareSubscribeRequest(ctx context.Context, mesosMainHostPort string) (*http.Request, error)
 
 	// Invoked after the subscription to Mesos is done
 	PostSubscribe(ctx context.Context, mesosStreamID string)

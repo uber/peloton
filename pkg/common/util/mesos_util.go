@@ -22,15 +22,15 @@ import (
 const (
 	// ipPortSeparator is the separator for IP address and Port
 	ipPortSeparator = ":"
-	// slaveIPSeparator is the separator for slave id and IP address
-	slaveIPSeparator = "@"
+	// subordinateIPSeparator is the separator for subordinate id and IP address
+	subordinateIPSeparator = "@"
 )
 
 // ExtractIPAndPortFromMesosAgentPID parses Mesos PID to extract IP-address
 // and port number (if present).
 func ExtractIPAndPortFromMesosAgentPID(pid string) (string, string, error) {
-	// pid is of the form slave<id>@<ip>:<port>
-	pidParts := strings.Split(pid, slaveIPSeparator)
+	// pid is of the form subordinate<id>@<ip>:<port>
+	pidParts := strings.Split(pid, subordinateIPSeparator)
 	if len(pidParts) != 2 {
 		err := fmt.Errorf("invalid Agent PID: %s", pid)
 		return "", "", err

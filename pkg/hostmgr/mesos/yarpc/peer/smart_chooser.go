@@ -106,7 +106,7 @@ func (c *smartChooser) IsRunning() bool {
 
 // Choose is called when a request is sent. See
 // go.uber.org/yarpc/transport/http/outbound. Here it returns the current peer
-// (the leader peloton master).
+// (the leader peloton main).
 func (c *smartChooser) Choose(
 	ctx context.Context,
 	req *transport.Request) (peer.Peer, func(error), error) {

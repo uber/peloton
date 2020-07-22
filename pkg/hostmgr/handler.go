@@ -85,12 +85,12 @@ var (
 // ServiceHandler implements peloton.private.hostmgr.InternalHostService.
 type ServiceHandler struct {
 	schedulerClient       mpb.SchedulerClient
-	operatorMasterClient  mpb.MasterOperatorClient
+	operatorMainClient  mpb.MainOperatorClient
 	metrics               *metrics.Metrics
 	offerPool             offerpool.Pool
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider
 	roleName              string
-	mesosDetector         hostmgr_mesos.MasterDetector
+	mesosDetector         hostmgr_mesos.MainDetector
 	reserver              reserver.Reserver
 	hmConfig              config.Config
 	slackResourceTypes    []string
@@ -108,10 +108,10 @@ func NewServiceHandler(
 	d *yarpc.Dispatcher,
 	metrics *metrics.Metrics,
 	schedulerClient mpb.SchedulerClient,
-	masterOperatorClient mpb.MasterOperatorClient,
+	mainOperatorClient mpb.MainOperatorClient,
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider,
 	mesosConfig hostmgr_mesos.Config,
-	mesosDetector hostmgr_mesos.MasterDetector,
+	mesosDetector hostmgr_mesos.MainDetector,
 	hmConfig *config.Config,
 	slackResourceTypes []string,
 	watchProcessor watchevent.WatchProcessor,
@@ -124,7 +124,7 @@ func NewServiceHandler(
 
 	handler := &ServiceHandler{
 		schedulerClient:       schedulerClient,
-		operatorMasterClient:  masterOperatorClient,
+		operatorMainClient:  mainOperatorClient,
 		metrics:               metrics,
 		offerPool:             offer.GetEventHandler().GetOfferPool(),
 		frameworkInfoProvider: frameworkInfoProvider,
@@ -166,14 +166,14 @@ func (h *ServiceHandler) GetReserver() reserver.Reserver {
 }
 
 // DisableKillTasks toggles the flag to disable send kill tasks request
-// to mesos master
+// to mesos main
 func (h *ServiceHandler) DisableKillTasks(
 	ctx context.Context,
 	body *hostsvc.DisableKillTasksRequest,
 ) (*hostsvc.DisableKillTasksResponse, error) {
 
 	h.disableKillTasks.Store(true)
-	log.Info("Disabled the kill tasks request to mesos master. ",
+	log.Info("Disabled the kill tasks request to mesos main. ",
 		"To enable restart host manager")
 
 	return &hostsvc.DisableKillTasksResponse{}, nil
@@ -1176,7 +1176,7 @@ func (h *ServiceHandler) ClusterCapacity(
 		}, nil
 	}
 
-	allocatedResources, _, err := h.operatorMasterClient.
+	allocatedResources, _, err := h.operatorMainClient.
 		GetTasksAllocation(frameWorkID.GetValue())
 	if err != nil {
 		log.WithError(err).Error("error making cluster capacity request")
@@ -1209,7 +1209,7 @@ func (h *ServiceHandler) ClusterCapacity(
 	// 2) quota is set for the same role peloton is registered under.
 	// If operator set a quota for another role but leave peloton's role unset,
 	// cluster capacity will be over estimated.
-	quotaResources, err := h.operatorMasterClient.GetQuota(h.roleName)
+	quotaResources, err := h.operatorMainClient.GetQuota(h.roleName)
 	if err != nil {
 		log.WithError(err).Error("error getting quota")
 
@@ -1255,30 +1255,30 @@ func (h *ServiceHandler) ClusterCapacity(
 	return response, nil
 }
 
-// GetMesosMasterHostPort returns the Leader Mesos Master hostname and port.
-func (h *ServiceHandler) GetMesosMasterHostPort(
+// GetMesosMainHostPort returns the Leader Mesos Main hostname and port.
+func (h *ServiceHandler) GetMesosMainHostPort(
 	ctx context.Context,
-	body *hostsvc.MesosMasterHostPortRequest,
-) (response *hostsvc.MesosMasterHostPortResponse, err error) {
+	body *hostsvc.MesosMainHostPortRequest,
+) (response *hostsvc.MesosMainHostPortResponse, err error) {
 
 	defer func() {
 		if err != nil {
-			h.metrics.GetMesosMasterHostPortFail.Inc(1)
+			h.metrics.GetMesosMainHostPortFail.Inc(1)
 			err = yarpcutil.ConvertToYARPCError(err)
 			return
 		}
 
-		h.metrics.GetMesosMasterHostPort.Inc(1)
+		h.metrics.GetMesosMainHostPort.Inc(1)
 	}()
 
-	mesosMasterInfo := strings.Split(h.mesosDetector.HostPort(), ":")
-	if len(mesosMasterInfo) != 2 {
-		err = errors.New("unable to fetch leader mesos master hostname & port")
+	mesosMainInfo := strings.Split(h.mesosDetector.HostPort(), ":")
+	if len(mesosMainInfo) != 2 {
+		err = errors.New("unable to fetch leader mesos main hostname & port")
 		return nil, err
 	}
-	response = &hostsvc.MesosMasterHostPortResponse{
-		Hostname: mesosMasterInfo[0],
-		Port:     mesosMasterInfo[1],
+	response = &hostsvc.MesosMainHostPortResponse{
+		Hostname: mesosMainInfo[0],
+		Port:     mesosMainInfo[1],
 	}
 
 	return response, nil

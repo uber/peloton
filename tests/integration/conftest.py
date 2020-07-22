@@ -100,19 +100,19 @@ def pytest_runtest_makereport(item, call):
 
 
 class Container(object):
-    def __init__(self, names, is_mesos_master=False):
+    def __init__(self, names, is_mesos_main=False):
         self._cluster = minicluster.default_cluster
         self._cli = docker_client.default_client
         self._names = names
-        self._is_mesos_master = is_mesos_master
+        self._is_mesos_main = is_mesos_main
 
     def start(self):
         for name in self._names:
             self._cli.start(name)
             log.info("%s started", name)
 
-        if self._is_mesos_master:
-            self._cluster.wait_for_mesos_master_leader()
+        if self._is_mesos_main:
+            self._cluster.wait_for_mesos_main_leader()
 
     def stop(self):
         for name in self._names:
@@ -124,8 +124,8 @@ class Container(object):
             self._cli.restart(name, timeout=0)
             log.info("%s restarted", name)
 
-        if self._is_mesos_master:
-            self._cluster.wait_for_mesos_master_leader()
+        if self._is_mesos_main:
+            self._cluster.wait_for_mesos_main_leader()
 
 
 def get_container(container_name):
@@ -177,7 +177,7 @@ def teardown_minicluster(cluster, dump_logs=False):
         cluster.teardown(stop=True)
 
         try:
-            # TODO (varung): enable PE and mesos-master logs if needed
+            # TODO (varung): enable PE and mesos-main logs if needed
             cli = cluster.cli
             for c in ("peloton-jobmgr0", "peloton-resmgr0"):
                 for l in cli.logs(c, stream=True):
@@ -198,8 +198,8 @@ def cleanup_batch_jobs():
 
 
 @pytest.fixture()
-def mesos_master():
-    return Container(MESOS_MASTER, is_mesos_master=True)
+def mesos_main():
+    return Container(MESOS_MASTER, is_mesos_main=True)
 
 
 @pytest.fixture()

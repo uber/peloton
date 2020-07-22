@@ -32,5 +32,5 @@ type FrameworkConfig struct {
 	TaskKillingStateSupported   bool    `yaml:"task_killing_state"`
 	PartitionAwareSupported     bool    `yaml:"partition_aware"`
 	RevocableResourcesSupported bool    `yaml:"revocable_resources"`
-	MaxConnectionsToMesosMaster int     `yaml:"max_connections_to_mesos_master"`
+	MaxConnectionsToMesosMain int     `yaml:"max_connections_to_mesos_main"`
 }

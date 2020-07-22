@@ -23,7 +23,7 @@ import (
 	"time"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
-	mesos_master "github.com/uber/peloton/.gen/mesos/v1/master"
+	mesos_main "github.com/uber/peloton/.gen/mesos/v1/master"
 	"github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v0/task"
@@ -1772,7 +1772,7 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListSandboxFileFailure() {
 	suite.NotEmpty(resp.GetError().GetFailure())
 }
 
-func (suite *TaskHandlerTestSuite) TestBrowseSandboxGetMesosMasterInfoFailure() {
+func (suite *TaskHandlerTestSuite) TestBrowseSandboxGetMesosMainInfoFailure() {
 	instanceID := uint32(0)
 	sandboxFilesPaths := []string{"path1", "path2"}
 	hostName := "peloton-test-host"
@@ -1830,9 +1830,9 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxGetMesosMasterInfoFailure() 
 				"5051", agentID, req.GetTaskId()).
 			Return(sandboxFilesPaths, nil),
 		suite.mockedHostMgr.EXPECT().
-			GetMesosMasterHostPort(gomock.Any(),
-				&hostsvc.MesosMasterHostPortRequest{}).
-			Return(nil, errors.New("unable to fetch mesos master info")),
+			GetMesosMainHostPort(gomock.Any(),
+				&hostsvc.MesosMainHostPortRequest{}).
+			Return(nil, errors.New("unable to fetch mesos main info")),
 	)
 
 	resp, _ := suite.handler.BrowseSandbox(context.Background(), req)
@@ -1880,8 +1880,8 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListFilesSuccess() {
 		Port:                "5051",
 		Error:               nil,
 		Paths:               sandboxFilesPaths,
-		MesosMasterHostname: "master",
-		MesosMasterPort:     "5050",
+		MesosMainHostname: "main",
+		MesosMainPort:     "5050",
 	}
 
 	gomock.InOrder(
@@ -1907,10 +1907,10 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListFilesSuccess() {
 				"5051", agentID, req.GetTaskId()).
 			Return(sandboxFilesPaths, nil),
 		suite.mockedHostMgr.EXPECT().
-			GetMesosMasterHostPort(gomock.Any(),
-				&hostsvc.MesosMasterHostPortRequest{}).
-			Return(&hostsvc.MesosMasterHostPortResponse{
-				Hostname: "master",
+			GetMesosMainHostPort(gomock.Any(),
+				&hostsvc.MesosMainHostPortRequest{}).
+			Return(&hostsvc.MesosMainHostPortResponse{
+				Hostname: "main",
 				Port:     "5050",
 			}, nil),
 	)
@@ -1922,7 +1922,7 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListFilesSuccess() {
 }
 
 // Tests BrowseSandbox handler when an IP-address + port is available for the
-// Mesos slave agent
+// Mesos subordinate agent
 func (suite *TaskHandlerTestSuite) TestBrowseSandboxListFilesSuccessAgentIP() {
 
 	instanceID := uint32(0)
@@ -1930,7 +1930,7 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListFilesSuccessAgentIP() {
 	hostName := "peloton-test-host"
 	agentIP := "1.2.3.4"
 	agentPort := "31000"
-	agentPid := "slave(1)@" + agentIP + ":" + agentPort
+	agentPid := "subordinate(1)@" + agentIP + ":" + agentPort
 	agentID := "peloton-test-agent"
 	frameworkID := "1234"
 	mesosAgentDir := "mesosAgentDir"
@@ -1967,12 +1967,12 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListFilesSuccessAgentIP() {
 		Port:                agentPort,
 		Error:               nil,
 		Paths:               sandboxFilesPaths,
-		MesosMasterHostname: "master",
-		MesosMasterPort:     "5050",
+		MesosMainHostname: "main",
+		MesosMainPort:     "5050",
 	}
 
-	agentInfos := make([]*mesos_master.Response_GetAgents_Agent, 1)
-	agentInfos[0] = &mesos_master.Response_GetAgents_Agent{
+	agentInfos := make([]*mesos_main.Response_GetAgents_Agent, 1)
+	agentInfos[0] = &mesos_main.Response_GetAgents_Agent{
 		AgentInfo: &mesos.AgentInfo{
 			Id:       &mesos.AgentID{Value: &agentID},
 			Hostname: &hostName,
@@ -2003,10 +2003,10 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListFilesSuccessAgentIP() {
 				agentPort, agentID, req.GetTaskId()).
 			Return(sandboxFilesPaths, nil),
 		suite.mockedHostMgr.EXPECT().
-			GetMesosMasterHostPort(gomock.Any(),
-				&hostsvc.MesosMasterHostPortRequest{}).
-			Return(&hostsvc.MesosMasterHostPortResponse{
-				Hostname: "master",
+			GetMesosMainHostPort(gomock.Any(),
+				&hostsvc.MesosMainHostPortRequest{}).
+			Return(&hostsvc.MesosMainHostPortResponse{
+				Hostname: "main",
 				Port:     "5050",
 			}, nil),
 	)

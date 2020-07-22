@@ -64,9 +64,9 @@ class TestJobMgrFailure(object):
 
         job.wait_for_state()
 
-    def test__stop_start_tasks_when_mesos_master_down_and_jobmgr_restarts_stateless_job(self, failure_tester):
+    def test__stop_start_tasks_when_mesos_main_down_and_jobmgr_restarts_stateless_job(self, failure_tester):
         """
-        Start and stop some tasks in a stateless job while mesos master is not running
+        Start and stop some tasks in a stateless job while mesos main is not running
         and job manager restarts, verify that those tasks start and stop as expected
         """
         # Step 1: Start a stateless job.
@@ -77,8 +77,8 @@ class TestJobMgrFailure(object):
         range = task_pb2.InstanceRange(to=1)
         setattr(range, "from", 0)
 
-        # Step 2: Stop a subset of job instances when mesos master is down.
-        assert 0 != failure_tester.fw.stop(failure_tester.mesos_master)
+        # Step 2: Stop a subset of job instances when mesos main is down.
+        assert 0 != failure_tester.fw.stop(failure_tester.mesos_main)
         stateless_job.stop(ranges=[range])
 
         # Step 3: Restart job manager.
@@ -89,15 +89,15 @@ class TestJobMgrFailure(object):
         failure_tester.reset_client()
         stateless_job.client = failure_tester.client
 
-        # Step 4: Start mesos master and wait for the instances to be stopped.
-        assert 0 != failure_tester.fw.start(failure_tester.mesos_master)
+        # Step 4: Start mesos main and wait for the instances to be stopped.
+        assert 0 != failure_tester.fw.start(failure_tester.mesos_main)
 
         def wait_for_instance_to_stop():
             return stateless_job.get_task(0).state_str == "KILLED"
         stateless_job.wait_for_condition(wait_for_instance_to_stop)
 
-        # Step 5: Start the same subset of instances when mesos master is down.
-        assert 0 != failure_tester.fw.stop(failure_tester.mesos_master)
+        # Step 5: Start the same subset of instances when mesos main is down.
+        assert 0 != failure_tester.fw.stop(failure_tester.mesos_main)
         stateless_job.start(ranges=[range])
 
         # Step 6: Restart job manager.
@@ -108,16 +108,16 @@ class TestJobMgrFailure(object):
         failure_tester.reset_client()
         stateless_job.client = failure_tester.client
 
-        # Step 7: Start mesos master and wait for the instances to transit to RUNNING.
-        assert 0 != failure_tester.fw.start(failure_tester.mesos_master)
+        # Step 7: Start mesos main and wait for the instances to transit to RUNNING.
+        assert 0 != failure_tester.fw.start(failure_tester.mesos_main)
 
         def wait_for_instance_to_run():
             return stateless_job.get_task(0).state_str == "RUNNING"
         stateless_job.wait_for_condition(wait_for_instance_to_run)
 
-    def test__stop_job_when_mesos_master_down_and_jobmgr_restarts_stateless_job(self, failure_tester):
+    def test__stop_job_when_mesos_main_down_and_jobmgr_restarts_stateless_job(self, failure_tester):
         """
-        Start and stop all tasks in a stateless job while mesos master is not running
+        Start and stop all tasks in a stateless job while mesos main is not running
         and job manager restarts, verify that all tasks start and stop as expected
         """
         # step 1: start the job
@@ -125,8 +125,8 @@ class TestJobMgrFailure(object):
         stateless_job.create()
         stateless_job.wait_for_state(goal_state="RUNNING")
 
-        # Step 2: Stop all tasks in the job when mesos master is down.
-        assert 0 != failure_tester.fw.stop(failure_tester.mesos_master)
+        # Step 2: Stop all tasks in the job when mesos main is down.
+        assert 0 != failure_tester.fw.stop(failure_tester.mesos_main)
         stateless_job.stop()
 
         # Step 3: Restart job manager.
@@ -137,13 +137,13 @@ class TestJobMgrFailure(object):
         failure_tester.reset_client()
         stateless_job.client = failure_tester.client
 
-        # Step 4: Start mesos master and wait for the job to terminate
-        assert 0 != failure_tester.fw.start(failure_tester.mesos_master)
+        # Step 4: Start mesos main and wait for the job to terminate
+        assert 0 != failure_tester.fw.start(failure_tester.mesos_main)
         stateless_job.wait_for_terminated()
 
-    def test__stop_start_tasks_when_mesos_master_down_and_jobmgr_restarts_batch_job(self, failure_tester):
+    def test__stop_start_tasks_when_mesos_main_down_and_jobmgr_restarts_batch_job(self, failure_tester):
         """
-        Start and stop some tasks in a job while mesos master is not running
+        Start and stop some tasks in a job while mesos main is not running
         and job manager restarts, verify that those tasks start and stop as expected
         """
         # Step 1: start the job
@@ -153,8 +153,8 @@ class TestJobMgrFailure(object):
         range = task_pb2.InstanceRange(to=1)
         setattr(range, "from", 0)
 
-        # Step 2: stop some tasks in the job while mesos master is not running
-        assert 0 != failure_tester.fw.stop(failure_tester.mesos_master)
+        # Step 2: stop some tasks in the job while mesos main is not running
+        assert 0 != failure_tester.fw.stop(failure_tester.mesos_main)
         long_running_job.stop(ranges=[range])
 
         leader1 = failure_tester.fw.get_leader_info(failure_tester.jobmgr)
@@ -164,14 +164,14 @@ class TestJobMgrFailure(object):
         failure_tester.reset_client()
         long_running_job.client = failure_tester.client
 
-        assert 0 != failure_tester.fw.start(failure_tester.mesos_master)
+        assert 0 != failure_tester.fw.start(failure_tester.mesos_main)
 
         def wait_for_instance_to_stop():
             return long_running_job.get_task(0).state_str == "KILLED"
         long_running_job.wait_for_condition(wait_for_instance_to_stop)
 
-        # Step 3: start the same tasks that were stopped while mesos master is not running
-        assert 0 != failure_tester.fw.stop(failure_tester.mesos_master)
+        # Step 3: start the same tasks that were stopped while mesos main is not running
+        assert 0 != failure_tester.fw.stop(failure_tester.mesos_main)
         long_running_job.start(ranges=[range])
 
         leader2 = failure_tester.fw.get_leader_info(failure_tester.jobmgr)
@@ -181,23 +181,23 @@ class TestJobMgrFailure(object):
         failure_tester.reset_client()
         long_running_job.client = failure_tester.client
 
-        assert 0 != failure_tester.fw.start(failure_tester.mesos_master)
+        assert 0 != failure_tester.fw.start(failure_tester.mesos_main)
 
         def wait_for_instance_to_run():
             return long_running_job.get_task(0).state_str == "RUNNING"
         long_running_job.wait_for_condition(wait_for_instance_to_run)
 
-    def test__stop_job_when_mesos_master_down_and_jobmgr_restarts_batch_job(self, failure_tester):
+    def test__stop_job_when_mesos_main_down_and_jobmgr_restarts_batch_job(self, failure_tester):
         """
-        Start and stop all tasks in a job while mesos master is not running
+        Start and stop all tasks in a job while mesos main is not running
         and job manager restarts, verify that all tasks start and stop as expected
         """
         # Step 1: start the job
         long_running_job = failure_tester.job(job_file="long_running_job.yaml")
         long_running_job.create()
 
-        # Step 2: stop all tasks in the job while mesos master is not running
-        assert 0 != failure_tester.fw.stop(failure_tester.mesos_master)
+        # Step 2: stop all tasks in the job while mesos main is not running
+        assert 0 != failure_tester.fw.stop(failure_tester.mesos_main)
         long_running_job.stop()
 
         # Step 3: restart the job manager and wait for leader change
@@ -209,7 +209,7 @@ class TestJobMgrFailure(object):
         long_running_job.client = failure_tester.client
 
         # Step 4: reconnect the client to the new job manager leader
-        assert 0 != failure_tester.fw.start(failure_tester.mesos_master)
+        assert 0 != failure_tester.fw.start(failure_tester.mesos_main)
         long_running_job.wait_for_terminated()
 
     def test__start_restart_jobmgr(self, failure_tester):

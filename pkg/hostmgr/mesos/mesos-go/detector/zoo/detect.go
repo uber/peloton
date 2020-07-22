@@ -50,15 +50,15 @@ type (
 		WatchChildren(string) (string, <-chan []string, <-chan error)
 	}
 
-	infoCodec func(path, node string) (*mesos.MasterInfo, error)
+	infoCodec func(path, node string) (*mesos.MainInfo, error)
 
-	// Detector uses ZooKeeper to detect new leading master.
-	MasterDetector struct {
-		// detection should not signal master change listeners more frequently than this
+	// Detector uses ZooKeeper to detect new leading main.
+	MainDetector struct {
+		// detection should not signal main change listeners more frequently than this
 		cancel func()
 		client ZKInterface
 		done   chan struct{}
-		// latch: only install, at most, one ignoreChanged listener; see MasterDetector.Detect
+		// latch: only install, at most, one ignoreChanged listener; see MainDetector.Detect
 		ignoreInstalled        int32
 		leaderNode             string
 		minDetectorCyclePeriod time.Duration
@@ -70,12 +70,12 @@ type (
 )
 
 // reasonable default for a noop change listener
-var ignoreChanged = detector.OnMasterChanged(func(*mesos.MasterInfo) {})
+var ignoreChanged = detector.OnMainChanged(func(*mesos.MainInfo) {})
 
-// MinCyclePeriod is a functional option that determines the highest frequency of master change notifications
+// MinCyclePeriod is a functional option that determines the highest frequency of main change notifications
 func MinCyclePeriod(d time.Duration) detector.Option {
 	return func(di interface{}) detector.Option {
-		md := di.(*MasterDetector)
+		md := di.(*MainDetector)
 		old := md.minDetectorCyclePeriod
 		md.minDetectorCyclePeriod = d
 		return MinCyclePeriod(old)
@@ -84,7 +84,7 @@ func MinCyclePeriod(d time.Duration) detector.Option {
 
 func Bootstrap(f func(ZKInterface, <-chan struct{}) (ZKInterface, error)) detector.Option {
 	return func(di interface{}) detector.Option {
-		md := di.(*MasterDetector)
+		md := di.(*MainDetector)
 		old := md.bootstrapFunc
 		md.bootstrapFunc = f
 		return Bootstrap(old)
@@ -92,14 +92,14 @@ func Bootstrap(f func(ZKInterface, <-chan struct{}) (ZKInterface, error)) detect
 }
 
 // Internal constructor function
-func NewMasterDetector(zkurls string, options ...detector.Option) (*MasterDetector, error) {
+func NewMainDetector(zkurls string, options ...detector.Option) (*MainDetector, error) {
 	zkHosts, zkPath, err := parseZk(zkurls)
 	if err != nil {
 		log.Fatalf("Failed to parse url , err=%v", err)
 		return nil, err
 	}
 
-	detector := &MasterDetector{
+	detector := &MainDetector{
 		minDetectorCyclePeriod: defaultMinDetectorCyclePeriod,
 		done:                   make(chan struct{}),
 		cancel:                 func() {},
@@ -134,22 +134,22 @@ func parseZk(zkurls string) ([]string, string, error) {
 }
 
 // returns a chan that, when closed, indicates termination of the detector
-func (md *MasterDetector) Done() <-chan struct{} {
+func (md *MainDetector) Done() <-chan struct{} {
 	return md.done
 }
 
-func (md *MasterDetector) Cancel() {
+func (md *MainDetector) Cancel() {
 	md.bootstrapLock.RLock()
 	defer md.bootstrapLock.RUnlock()
 	md.cancel()
 }
 
-func (md *MasterDetector) childrenChanged(path string, list []string, obs detector.MasterChanged) {
-	md.notifyMasterChanged(path, list, obs)
-	md.notifyAllMasters(path, list, obs)
+func (md *MainDetector) childrenChanged(path string, list []string, obs detector.MainChanged) {
+	md.notifyMainChanged(path, list, obs)
+	md.notifyAllMains(path, list, obs)
 }
 
-func (md *MasterDetector) notifyMasterChanged(path string, list []string, obs detector.MasterChanged) {
+func (md *MainDetector) notifyMainChanged(path string, list []string, obs detector.MainChanged) {
 	// mesos v0.24 writes JSON only, v0.23 writes json and protobuf, v0.22 and prior only write protobuf
 	topNode, codec := md.selectTopNode(list)
 	if md.leaderNode == topNode {
@@ -160,15 +160,15 @@ func (md *MasterDetector) notifyMasterChanged(path string, list []string, obs de
 	log.Infof("changing leader node from %q -> %q", md.leaderNode, topNode)
 	md.leaderNode = topNode
 
-	var masterInfo *mesos.MasterInfo
+	var mainInfo *mesos.MainInfo
 	if md.leaderNode != "" {
 		var err error
-		if masterInfo, err = codec(path, topNode); err != nil {
+		if mainInfo, err = codec(path, topNode); err != nil {
 			log.Error(err.Error())
 		}
 	}
-	log.Infof("detected master info: %+v", masterInfo)
-	logPanic(func() { obs.OnMasterChanged(masterInfo) })
+	log.Infof("detected main info: %+v", mainInfo)
+	logPanic(func() { obs.OnMainChanged(mainInfo) })
 }
 
 // logPanic safely executes the given func, recovering from and logging a panic if one occurs.
@@ -181,71 +181,71 @@ func logPanic(f func()) {
 	f()
 }
 
-func (md *MasterDetector) pullMasterInfo(path, node string) (*mesos.MasterInfo, error) {
+func (md *MainDetector) pullMainInfo(path, node string) (*mesos.MainInfo, error) {
 	data, err := md.client.Data(fmt.Sprintf("%s/%s", path, node))
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve leader data: %v", err)
 	}
 
-	masterInfo := &mesos.MasterInfo{}
-	err = proto.Unmarshal(data, masterInfo)
+	mainInfo := &mesos.MainInfo{}
+	err = proto.Unmarshal(data, mainInfo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal protobuf MasterInfo data from zookeeper: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal protobuf MainInfo data from zookeeper: %v", err)
 	}
-	return masterInfo, nil
+	return mainInfo, nil
 }
 
-func (md *MasterDetector) pullMasterJsonInfo(path, node string) (*mesos.MasterInfo, error) {
+func (md *MainDetector) pullMainJsonInfo(path, node string) (*mesos.MainInfo, error) {
 	data, err := md.client.Data(fmt.Sprintf("%s/%s", path, node))
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve leader data: %v", err)
 	}
 
-	masterInfo := &mesos.MasterInfo{}
-	err = json.Unmarshal(data, masterInfo)
+	mainInfo := &mesos.MainInfo{}
+	err = json.Unmarshal(data, mainInfo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal json MasterInfo data from zookeeper: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal json MainInfo data from zookeeper: %v", err)
 	}
-	return masterInfo, nil
+	return mainInfo, nil
 }
 
-func (md *MasterDetector) notifyAllMasters(path string, list []string, obs detector.MasterChanged) {
-	all, ok := obs.(detector.AllMasters)
+func (md *MainDetector) notifyAllMains(path string, list []string, obs detector.MainChanged) {
+	all, ok := obs.(detector.AllMains)
 	if !ok {
-		// not interested in entire master list
+		// not interested in entire main list
 		return
 	}
 
 	// mesos v0.24 writes JSON only, v0.23 writes json and protobuf, v0.22 and prior only write protobuf
-	masters := map[string]*mesos.MasterInfo{}
+	mains := map[string]*mesos.MainInfo{}
 	tryStore := func(node string, codec infoCodec) {
 		info, err := codec(path, node)
 		if err != nil {
 			log.Error(err.Error())
 		} else {
-			masters[info.GetId()] = info
+			mains[info.GetId()] = info
 		}
 	}
 	for _, node := range list {
 		// compare https://github.com/apache/mesos/blob/0.23.0/src/master/detector.cpp#L437
 		if strings.HasPrefix(node, nodePrefix) {
-			tryStore(node, md.pullMasterInfo)
+			tryStore(node, md.pullMainInfo)
 		} else if strings.HasPrefix(node, nodeJSONPrefix) {
-			tryStore(node, md.pullMasterJsonInfo)
+			tryStore(node, md.pullMainJsonInfo)
 		} else {
 			continue
 		}
 	}
-	masterList := make([]*mesos.MasterInfo, 0, len(masters))
-	for _, v := range masters {
-		masterList = append(masterList, v)
+	mainList := make([]*mesos.MainInfo, 0, len(mains))
+	for _, v := range mains {
+		mainList = append(mainList, v)
 	}
 
-	log.Infof("notifying of master membership change: %+v", masterList)
-	logPanic(func() { all.UpdatedMasters(masterList) })
+	log.Infof("notifying of main membership change: %+v", mainList)
+	logPanic(func() { all.UpdatedMains(mainList) })
 }
 
-func (md *MasterDetector) callBootstrap() (e error) {
+func (md *MainDetector) callBootstrap() (e error) {
 	log.Info("invoking detector boostrap")
 	md.bootstrapLock.Lock()
 	defer md.bootstrapLock.Unlock()
@@ -266,10 +266,10 @@ func (md *MasterDetector) callBootstrap() (e error) {
 }
 
 // the first call to Detect will kickstart a connection to zookeeper. a nil change listener may
-// be spec'd, result of which is a detector that will still listen for master changes and record
+// be spec'd, result of which is a detector that will still listen for main changes and record
 // leaderhip changes internally but no listener would be notified. Detect may be called more than
 // once, and each time the spec'd listener will be added to the list of those receiving notifications.
-func (md *MasterDetector) Detect(f detector.MasterChanged) (err error) {
+func (md *MainDetector) Detect(f detector.MainChanged) (err error) {
 	// kickstart zk client connectivity
 	if err := md.callBootstrap(); err != nil {
 		log.Infof("failed to execute bootstrap function, err=%v", err.Error())
@@ -291,7 +291,7 @@ func (md *MasterDetector) Detect(f detector.MasterChanged) (err error) {
 	return nil
 }
 
-func (md *MasterDetector) detect(f detector.MasterChanged) {
+func (md *MainDetector) detect(f detector.MainChanged) {
 	log.Infof("detecting children at %v", CurrentPath)
 detectLoop:
 	for {
@@ -318,10 +318,10 @@ detectLoop:
 				default:
 				}
 				if ok {
-					log.Infof("child watch ended with error, master lost; error was: %v", err.Error())
+					log.Infof("child watch ended with error, main lost; error was: %v", err.Error())
 				} else {
 					// detector shutdown likely...
-					log.Info("child watch ended, master lost")
+					log.Info("child watch ended, main lost")
 				}
 				select {
 				case <-md.Done():
@@ -330,12 +330,12 @@ detectLoop:
 					if md.leaderNode != "" {
 						log.Infof("changing leader node from %v -> \"\"", md.leaderNode)
 						md.leaderNode = ""
-						f.OnMasterChanged(nil)
+						f.OnMainChanged(nil)
 					}
 				}
 				rewatch = true
 			}
-			// rate-limit master changes
+			// rate-limit main changes
 			if elapsed := time.Since(started); elapsed > 0 {
 				sleep := md.minDetectorCyclePeriod - elapsed
 				log.Infof("resting %v before next detection cycle", sleep)
@@ -352,16 +352,16 @@ detectLoop:
 	}
 }
 
-func (md *MasterDetector) selectTopNode(list []string) (topNode string, codec infoCodec) {
+func (md *MainDetector) selectTopNode(list []string) (topNode string, codec infoCodec) {
 	// mesos v0.24 writes JSON only, v0.23 writes json and protobuf, v0.22 and prior only write protobuf
 	topNode = selectTopNodePrefix(list, nodeJSONPrefix)
-	codec = md.pullMasterJsonInfo
+	codec = md.pullMainJsonInfo
 	if topNode == "" {
 		topNode = selectTopNodePrefix(list, nodePrefix)
-		codec = md.pullMasterInfo
+		codec = md.pullMainInfo
 
 		if topNode != "" {
-			log.Warnf("Leading master is using a Protobuf binary format when registering "+
+			log.Warnf("Leading main is using a Protobuf binary format when registering "+
 				"with Zookeeper (%s): this will be deprecated as of Mesos 0.24 (see MESOS-2340).",
 				topNode)
 		}

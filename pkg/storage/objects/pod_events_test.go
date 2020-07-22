@@ -43,7 +43,7 @@ func (s *PodEventsObjectTestSuite) TestAddPodEvents() {
 	db := NewPodEventsOps(testStore)
 	ctx := context.Background()
 
-	hostName := "mesos-slave-01"
+	hostName := "mesos-subordinate-01"
 	testTable := []struct {
 		mesosTaskID        string
 		prevMesosTaskID    string
@@ -164,7 +164,7 @@ func (s *PodEventsObjectTestSuite) TestGetPodEvents() {
 		State:          task.TaskState_RUNNING,
 		GoalState:      task.TaskState_SUCCEEDED,
 		Healthy:        task.HealthState_HEALTHY,
-		Host:           "mesos-slave-01",
+		Host:           "mesos-subordinate-01",
 		Message:        "",
 		Reason:         "",
 		MesosTaskId: &mesos.TaskID{
@@ -198,7 +198,7 @@ func (s *PodEventsObjectTestSuite) TestGetPodEvents() {
 		State:          task.TaskState_RUNNING,
 		GoalState:      task.TaskState_SUCCEEDED,
 		Healthy:        task.HealthState_HEALTHY,
-		Host:           "mesos-slave-01",
+		Host:           "mesos-subordinate-01",
 		Message:        "",
 		Reason:         "",
 		MesosTaskId: &mesos.TaskID{

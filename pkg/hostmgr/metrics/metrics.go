@@ -48,8 +48,8 @@ type Metrics struct {
 	ReleaseHostOffersFail tally.Counter
 	ReleaseHostsCount     tally.Counter
 
-	GetMesosMasterHostPort     tally.Counter
-	GetMesosMasterHostPortFail tally.Counter
+	GetMesosMainHostPort     tally.Counter
+	GetMesosMainHostPortFail tally.Counter
 
 	Elected         tally.Gauge
 	MesosConnected  tally.Gauge
@@ -111,8 +111,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		ReleaseHostOffersFail: scope.Counter("release_host_offers_fail"),
 		ReleaseHostsCount:     scope.Counter("release_hosts_count"),
 
-		GetMesosMasterHostPort:     scope.Counter("get_mesos_master_host_port"),
-		GetMesosMasterHostPortFail: scope.Counter("get_mesos_master_host_port_fail"),
+		GetMesosMainHostPort:     scope.Counter("get_mesos_main_host_port"),
+		GetMesosMainHostPortFail: scope.Counter("get_mesos_main_host_port_fail"),
 
 		Elected:         serverScope.Gauge("elected"),
 		MesosConnected:  serverScope.Gauge("mesos_connected"),

@@ -22,7 +22,7 @@ import (
 	"github.com/uber/peloton/pkg/common/util"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
-	mesosmaster "github.com/uber/peloton/.gen/mesos/v1/master"
+	mesosmain "github.com/uber/peloton/.gen/mesos/v1/master"
 	hpb "github.com/uber/peloton/.gen/peloton/api/v0/host"
 	svcpb "github.com/uber/peloton/.gen/peloton/api/v0/host/svc"
 
@@ -56,7 +56,7 @@ type hostSvcHandlerTestSuite struct {
 	mockCtrl                 *gomock.Controller
 	handler                  *serviceHandler
 	mockDrainer              *dm.MockDrainer
-	mockMasterOperatorClient *ym.MockMasterOperatorClient
+	mockMainOperatorClient *ym.MockMainOperatorClient
 	mockHostPoolManager      *hpm_mock.MockHostPoolManager
 	mockHostInfoOps          *orm_mocks.MockHostInfoOps
 	mockHostMover            *hmmocks.MockHostMover
@@ -103,7 +103,7 @@ func (suite *hostSvcHandlerTestSuite) SetupSuite() {
 func (suite *hostSvcHandlerTestSuite) SetupTest() {
 	suite.mockCtrl = gomock.NewController(suite.T())
 	suite.ctx = context.Background()
-	suite.mockMasterOperatorClient = ym.NewMockMasterOperatorClient(suite.mockCtrl)
+	suite.mockMainOperatorClient = ym.NewMockMainOperatorClient(suite.mockCtrl)
 	suite.mockDrainer = dm.NewMockDrainer(suite.mockCtrl)
 	suite.mockHostPoolManager = hpm_mock.NewMockHostPoolManager(
 		suite.mockCtrl,
@@ -116,7 +116,7 @@ func (suite *hostSvcHandlerTestSuite) SetupTest() {
 
 	response := suite.makeAgentsResponse()
 	loader := &host.Loader{
-		OperatorClient: suite.mockMasterOperatorClient,
+		OperatorClient: suite.mockMainOperatorClient,
 		Scope:          tally.NewTestScope("", map[string]string{}),
 		HostInfoOps:    suite.mockHostInfoOps,
 	}
@@ -124,14 +124,14 @@ func (suite *hostSvcHandlerTestSuite) SetupTest() {
 	loader.Load(nil)
 }
 
-func (suite *hostSvcHandlerTestSuite) makeAgentsResponse() *mesosmaster.Response_GetAgents {
-	response := &mesosmaster.Response_GetAgents{
-		Agents: []*mesosmaster.Response_GetAgents_Agent{},
+func (suite *hostSvcHandlerTestSuite) makeAgentsResponse() *mesosmain.Response_GetAgents {
+	response := &mesosmain.Response_GetAgents{
+		Agents: []*mesosmain.Response_GetAgents_Agent{},
 	}
 
-	pidUp := fmt.Sprintf("slave(0)@%s:0.0.0.0", suite.upMachine.GetIp())
+	pidUp := fmt.Sprintf("subordinate(0)@%s:0.0.0.0", suite.upMachine.GetIp())
 	hostnameUp := suite.upMachine.GetHostname()
-	agentUp := &mesosmaster.Response_GetAgents_Agent{
+	agentUp := &mesosmain.Response_GetAgents_Agent{
 		AgentInfo: &mesos.AgentInfo{
 			Hostname: &hostnameUp,
 		},
@@ -139,9 +139,9 @@ func (suite *hostSvcHandlerTestSuite) makeAgentsResponse() *mesosmaster.Response
 	}
 	response.Agents = append(response.Agents, agentUp)
 
-	pidDraining := fmt.Sprintf("slave(0)@%s:0.0.0.0", suite.drainingMachine.GetIp())
+	pidDraining := fmt.Sprintf("subordinate(0)@%s:0.0.0.0", suite.drainingMachine.GetIp())
 	hostnameDraining := suite.drainingMachine.GetHostname()
-	agentDraining := &mesosmaster.Response_GetAgents_Agent{
+	agentDraining := &mesosmain.Response_GetAgents_Agent{
 		AgentInfo: &mesos.AgentInfo{
 			Hostname: &hostnameDraining,
 		},
@@ -152,10 +152,10 @@ func (suite *hostSvcHandlerTestSuite) makeAgentsResponse() *mesosmaster.Response
 	return response
 }
 
-func (suite *hostSvcHandlerTestSuite) setupLoaderMocks(response *mesosmaster.Response_GetAgents) {
+func (suite *hostSvcHandlerTestSuite) setupLoaderMocks(response *mesosmain.Response_GetAgents) {
 	suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).Return(nil, nil)
-	suite.mockMasterOperatorClient.EXPECT().Agents().Return(response, nil)
-	suite.mockMasterOperatorClient.EXPECT().GetMaintenanceStatus().Return(nil, nil)
+	suite.mockMainOperatorClient.EXPECT().Agents().Return(response, nil)
+	suite.mockMainOperatorClient.EXPECT().GetMaintenanceStatus().Return(nil, nil)
 	for _, a := range response.GetAgents() {
 		ip, _, err := util.ExtractIPAndPortFromMesosAgentPID(a.GetPid())
 		suite.NoError(err)
@@ -249,7 +249,7 @@ func (suite *hostSvcHandlerTestSuite) doTestQueryHosts() {
 
 	response := suite.makeAgentsResponse()
 	loader := &host.Loader{
-		OperatorClient: suite.mockMasterOperatorClient,
+		OperatorClient: suite.mockMainOperatorClient,
 		Scope:          tally.NewTestScope("", map[string]string{}),
 		HostInfoOps:    suite.mockHostInfoOps,
 	}
@@ -412,7 +412,7 @@ func (suite *hostSvcHandlerTestSuite) doTestQueryHosts() {
 func (suite *hostSvcHandlerTestSuite) TestQueryHostsError() {
 	response := suite.makeAgentsResponse()
 	loader := &host.Loader{
-		OperatorClient: suite.mockMasterOperatorClient,
+		OperatorClient: suite.mockMainOperatorClient,
 		Scope:          tally.NewTestScope("", map[string]string{}),
 		HostInfoOps:    suite.mockHostInfoOps,
 	}
@@ -422,7 +422,7 @@ func (suite *hostSvcHandlerTestSuite) TestQueryHostsError() {
 	// Test ExtractIPFromMesosAgentPID error
 	hostname := "testhost"
 	pid := "invalidPID"
-	host.GetAgentMap().RegisteredAgents[hostname] = &mesosmaster.Response_GetAgents_Agent{
+	host.GetAgentMap().RegisteredAgents[hostname] = &mesosmain.Response_GetAgents_Agent{
 		AgentInfo: &mesos.AgentInfo{
 			Hostname: &hostname,
 		},
@@ -449,8 +449,8 @@ func (suite *hostSvcHandlerTestSuite) TestQueryHostsError() {
 
 	// Test 'No registered agents'
 	suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).Return(nil, nil)
-	suite.mockMasterOperatorClient.EXPECT().Agents().Return(nil, nil)
-	suite.mockMasterOperatorClient.EXPECT().GetMaintenanceStatus().Return(nil, nil)
+	suite.mockMainOperatorClient.EXPECT().Agents().Return(nil, nil)
+	suite.mockMainOperatorClient.EXPECT().GetMaintenanceStatus().Return(nil, nil)
 	loader.Load(nil)
 
 	resp, err = suite.handler.QueryHosts(suite.ctx, &svcpb.QueryHostsRequest{

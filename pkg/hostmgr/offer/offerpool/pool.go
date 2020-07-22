@@ -41,14 +41,14 @@ import (
 	"go.uber.org/multierr"
 )
 
-// Pool caches a set of offers received from Mesos master. It is
-// currently only instantiated at the leader of Peloton masters.
+// Pool caches a set of offers received from Mesos main. It is
+// currently only instantiated at the leader of Peloton mains.
 type Pool interface {
 	// Add offers to the pool. Filters out non-viable offers (offers with
 	// non-nil Unavailability) and returns slice of acceptable offers.
 	AddOffers(context.Context, []*mesos.Offer) []*mesos.Offer
 
-	// Rescind a offer from the pool, on Mesos Master --offer-timeout
+	// Rescind a offer from the pool, on Mesos Main --offer-timeout
 	// Returns whether the offer is found in the pool.
 	RescindOffer(*mesos.OfferID) bool
 
@@ -62,7 +62,7 @@ type Pool interface {
 	// Clear all offers in the pool
 	Clear()
 
-	// Decline offers, sends Mesos Master decline call and removes from offer
+	// Decline offers, sends Mesos Main decline call and removes from offer
 	// pool.
 	DeclineOffers(ctx context.Context, offerIds []*mesos.OfferID) error
 
@@ -78,7 +78,7 @@ type Pool interface {
 
 	// ClaimForLaunch finds offers previously for placement on given host.
 	// The difference from ClaimForPlace is that offers claimed from this
-	// function are considered used and sent back to Mesos master in a Launch
+	// function are considered used and sent back to Mesos main in a Launch
 	// operation, while result in `ClaimForPlace` are still considered part
 	// of peloton apps.
 	// An optional list of task ids is provided if the host is held for
@@ -143,7 +143,7 @@ type Pool interface {
 const (
 	// Reject offers from unavailable/maintenance host only before 3 hour of
 	// starting window.
-	// Mesos Master sets unix nano seconds for unavailability start time.
+	// Mesos Main sets unix nano seconds for unavailability start time.
 	_defaultRejectUnavailableOffer = int64(10800000000000)
 )
 
@@ -429,7 +429,7 @@ func validateOfferUnavailability(offer *mesos.Offer) bool {
 	return false
 }
 
-// AddOffers is a callback event when Mesos Master sends offers.
+// AddOffers is a callback event when Mesos Main sends offers.
 func (p *offerPool) AddOffers(
 	ctx context.Context,
 	offers []*mesos.Offer) []*mesos.Offer {
@@ -564,7 +564,7 @@ func (p *offerPool) removeOffer(offerID, reason string) {
 	}
 }
 
-// RescindOffer is a callback event when Mesos Master rescinds a offer.
+// RescindOffer is a callback event when Mesos Main rescinds a offer.
 // Reasons for offer rescind can be lost agent, offer_timeout and more.
 func (p *offerPool) RescindOffer(offerID *mesos.OfferID) bool {
 	p.RLock()
@@ -624,7 +624,7 @@ func (p *offerPool) Clear() {
 	p.hostOfferIndex = map[string]summary.HostSummary{}
 }
 
-// DeclineOffers calls mesos master to decline list of offers
+// DeclineOffers calls mesos main to decline list of offers
 func (p *offerPool) DeclineOffers(
 	ctx context.Context,
 	offerIDs []*mesos.OfferID) error {

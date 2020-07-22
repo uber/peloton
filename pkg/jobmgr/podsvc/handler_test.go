@@ -21,7 +21,7 @@ import (
 	"time"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
-	mesosmaster "github.com/uber/peloton/.gen/mesos/v1/master"
+	mesosmain "github.com/uber/peloton/.gen/mesos/v1/master"
 	pbjob "github.com/uber/peloton/.gen/peloton/api/v0/job"
 	"github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	pbtask "github.com/uber/peloton/.gen/peloton/api/v0/task"
@@ -1811,11 +1811,11 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxSuccess() {
 
 	hostname := "hostname"
 	frameworkID := "testFramework"
-	agentPID := "slave(1)@1.2.3.4:9090"
+	agentPID := "subordinate(1)@1.2.3.4:9090"
 	agentIP := "1.2.3.4"
 	agentPort := "9090"
 	agentID := "agentID"
-	agents := []*mesosmaster.Response_GetAgents_Agent{
+	agents := []*mesosmain.Response_GetAgents_Agent{
 		{
 			Pid: &agentPID,
 		},
@@ -1860,10 +1860,10 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxSuccess() {
 				testPodID,
 			).Return(logPaths, nil),
 
-		suite.hostmgrClient.EXPECT().GetMesosMasterHostPort(
+		suite.hostmgrClient.EXPECT().GetMesosMainHostPort(
 			gomock.Any(),
-			&hostsvc.MesosMasterHostPortRequest{},
-		).Return(&hostsvc.MesosMasterHostPortResponse{}, nil),
+			&hostsvc.MesosMainHostPortRequest{},
+		).Return(&hostsvc.MesosMainHostPortResponse{}, nil),
 	)
 	response, err := suite.handler.BrowsePodSandbox(context.Background(), request)
 
@@ -1871,8 +1871,8 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxSuccess() {
 	suite.Equal(agentIP, response.GetHostname())
 	suite.Equal(agentPort, response.GetPort())
 	suite.Equal(logPaths, response.GetPaths())
-	suite.Empty(response.GetMesosMasterHostname())
-	suite.Empty(response.GetMesosMasterPort())
+	suite.Empty(response.GetMesosMainHostname())
+	suite.Empty(response.GetMesosMainPort())
 }
 
 // TestBrowsePodSandboxFailureInvalidPodName tests BrowsePodSandbox failure
@@ -1984,7 +1984,7 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxListSandboxFilesPathsFailu
 	hostname := "hostname"
 	frameworkID := "testFramework"
 	agentID := "agentID"
-	agents := []*mesosmaster.Response_GetAgents_Agent{}
+	agents := []*mesosmain.Response_GetAgents_Agent{}
 	mesosTaskID := testPodID
 
 	events := []*pod.PodEvent{
@@ -2029,9 +2029,9 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxListSandboxFilesPathsFailu
 	suite.Error(err)
 }
 
-// TestBrowsePodSandboxGetMesosMasterHostPortFailure tests BrowsePodSandbox
-// failure due to HostMgrClient.GetMesosMasterHostPort error
-func (suite *podHandlerTestSuite) TestBrowsePodSandboxGetMesosMasterHostPortFailure() {
+// TestBrowsePodSandboxGetMesosMainHostPortFailure tests BrowsePodSandbox
+// failure due to HostMgrClient.GetMesosMainHostPort error
+func (suite *podHandlerTestSuite) TestBrowsePodSandboxGetMesosMainHostPortFailure() {
 	request := &svc.BrowsePodSandboxRequest{
 		PodName: &v1alphapeloton.PodName{
 			Value: testPodName,
@@ -2043,11 +2043,11 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxGetMesosMasterHostPortFail
 
 	hostname := "hostname"
 	frameworkID := "testFramework"
-	agentPID := "slave(1)@1.2.3.4:9090"
+	agentPID := "subordinate(1)@1.2.3.4:9090"
 	agentIP := "1.2.3.4"
 	agentPort := "9090"
 	agentID := "agentID"
-	agents := []*mesosmaster.Response_GetAgents_Agent{
+	agents := []*mesosmain.Response_GetAgents_Agent{
 		{
 			Pid: &agentPID,
 		},
@@ -2092,9 +2092,9 @@ func (suite *podHandlerTestSuite) TestBrowsePodSandboxGetMesosMasterHostPortFail
 				testPodID,
 			).Return(logPaths, nil),
 
-		suite.hostmgrClient.EXPECT().GetMesosMasterHostPort(
+		suite.hostmgrClient.EXPECT().GetMesosMainHostPort(
 			gomock.Any(),
-			&hostsvc.MesosMasterHostPortRequest{},
+			&hostsvc.MesosMainHostPortRequest{},
 		).Return(nil, yarpcerrors.InternalErrorf("test error")),
 	)
 

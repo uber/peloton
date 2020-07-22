@@ -27,12 +27,12 @@ func TestStandalone_nil(t *testing.T) {
 	select {
 	case <-d.Done(): // expected
 	case <-time.After(1 * time.Second):
-		t.Fatalf("expected detector to shutdown since it has no master")
+		t.Fatalf("expected detector to shutdown since it has no main")
 	}
 }
 
 func TestStandalone_pollerIncompleteInfo(t *testing.T) {
-	d := NewStandalone(&mesos.MasterInfo{})
+	d := NewStandalone(&mesos.MainInfo{})
 	f := fetcherFunc(func(context.Context, string) (*upid.UPID, error) {
 		return nil, nil
 	})
@@ -44,19 +44,19 @@ func TestStandalone_pollerIncompleteInfo(t *testing.T) {
 	select {
 	case <-ch: // expected
 	case <-time.After(1 * time.Second):
-		t.Fatalf("expected poller to shutdown since master info is incomplete")
+		t.Fatalf("expected poller to shutdown since main info is incomplete")
 	}
 	select {
 	case <-d.Done(): // expected
 	case <-time.After(1 * time.Second):
-		t.Fatalf("expected detector to shutdown since it has no master")
+		t.Fatalf("expected detector to shutdown since it has no main")
 	}
 }
 
 func TestStandalone_pollerFetched(t *testing.T) {
 	assert := assert.New(t)
 	// presence of IP address allows fecher to be called
-	d := NewStandalone(&mesos.MasterInfo{Ip: proto.Uint32(localhost)})
+	d := NewStandalone(&mesos.MainInfo{Ip: proto.Uint32(localhost)})
 	defer d.Cancel()
 
 	fetched := make(chan struct{})
@@ -80,19 +80,19 @@ func TestStandalone_pollerFetched(t *testing.T) {
 		t.Fatalf("expected fetch")
 	}
 
-	// read MasterInfo
+	// read MainInfo
 	select {
 	case mi := <-d.ch:
-		assert.Equal(mi, CreateMasterInfo(pid))
+		assert.Equal(mi, CreateMainInfo(pid))
 	case <-time.After(1 * time.Second):
-		t.Fatalf("expected poller to send master info")
+		t.Fatalf("expected poller to send main info")
 	}
 }
 
 func TestStandalone_pollerFetchedMulti(t *testing.T) {
 	assert := assert.New(t)
 	// presence of IP address allows fecher to be called
-	d := NewStandalone(&mesos.MasterInfo{Ip: proto.Uint32(localhost)})
+	d := NewStandalone(&mesos.MainInfo{Ip: proto.Uint32(localhost)})
 	defer d.Cancel()
 	d.leaderSyncInterval = 500 * time.Millisecond
 
@@ -137,18 +137,18 @@ func TestStandalone_pollerFetchedMulti(t *testing.T) {
 		defer close(changed)
 		for i := 0; i < 4; i++ {
 			if mi, ok := <-d.ch; !ok {
-				t.Fatalf("failed to read master info on cycle %v", i)
+				t.Fatalf("failed to read main info on cycle %v", i)
 				break
 			} else {
 				switch i {
 				case 0:
-					assert.Equal(CreateMasterInfo(&upid.UPID{ID: "foo@127.0.0.1:5050", Host: "127.0.0.1", Port: "5050"}), mi)
+					assert.Equal(CreateMainInfo(&upid.UPID{ID: "foo@127.0.0.1:5050", Host: "127.0.0.1", Port: "5050"}), mi)
 				case 1:
-					assert.Equal(CreateMasterInfo(&upid.UPID{ID: "foo@127.0.0.2:5050", Host: "127.0.0.2", Port: "5050"}), mi)
+					assert.Equal(CreateMainInfo(&upid.UPID{ID: "foo@127.0.0.2:5050", Host: "127.0.0.2", Port: "5050"}), mi)
 				case 2:
 					assert.Nil(mi)
 				case 3:
-					assert.Equal(CreateMasterInfo(&upid.UPID{ID: "foo@127.0.0.3:5050", Host: "127.0.0.3", Port: "5050"}), mi)
+					assert.Equal(CreateMainInfo(&upid.UPID{ID: "foo@127.0.0.3:5050", Host: "127.0.0.3", Port: "5050"}), mi)
 				}
 			}
 		}
@@ -164,6 +164,6 @@ func TestStandalone_pollerFetchedMulti(t *testing.T) {
 	select {
 	case <-changed: // expected
 	case <-time.After((3 * time.Second) - time.Now().Sub(started)):
-		t.Fatalf("expected to have received all master info changes")
+		t.Fatalf("expected to have received all main info changes")
 	}
 }

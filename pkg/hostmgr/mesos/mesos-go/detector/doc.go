@@ -17,8 +17,8 @@
  */
 
 /*
-The detector package houses implementation of master detectors.
-The default implementation is the zookeeper master detector.
-It uses zookeeper to detect the lead Mesos master during startup/failover.
+The detector package houses implementation of main detectors.
+The default implementation is the zookeeper main detector.
+It uses zookeeper to detect the lead Mesos main during startup/failover.
 */
 package detector

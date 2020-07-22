@@ -20,7 +20,7 @@ import (
 	"time"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
-	mesosmaster "github.com/uber/peloton/.gen/mesos/v1/master"
+	mesosmain "github.com/uber/peloton/.gen/mesos/v1/master"
 	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
 	pbpod "github.com/uber/peloton/.gen/peloton/api/v1alpha/pod"
@@ -48,7 +48,7 @@ type MesosManagerTestSuite struct {
 	hostEventCh     chan *scalar.HostEvent
 	provider        *hostmgrmesosmocks.MockFrameworkInfoProvider
 	schedulerClient *mpbmocks.MockSchedulerClient
-	operatorClient  *mpbmocks.MockMasterOperatorClient
+	operatorClient  *mpbmocks.MockMainOperatorClient
 	mesosManager    *MesosManager
 }
 
@@ -56,7 +56,7 @@ func (suite *MesosManagerTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.provider = hostmgrmesosmocks.NewMockFrameworkInfoProvider(suite.ctrl)
 	suite.schedulerClient = mpbmocks.NewMockSchedulerClient(suite.ctrl)
-	suite.operatorClient = mpbmocks.NewMockMasterOperatorClient(suite.ctrl)
+	suite.operatorClient = mpbmocks.NewMockMainOperatorClient(suite.ctrl)
 	suite.podEventCh = make(chan *scalar.PodEvent, 1000)
 	suite.hostEventCh = make(chan *scalar.HostEvent, 1000)
 	d := yarpc.NewDispatcher(yarpc.Config{
@@ -611,8 +611,8 @@ func (suite *MesosManagerTestSuite) TestNewMesosManagerStartProcessingAgentInfo(
 
 	suite.mesosManager.lf.Start()
 
-	agentCh := make(chan []*mesosmaster.Response_GetAgents_Agent, 2)
-	agentCh <- []*mesosmaster.Response_GetAgents_Agent{
+	agentCh := make(chan []*mesosmain.Response_GetAgents_Agent, 2)
+	agentCh <- []*mesosmain.Response_GetAgents_Agent{
 		{
 			AgentInfo: &mesos.AgentInfo{
 				Hostname: &hostname1,

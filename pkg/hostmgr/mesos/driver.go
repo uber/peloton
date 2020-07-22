@@ -251,7 +251,7 @@ func (d *schedulerDriver) prepareSubscribe(ctx context.Context) (*sched.Call, er
 	log.WithFields(log.Fields{
 		"framework_id": frameworkID,
 		"timeout":      d.cfg.FailoverTimeout,
-	}).Info("Reregister to Mesos master with previous framework ID")
+	}).Info("Reregister to Mesos main with previous framework ID")
 
 	if d.cfg.Role != "" {
 		info.Role = &d.cfg.Role
@@ -261,12 +261,12 @@ func (d *schedulerDriver) prepareSubscribe(ctx context.Context) (*sched.Call, er
 }
 
 // PrepareSubscribeRequest returns a HTTP post request that can be used to
-// initiate subscription to mesos master.
+// initiate subscription to mesos main.
 // Implements mhttp.MesosDriver.PrepareSubscribeRequest().
-func (d *schedulerDriver) PrepareSubscribeRequest(ctx context.Context, mesosMasterHostPort string) (
+func (d *schedulerDriver) PrepareSubscribeRequest(ctx context.Context, mesosMainHostPort string) (
 	*http.Request, error) {
 
-	if len(mesosMasterHostPort) == 0 {
+	if len(mesosMainHostPort) == 0 {
 		return nil, errors.New("No active leader detected")
 	}
 
@@ -281,7 +281,7 @@ func (d *schedulerDriver) PrepareSubscribeRequest(ctx context.Context, mesosMast
 	}
 
 	url := d.Endpoint()
-	url.Host = mesosMasterHostPort
+	url.Host = mesosMainHostPort
 	var req *http.Request
 	req, err = http.NewRequest("POST", url.String(), strings.NewReader(body))
 	if err != nil {

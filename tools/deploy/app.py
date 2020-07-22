@@ -93,7 +93,7 @@ class Instance(object):
     def __init__(self, task, role):
         assert task.assignedTask
         self.instance_id = task.assignedTask.instanceId
-        self.host = task.assignedTask.slaveHost
+        self.host = task.assignedTask.subordinateHost
         self.state = task.status
 
         # TODO: query Peloton app endpoint to determine leader/follower role

@@ -57,7 +57,7 @@ type Inbound interface {
 type InboundOption func(*inbound)
 
 // NewInbound builds a new Mesos HTTP inbound after registering with
-// Mesos master via Subscribe message
+// Mesos main via Subscribe message
 func NewInbound(parent tally.Scope, d MesosDriver, opts ...InboundOption) Inbound {
 	i := &inbound{
 		driver:  d,
@@ -96,10 +96,10 @@ func (i *inbound) Start() error {
 	return nil
 }
 
-// StartMesosLoop subscribes to mesos master as a framework, and starts a
+// StartMesosLoop subscribes to mesos main as a framework, and starts a
 // go-routine to dispatch the mesos callbacks.
-// The call can be called multiple times to start/stop talking to Mesos master,
-// or can be used to switch new Mesos master leader after a fail over.
+// The call can be called multiple times to start/stop talking to Mesos main,
+// or can be used to switch new Mesos main leader after a fail over.
 func (i *inbound) StartMesosLoop(ctx context.Context, hostPort string) (chan error, error) {
 	log.WithField("hostport", hostPort).Info("StartMesosLoop called")
 
@@ -127,7 +127,7 @@ func (i *inbound) StartMesosLoop(ctx context.Context, hostPort string) (chan err
 	i.stopFlag.Store(false)
 	i.metrics.Stopped.Update(0)
 	log.WithField("hostport", hostPort).
-		Info("Starting the inbound for mesos master")
+		Info("Starting the inbound for mesos main")
 	i.hostPort = hostPort
 
 	req, err := i.driver.PrepareSubscribeRequest(ctx, hostPort)
@@ -139,14 +139,14 @@ func (i *inbound) StartMesosLoop(ctx context.Context, hostPort string) (chan err
 	resp, err := i.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"Failed to POST subscribe request to master: %v", err)
+			"Failed to POST subscribe request to main: %v", err)
 	}
 
 	if resp.StatusCode != 200 {
 		defer resp.Body.Close()
 		respBody, _ := ioutil.ReadAll(resp.Body)
 		return nil, fmt.Errorf(
-			"Failed to subscribe to master (Status=%d): %s",
+			"Failed to subscribe to main (Status=%d): %s",
 			resp.StatusCode,
 			respBody)
 	}
@@ -197,7 +197,7 @@ func (i *inbound) processUntilEnd(
 			return nil
 		}
 
-		// NOTE: if the master decide to disconnect the framework,
+		// NOTE: if the main decide to disconnect the framework,
 		// we can read a EOF here. Caller should ensure this inbound is
 		// started again with up to date leader address.
 
@@ -262,7 +262,7 @@ func (i *inbound) stopInternal() error {
 }
 
 // Stop would stop the internal go-routine that receives mesos callback
-// and disconnect with current mesos master
+// and disconnect with current mesos main
 func (i *inbound) Stop() error {
 	i.Lock()
 	defer i.Unlock()

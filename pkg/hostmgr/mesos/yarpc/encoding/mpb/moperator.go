@@ -22,7 +22,7 @@ import (
 	"time"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
-	mesos_master "github.com/uber/peloton/.gen/mesos/v1/master"
+	mesos_main "github.com/uber/peloton/.gen/mesos/v1/master"
 
 	"go.uber.org/yarpc/api/transport"
 
@@ -33,41 +33,41 @@ import (
 )
 
 const (
-	_procedure = "Call_MasterOperator"
+	_procedure = "Call_MainOperator"
 	_timeout   = 10 * 1000 * time.Millisecond
 )
 
-// MasterOperatorClient makes Mesos JSON requests to Mesos Master endpoint(s)
-type MasterOperatorClient interface {
-	Agents() (*mesos_master.Response_GetAgents, error)
+// MainOperatorClient makes Mesos JSON requests to Mesos Main endpoint(s)
+type MainOperatorClient interface {
+	Agents() (*mesos_main.Response_GetAgents, error)
 	GetTasksAllocation(ID string) ([]*mesos.Resource, []*mesos.Resource, error)
 	AllocatedResources(ID string) ([]*mesos.Resource, error)
-	GetMaintenanceSchedule() (*mesos_master.Response_GetMaintenanceSchedule, error)
-	GetMaintenanceStatus() (*mesos_master.Response_GetMaintenanceStatus, error)
+	GetMaintenanceSchedule() (*mesos_main.Response_GetMaintenanceSchedule, error)
+	GetMaintenanceStatus() (*mesos_main.Response_GetMaintenanceStatus, error)
 	StartMaintenance([]*mesos.MachineID) error
 	StopMaintenance([]*mesos.MachineID) error
 	GetQuota(role string) ([]*mesos.Resource, error)
 	UpdateMaintenanceSchedule(*mesos_v1_maintenance.Schedule) error
 }
 
-type masterOperatorClient struct {
+type mainOperatorClient struct {
 	cfg         transport.ClientConfig
 	contentType string
 }
 
-// NewMasterOperatorClient builds a new Mesos Master Operator JSON client.
-func NewMasterOperatorClient(
+// NewMainOperatorClient builds a new Mesos Main Operator JSON client.
+func NewMainOperatorClient(
 	c transport.ClientConfig,
-	contentType string) MasterOperatorClient {
-	return &masterOperatorClient{
+	contentType string) MainOperatorClient {
+	return &mainOperatorClient{
 		cfg:         c,
 		contentType: contentType,
 	}
 }
 
-// Makes the actual RPC call and returns Master operator API response
-func (mo *masterOperatorClient) call(ctx context.Context, msg *mesos_master.Call) (
-	*mesos_master.Response, error) {
+// Makes the actual RPC call and returns Main operator API response
+func (mo *mainOperatorClient) call(ctx context.Context, msg *mesos_main.Call) (
+	*mesos_main.Response, error) {
 	// Create Headers
 	headers := transport.NewHeaders().
 		With("Content-Type", fmt.Sprintf("application/%s", mo.contentType)).
@@ -107,7 +107,7 @@ func (mo *masterOperatorClient) call(ctx context.Context, msg *mesos_master.Call
 		return nil, errors.Wrap(err, errMsg)
 	}
 
-	respMsg := &mesos_master.Response{}
+	respMsg := &mesos_main.Response{}
 	err = proto.Unmarshal(bodyBytes, respMsg)
 
 	if err != nil {
@@ -120,13 +120,13 @@ func (mo *masterOperatorClient) call(ctx context.Context, msg *mesos_master.Call
 
 }
 
-// Agents returns all agents from Mesos master with the `GetAgents` API.
-func (mo *masterOperatorClient) Agents() (
-	*mesos_master.Response_GetAgents, error) {
+// Agents returns all agents from Mesos main with the `GetAgents` API.
+func (mo *mainOperatorClient) Agents() (
+	*mesos_main.Response_GetAgents, error) {
 	// Set the CALL TYPE
-	callType := mesos_master.Call_GET_AGENTS
+	callType := mesos_main.Call_GET_AGENTS
 
-	masterMsg := &mesos_master.Call{
+	mainMsg := &mesos_main.Call{
 		Type: &callType,
 	}
 
@@ -138,7 +138,7 @@ func (mo *masterOperatorClient) Agents() (
 	defer cancel()
 
 	// Make Call
-	response, err := mo.call(ctx, masterMsg)
+	response, err := mo.call(ctx, mainMsg)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -156,15 +156,15 @@ func (mo *masterOperatorClient) Agents() (
 // GetTasksAllocation returns resources for Peloton framework
 // allocatedResources: actual resource allocated for task + offered resources
 // offeredResources: offered resources are also assumed to be allocated to Peloton framework
-// by Mesos Master
-func (mo *masterOperatorClient) GetTasksAllocation(
+// by Mesos Main
+func (mo *mainOperatorClient) GetTasksAllocation(
 	ID string) ([]*mesos.Resource, []*mesos.Resource, error) {
 	var allocatedResources, offeredResources []*mesos.Resource
 
 	// Set the CALL TYPE
-	callType := mesos_master.Call_GET_FRAMEWORKS
+	callType := mesos_main.Call_GET_FRAMEWORKS
 
-	masterMsg := &mesos_master.Call{
+	mainMsg := &mesos_main.Call{
 		Type: &callType,
 	}
 
@@ -176,7 +176,7 @@ func (mo *masterOperatorClient) GetTasksAllocation(
 	defer cancel()
 
 	// Make Call
-	response, err := mo.call(ctx, masterMsg)
+	response, err := mo.call(ctx, mainMsg)
 	if err != nil {
 		return allocatedResources, offeredResources, errors.WithStack(err)
 	}
@@ -193,8 +193,8 @@ func (mo *masterOperatorClient) GetTasksAllocation(
 	return allocatedResources, offeredResources, nil
 }
 
-// AllocatedResources returns the roles information from the Master Operator API
-func (mo *masterOperatorClient) AllocatedResources(ID string) (
+// AllocatedResources returns the roles information from the Main Operator API
+func (mo *mainOperatorClient) AllocatedResources(ID string) (
 	[]*mesos.Resource, error) {
 
 	var mClusterResources []*mesos.Resource
@@ -206,9 +206,9 @@ func (mo *masterOperatorClient) AllocatedResources(ID string) (
 	}
 
 	// Set the CALL TYPE
-	callType := mesos_master.Call_GET_ROLES
+	callType := mesos_main.Call_GET_ROLES
 
-	masterMsg := &mesos_master.Call{
+	mainMsg := &mesos_main.Call{
 		Type: &callType,
 	}
 
@@ -220,7 +220,7 @@ func (mo *masterOperatorClient) AllocatedResources(ID string) (
 	defer cancel()
 
 	// Make Call
-	response, err := mo.call(ctx, masterMsg)
+	response, err := mo.call(ctx, mainMsg)
 	if err != nil {
 		return mClusterResources, errors.WithStack(err)
 	}
@@ -274,11 +274,11 @@ func filterRoles(roles []*mesos.Role, fn rolesFilterFn) []*mesos.Role {
 }
 
 // GetMaintenanceSchedule returns the current Mesos Maintenance Schedule
-func (mo *masterOperatorClient) GetMaintenanceSchedule() (*mesos_master.Response_GetMaintenanceSchedule, error) {
+func (mo *mainOperatorClient) GetMaintenanceSchedule() (*mesos_main.Response_GetMaintenanceSchedule, error) {
 	// Set the CALL TYPE
-	callType := mesos_master.Call_GET_MAINTENANCE_SCHEDULE
+	callType := mesos_main.Call_GET_MAINTENANCE_SCHEDULE
 
-	masterMsg := &mesos_master.Call{
+	mainMsg := &mesos_main.Call{
 		Type: &callType,
 	}
 
@@ -290,7 +290,7 @@ func (mo *masterOperatorClient) GetMaintenanceSchedule() (*mesos_master.Response
 	defer cancel()
 
 	// Make Call
-	response, err := mo.call(ctx, masterMsg)
+	response, err := mo.call(ctx, mainMsg)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -299,14 +299,14 @@ func (mo *masterOperatorClient) GetMaintenanceSchedule() (*mesos_master.Response
 }
 
 // UpdateMaintenanceSchedule updates the Mesos Maintenance Schedule
-func (mo *masterOperatorClient) UpdateMaintenanceSchedule(schedule *mesos_v1_maintenance.Schedule) error {
+func (mo *mainOperatorClient) UpdateMaintenanceSchedule(schedule *mesos_v1_maintenance.Schedule) error {
 	// Set the CALL TYPE
-	callType := mesos_master.Call_UPDATE_MAINTENANCE_SCHEDULE
+	callType := mesos_main.Call_UPDATE_MAINTENANCE_SCHEDULE
 
-	updateMaintenanceSchedule := &mesos_master.Call_UpdateMaintenanceSchedule{
+	updateMaintenanceSchedule := &mesos_main.Call_UpdateMaintenanceSchedule{
 		Schedule: schedule,
 	}
-	masterMsg := &mesos_master.Call{
+	mainMsg := &mesos_main.Call{
 		Type:                      &callType,
 		UpdateMaintenanceSchedule: updateMaintenanceSchedule,
 	}
@@ -319,7 +319,7 @@ func (mo *masterOperatorClient) UpdateMaintenanceSchedule(schedule *mesos_v1_mai
 	defer cancel()
 
 	// Make Call
-	_, err := mo.call(ctx, masterMsg)
+	_, err := mo.call(ctx, mainMsg)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -327,11 +327,11 @@ func (mo *masterOperatorClient) UpdateMaintenanceSchedule(schedule *mesos_v1_mai
 }
 
 // GetMaintenanceStatus returns the current Mesos Cluster Status
-func (mo *masterOperatorClient) GetMaintenanceStatus() (*mesos_master.Response_GetMaintenanceStatus, error) {
+func (mo *mainOperatorClient) GetMaintenanceStatus() (*mesos_main.Response_GetMaintenanceStatus, error) {
 	// Set the CALL TYPE
-	callType := mesos_master.Call_GET_MAINTENANCE_STATUS
+	callType := mesos_main.Call_GET_MAINTENANCE_STATUS
 
-	masterMsg := &mesos_master.Call{
+	mainMsg := &mesos_main.Call{
 		Type: &callType,
 	}
 
@@ -343,7 +343,7 @@ func (mo *masterOperatorClient) GetMaintenanceStatus() (*mesos_master.Response_G
 	defer cancel()
 
 	// Make Call
-	response, err := mo.call(ctx, masterMsg)
+	response, err := mo.call(ctx, mainMsg)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -352,17 +352,17 @@ func (mo *masterOperatorClient) GetMaintenanceStatus() (*mesos_master.Response_G
 }
 
 // StartMaintenance brings 'DOWN' the specified machines by un-registering, from Mesos
-// Master, the agents running on these machines. Any agents on machines in maintenance
-// are also prevented from reregistering with the master in the future until
+// Main, the agents running on these machines. Any agents on machines in maintenance
+// are also prevented from reregistering with the main in the future until
 // maintenance is completed and the machine is brought back up (by StopMaintenance).
-func (mo *masterOperatorClient) StartMaintenance(machines []*mesos.MachineID) error {
+func (mo *mainOperatorClient) StartMaintenance(machines []*mesos.MachineID) error {
 	// Set the CALL TYPE
-	callType := mesos_master.Call_START_MAINTENANCE
+	callType := mesos_main.Call_START_MAINTENANCE
 
-	startMaintenance := &mesos_master.Call_StartMaintenance{
+	startMaintenance := &mesos_main.Call_StartMaintenance{
 		Machines: machines,
 	}
-	masterMsg := &mesos_master.Call{
+	mainMsg := &mesos_main.Call{
 		Type:             &callType,
 		StartMaintenance: startMaintenance,
 	}
@@ -375,7 +375,7 @@ func (mo *masterOperatorClient) StartMaintenance(machines []*mesos.MachineID) er
 	defer cancel()
 
 	// Make Call
-	_, err := mo.call(ctx, masterMsg)
+	_, err := mo.call(ctx, mainMsg)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -383,14 +383,14 @@ func (mo *masterOperatorClient) StartMaintenance(machines []*mesos.MachineID) er
 }
 
 // StopMaintenance brings the specified machines back 'UP'
-func (mo *masterOperatorClient) StopMaintenance(machines []*mesos.MachineID) error {
+func (mo *mainOperatorClient) StopMaintenance(machines []*mesos.MachineID) error {
 	// Set the CALL TYPE
-	callType := mesos_master.Call_STOP_MAINTENANCE
+	callType := mesos_main.Call_STOP_MAINTENANCE
 
-	stopMaintenance := &mesos_master.Call_StopMaintenance{
+	stopMaintenance := &mesos_main.Call_StopMaintenance{
 		Machines: machines,
 	}
-	masterMsg := &mesos_master.Call{
+	mainMsg := &mesos_main.Call{
 		Type:            &callType,
 		StopMaintenance: stopMaintenance,
 	}
@@ -403,7 +403,7 @@ func (mo *masterOperatorClient) StopMaintenance(machines []*mesos.MachineID) err
 	defer cancel()
 
 	// Make Call
-	_, err := mo.call(ctx, masterMsg)
+	_, err := mo.call(ctx, mainMsg)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -411,13 +411,13 @@ func (mo *masterOperatorClient) StopMaintenance(machines []*mesos.MachineID) err
 }
 
 // GetQuota returns the quota set for specified role
-func (mo *masterOperatorClient) GetQuota(role string) (
+func (mo *mainOperatorClient) GetQuota(role string) (
 	[]*mesos.Resource, error) {
 
 	// GetQuota call only has `Call.Type` and no embedded message.
-	callType := mesos_master.Call_GET_QUOTA
+	callType := mesos_main.Call_GET_QUOTA
 
-	masterMsg := &mesos_master.Call{
+	mainMsg := &mesos_main.Call{
 		Type: &callType,
 	}
 
@@ -428,7 +428,7 @@ func (mo *masterOperatorClient) GetQuota(role string) (
 	defer cancel()
 
 	// Make Call
-	response, err := mo.call(ctx, masterMsg)
+	response, err := mo.call(ctx, mainMsg)
 
 	if err != nil {
 		return nil, errors.WithStack(err)

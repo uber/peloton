@@ -106,7 +106,7 @@ type OfferPoolTestSuite struct {
 	ctrl                 *gomock.Controller
 	pool                 *offerPool
 	schedulerClient      *mpb_mocks.MockSchedulerClient
-	masterOperatorClient *mpb_mocks.MockMasterOperatorClient
+	mainOperatorClient *mpb_mocks.MockMainOperatorClient
 	mockedCQosClient     *cqosmocks.MockQoSAdvisorServiceYARPCClient
 	provider             *hostmgr_mesos_mocks.MockFrameworkInfoProvider
 	agent1Offers         []*mesos.Offer
@@ -148,7 +148,7 @@ func (suite *OfferPoolTestSuite) SetupTest() {
 	suite.mockedCQosClient = cqosmocks.
 		NewMockQoSAdvisorServiceYARPCClient(suite.ctrl)
 	suite.schedulerClient = mpb_mocks.NewMockSchedulerClient(suite.ctrl)
-	suite.masterOperatorClient = mpb_mocks.NewMockMasterOperatorClient(suite.ctrl)
+	suite.mainOperatorClient = mpb_mocks.NewMockMainOperatorClient(suite.ctrl)
 	suite.provider = hostmgr_mesos_mocks.NewMockFrameworkInfoProvider(suite.ctrl)
 	suite.watchProcessor = watchmocks.NewMockWatchProcessor(suite.ctrl)
 	suite.metric = metrics.NewMetrics(tally.NoopScope)

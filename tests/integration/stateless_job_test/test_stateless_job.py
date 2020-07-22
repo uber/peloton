@@ -205,17 +205,17 @@ def test__failed_task_throttled_by_exponential_backoff():
     assert 1 < run_id < 20
 
 
-def test__start_job_in_killing_state(stateless_job, mesos_master):
+def test__start_job_in_killing_state(stateless_job, mesos_main):
     stateless_job.create()
     stateless_job.wait_for_state(goal_state="RUNNING")
 
-    # stop mesos master to ensure job doesn't transition to KILLED
-    mesos_master.stop()
+    # stop mesos main to ensure job doesn't transition to KILLED
+    mesos_main.stop()
     stateless_job.stop()
     stateless_job.wait_for_state(goal_state="KILLING")
 
     stateless_job.start()
-    mesos_master.start()
+    mesos_main.start()
     stateless_job.wait_for_all_pods_running()
 
 
@@ -493,18 +493,18 @@ def test__restart_bad_version(stateless_job, in_place):
     raise Exception("configuration version mismatch error not received")
 
 
-def test__stop_start_tasks_when_mesos_master_down_kills_tasks_when_started(
-        stateless_job, mesos_master
+def test__stop_start_tasks_when_mesos_main_down_kills_tasks_when_started(
+        stateless_job, mesos_main
 ):
     """
     1. Create stateless job.
     2. Wait for job state RUNNING.
-    3. Stop a subset of job instances when mesos master is down.
-    4. Start mesos master and wait for the instances to be stopped.
-    5. Start the same subset of instances when mesos master is down.
-    6. Start mesos master and wait for the instances to transit to RUNNING.
-    7. Stop the job when mesos master is down.
-    8. Start mesos master and wait for the job to terminate
+    3. Stop a subset of job instances when mesos main is down.
+    4. Start mesos main and wait for the instances to be stopped.
+    5. Start the same subset of instances when mesos main is down.
+    6. Start mesos main and wait for the instances to transit to RUNNING.
+    7. Stop the job when mesos main is down.
+    8. Start mesos main and wait for the job to terminate
     """
     stateless_job.create()
     stateless_job.wait_for_state(goal_state="RUNNING")
@@ -515,22 +515,22 @@ def test__stop_start_tasks_when_mesos_master_down_kills_tasks_when_started(
     def wait_for_instance_to_stop():
         return stateless_job.get_task(0).state_str == "KILLED"
 
-    mesos_master.stop()
+    mesos_main.stop()
     stateless_job.stop(ranges=[range])
-    mesos_master.start()
+    mesos_main.start()
     stateless_job.wait_for_condition(wait_for_instance_to_stop)
 
     def wait_for_instance_to_run():
         return stateless_job.get_task(0).state_str == "RUNNING"
 
-    mesos_master.stop()
+    mesos_main.stop()
     stateless_job.start(ranges=[range])
-    mesos_master.start()
+    mesos_main.start()
     stateless_job.wait_for_condition(wait_for_instance_to_run)
 
-    mesos_master.stop()
+    mesos_main.stop()
     stateless_job.stop()
-    mesos_master.start()
+    mesos_main.start()
     stateless_job.wait_for_terminated()
 
 

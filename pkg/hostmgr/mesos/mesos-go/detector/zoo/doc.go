@@ -1,3 +1,3 @@
-// Zookeeper-based mesos-master leaderhip detection.
-// Implements support for optional detector.AllMasters interface.
+// Zookeeper-based mesos-main leaderhip detection.
+// Implements support for optional detector.AllMains interface.
 package zoo

@@ -41,10 +41,10 @@ func (suite *detectorTestSuite) TestDetector() {
 		Ip:   &ip,
 		Port: &port,
 	}
-	masterInfo := mesos.MasterInfo{
+	mainInfo := mesos.MainInfo{
 		Address: &address,
 	}
-	suite.detector.OnMasterChanged(&masterInfo)
+	suite.detector.OnMainChanged(&mainInfo)
 	suite.Equal(fmt.Sprintf("%s:%d", ip, port), suite.detector.HostPort())
 }
 
