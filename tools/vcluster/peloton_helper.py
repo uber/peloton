@@ -42,8 +42,8 @@ def create_respool_for_new_peloton(
 
     # Respool size should be 90% of the cluster size
     # CPU, Memory and Disk values are the announced
-    # resource value of every Mesos slave
-    resource_config = config.get("mesos-slave").get("resource")
+    # resource value of every Mesos subordinate
+    resource_config = config.get("mesos-subordinate").get("resource")
 
     respool_config = create_pool_config(
         name=respool_name,

@@ -22,7 +22,7 @@ import (
 	"time"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
-	mesos_master "github.com/uber/peloton/.gen/mesos/v1/master"
+	mesos_main "github.com/uber/peloton/.gen/mesos/v1/master"
 	pbhost "github.com/uber/peloton/.gen/peloton/api/v0/host"
 
 	"github.com/uber/peloton/pkg/common"
@@ -51,7 +51,7 @@ type ResourceCapacity struct {
 // Note that AgentInfo is immutable as of Mesos 1.3.
 type AgentMap struct {
 	// Registered agent details by id.
-	RegisteredAgents map[string]*mesos_master.Response_GetAgents_Agent
+	RegisteredAgents map[string]*mesos_main.Response_GetAgents_Agent
 
 	// Resource capacity of all hosts.
 	HostCapacities map[string]*ResourceCapacity
@@ -101,7 +101,7 @@ func GetAgentMap() *AgentMap {
 // Loader loads hostmap from Mesos and stores in global singleton.
 type Loader struct {
 	sync.Mutex
-	OperatorClient     mpb.MasterOperatorClient
+	OperatorClient     mpb.MainOperatorClient
 	SlackResourceTypes []string
 	Scope              tally.Scope
 	HostInfoOps        ormobjects.HostInfoOps // DB ops for host_info table
@@ -111,12 +111,12 @@ type Loader struct {
 func (loader *Loader) Load(_ *uatomic.Bool) {
 	agents, err := loader.OperatorClient.Agents()
 	if err != nil {
-		log.WithError(err).Warn("Cannot refresh agent map from master")
+		log.WithError(err).Warn("Cannot refresh agent map from main")
 		return
 	}
 
 	m := &AgentMap{
-		RegisteredAgents: make(map[string]*mesos_master.Response_GetAgents_Agent),
+		RegisteredAgents: make(map[string]*mesos_main.Response_GetAgents_Agent),
 		HostCapacities:   make(map[string]*ResourceCapacity),
 		Capacity:         scalar.Resources{},
 		SlackCapacity:    scalar.Resources{},

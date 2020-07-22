@@ -27,15 +27,15 @@ func TestExtractIPAndPortFromMesosPid(t *testing.T) {
 		pid, ip, port string
 		err           error
 	}{
-		{pid: "slave(1)@1.2.3.4:9090", ip: "1.2.3.4", port: "9090"},
-		{pid: "slave(1)@2.3.4.5", ip: "2.3.4.5"},
+		{pid: "subordinate(1)@1.2.3.4:9090", ip: "1.2.3.4", port: "9090"},
+		{pid: "subordinate(1)@2.3.4.5", ip: "2.3.4.5"},
 		{
-			pid: "slave(1)@:90",
-			err: fmt.Errorf("Invalid Agent PID: slave(1)@:90"),
+			pid: "subordinate(1)@:90",
+			err: fmt.Errorf("Invalid Agent PID: subordinate(1)@:90"),
 		},
-		{pid: "slave(1)@ ", err: fmt.Errorf("Invalid Agent PID: slave(1)@ ")},
+		{pid: "subordinate(1)@ ", err: fmt.Errorf("Invalid Agent PID: subordinate(1)@ ")},
 		{pid: " @1.2.3.4", err: fmt.Errorf("Invalid Agent PID: @1.2.3.4")},
-		{pid: "slave(1)@", err: fmt.Errorf("Invalid Agent PID: slave(1)@")},
+		{pid: "subordinate(1)@", err: fmt.Errorf("Invalid Agent PID: subordinate(1)@")},
 		{pid: "@1.2.3.4", err: fmt.Errorf("Invalid Agent PID: @1.2.3.4")},
 		{pid: "badpid", err: fmt.Errorf("Invalid Agent PID: badpid")},
 	}

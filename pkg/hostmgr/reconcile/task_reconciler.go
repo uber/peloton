@@ -32,7 +32,7 @@ import (
 	ormobjects "github.com/uber/peloton/pkg/storage/objects"
 )
 
-// TaskReconciler is the interface to initiate task reconciliation to mesos master.
+// TaskReconciler is the interface to initiate task reconciliation to mesos main.
 type TaskReconciler interface {
 	Reconcile(running *atomic.Bool)
 	SetExplicitReconcileTurn(flag bool)

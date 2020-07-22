@@ -17,7 +17,7 @@ package mesos
 import (
 	"time"
 
-	mesosmaster "github.com/uber/peloton/.gen/mesos/v1/master"
+	mesosmain "github.com/uber/peloton/.gen/mesos/v1/master"
 	"github.com/uber/peloton/pkg/common/lifecycle"
 	"github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb"
 
@@ -31,21 +31,21 @@ const agentChanSize = 10
 type agentSyncer struct {
 	lf lifecycle.LifeCycle
 
-	agentCh chan []*mesosmaster.Response_GetAgents_Agent
+	agentCh chan []*mesosmain.Response_GetAgents_Agent
 
-	operatorClient  mpb.MasterOperatorClient
+	operatorClient  mpb.MainOperatorClient
 	refreshInterval time.Duration
 }
 
 func newAgentSyncer(
-	operatorClient mpb.MasterOperatorClient,
+	operatorClient mpb.MainOperatorClient,
 	refreshInterval time.Duration,
 ) *agentSyncer {
 	return &agentSyncer{
 		lf:              lifecycle.NewLifeCycle(),
 		operatorClient:  operatorClient,
 		refreshInterval: refreshInterval,
-		agentCh:         make(chan []*mesosmaster.Response_GetAgents_Agent, agentChanSize),
+		agentCh:         make(chan []*mesosmain.Response_GetAgents_Agent, agentChanSize),
 	}
 }
 
@@ -65,7 +65,7 @@ func (a *agentSyncer) Stop() {
 	a.lf.Stop()
 }
 
-func (a *agentSyncer) AgentCh() <-chan []*mesosmaster.Response_GetAgents_Agent {
+func (a *agentSyncer) AgentCh() <-chan []*mesosmain.Response_GetAgents_Agent {
 	return a.agentCh
 }
 
@@ -87,7 +87,7 @@ func (a *agentSyncer) run() {
 func (a *agentSyncer) runOnce() {
 	agents, err := a.operatorClient.Agents()
 	if err != nil {
-		log.WithError(err).Warn("Cannot refresh agent map from master")
+		log.WithError(err).Warn("Cannot refresh agent map from main")
 		return
 	}
 

@@ -74,10 +74,10 @@ func (c *Client) HostCacheDump() error {
 }
 
 // HostMaintenanceStartAction is the action for starting host maintenance. StartMaintenance puts the host
-// into DRAINING state by posting a maintenance schedule to Mesos Master. Inverse offers are sent out and
+// into DRAINING state by posting a maintenance schedule to Mesos Main. Inverse offers are sent out and
 // all future offers from the host are tagged with unavailability (Please check Mesos Maintenance
 // Primitives for more info). The host is first drained of tasks before being put into maintenance
-// by posting to /machine/down endpoint of Mesos Master.
+// by posting to /machine/down endpoint of Mesos Main.
 // The host transitions from UP to DRAINING and finally to DOWN.
 func (c *Client) HostMaintenanceStartAction(hostname string) error {
 	if len(hostname) == 0 {
@@ -96,7 +96,7 @@ func (c *Client) HostMaintenanceStartAction(hostname string) error {
 }
 
 // HostMaintenanceCompleteAction is the action for completing host maintenance. Complete maintenance brings UP a host
-// which is in maintenance by posting to /machine/up endpoint of Mesos Master i.e. the machine transitions from DOWN to
+// which is in maintenance by posting to /machine/up endpoint of Mesos Main i.e. the machine transitions from DOWN to
 // UP state (Please check Mesos Maintenance Primitives for more info)
 func (c *Client) HostMaintenanceCompleteAction(hostname string) error {
 	if len(hostname) == 0 {
@@ -264,7 +264,7 @@ func getTasksString(host *hostsvc.GetHostsByQueryResponse_Host) string {
 	return taskStr
 }
 
-// DisableKillTasksAction disable the kill task request to mesos master
+// DisableKillTasksAction disable the kill task request to mesos main
 func (c *Client) DisableKillTasksAction() error {
 
 	_, err := c.hostMgrClient.DisableKillTasks(c.ctx, &hostsvc.DisableKillTasksRequest{})

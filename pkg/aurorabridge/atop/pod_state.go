@@ -16,14 +16,14 @@ func NewPodState(
 	scheduleStatus api.ScheduleStatus) (pod.PodState, error) {
 	switch scheduleStatus {
 	case api.ScheduleStatusPending:
-		// Task is awaiting assignment to a slave.
+		// Task is awaiting assignment to a subordinate.
 		return pod.PodState_POD_STATE_PENDING, nil
 	case api.ScheduleStatusStarting:
-		// Slave has acknowledged receipt of task and is bootstrapping
+		// Subordinate has acknowledged receipt of task and is bootstrapping
 		// the task.
 		return pod.PodState_POD_STATE_STARTING, nil
 	case api.ScheduleStatusRunning:
-		// The task is running on the slave.
+		// The task is running on the subordinate.
 		return pod.PodState_POD_STATE_RUNNING, nil
 	case api.ScheduleStatusFinished:
 		// The task terminated with an exit code of zero.
@@ -40,10 +40,10 @@ func NewPodState(
 	case api.ScheduleStatusLost:
 		// A fault in the task environment has caused the system to
 		// believe the task no longer exists. This can happen, for example,
-		// when a slave process disappears.
+		// when a subordinate process disappears.
 		return pod.PodState_POD_STATE_LOST, nil
 	case api.ScheduleStatusAssigned:
-		// Task has been assigned to a slave.
+		// Task has been assigned to a subordinate.
 		return pod.PodState_POD_STATE_LAUNCHED, nil
 	case api.ScheduleStatusInit:
 		// Initial state for a task. A task will remain in this state

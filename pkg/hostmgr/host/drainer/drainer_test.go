@@ -23,7 +23,7 @@ import (
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	mesosmaintenance "github.com/uber/peloton/.gen/mesos/v1/maintenance"
-	mesosmaster "github.com/uber/peloton/.gen/mesos/v1/master"
+	mesosmain "github.com/uber/peloton/.gen/mesos/v1/master"
 	pbhost "github.com/uber/peloton/.gen/peloton/api/v0/host"
 
 	"github.com/uber/peloton/pkg/common/lifecycle"
@@ -50,7 +50,7 @@ type drainerTestSuite struct {
 	ctx                      context.Context
 	drainer                  *drainer
 	mockCtrl                 *gomock.Controller
-	mockMasterOperatorClient *mpb_mocks.MockMasterOperatorClient
+	mockMainOperatorClient *mpb_mocks.MockMainOperatorClient
 	mockHostInfoOps          *orm_mocks.MockHostInfoOps
 	mockGoalStateDriver      *goalstate_mocks.MockDriver
 	mockTaskEvictionQueue    *queuemocks.MockTaskQueue
@@ -66,7 +66,7 @@ func (suite *drainerTestSuite) SetupSuite() {
 func (suite *drainerTestSuite) SetupTest() {
 	suite.ctx = context.Background()
 	suite.mockCtrl = gomock.NewController(suite.T())
-	suite.mockMasterOperatorClient = mpb_mocks.NewMockMasterOperatorClient(suite.mockCtrl)
+	suite.mockMainOperatorClient = mpb_mocks.NewMockMainOperatorClient(suite.mockCtrl)
 	suite.mockHostInfoOps = orm_mocks.NewMockHostInfoOps(suite.mockCtrl)
 	suite.mockGoalStateDriver = goalstate_mocks.NewMockDriver(suite.mockCtrl)
 	suite.mockTaskEvictionQueue = queuemocks.NewMockTaskQueue(suite.mockCtrl)
@@ -75,20 +75,20 @@ func (suite *drainerTestSuite) SetupTest() {
 		drainerPeriod:        drainerPeriod,
 		taskEvictionQueue:    suite.mockTaskEvictionQueue,
 		pelotonAgentRole:     pelotonAgentRole,
-		masterOperatorClient: suite.mockMasterOperatorClient,
+		mainOperatorClient: suite.mockMainOperatorClient,
 		lifecycle:            lifecycle.NewLifeCycle(),
 		goalStateDriver:      suite.mockGoalStateDriver,
 		hostInfoOps:          suite.mockHostInfoOps,
 	}
 }
 
-func (suite *drainerTestSuite) makeUpAgentResponse() *mesosmaster.Response_GetAgents {
-	response := &mesosmaster.Response_GetAgents{
-		Agents: []*mesosmaster.Response_GetAgents_Agent{},
+func (suite *drainerTestSuite) makeUpAgentResponse() *mesosmain.Response_GetAgents {
+	response := &mesosmain.Response_GetAgents{
+		Agents: []*mesosmain.Response_GetAgents_Agent{},
 	}
 
-	pidUp := fmt.Sprintf("slave(0)@%s:0.0.0.0", suite.upIP)
-	agentUp := &mesosmaster.Response_GetAgents_Agent{
+	pidUp := fmt.Sprintf("subordinate(0)@%s:0.0.0.0", suite.upIP)
+	agentUp := &mesosmain.Response_GetAgents_Agent{
 		AgentInfo: &mesos.AgentInfo{
 			Hostname: &suite.upHost,
 			Resources: []*mesos.Resource{
@@ -111,10 +111,10 @@ func (suite *drainerTestSuite) TearDownTest() {
 	suite.mockCtrl.Finish()
 }
 
-func (suite *drainerTestSuite) setupLoaderMocks(agentsResponse *mesosmaster.Response_GetAgents) {
+func (suite *drainerTestSuite) setupLoaderMocks(agentsResponse *mesosmain.Response_GetAgents) {
 	suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).Return(nil, nil)
-	suite.mockMasterOperatorClient.EXPECT().Agents().Return(agentsResponse, nil)
-	suite.mockMasterOperatorClient.EXPECT().GetMaintenanceStatus().Return(nil, nil)
+	suite.mockMainOperatorClient.EXPECT().Agents().Return(agentsResponse, nil)
+	suite.mockMainOperatorClient.EXPECT().GetMaintenanceStatus().Return(nil, nil)
 	for _, a := range agentsResponse.GetAgents() {
 		ip, _, err := util.ExtractIPAndPortFromMesosAgentPID(a.GetPid())
 		suite.NoError(err)
@@ -141,7 +141,7 @@ func (suite *drainerTestSuite) TestDrainerNewDrainer() {
 	drainer := NewDrainer(
 		drainerPeriod,
 		pelotonAgentRole,
-		suite.mockMasterOperatorClient,
+		suite.mockMainOperatorClient,
 		suite.mockGoalStateDriver,
 		orm_mocks.NewMockHostInfoOps(suite.mockCtrl),
 		suite.mockTaskEvictionQueue,
@@ -153,7 +153,7 @@ func (suite *drainerTestSuite) TestDrainerNewDrainer() {
 func (suite *drainerTestSuite) TestStartMaintenance() {
 	// Mock 1 host `id-0` as a peloton agent
 	loader := &host.Loader{
-		OperatorClient: suite.mockMasterOperatorClient,
+		OperatorClient: suite.mockMainOperatorClient,
 		Scope:          tally.NoopScope,
 		HostInfoOps:    suite.mockHostInfoOps,
 	}
@@ -176,7 +176,7 @@ func (suite *drainerTestSuite) TestStartMaintenance() {
 func (suite *drainerTestSuite) TestStartMaintenanceCassandraError() {
 	// Mock 1 host `id-0` as a peloton agent
 	loader := &host.Loader{
-		OperatorClient: suite.mockMasterOperatorClient,
+		OperatorClient: suite.mockMainOperatorClient,
 		Scope:          tally.NoopScope,
 		HostInfoOps:    suite.mockHostInfoOps,
 	}
@@ -197,12 +197,12 @@ func (suite *drainerTestSuite) TestStartMaintenanceCassandraError() {
 // maintenance when the host is not registered as a Peloton agent
 func (suite *drainerTestSuite) TestStartMaintenanceNonPelotonAgentError() {
 	loader := &host.Loader{
-		OperatorClient: suite.mockMasterOperatorClient,
+		OperatorClient: suite.mockMainOperatorClient,
 		Scope:          tally.NewTestScope("", map[string]string{}),
 		HostInfoOps:    suite.mockHostInfoOps,
 	}
-	agentsResponse := &mesosmaster.Response_GetAgents{
-		Agents: []*mesosmaster.Response_GetAgents_Agent{
+	agentsResponse := &mesosmain.Response_GetAgents{
+		Agents: []*mesosmain.Response_GetAgents_Agent{
 			{
 				AgentInfo: &mesos.AgentInfo{
 					Hostname: &suite.upHost,
@@ -216,7 +216,7 @@ func (suite *drainerTestSuite) TestStartMaintenanceNonPelotonAgentError() {
 						},
 					},
 				},
-				Pid: &[]string{"slave1@1.2.3.4:1234"}[0],
+				Pid: &[]string{"subordinate1@1.2.3.4:1234"}[0],
 			},
 		},
 	}
@@ -360,23 +360,23 @@ func (suite *drainerTestSuite) TestReconcileMaintenanceState() {
 
 	hostInfosInDB := []*pbhost.HostInfo{
 		{
-			// State matches between DB and Mesos Master
+			// State matches between DB and Mesos Main
 			Hostname: hostDraining,
 			State:    pbhost.HostState_HOST_STATE_DRAINING,
 		},
 		{
-			// State matches between DB and Mesos Master
+			// State matches between DB and Mesos Main
 			Hostname: hostDown,
 			State:    pbhost.HostState_HOST_STATE_DOWN,
 		},
 		{
-			// State is DOWN in DB but UP on mesos master
+			// State is DOWN in DB but UP on mesos main
 			Hostname: suite.upHost,
 			State:    pbhost.HostState_HOST_STATE_DOWN,
 		},
 	}
 	loader := &host.Loader{
-		OperatorClient: suite.mockMasterOperatorClient,
+		OperatorClient: suite.mockMainOperatorClient,
 		Scope:          tally.NoopScope,
 		HostInfoOps:    suite.mockHostInfoOps,
 	}
@@ -385,7 +385,7 @@ func (suite *drainerTestSuite) TestReconcileMaintenanceState() {
 
 	loader.Load(nil)
 
-	maintenanceStatus := mesosmaster.Response_GetMaintenanceStatus{
+	maintenanceStatus := mesosmain.Response_GetMaintenanceStatus{
 		Status: &mesosmaintenance.ClusterStatus{
 			DrainingMachines: []*mesosmaintenance.ClusterStatus_DrainingMachine{
 				{
@@ -405,11 +405,11 @@ func (suite *drainerTestSuite) TestReconcileMaintenanceState() {
 	}
 	suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).Return(hostInfosInDB, nil)
 
-	suite.mockMasterOperatorClient.EXPECT().
+	suite.mockMainOperatorClient.EXPECT().
 		GetMaintenanceStatus().
 		Return(&maintenanceStatus, nil)
 
-	// The host should be updated in DB with state UP read from Mesos Master
+	// The host should be updated in DB with state UP read from Mesos Main
 	// and enqueue into the goal state engine
 	suite.mockHostInfoOps.EXPECT().
 		UpdateState(suite.ctx, suite.upHost, pbhost.HostState_HOST_STATE_UP).Return(nil)
@@ -427,9 +427,9 @@ func (suite *drainerTestSuite) TestDrainerStartSuccess() {
 		Stop()
 	suite.mockHostInfoOps.EXPECT().
 		GetAll(gomock.Any()).Return([]*pbhost.HostInfo{}, nil).AnyTimes()
-	suite.mockMasterOperatorClient.EXPECT().
+	suite.mockMainOperatorClient.EXPECT().
 		GetMaintenanceStatus().
-		Return(&mesosmaster.Response_GetMaintenanceStatus{}, nil).AnyTimes()
+		Return(&mesosmain.Response_GetMaintenanceStatus{}, nil).AnyTimes()
 
 	// Starting drainer again should be no-op
 	suite.drainer.Start()

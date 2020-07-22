@@ -21,7 +21,7 @@ import (
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 	mesosmaintenance "github.com/uber/peloton/.gen/mesos/v1/maintenance"
-	mesosmaster "github.com/uber/peloton/.gen/mesos/v1/master"
+	mesosmain "github.com/uber/peloton/.gen/mesos/v1/master"
 	pbhost "github.com/uber/peloton/.gen/peloton/api/v0/host"
 
 	"github.com/uber/peloton/pkg/common"
@@ -44,20 +44,20 @@ type hostMapTestSuite struct {
 
 	ctrl            *gomock.Controller
 	testScope       tally.TestScope
-	operatorClient  *mock_mpb.MockMasterOperatorClient
+	operatorClient  *mock_mpb.MockMainOperatorClient
 	mockHostInfoOps *orm_mocks.MockHostInfoOps
 }
 
 func (suite *hostMapTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.testScope = tally.NewTestScope("", map[string]string{})
-	suite.operatorClient = mock_mpb.NewMockMasterOperatorClient(suite.ctrl)
+	suite.operatorClient = mock_mpb.NewMockMainOperatorClient(suite.ctrl)
 	suite.mockHostInfoOps = orm_mocks.NewMockHostInfoOps(suite.ctrl)
 }
 
-func makeAgentsResponse(numAgents int) *mesosmaster.Response_GetAgents {
-	response := &mesosmaster.Response_GetAgents{
-		Agents: []*mesosmaster.Response_GetAgents_Agent{},
+func makeAgentsResponse(numAgents int) *mesosmain.Response_GetAgents {
+	response := &mesosmain.Response_GetAgents{
+		Agents: []*mesosmain.Response_GetAgents_Agent{},
 	}
 	for i := 0; i < numAgents; i++ {
 		resVal := float64(_defaultResourceValue)
@@ -99,8 +99,8 @@ func makeAgentsResponse(numAgents int) *mesosmaster.Response_GetAgents {
 			}
 		}
 
-		pid := fmt.Sprintf("slave(%d)@%d.%d.%d.%d:123", i, i, i, i, i)
-		getAgent := &mesosmaster.Response_GetAgents_Agent{
+		pid := fmt.Sprintf("subordinate(%d)@%d.%d.%d.%d:123", i, i, i, i, i)
+		getAgent := &mesosmain.Response_GetAgents_Agent{
 			AgentInfo: &mesos.AgentInfo{
 				Hostname:  &tmpID,
 				Resources: resources,
@@ -114,7 +114,7 @@ func makeAgentsResponse(numAgents int) *mesosmaster.Response_GetAgents {
 	return response
 }
 
-func (suite *hostMapTestSuite) setupMocks(response *mesosmaster.Response_GetAgents) {
+func (suite *hostMapTestSuite) setupMocks(response *mesosmain.Response_GetAgents) {
 	suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).Return(nil, nil)
 
 	suite.operatorClient.EXPECT().Agents().Return(response, nil)
@@ -160,7 +160,7 @@ func (suite *hostMapTestSuite) TestRefresh() {
 	suite.operatorClient.EXPECT().Agents().Return(response, nil)
 	suite.operatorClient.EXPECT().
 		GetMaintenanceStatus().
-		Return(&mesosmaster.Response_GetMaintenanceStatus{
+		Return(&mesosmain.Response_GetMaintenanceStatus{
 			Status: &mesosmaintenance.ClusterStatus{
 				DrainingMachines: []*mesosmaintenance.ClusterStatus_DrainingMachine{
 					{

@@ -67,7 +67,7 @@ def parse_arguments():
     # Subparser for the 'mesos' command
     parser_mesos = subparsers.add_parser(
         "mesos",
-        help="set up a virtual cluster with Mesos master and Mesos slave",
+        help="set up a virtual cluster with Mesos main and Mesos subordinate",
     )
 
     parser_mesos.add_argument(
@@ -78,30 +78,30 @@ def parse_arguments():
         help="the number of Mesos agent in the vcluster",
     )
 
-    # Subparser for the 'mesos-slave' command
-    parser_mesos_slave = subparsers.add_parser(
-        "mesos-slave", help="adding Mesos slaves giving a zookeeper"
+    # Subparser for the 'mesos-subordinate' command
+    parser_mesos_subordinate = subparsers.add_parser(
+        "mesos-subordinate", help="adding Mesos subordinates giving a zookeeper"
     )
 
-    parser_mesos_slave.add_argument(
+    parser_mesos_subordinate.add_argument(
         "-s",
         "--agent-number",
         type=int,
         dest="agent_number",
-        help="the number of Mesos slaves add into the vcluster",
+        help="the number of Mesos subordinates add into the vcluster",
     )
 
-    parser_mesos_slave.add_argument(
+    parser_mesos_subordinate.add_argument(
         "-k", "--zk", dest="zk", help="the host of virtual zk"
     )
 
-    # Subparser for the 'mesos-master' command
-    parser_mesos_slave = subparsers.add_parser(
-        "mesos-master",
-        help="set up a virtual cluster with Mesos master and Mesos slave",
+    # Subparser for the 'mesos-main' command
+    parser_mesos_subordinate = subparsers.add_parser(
+        "mesos-main",
+        help="set up a virtual cluster with Mesos main and Mesos subordinate",
     )
 
-    parser_mesos_slave.add_argument(
+    parser_mesos_subordinate.add_argument(
         "-k", "--zk", dest="zk", help="the host of virtual zk"
     )
 
@@ -234,18 +234,18 @@ def main():
         agent_number = args.agent_number
         vcluster.start_mesos(agent_number)
 
-    elif command == "mesos-slave":
+    elif command == "mesos-subordinate":
         agent_number = args.agent_number
         zk = args.zk.split(":")
         if len(zk) != 2:
             raise Exception("Invalid zk")
-        vcluster.start_mesos_slave(args.zk, agent_number)
+        vcluster.start_mesos_subordinate(args.zk, agent_number)
 
-    elif command == "mesos-master":
+    elif command == "mesos-main":
         zk = args.zk.split(":")
         if len(zk) != 2:
             raise Exception("Invalid zk")
-        vcluster.start_mesos_master(args.zk)
+        vcluster.start_mesos_main(args.zk)
 
     elif command == "peloton":
         zk = args.zk.split(":")
@@ -275,8 +275,8 @@ def main():
 
     elif command == "teardown":
         option = args.option
-        if option == "slave":
-            vcluster.teardown_slave(remove=args.remove)
+        if option == "subordinate":
+            vcluster.teardown_subordinate(remove=args.remove)
         elif option == "peloton":
             vcluster.teardown_peloton(remove=args.remove)
         else:

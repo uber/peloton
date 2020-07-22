@@ -23,7 +23,7 @@ import (
 	"github.com/uber/peloton/pkg/common/util"
 
 	pbmesos "github.com/uber/peloton/.gen/mesos/v1"
-	pbmesosmaster "github.com/uber/peloton/.gen/mesos/v1/master"
+	pbmesosmain "github.com/uber/peloton/.gen/mesos/v1/master"
 	pbhost "github.com/uber/peloton/.gen/peloton/api/v0/host"
 	pbeventstream "github.com/uber/peloton/.gen/peloton/private/eventstream"
 
@@ -992,14 +992,14 @@ func (suite *HostPoolManagerTestSuite) TestUpdateDesiredPool() {
 	}
 }
 
-// makeAgentsResponse makes a fake GetAgents response from Mesos master.
-func (suite *HostPoolManagerTestSuite) makeAgentsResponse() *pbmesosmaster.Response_GetAgents {
-	response := &pbmesosmaster.Response_GetAgents{
-		Agents: []*pbmesosmaster.Response_GetAgents_Agent{},
+// makeAgentsResponse makes a fake GetAgents response from Mesos main.
+func (suite *HostPoolManagerTestSuite) makeAgentsResponse() *pbmesosmain.Response_GetAgents {
+	response := &pbmesosmain.Response_GetAgents{
+		Agents: []*pbmesosmain.Response_GetAgents_Agent{},
 	}
-	pidUp := fmt.Sprintf("slave(0)@%s:0.0.0.0", suite.upMachines[0].GetIp())
+	pidUp := fmt.Sprintf("subordinate(0)@%s:0.0.0.0", suite.upMachines[0].GetIp())
 	hostnameUp := suite.upMachines[0].GetHostname()
-	agentUp := &pbmesosmaster.Response_GetAgents_Agent{
+	agentUp := &pbmesosmain.Response_GetAgents_Agent{
 		AgentInfo: &pbmesos.AgentInfo{
 			Hostname: &hostnameUp,
 		},
@@ -1008,9 +1008,9 @@ func (suite *HostPoolManagerTestSuite) makeAgentsResponse() *pbmesosmaster.Respo
 	response.Agents = append(response.Agents, agentUp)
 
 	pidDraining := fmt.Sprintf(
-		"slave(0)@%s:0.0.0.0", suite.drainingMachines[0].GetIp())
+		"subordinate(0)@%s:0.0.0.0", suite.drainingMachines[0].GetIp())
 	hostnameDraining := suite.drainingMachines[0].GetHostname()
-	agentDraining := &pbmesosmaster.Response_GetAgents_Agent{
+	agentDraining := &pbmesosmain.Response_GetAgents_Agent{
 		AgentInfo: &pbmesos.AgentInfo{
 			Hostname: &hostnameDraining,
 		},
@@ -1068,12 +1068,12 @@ func preRegisterTestPools(manager HostPoolManager, numPools int) {
 func (suite *HostPoolManagerTestSuite) setupAgentMapLoader(
 	ctrl *gomock.Controller,
 ) *host.Loader {
-	mockMasterOperatorClient := mpbmocks.NewMockMasterOperatorClient(suite.ctrl)
+	mockMainOperatorClient := mpbmocks.NewMockMainOperatorClient(suite.ctrl)
 
 	response := suite.makeAgentsResponse()
 	suite.mockHostInfoOps.EXPECT().GetAll(gomock.Any()).Return(nil, nil)
-	mockMasterOperatorClient.EXPECT().Agents().Return(response, nil)
-	mockMasterOperatorClient.EXPECT().GetMaintenanceStatus().Return(nil, nil)
+	mockMainOperatorClient.EXPECT().Agents().Return(response, nil)
+	mockMainOperatorClient.EXPECT().GetMaintenanceStatus().Return(nil, nil)
 	for _, a := range response.GetAgents() {
 		ip, _, err := util.ExtractIPAndPortFromMesosAgentPID(a.GetPid())
 		suite.NoError(err)
@@ -1091,7 +1091,7 @@ func (suite *HostPoolManagerTestSuite) setupAgentMapLoader(
 	}
 
 	loader := &host.Loader{
-		OperatorClient: mockMasterOperatorClient,
+		OperatorClient: mockMainOperatorClient,
 		Scope:          tally.NewTestScope("", map[string]string{}),
 		HostInfoOps:    suite.mockHostInfoOps,
 	}

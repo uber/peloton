@@ -149,15 +149,15 @@ class Zookeeper(Module):
         return self.get_host_port_for_instance(0, "ZOO_PORT")
 
 
-class MesosMaster(Module):
+class MesosMain(Module):
     def __init__(self, label_name, config, peloton_helper):
         """
         type param label_name: str
         type config: dict
         type peloton_helper: PelotonClientHelper
         """
-        super(MesosMaster, self).__init__(
-            "mesos-master", label_name, config, peloton_helper
+        super(MesosMain, self).__init__(
+            "mesos-main", label_name, config, peloton_helper
         )
 
     def find_leader(self, zk_host):
@@ -173,15 +173,15 @@ class MesosMaster(Module):
         return leader["hostname"], leader["port"]
 
 
-class MesosSlave(Module):
+class MesosSubordinate(Module):
     def __init__(self, label_name, config, peloton_helper):
         """
         type param label_name: str
         type config: dict
         type peloton_helper: PelotonClientHelper
         """
-        super(MesosSlave, self).__init__(
-            "mesos-slave", label_name, config, peloton_helper
+        super(MesosSubordinate, self).__init__(
+            "mesos-subordinate", label_name, config, peloton_helper
         )
 
     def setup(self, dynamic_env, instance_number, job_name=None, version=None):

@@ -33,7 +33,7 @@ type simpleChooser struct {
 
 // NewSimpleChooser creates a new Chooser, with no bells and whistles. Just a
 // peer that can be updated manually.
-// role is the string identifier for what this peer represents (mesos-master, hostmgr, etc)
+// role is the string identifier for what this peer represents (mesos-main, hostmgr, etc)
 func NewSimpleChooser(role string, transport peer.Transport) Chooser {
 	return &simpleChooser{
 		role:      role,
@@ -57,7 +57,7 @@ func (c *simpleChooser) IsRunning() bool {
 }
 
 // Choose is called when a request is sent. See go.uber.org/yarpc/transport/http/outbound.
-// Here it returns the current peer (the leader peloton master).
+// Here it returns the current peer (the leader peloton main).
 func (c *simpleChooser) Choose(context.Context, *transport.Request) (peer.Peer, func(error), error) {
 	c.Lock()
 	defer c.Unlock()

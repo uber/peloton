@@ -36,7 +36,7 @@ type ServerProcess interface {
 type Server struct {
 	sync.Mutex
 
-	ID   string // The peloton resource manager master address
+	ID   string // The peloton resource manager main address
 	role string // The role of the server
 
 	metrics *Metrics
@@ -235,7 +235,7 @@ func (s *Server) ShutDownCallback() error {
 	return nil
 }
 
-// GetID function returns the peloton resource manager master address
+// GetID function returns the peloton resource manager main address
 // required to implement leader.Nomination
 func (s *Server) GetID() string {
 	return s.ID

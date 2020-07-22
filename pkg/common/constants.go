@@ -19,17 +19,17 @@ import (
 )
 
 const (
-	// MesosMasterScheduler service name
-	MesosMasterScheduler = "mesos-master-scheduler"
-	// MesosMasterOperator service name
-	MesosMasterOperator = "mesos-master-operator"
-	// MesosMasterOperatorEndPoint is the path for Mesos Master endpoint
-	MesosMasterOperatorEndPoint = "/api/v1"
+	// MesosMainScheduler service name
+	MesosMainScheduler = "mesos-main-scheduler"
+	// MesosMainOperator service name
+	MesosMainOperator = "mesos-main-operator"
+	// MesosMainOperatorEndPoint is the path for Mesos Main endpoint
+	MesosMainOperatorEndPoint = "/api/v1"
 	// PelotonEndpointPath is the path for Peloton mux endpoint
 	PelotonEndpointPath = "/api/v1"
-	// PelotonRole name to connect with Mesos Master
+	// PelotonRole name to connect with Mesos Main
 	PelotonRole = "peloton"
-	// PelotonPrincipal name to connect with Mesos Master
+	// PelotonPrincipal name to connect with Mesos Main
 	PelotonPrincipal = "peloton"
 
 	// PelotonJobManager application name

@@ -4,7 +4,7 @@
 
 This script can be used to manage (setup, teardown) a personal
 Mesos cluster etc in containers, optionally Peloton
-master or apps can be specified to run in containers as well.
+main or apps can be specified to run in containers as well.
 
 @copyright:  2019 Uber Compute Platform. All rights reserved.
 

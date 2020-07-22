@@ -1248,7 +1248,7 @@ func (m *serviceHandler) getSandboxPathInfo(
 	return host, agentid, taskid, frameworkid, nil
 }
 
-// BrowseSandbox returns the list of sandbox files path, with agent name, agent id and mesos master name & port.
+// BrowseSandbox returns the list of sandbox files path, with agent name, agent id and mesos main name & port.
 func (m *serviceHandler) BrowseSandbox(
 	ctx context.Context,
 	req *task.BrowseSandboxRequest) (resp *task.BrowseSandboxResponse, err error) {
@@ -1340,12 +1340,12 @@ func (m *serviceHandler) BrowseSandbox(
 			"port":         agentPort,
 			"framework_id": frameworkID,
 			"agent_id":     agentID,
-		}).Error("failed to list slave logs files paths")
+		}).Error("failed to list subordinate logs files paths")
 		return &task.BrowseSandboxResponse{
 			Error: &task.BrowseSandboxResponse_Error{
 				Failure: &task.BrowseSandboxFailure{
 					Message: fmt.Sprintf(
-						"get slave log failed on host:%s due to: %v",
+						"get subordinate log failed on host:%s due to: %v",
 						hostname,
 						err,
 					),
@@ -1354,7 +1354,7 @@ func (m *serviceHandler) BrowseSandbox(
 		}, nil
 	}
 
-	mesosMasterHostPortRespose, err := m.hostMgrClient.GetMesosMasterHostPort(ctx, &hostsvc.MesosMasterHostPortRequest{})
+	mesosMainHostPortRespose, err := m.hostMgrClient.GetMesosMainHostPort(ctx, &hostsvc.MesosMainHostPortRequest{})
 	if err != nil {
 		m.metrics.TaskListLogsFail.Inc(1)
 		log.WithError(err).WithFields(log.Fields{
@@ -1362,7 +1362,7 @@ func (m *serviceHandler) BrowseSandbox(
 			"hostname":     hostname,
 			"framework_id": frameworkID,
 			"agent_id":     agentID,
-		}).Error("failed to list slave logs files paths")
+		}).Error("failed to list subordinate logs files paths")
 		return &task.BrowseSandboxResponse{
 			Error: &task.BrowseSandboxResponse_Error{
 				Failure: &task.BrowseSandboxFailure{
@@ -1380,8 +1380,8 @@ func (m *serviceHandler) BrowseSandbox(
 		Hostname:            agentIP,
 		Port:                agentPort,
 		Paths:               logPaths,
-		MesosMasterHostname: mesosMasterHostPortRespose.Hostname,
-		MesosMasterPort:     mesosMasterHostPortRespose.Port,
+		MesosMainHostname: mesosMainHostPortRespose.Hostname,
+		MesosMainPort:     mesosMainHostPortRespose.Port,
 	}
 	log.WithField("response", resp).Debug("TaskSVC.BrowseSandbox returned")
 	return resp, nil

@@ -110,8 +110,8 @@ def test__get_tasks_without_configs(client):
 
         # ScheduledTask.AssignedTask
         assert t.assignedTask.taskId is not None
-        assert t.assignedTask.slaveId is not None
-        assert t.assignedTask.slaveHost is not None
+        assert t.assignedTask.subordinateId is not None
+        assert t.assignedTask.subordinateHost is not None
         assert t.assignedTask.instanceId in (0, 1)
 
         # ScheduledTask.AssignedTask.TaskConfig
@@ -147,7 +147,7 @@ def test__get_tasks_without_configs(client):
             == list(t.assignedTask.task.constraints)[0].constraint.limit.limit
         )
 
-        host_counts[t.assignedTask.slaveHost] += 1
+        host_counts[t.assignedTask.subordinateHost] += 1
 
     # Ensure the host limit is enforced.
     for host, count in host_counts.iteritems():

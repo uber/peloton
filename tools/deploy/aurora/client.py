@@ -38,7 +38,7 @@ class AuroraClient(object):
         """
            Parses a host name and sets up Torando and Thrift client
         """
-        # To recieve and send binary thrift to the Aurora master we need to set
+        # To recieve and send binary thrift to the Aurora main we need to set
         # headers appropriately.
         transport = THttpClient("http://%s:%s/api" % (host, str(port)))
 
@@ -73,7 +73,7 @@ class AuroraClient(object):
 class AuroraClientZK(object):
     """
     Client for talking to the Aurora scheduler by resolving the current
-    Aurora master from a ZK cluster.
+    Aurora main from a ZK cluster.
 
     Sample code on how to run this:
 
@@ -96,7 +96,7 @@ class AuroraClientZK(object):
     ):
         """
            Parses a host name and port to a ZK cluster, resolve the current
-           Aurora master, and sets up Thrift client for Aurora scheduler.
+           Aurora main, and sets up Thrift client for Aurora scheduler.
 
            The service endpoint is stored in Zookeeper as the following format:
 
@@ -128,7 +128,7 @@ class AuroraClientZK(object):
 
         """
 
-        # Resolve the Aurora master from Zookeeper
+        # Resolve the Aurora main from Zookeeper
         zk_client = KazooClient(",".join(zk_endpoints))
         leader_node_name = None
         try:

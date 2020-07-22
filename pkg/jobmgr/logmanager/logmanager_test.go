@@ -51,7 +51,7 @@ func TestLogManager(t *testing.T) {
 }
 
 func (suite *LogManagerTestSuite) TestListTaskLogFiles() {
-	ts := httptest.NewServer(slaveMux())
+	ts := httptest.NewServer(subordinateMux())
 	defer ts.Close()
 
 	filePaths, err := listTaskLogFiles(&http.Client{
@@ -63,7 +63,7 @@ func (suite *LogManagerTestSuite) TestListTaskLogFiles() {
 }
 
 func (suite *LogManagerTestSuite) TestListTaskLogFilesNoClient() {
-	ts := httptest.NewServer(slaveMux())
+	ts := httptest.NewServer(subordinateMux())
 	defer ts.Close()
 
 	_, err := listTaskLogFiles(&http.Client{
@@ -99,28 +99,28 @@ func (suite *LogManagerTestSuite) TestListSandboxFilesPaths() {
 	suite.Error(err)
 }
 
-func (suite *LogManagerTestSuite) TestGetSlaveFileBrowseEndpointURL() {
-	sandboxDir := getSlaveFileBrowseEndpointURL(
+func (suite *LogManagerTestSuite) TestGetSubordinateFileBrowseEndpointURL() {
+	sandboxDir := getSubordinateFileBrowseEndpointURL(
 		_testMesosWorkDir, _testFrameworkID, _testHostname, _testPort,
 		_testAgentID, _testTaskID)
 	suite.Equal(
 		"http://test-hostname:31002/files/browse?path="+
-			"/var/lib/mesos/agent/slaves/test-agent-id/frameworks"+
+			"/var/lib/mesos/agent/subordinates/test-agent-id/frameworks"+
 			"/test-framework-id/executors/test-task-id/runs/latest",
 		sandboxDir)
 }
 
 var (
-	_slaveFileBrowseStr = `[{"path": "/var/lib/path1"}, {"path": "/var/lib/path2"}]`
+	_subordinateFileBrowseStr = `[{"path": "/var/lib/path1"}, {"path": "/var/lib/path2"}]`
 	_NonJSONResponse    = `error`
 )
 
-func slaveMux() *http.ServeMux {
+func subordinateMux() *http.ServeMux {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/files/browse", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, _slaveFileBrowseStr)
+		fmt.Fprintf(w, _subordinateFileBrowseStr)
 		return
 	})
 

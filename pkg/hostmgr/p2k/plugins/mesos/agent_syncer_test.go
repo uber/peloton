@@ -19,7 +19,7 @@ import (
 	"time"
 
 	mesosv1 "github.com/uber/peloton/.gen/mesos/v1"
-	mesosmaster "github.com/uber/peloton/.gen/mesos/v1/master"
+	mesosmain "github.com/uber/peloton/.gen/mesos/v1/master"
 	mpbmocks "github.com/uber/peloton/pkg/hostmgr/mesos/yarpc/encoding/mpb/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -30,13 +30,13 @@ type AgentSyncerTestSuite struct {
 	suite.Suite
 
 	ctrl           *gomock.Controller
-	operatorClient *mpbmocks.MockMasterOperatorClient
+	operatorClient *mpbmocks.MockMainOperatorClient
 	agentSyncer    *agentSyncer
 }
 
 func (suite *AgentSyncerTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
-	suite.operatorClient = mpbmocks.NewMockMasterOperatorClient(suite.ctrl)
+	suite.operatorClient = mpbmocks.NewMockMainOperatorClient(suite.ctrl)
 
 	suite.agentSyncer = newAgentSyncer(
 		suite.operatorClient,
@@ -103,8 +103,8 @@ func (suite *AgentSyncerTestSuite) TestStartForExtendedPeriodOfTime() {
 func (suite *AgentSyncerTestSuite) TestRunOnce() {
 	hostname := "hostname1"
 
-	agent := &mesosmaster.Response_GetAgents{
-		Agents: []*mesosmaster.Response_GetAgents_Agent{
+	agent := &mesosmain.Response_GetAgents{
+		Agents: []*mesosmain.Response_GetAgents_Agent{
 			{
 				AgentInfo: &mesosv1.AgentInfo{
 					Hostname: &hostname,

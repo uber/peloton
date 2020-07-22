@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 class TestAurorabridgeFailure(object):
     def test__simple_update_with_restart_component(self, failure_tester):
         """
-        Start an update, and restart jobmgr, resmgr, hostmgr & mesos master.
+        Start an update, and restart jobmgr, resmgr, hostmgr & mesos main.
         """
         res = failure_tester.aurorabridge_client.start_job_update(
             get_job_update_request('test_dc_labrat_large_job.yaml'),
@@ -56,8 +56,8 @@ class TestAurorabridgeFailure(object):
         failure_tester.reset_client()
         time.sleep(random.randint(1, 10))
 
-        # restart mesos master to jumble up host manager state
-        assert 0 != failure_tester.fw.restart(failure_tester.mesos_master)
+        # restart mesos main to jumble up host manager state
+        assert 0 != failure_tester.fw.restart(failure_tester.mesos_main)
 
         #  Sleep to help the cluster to stabilize
         time.sleep(10)
@@ -72,7 +72,7 @@ class TestAurorabridgeFailure(object):
 
     def test__simple_update_tasks_reconcile(self, failure_tester):
         """
-        Restart host manager and mesos master multiple times,
+        Restart host manager and mesos main multiple times,
         to make sure mesos tasks are reconciled correctly.
         """
         res = failure_tester.aurorabridge_client.start_job_update(
@@ -91,7 +91,7 @@ class TestAurorabridgeFailure(object):
 
         time.sleep(random.randint(1, 5))
 
-        assert 0 != failure_tester.fw.restart(failure_tester.mesos_master)
+        assert 0 != failure_tester.fw.restart(failure_tester.mesos_main)
 
         # Second restart
         leader = failure_tester.fw.get_leader_info(failure_tester.hostmgr)
@@ -102,7 +102,7 @@ class TestAurorabridgeFailure(object):
 
         time.sleep(random.randint(1, 5))
 
-        assert 0 != failure_tester.fw.restart(failure_tester.mesos_master)
+        assert 0 != failure_tester.fw.restart(failure_tester.mesos_main)
 
         # Third restart
         leader = failure_tester.fw.get_leader_info(failure_tester.hostmgr)
@@ -113,7 +113,7 @@ class TestAurorabridgeFailure(object):
 
         time.sleep(random.randint(1, 5))
 
-        assert 0 != failure_tester.fw.restart(failure_tester.mesos_master)
+        assert 0 != failure_tester.fw.restart(failure_tester.mesos_main)
 
         # Sleep to help the cluster to stabilize
         time.sleep(10)

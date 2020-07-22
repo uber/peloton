@@ -14,7 +14,7 @@ from tools.vcluster.config_generator import (
 
 class ConfigGeneratorTest(unittest.TestCase):
     def test_create_mesos_task_config(self):
-        dynamic_env_master = {"APP": "hostmgr"}
+        dynamic_env_main = {"APP": "hostmgr"}
         config_file = os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
             "..",
@@ -25,7 +25,7 @@ class ConfigGeneratorTest(unittest.TestCase):
         got = create_mesos_task_config(
             config,
             module="peloton",
-            dynamic_env=dynamic_env_master,
+            dynamic_env=dynamic_env_main,
             image_path="myregistry/peloton:0.1.0",
         )
 

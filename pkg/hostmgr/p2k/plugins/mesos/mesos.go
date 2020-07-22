@@ -20,7 +20,7 @@ import (
 	"time"
 
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
-	mesosmaster "github.com/uber/peloton/.gen/mesos/v1/master"
+	mesosmain "github.com/uber/peloton/.gen/mesos/v1/master"
 	sched "github.com/uber/peloton/.gen/mesos/v1/scheduler"
 	v0peloton "github.com/uber/peloton/.gen/peloton/api/v0/peloton"
 	"github.com/uber/peloton/.gen/peloton/api/v1alpha/peloton"
@@ -93,7 +93,7 @@ func NewMesosManager(
 	d *yarpc.Dispatcher,
 	frameworkInfoProvider hostmgrmesos.FrameworkInfoProvider,
 	schedulerClient mpb.SchedulerClient,
-	operatorClient mpb.MasterOperatorClient,
+	operatorClient mpb.MainOperatorClient,
 	agentInfoRefreshInterval time.Duration,
 	offerHoldTime time.Duration,
 	scope tally.Scope,
@@ -241,7 +241,7 @@ func (m *MesosManager) LaunchPods(
 	return pods, nil
 }
 
-// declineOffers calls mesos master to decline list of offers
+// declineOffers calls mesos main to decline list of offers
 func (m *MesosManager) declineOffers(
 	ctx context.Context,
 	offerIDs []*mesos.OfferID) error {
@@ -328,7 +328,7 @@ func (m *MesosManager) ackPodEventWorker() {
 		// This is a new event to be acknowledged. Add it to the dedupe map of acks.
 		m.ackStatusMap.Store(pe.EventID, struct{}{})
 
-		// if ack failed at mesos master then agent will re-sent.
+		// if ack failed at mesos main then agent will re-sent.
 		if err := m.acknowledgeTaskUpdate(
 			context.Background(),
 			pe,
@@ -343,7 +343,7 @@ func (m *MesosManager) ackPodEventWorker() {
 }
 
 // acknowledgeTaskUpdate, ACK task status update events
-// thru POST scheduler client call to Mesos Master.
+// thru POST scheduler client call to Mesos Main.
 func (m *MesosManager) acknowledgeTaskUpdate(
 	ctx context.Context,
 	e *scalar.PodEvent) error {
@@ -373,7 +373,7 @@ func (m *MesosManager) acknowledgeTaskUpdate(
 }
 
 func (m *MesosManager) startProcessAgentInfo(
-	agentCh <-chan []*mesosmaster.Response_GetAgents_Agent,
+	agentCh <-chan []*mesosmain.Response_GetAgents_Agent,
 ) {
 	// The first batch needs to be populated in sync,
 	// so after MesosManager starts and begins to receive mesos events,
@@ -393,7 +393,7 @@ func (m *MesosManager) startProcessAgentInfo(
 }
 
 func (m *MesosManager) processAgentHostMap(
-	agents []*mesosmaster.Response_GetAgents_Agent,
+	agents []*mesosmain.Response_GetAgents_Agent,
 ) {
 	for _, agent := range agents {
 		agentID := agent.GetAgentInfo().GetId().GetValue()
@@ -419,7 +419,7 @@ func (m *MesosManager) ReconcileHosts() ([]*scalar.HostInfo, error) {
 	return nil, nil
 }
 
-// Offers is the mesos callback that sends the offers from master
+// Offers is the mesos callback that sends the offers from main
 // TODO: add metrics similar to what offerpool has
 func (m *MesosManager) Offers(ctx context.Context, body *sched.Event) error {
 	event := body.GetOffers()

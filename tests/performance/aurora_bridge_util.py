@@ -343,7 +343,7 @@ def verify_host_limit_1(tasks):
     host_counts = defaultdict(int)
 
     for t in tasks:
-        host_counts[t.assignedTask.slaveHost] += 1
+        host_counts[t.assignedTask.subordinateHost] += 1
 
     # Ensure the host limit is enforced.
     for host, count in host_counts.iteritems():

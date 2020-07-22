@@ -39,8 +39,8 @@ class VClusterDriver(driver_base.ClusterDriverABC):
 
         self.component_name_map.update(
             {
-                components.MesosMaster().name: "mesos-master",
-                components.MesosAgent().name: "mesos-slave",
+                components.MesosMain().name: "mesos-main",
+                components.MesosAgent().name: "mesos-subordinate",
                 components.Zookeeper().name: "zookeeper",
                 components.HostMgr().name: "hostmgr",
                 components.JobMgr().name: "jobmgr",

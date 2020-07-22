@@ -147,7 +147,7 @@ class Minicluster(object):
         # Now we need to randomize the ports.
         # TODO: Fix race condition between the find_free_port() and the process
         # that will actually bind to that port.
-        self.config["local_master_port"] = utils.find_free_port()
+        self.config["local_main_port"] = utils.find_free_port()
         self.config["local_zk_port"] = utils.find_free_port()
         self.config["local_cassandra_cql_port"] = utils.find_free_port()
         self.config["local_cassandra_thrift_port"] = utils.find_free_port()
@@ -219,7 +219,7 @@ class Minicluster(object):
                 binds=[
                     work_dir + "/files:/files",
                     work_dir
-                    + "/mesos_config/etc_mesos-slave:/etc/mesos-slave",
+                    + "/mesos_config/etc_mesos-subordinate:/etc/mesos-subordinate",
                     "/var/run/docker.sock:/var/run/docker.sock",
                 ],
                 privileged=True,
@@ -251,8 +251,8 @@ class Minicluster(object):
                 "MESOS_QOS_CORRECTION_INTERVAL_MIN="
                 + config["qos_correction_interval_min"],
             ],
-            image=config["mesos_slave_image"],
-            entrypoint="bash /files/run_mesos_slave.sh",
+            image=config["mesos_subordinate_image"],
+            entrypoint="bash /files/run_mesos_subordinate.sh",
             detach=True,
         )
         self.cli.start(container=container.get("Id"))
@@ -278,7 +278,7 @@ class Minicluster(object):
         self._teardown_mesos()
         self._teardown_zk()
         self._setup_zk()
-        self._setup_mesos_master()
+        self._setup_mesos_main()
         self._setup_mesos_agents()
 
     def _teardown_mesos(self):
@@ -289,9 +289,9 @@ class Minicluster(object):
         for i in range(0, self.config.get("num_exclusive_agents", 0)):
             self.teardown_mesos_agent(i, is_exclusive=True)
 
-        # 2 - Remove Mesos Master
+        # 2 - Remove Mesos Main
         self.cli.remove_existing_container(
-            self.config["mesos_master_container"])
+            self.config["mesos_main_container"])
 
         # 3- Remove orphaned mesos containers.
         for c in self.cli.containers(filters={"name": "^/mesos-"}, all=True):
@@ -359,21 +359,21 @@ class Minicluster(object):
     def _teardown_cassandra(self):
         self.cli.remove_existing_container(self.config["cassandra_container"])
 
-    def _setup_mesos_master(self):
+    def _setup_mesos_main(self):
         config = self.config
-        self.cli.pull(config["mesos_master_image"])
+        self.cli.pull(config["mesos_main_image"])
         container = self.cli.create_container(
-            name=config["mesos_master_container"],
-            hostname=config["mesos_master_container"],
+            name=config["mesos_main_container"],
+            hostname=config["mesos_main_container"],
             volumes=["/files"],
-            ports=[repr(config["master_port"])],
+            ports=[repr(config["main_port"])],
             host_config=self.cli.create_host_config(
-                port_bindings={config["master_port"]: config[
-                    "local_master_port"
+                port_bindings={config["main_port"]: config[
+                    "local_main_port"
                 ]},
                 binds=[
                     work_dir + "/files:/files",
-                    work_dir + "/mesos_config/etc_mesos-master:/etc/mesos-master",
+                    work_dir + "/mesos_config/etc_mesos-main:/etc/mesos-main",
                 ],
                 privileged=True,
             ),
@@ -383,9 +383,9 @@ class Minicluster(object):
                 # TODO: Enable following flags for fully authentication.
                 "MESOS_AUTHENTICATE_HTTP_FRAMEWORKS=true",
                 "MESOS_HTTP_FRAMEWORK_AUTHENTICATORS=basic",
-                "MESOS_CREDENTIALS=/etc/mesos-master/credentials",
+                "MESOS_CREDENTIALS=/etc/mesos-main/credentials",
                 "MESOS_LOG_DIR=" + config["log_dir"],
-                "MESOS_PORT=" + repr(config["master_port"]),
+                "MESOS_PORT=" + repr(config["main_port"]),
                 "MESOS_ZK=zk://{0}:{1}/mesos".format(
                     self.cli.get_container_ip(config["zk_container"]),
                     config["default_zk_port"],
@@ -394,17 +394,17 @@ class Minicluster(object):
                 "MESOS_REGISTRY=" + config["registry"],
                 "MESOS_WORK_DIR=" + config["work_dir"],
             ],
-            image=config["mesos_master_image"],
-            entrypoint="bash /files/run_mesos_master.sh",
+            image=config["mesos_main_image"],
+            entrypoint="bash /files/run_mesos_main.sh",
             detach=True,
         )
         self.cli.start(container=container.get("Id"))
-        master_container = config["mesos_master_container"]
-        print_utils.okgreen("started container %s" % master_container)
+        main_container = config["mesos_main_container"]
+        print_utils.okgreen("started container %s" % main_container)
 
     def _setup_mesos_agents(self):
         config = self.config
-        self.cli.pull(config['mesos_slave_image'])
+        self.cli.pull(config['mesos_subordinate_image'])
         for i in range(0, config['num_agents']):
             port = self.mesos_agent_ports[i]
             self.setup_mesos_agent(i, port)
@@ -741,14 +741,14 @@ class Minicluster(object):
         )
         return self._peloton_client
 
-    def wait_for_mesos_master_leader(self, timeout_secs=20):
+    def wait_for_mesos_main_leader(self, timeout_secs=20):
         """
-        util method to wait for mesos master leader elected
+        util method to wait for mesos main leader elected
         """
 
-        port = self.config.get("local_master_port")
+        port = self.config.get("local_main_port")
         url = "{}:{}/state.json".format(utils.HTTP_LOCALHOST, port)
-        print_utils.warn("waiting for mesos master leader")
+        print_utils.warn("waiting for mesos main leader")
         deadline = time.time() + timeout_secs
         while time.time() < deadline:
             try:
@@ -756,18 +756,18 @@ class Minicluster(object):
                 if resp.status_code != 200:
                     time.sleep(1)
                     continue
-                print_utils.okgreen("mesos master is ready")
+                print_utils.okgreen("mesos main is ready")
                 return
             except Exception:
                 pass
 
-        assert False, "timed out waiting for mesos master leader"
+        assert False, "timed out waiting for mesos main leader"
 
     def wait_for_all_agents_to_register(self, agent_count=3, timeout_secs=300):
         """
         util method to wait for all agents to register
         """
-        port = self.config.get("local_master_port")
+        port = self.config.get("local_main_port")
         url = "{}:{}/state.json".format(utils.HTTP_LOCALHOST, port)
         print_utils.warn("waiting for all mesos agents")
 
@@ -777,7 +777,7 @@ class Minicluster(object):
                 resp = requests.get(url)
                 if resp.status_code == 200:
                     registered_agents = 0
-                    for a in resp.json()['slaves']:
+                    for a in resp.json()['subordinates']:
                         if a['active']:
                             registered_agents += 1
 

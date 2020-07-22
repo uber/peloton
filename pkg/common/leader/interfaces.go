@@ -33,7 +33,7 @@ type Nomination interface {
 	// leadership
 	LostLeadershipCallback() error
 
-	// GetID returns the host:master_port of the node running for
+	// GetID returns the host:main_port of the node running for
 	// leadership (i.e. the ID)
 	GetID() string
 }

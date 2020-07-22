@@ -22,42 +22,42 @@ import (
 	mesos "github.com/uber/peloton/.gen/mesos/v1"
 )
 
-type MasterChanged interface {
-	// Invoked when the master changes
-	OnMasterChanged(*mesos.MasterInfo)
+type MainChanged interface {
+	// Invoked when the main changes
+	OnMainChanged(*mesos.MainInfo)
 }
 
-// AllMasters defines an optional interface that, if implemented by the same
-// struct as implements MasterChanged, will receive an additional callbacks
+// AllMains defines an optional interface that, if implemented by the same
+// struct as implements MainChanged, will receive an additional callbacks
 // independently of leadership changes. it's possible that, as a result of a
-// leadership change, both the OnMasterChanged and UpdatedMasters callbacks
+// leadership change, both the OnMainChanged and UpdatedMains callbacks
 // would be invoked.
 //
 // **NOTE:** Detector implementations are not required to support this optional
 // interface. Please RTFM of the detector implementation that you want to use.
-type AllMasters interface {
-	// UpdatedMasters is invoked upon a change in the membership of mesos
-	// masters, and is useful to clients that wish to know the entire set
-	// of Mesos masters currently running.
-	UpdatedMasters([]*mesos.MasterInfo)
+type AllMains interface {
+	// UpdatedMains is invoked upon a change in the membership of mesos
+	// mains, and is useful to clients that wish to know the entire set
+	// of Mesos mains currently running.
+	UpdatedMains([]*mesos.MainInfo)
 }
 
 // func/interface adapter
-type OnMasterChanged func(*mesos.MasterInfo)
+type OnMainChanged func(*mesos.MainInfo)
 
-func (f OnMasterChanged) OnMasterChanged(mi *mesos.MasterInfo) {
+func (f OnMainChanged) OnMainChanged(mi *mesos.MainInfo) {
 	f(mi)
 }
 
-// An abstraction of a Master detector which can be used to
-// detect the leading master from a group.
-type Master interface {
-	// Detect new master election. Every time a new master is elected, the
+// An abstraction of a Main detector which can be used to
+// detect the leading main from a group.
+type Main interface {
+	// Detect new main election. Every time a new main is elected, the
 	// detector will alert the observer. The first call to Detect is expected
 	// to kickstart any background detection processing (and not before then).
 	// If detection startup fails, or the listener cannot be added, then an
 	// error is returned.
-	Detect(MasterChanged) error
+	Detect(MainChanged) error
 
 	// returns a chan that, when closed, indicates the detector has terminated
 	Done() <-chan struct{}
