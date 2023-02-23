@@ -1,5 +1,5 @@
 #!/bin/bash
-
+echo "[!] Bootstraping..."
 set -euxo pipefail
 
 PROTOC_VERSION=3.5.1
