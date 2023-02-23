@@ -1,7 +1,7 @@
 #!/bin/bash
 
 set -exo pipefail
-
+echo "[!]"
 # make sure GOPATH is setup if missing. this is necessary to support building on
 # uber ubuild machines without a valid gopath setup
 # TODO(gabe): remove me when we no longer need a functioning GO env to build the docker
